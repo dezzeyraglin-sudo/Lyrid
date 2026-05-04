@@ -61,7 +61,14 @@ const MIN_PA_FOR_RELIABLE = 50;
  *   - Contact hitter 3% → 0.40x baseline
  */
 function barrelMultiplier(barrelPct) {
+  // Missing or invalid → neutral, don't surface a driver
   if (barrelPct == null || isNaN(barrelPct)) return { mult: 1.0, driver: null };
+  // Exactly zero barrel% almost always indicates missing-data fallthrough
+  // (real hitters with PAs measured by Statcast almost never have a true 0% barrel rate
+  // on a meaningful sample). Treat as no information rather than as evidence of zero power.
+  // Without this guard, a missing-data row would falsely flag every hitter as "Limited power"
+  // and tank the HR projection across the board.
+  if (barrelPct === 0) return { mult: 1.0, driver: null };
   const ratio = barrelPct / LEAGUE_BARREL_PCT;
   // Cap at 3.0 to prevent extreme outliers from dominating
   const mult = Math.max(0.30, Math.min(3.0, ratio));
@@ -294,23 +301,30 @@ function computeRawProjection(ctx) {
   } = ctx;
 
   // Compute each feature multiplier and collect drivers
-  const features = [
-    barrelMultiplier(barrelPct),
-    hardHitMultiplier(hardHitPct),
-    pitchMatchupMultiplier(bestMatchedXwoba, dominantPitch),
-    pitcherHrMultiplier(pitcherHrPer9),
-    parkMultiplier(parkHrMult, parkName),
-    weatherMultiplier(weatherImpact, batSide),
-    platoonMultiplier(platoonAdjustment),
-    strikeoutPenalty(kPct),
-    bullpenMultiplier(bullpenTier),
+  // Keep names so the _debug trace can identify each multiplier source
+  const featureFns = [
+    ['barrel', () => barrelMultiplier(barrelPct)],
+    ['hardHit', () => hardHitMultiplier(hardHitPct)],
+    ['pitchMatchup', () => pitchMatchupMultiplier(bestMatchedXwoba, dominantPitch)],
+    ['pitcherHr', () => pitcherHrMultiplier(pitcherHrPer9)],
+    ['park', () => parkMultiplier(parkHrMult, parkName)],
+    ['weather', () => weatherMultiplier(weatherImpact, batSide)],
+    ['platoon', () => platoonMultiplier(platoonAdjustment)],
+    ['kPenalty', () => strikeoutPenalty(kPct)],
+    ['bullpen', () => bullpenMultiplier(bullpenTier)],
   ];
 
-  // Combine multipliers
+  // Combine multipliers + capture per-feature trace for diagnostics
   let multiplier = 1.0;
   const drivers = [];
-  for (const f of features) {
+  const multTrace = {};  // feature name → { mult, driverFired }
+  for (const [name, fn] of featureFns) {
+    const f = fn();
     multiplier *= f.mult;
+    multTrace[name] = {
+      mult: parseFloat(f.mult.toFixed(3)),
+      driverFired: f.driver ? f.driver.feature : null
+    };
     if (f.driver) drivers.push(f.driver);
   }
 
@@ -347,6 +361,31 @@ function computeRawProjection(ctx) {
     drivers: drivers.slice(0, 4),
     multiplier: parseFloat(multiplier.toFixed(2)),
     sampleWarning,
+    // Diagnostic trace — every input + every multiplier. Read from console
+    // or include in audit panel to identify exactly which factor is producing
+    // a wrong projection. Inputs first (what reached the function), then each
+    // per-feature multiplier (what was applied), then the combined product.
+    _debug: {
+      inputs: {
+        barrelPct: barrelPct == null ? null : parseFloat(barrelPct.toFixed ? barrelPct.toFixed(2) : barrelPct),
+        hardHitPct: hardHitPct == null ? null : parseFloat(hardHitPct.toFixed ? hardHitPct.toFixed(2) : hardHitPct),
+        kPct: kPct == null ? null : parseFloat(kPct.toFixed ? kPct.toFixed(2) : kPct),
+        seasonPa,
+        bestMatchedXwoba: bestMatchedXwoba == null ? null : parseFloat(parseFloat(bestMatchedXwoba).toFixed(3)),
+        dominantPitch,
+        pitcherHrPer9: pitcherHrPer9 == null ? null : parseFloat(pitcherHrPer9.toFixed(2)),
+        parkHrMult: parkHrMult == null ? null : parseFloat(parkHrMult.toFixed(3)),
+        parkName,
+        batSide,
+        weatherTempF: weatherImpact?.tempF || null,
+        weatherWindCat: weatherImpact?.windRelative?.category || null,
+        platoonFavor: platoonAdjustment?.favor || null,
+        bullpenTier
+      },
+      multipliers: multTrace,
+      combinedMultiplier: parseFloat(multiplier.toFixed(3)),
+      projectedHrPerPa: parseFloat(projectedHrPerPa.toFixed(4))
+    },
     // Legacy fields for UI backward compatibility:
     score: Math.round(multiplier * 30),
     barrelPct,

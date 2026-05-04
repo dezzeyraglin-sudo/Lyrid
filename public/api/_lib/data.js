@@ -286,12 +286,27 @@ export async function getHitterStats(mlbam, season) {
   const expRow = expectedRows.find(r => String(r.player_id).trim() === pid) || {};
   const custRow = customRows.find(r => String(r.player_id).trim() === pid) || {};
 
+  // Barrel% can come back from Savant under different column names depending on
+  // their custom-leaderboard export schema. Try the common variants in order.
+  // If we find any of them, we use it; otherwise null. Logging the mismatch helps
+  // catch future schema shifts before they silently zero out the HR projection.
+  const brlRaw = custRow.brl_percent
+              ?? custRow.barrel_batted_rate
+              ?? custRow.barrels_per_pa_percent
+              ?? custRow.barrel_pct
+              ?? null;
+  if (brlRaw == null && Object.keys(custRow).length > 0 && process.env.NODE_ENV !== 'production') {
+    // We have a custom row but no barrel column — Savant schema likely changed.
+    // Log once per session would be ideal but a simple console.warn is enough for now.
+    console.warn('[data.js] custRow has no recognized barrel% column. Available keys:', Object.keys(custRow).slice(0, 20));
+  }
+
   return {
     overall: {
       xwoba: { value: expRow.est_woba ? parseFloat(expRow.est_woba).toFixed(3) : null },
       xba: { value: expRow.est_ba ? parseFloat(expRow.est_ba).toFixed(3) : null },
       xslg: { value: expRow.est_slg ? parseFloat(expRow.est_slg).toFixed(3) : null },
-      barrel_batted_rate: { value: custRow.brl_percent ? parseFloat(custRow.brl_percent).toFixed(1) : null },
+      barrel_batted_rate: { value: brlRaw != null ? parseFloat(brlRaw).toFixed(1) : null },
       hard_hit_percent: { value: custRow.hard_hit_percent ? parseFloat(custRow.hard_hit_percent).toFixed(1) : null },
       avg_exit_velocity: { value: custRow.exit_velocity_avg ? parseFloat(custRow.exit_velocity_avg).toFixed(1) : null },
       k_percent: { value: custRow.k_percent ? parseFloat(custRow.k_percent).toFixed(1) : null }

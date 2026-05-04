@@ -4143,3 +4143,34 @@ button.tag-btn:hover,
   line-height: 1.5;
   max-width: 720px;
 }
+
+/* ===========================================================
+   HR AUDIT DEBUG LINE — diagnostic-only, shown inline below each
+   audit row so we can identify which input or multiplier is
+   producing a wrong projection. Visually subdued (mono, small).
+   =========================================================== */
+
+.hr-audit-debug {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  padding: 4px 0 0 28px;
+  margin-top: 2px;
+  border-top: 0.5px dashed var(--border-hairline);
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+.hr-audit-debug-label {
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+
+.hr-audit-debug b {
+  color: var(--brand-primary);
+  font-weight: 600;
+}

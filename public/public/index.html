@@ -3984,11 +3984,25 @@ function renderAnalysis(data) {
     // diagnostic info, not user-facing UX. Will be removed/quieted once the
     // gold-prominence treatment ships in a future session.
     const hrAuditTop = s.hrAuditTop || [];
+    // Console-log the debug trace for each audit row so we can copy from DevTools
+    // when investigating projection bugs. Only fires in deep mode and when _debug
+    // is present (which it always is in the instrumented build).
+    if (data.deepMode && hrAuditTop.length > 0) {
+      console.group(`[HR AUDIT] ${s.pitcher.name} — top 3 hitters`);
+      hrAuditTop.forEach((b, i) => {
+        if (b._debug) {
+          console.log(`${i + 1}. ${b.name} (${b.hand}) — ${(b.projectedHrPerPa * 100).toFixed(2)}% HR/PA, ×${b.multiplier}`);
+          console.log('   inputs:', b._debug.inputs);
+          console.log('   multipliers:', b._debug.multipliers);
+        }
+      });
+      console.groupEnd();
+    }
     const hrAuditHtml = (data.deepMode && hrAuditTop.length > 0) ? `
       <div class="hr-audit-panel">
         <div class="hr-audit-head">
           <span class="hr-audit-eyebrow">HR PROJECTION AUDIT · top 3 (diagnostic)</span>
-          <span class="hr-audit-baseline">league avg · 3.0% HR/PA</span>
+          <span class="hr-audit-baseline">league avg · 3.0% HR/PA · check console for full trace</span>
         </div>
         <div class="hr-audit-rows">
           ${hrAuditTop.map((b, i) => {
@@ -4002,6 +4016,31 @@ function renderAnalysis(data) {
             const sampleHint = b.sampleWarning
               ? `<span class="hr-audit-warn" title="${b.sampleWarning.detail}">small sample</span>`
               : '';
+            // Inline diagnostic — the values we need to see at a glance to identify
+            // a broken multiplier. Barrel% is the smoking-gun input; the per-feature
+            // multiplier values reveal which factor is dragging the projection down.
+            const dbg = b._debug;
+            const dbgLine = dbg ? `
+              <div class="hr-audit-debug">
+                <span class="hr-audit-debug-label">inputs:</span>
+                bbl=${dbg.inputs.barrelPct ?? '∅'}
+                · hh=${dbg.inputs.hardHitPct ?? '∅'}
+                · k=${dbg.inputs.kPct ?? '∅'}
+                · pHR/9=${dbg.inputs.pitcherHrPer9 ?? '∅'}
+                · park=${dbg.inputs.parkHrMult ?? '∅'}
+                · bp=${dbg.inputs.bullpenTier ?? '∅'}
+                <br>
+                <span class="hr-audit-debug-label">mults:</span>
+                bbl=${dbg.multipliers.barrel.mult}
+                · hh=${dbg.multipliers.hardHit.mult}
+                · pitch=${dbg.multipliers.pitchMatchup.mult}
+                · pHR=${dbg.multipliers.pitcherHr.mult}
+                · park=${dbg.multipliers.park.mult}
+                · k=${dbg.multipliers.kPenalty.mult}
+                · bp=${dbg.multipliers.bullpen.mult}
+                = <b>×${dbg.combinedMultiplier}</b>
+              </div>
+            ` : '';
             return `
               <div class="hr-audit-row">
                 <span class="hr-audit-rank">${i + 1}</span>
@@ -4011,6 +4050,7 @@ function renderAnalysis(data) {
                 ${tierTag}
                 <span class="hr-audit-drivers">${driverText}</span>
                 ${sampleHint}
+                ${dbgLine}
               </div>
             `;
           }).join('')}
