@@ -4045,3 +4045,132 @@ button.tag-btn:hover,
   color: var(--text-muted) !important;
   border: 0.5px solid var(--border-strong) !important;
 }
+
+/* ===========================================================
+   PITCHER PROPS — BONUS MARKETS (Quality Start, No-Hitter)
+   Collapsible "+ MORE MARKETS" section below the core 5 prop rows.
+   =========================================================== */
+
+.pp-bonus-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 0.5px dashed var(--border-hairline);
+}
+
+.pp-bonus-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--easing-standard);
+}
+
+.pp-bonus-toggle:hover {
+  color: var(--brand-primary);
+}
+
+.pp-bonus-toggle-arrow {
+  font-size: 9px;
+  color: var(--text-muted);
+  width: 10px;
+  text-align: center;
+}
+
+.pp-bonus-toggle-label {
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.pp-bonus-toggle-hint {
+  font-style: italic;
+  color: var(--text-muted);
+  margin-left: auto;
+  font-size: 10px;
+}
+
+.pp-bonus-content {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pp-bonus-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+}
+
+.pp-bonus-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+
+.pp-bonus-note {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ===========================================================
+   ROLLUP — Tier note for the "PITCHER PROPS · BY MODEL TIER" section
+   =========================================================== */
+
+.rollup-tier-note {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: -4px 0 10px 0;
+  padding: 0 2px;
+  line-height: 1.5;
+  max-width: 720px;
+}
+
+/* ===========================================================
+   HR AUDIT DEBUG LINE — diagnostic-only, shown inline below each
+   audit row so we can identify which input or multiplier is
+   producing a wrong projection. Visually subdued (mono, small).
+   =========================================================== */
+
+.hr-audit-debug {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  padding: 4px 0 0 28px;
+  margin-top: 2px;
+  border-top: 0.5px dashed var(--border-hairline);
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+.hr-audit-debug-label {
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+
+.hr-audit-debug b {
+  color: var(--brand-primary);
+  font-weight: 600;
+}

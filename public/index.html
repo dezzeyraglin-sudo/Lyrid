@@ -3984,11 +3984,25 @@ function renderAnalysis(data) {
     // diagnostic info, not user-facing UX. Will be removed/quieted once the
     // gold-prominence treatment ships in a future session.
     const hrAuditTop = s.hrAuditTop || [];
+    // Console-log the debug trace for each audit row so we can copy from DevTools
+    // when investigating projection bugs. Only fires in deep mode and when _debug
+    // is present (which it always is in the instrumented build).
+    if (data.deepMode && hrAuditTop.length > 0) {
+      console.group(`[HR AUDIT] ${s.pitcher.name} — top 3 hitters`);
+      hrAuditTop.forEach((b, i) => {
+        if (b._debug) {
+          console.log(`${i + 1}. ${b.name} (${b.hand}) — ${(b.projectedHrPerPa * 100).toFixed(2)}% HR/PA, ×${b.multiplier}`);
+          console.log('   inputs:', b._debug.inputs);
+          console.log('   multipliers:', b._debug.multipliers);
+        }
+      });
+      console.groupEnd();
+    }
     const hrAuditHtml = (data.deepMode && hrAuditTop.length > 0) ? `
       <div class="hr-audit-panel">
         <div class="hr-audit-head">
           <span class="hr-audit-eyebrow">HR PROJECTION AUDIT · top 3 (diagnostic)</span>
-          <span class="hr-audit-baseline">league avg · 3.0% HR/PA</span>
+          <span class="hr-audit-baseline">league avg · 3.0% HR/PA · check console for full trace</span>
         </div>
         <div class="hr-audit-rows">
           ${hrAuditTop.map((b, i) => {
@@ -4002,6 +4016,31 @@ function renderAnalysis(data) {
             const sampleHint = b.sampleWarning
               ? `<span class="hr-audit-warn" title="${b.sampleWarning.detail}">small sample</span>`
               : '';
+            // Inline diagnostic — the values we need to see at a glance to identify
+            // a broken multiplier. Barrel% is the smoking-gun input; the per-feature
+            // multiplier values reveal which factor is dragging the projection down.
+            const dbg = b._debug;
+            const dbgLine = dbg ? `
+              <div class="hr-audit-debug">
+                <span class="hr-audit-debug-label">inputs:</span>
+                bbl=${dbg.inputs.barrelPct ?? '∅'}
+                · hh=${dbg.inputs.hardHitPct ?? '∅'}
+                · k=${dbg.inputs.kPct ?? '∅'}
+                · pHR/9=${dbg.inputs.pitcherHrPer9 ?? '∅'}
+                · park=${dbg.inputs.parkHrMult ?? '∅'}
+                · bp=${dbg.inputs.bullpenTier ?? '∅'}
+                <br>
+                <span class="hr-audit-debug-label">mults:</span>
+                bbl=${dbg.multipliers.barrel.mult}
+                · hh=${dbg.multipliers.hardHit.mult}
+                · pitch=${dbg.multipliers.pitchMatchup.mult}
+                · pHR=${dbg.multipliers.pitcherHr.mult}
+                · park=${dbg.multipliers.park.mult}
+                · k=${dbg.multipliers.kPenalty.mult}
+                · bp=${dbg.multipliers.bullpen.mult}
+                = <b>×${dbg.combinedMultiplier}</b>
+              </div>
+            ` : '';
             return `
               <div class="hr-audit-row">
                 <span class="hr-audit-rank">${i + 1}</span>
@@ -4011,6 +4050,7 @@ function renderAnalysis(data) {
                 ${tierTag}
                 <span class="hr-audit-drivers">${driverText}</span>
                 ${sampleHint}
+                ${dbgLine}
               </div>
             `;
           }).join('')}
@@ -4419,6 +4459,57 @@ function renderAnalysis(data) {
         }
       }
 
+      // Bonus markets — Quality Start and No-Hitter. These don't have model
+      // projections (we don't predict them) so they're surfaced as track-only
+      // markets behind a "+ MORE MARKETS" toggle. The user picks YES/NO + odds
+      // + units and we log + grade the same as the core 5 prop types.
+      const bonusMarketsId = `pp-bonus-${s.key}-${data.gamePk}`;
+      const buildBonusForm = (propType, label) => {
+        const formId = `pp-bonus-form-${propType}-${s.key}-${data.gamePk}`;
+        const ctxJson = JSON.stringify({
+          formId,
+          gamePk: data.gamePk,
+          date: data.gameDateET,
+          pitcherId: s.pitcher.id,
+          pitcherName: s.pitcher.name,
+          away: data.awayTeam.abbreviation,
+          home: data.homeTeam.abbreviation,
+          propType,
+          modelCtx: {}  // no projection for bonus markets
+        }).replace(/'/g, '&#39;');
+        return `
+          <div class="pp-bonus-row">
+            <span class="pp-bonus-label">${label}</span>
+            <span class="pp-bonus-note">no model projection · track only</span>
+            <button class="pp-log-toggle" onclick="ppLogToggleForm('${formId}')">+ LOG</button>
+            <div class="pp-log-form" id="${formId}" style="display:none">
+              <div class="pp-log-row">
+                <div class="pp-log-side-group" data-current-side="yes">
+                  <button class="pp-log-side active" data-side="yes" onclick="ppLogSelectSide(this, 'yes')">YES</button>
+                  <button class="pp-log-side" data-side="no" onclick="ppLogSelectSide(this, 'no')">NO</button>
+                </div>
+                <input type="number" class="pp-log-input pp-log-odds" placeholder="odds (e.g. +650)" />
+                <input type="number" step="0.5" class="pp-log-input pp-log-units" placeholder="units" value="1" />
+                <button class="pp-log-submit" onclick='ppLogSubmit(${ctxJson})'>LOG</button>
+              </div>
+            </div>
+          </div>
+        `;
+      };
+      const bonusMarketsHtml = pp.suppressed ? '' : `
+        <div class="pp-bonus-section">
+          <button class="pp-bonus-toggle" onclick="ppToggleBonusMarkets('${bonusMarketsId}')">
+            <span class="pp-bonus-toggle-arrow">▸</span>
+            <span class="pp-bonus-toggle-label">+ MORE MARKETS</span>
+            <span class="pp-bonus-toggle-hint">Quality Start · No-Hitter</span>
+          </button>
+          <div class="pp-bonus-content" id="${bonusMarketsId}" style="display:none">
+            ${buildBonusForm('QS', 'QUALITY START')}
+            ${buildBonusForm('NH', 'NO-HITTER')}
+          </div>
+        </div>
+      `;
+
       pitcherPropsHtml = `
         <div class="pp-panel">
           <div class="pp-head">
@@ -4430,6 +4521,7 @@ function renderAnalysis(data) {
           ${sharpKHtml}
           ${batterKHtml}
           <div class="pp-rows">${rows}</div>
+          ${bonusMarketsHtml}
           <div class="pp-footnote">Projections vs market line — use OVER / UNDER accordingly. Flag ${pp.suppressed ? 'SUPPRESSED items — books may not have updated role shift' : 'patterns that diverge from listed lines'}.</div>
         </div>
       `;
@@ -7543,7 +7635,10 @@ function renderHistory() {
       OUTS: summarize(allBets.filter(e => e.propType === 'OUTS')),
       ER: summarize(allBets.filter(e => e.propType === 'ER')),
       BB: summarize(allBets.filter(e => e.propType === 'BB')),
-      WIN: summarize(allBets.filter(e => e.propType === 'WIN'))
+      HITS_ALLOWED: summarize(allBets.filter(e => e.propType === 'HITS_ALLOWED')),
+      WIN: summarize(allBets.filter(e => e.propType === 'WIN')),
+      QS: summarize(allBets.filter(e => e.propType === 'QS')),
+      NH: summarize(allBets.filter(e => e.propType === 'NH'))
     };
 
     const byDate = {};
@@ -7582,7 +7677,10 @@ function renderHistory() {
           ${propCell('OUTS', byProp.OUTS)}
           ${propCell('EARNED RUNS', byProp.ER)}
           ${propCell('WALKS', byProp.BB)}
+          ${propCell('HITS ALLOWED', byProp.HITS_ALLOWED)}
           ${propCell('WIN', byProp.WIN)}
+          ${propCell('QUALITY START', byProp.QS)}
+          ${propCell('NO-HITTER', byProp.NH)}
         </div>
       </div>
       ${sortedDates.map(d => {
@@ -7614,6 +7712,12 @@ function renderHistory() {
                 }
                 if (b.propType === 'WIN') {
                   actualText = ` · decision: ${b.finalLine.decision || '—'}`;
+                }
+                if (b.propType === 'QS') {
+                  actualText = ` · ${b.finalLine.IP} IP / ${b.finalLine.ER} ER · ${b.finalLine.isQualityStart ? 'QS' : 'no QS'}`;
+                }
+                if (b.propType === 'NH') {
+                  actualText = ` · ${b.finalLine.H} hits allowed · ${b.finalLine.isNoHitter ? 'NO-HITTER' : 'no NH'}`;
                 }
               }
               return `
@@ -7773,7 +7877,8 @@ function renderHistory() {
   if (historyView === 'rollup') {
     // ROLLUP — unified calibration view across every graded bet type.
     // Aggregates: best bets (hitter props), game-line bets (ML/spread/total),
-    // YRFI/NRFI bets. Per-type win rate + per-tier breakdown for direct comparison.
+    // YRFI/NRFI bets, pitcher prop bets (K/Outs/ER/BB/Win/QS/NH).
+    // Per-type win rate + per-tier breakdown for direct comparison.
     // This is the dashboard the 2-week checkpoint reads from.
     const allBestBets = [];
     Object.values(state.bestBetHistory || {}).forEach(byDate => {
@@ -7781,6 +7886,7 @@ function renderHistory() {
     });
     const allGameBets = Object.values(state.gameLineBets || {});
     const allYrfiBets = Object.values(state.firstInningBets || {});
+    const allPitcherBets = Object.values(state.pitcherPropBets || {});
 
     // Helper: compute summary stats for any graded-bet collection
     const summarize = (entries, key = 'result') => {
@@ -7802,6 +7908,7 @@ function renderHistory() {
     const bestStats = summarize(allBestBets);
     const gameStats = summarize(allGameBets);
     const yrfiStats = summarize(allYrfiBets);
+    const pitcherStats = summarize(allPitcherBets);
 
     // By tier within hitter best bets (the prop type with tier signal)
     const eliteBests = summarize(allBestBets.filter(e => e.tier === 'elite'));
@@ -7819,11 +7926,43 @@ function renderHistory() {
       .filter(r => r.graded > 0)
       .sort((a, b) => b.graded - a.graded);
 
+    // By prop type within pitcher bets — the parallel breakdown for pitcher props.
+    // This is the calibration data that tells us which pitcher prop projections are sharp.
+    const PITCHER_PROP_LABELS = {
+      K: 'STRIKEOUTS', OUTS: 'OUTS', ER: 'EARNED RUNS',
+      BB: 'WALKS', HITS_ALLOWED: 'HITS ALLOWED',
+      WIN: 'TO RECORD WIN', QS: 'QUALITY START', NH: 'NO-HITTER'
+    };
+    const byPitcherProp = {};
+    allPitcherBets.forEach(e => {
+      if (!e.propType) return;
+      if (!byPitcherProp[e.propType]) byPitcherProp[e.propType] = [];
+      byPitcherProp[e.propType].push(e);
+    });
+    const pitcherPropRows = Object.entries(byPitcherProp)
+      .map(([k, entries]) => ({
+        propType: k,
+        label: PITCHER_PROP_LABELS[k] || k,
+        ...summarize(entries)
+      }))
+      .filter(r => r.graded > 0)
+      .sort((a, b) => b.graded - a.graded);
+
+    // By model tier within pitcher bets — the *real* calibration signal. When the model
+    // said PLAY, did the bet hit? When it said NO PLAY, did the bet miss? This answers
+    // the central question of the 2-week checkpoint: is the line-grade tier predictive?
+    const playPitcher = summarize(allPitcherBets.filter(e => e.lineGradeTier === 'PLAY'));
+    const leanPitcher = summarize(allPitcherBets.filter(e => e.lineGradeTier === 'LEAN'));
+    const slightPitcher = summarize(allPitcherBets.filter(e => e.lineGradeTier === 'SLIGHT'));
+    const noplayPitcher = summarize(allPitcherBets.filter(e => e.lineGradeTier === 'NO PLAY'));
+    const hasTierData = (playPitcher.graded + leanPitcher.graded + slightPitcher.graded + noplayPitcher.graded) > 0;
+
     // Aggregate across all types
     const allEntries = [
       ...allBestBets.map(b => ({ ...b, _type: 'hitter' })),
       ...allGameBets.map(b => ({ ...b, _type: 'gameline' })),
       ...allYrfiBets.map(b => ({ ...b, _type: 'yrfi' })),
+      ...allPitcherBets.map(b => ({ ...b, _type: 'pitcher' })),
     ];
     const overall = summarize(allEntries);
 
@@ -7834,7 +7973,7 @@ function renderHistory() {
           <div class="empty-icon">∑</div>
           <div>No graded bets yet to roll up.</div>
           <div style="font-size:11px;color:var(--dim);margin-top:8px">
-            Log bets across BEST BETS / GAME BETS / YRFI tabs. Once games finish and grading runs, this rollup will show your accuracy by prop type and tier.
+            Log bets across BEST BETS / GAME BETS / YRFI / PITCHER BETS tabs. Once games finish and grading runs, this rollup will show your accuracy by prop type and tier.
           </div>
         </div>`;
       return;
@@ -7864,6 +8003,11 @@ function renderHistory() {
             <div class="rollup-cell-label">YRFI / NRFI</div>
             <div class="rollup-cell-value">${fmtRate(yrfiStats.winRate)}</div>
             <div class="rollup-cell-sub">${fmtRecord(yrfiStats)} · ${yrfiStats.graded} graded</div>
+          </div>
+          <div class="rollup-cell">
+            <div class="rollup-cell-label">PITCHER PROPS</div>
+            <div class="rollup-cell-value">${fmtRate(pitcherStats.winRate)}</div>
+            <div class="rollup-cell-sub">${fmtRecord(pitcherStats)} · ${pitcherStats.graded} graded</div>
           </div>
         </div>
 
@@ -7900,6 +8044,61 @@ function renderHistory() {
                 <span class="rollup-prop-vol">${r.graded}</span>
               </div>
             `).join('')}
+          </div>
+        ` : ''}
+
+        ${pitcherPropRows.length > 0 ? `
+          <h3 class="rollup-section-title">PITCHER PROPS · BY PROP TYPE</h3>
+          <div class="rollup-prop-table">
+            <div class="rollup-prop-row rollup-prop-header">
+              <span>PROP</span>
+              <span>RECORD</span>
+              <span>WIN RATE</span>
+              <span>VOLUME</span>
+            </div>
+            ${pitcherPropRows.map(r => `
+              <div class="rollup-prop-row">
+                <span class="rollup-prop-key">${r.label}</span>
+                <span class="rollup-prop-record">${fmtRecord(r)}</span>
+                <span class="rollup-prop-rate ${r.winRate != null && r.winRate >= 0.55 ? 'rate-good' : r.winRate != null && r.winRate < 0.45 ? 'rate-bad' : ''}">${fmtRate(r.winRate)}</span>
+                <span class="rollup-prop-vol">${r.graded}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        ${hasTierData ? `
+          <h3 class="rollup-section-title">PITCHER PROPS · BY MODEL TIER</h3>
+          <div class="rollup-tier-note">When the model said this tier, did the bet hit? This is the calibration signal — PLAY should outperform NO PLAY meaningfully.</div>
+          <div class="rollup-grid">
+            ${playPitcher.graded > 0 ? `
+              <div class="rollup-cell">
+                <div class="rollup-cell-label">PLAY</div>
+                <div class="rollup-cell-value">${fmtRate(playPitcher.winRate)}</div>
+                <div class="rollup-cell-sub">${fmtRecord(playPitcher)} · ${playPitcher.graded} graded</div>
+              </div>
+            ` : ''}
+            ${leanPitcher.graded > 0 ? `
+              <div class="rollup-cell">
+                <div class="rollup-cell-label">LEAN</div>
+                <div class="rollup-cell-value">${fmtRate(leanPitcher.winRate)}</div>
+                <div class="rollup-cell-sub">${fmtRecord(leanPitcher)} · ${leanPitcher.graded} graded</div>
+              </div>
+            ` : ''}
+            ${slightPitcher.graded > 0 ? `
+              <div class="rollup-cell">
+                <div class="rollup-cell-label">SLIGHT</div>
+                <div class="rollup-cell-value">${fmtRate(slightPitcher.winRate)}</div>
+                <div class="rollup-cell-sub">${fmtRecord(slightPitcher)} · ${slightPitcher.graded} graded</div>
+              </div>
+            ` : ''}
+            ${noplayPitcher.graded > 0 ? `
+              <div class="rollup-cell">
+                <div class="rollup-cell-label">NO PLAY</div>
+                <div class="rollup-cell-value">${fmtRate(noplayPitcher.winRate)}</div>
+                <div class="rollup-cell-sub">${fmtRecord(noplayPitcher)} · ${noplayPitcher.graded} graded</div>
+              </div>
+            ` : ''}
           </div>
         ` : ''}
 
@@ -8396,6 +8595,21 @@ function ppLogToggleForm(formId) {
   const form = document.getElementById(formId);
   if (!form) return;
   form.style.display = form.style.display === 'none' ? '' : 'none';
+}
+
+/**
+ * Toggle the "+ MORE MARKETS" bonus section open/closed.
+ * Also flips the arrow indicator to give the user feedback.
+ */
+function ppToggleBonusMarkets(containerId) {
+  const content = document.getElementById(containerId);
+  if (!content) return;
+  const isOpen = content.style.display !== 'none';
+  content.style.display = isOpen ? 'none' : '';
+  // Find the sibling toggle button's arrow and flip it
+  const section = content.parentElement;
+  const arrow = section?.querySelector('.pp-bonus-toggle-arrow');
+  if (arrow) arrow.textContent = isOpen ? '▸' : '▾';
 }
 
 /**

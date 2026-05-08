@@ -18,7 +18,6 @@ import { getMatchupConversionRates } from './_lib/conversionRate.js';
 import { getLineupRispPerformance, applyRispAdjustment, buildLineupConversionTier } from './_lib/batterRisp.js';
 import { fetchPitcherPropsLines, getPitcherLinesByName } from './_lib/pitcherPropsLines.js';
 import { tryAuth, checkAndIncrementQuota, AuthError } from './_lib/auth.js';
-import { evaluateHitterPropContext } from './_lib/prop-formulas.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -457,29 +456,6 @@ export default async function handler(req, res) {
           bullpenTier
         });
 
-        // ===== PROP CONTEXT LAYER (PrizePicks/Underdog) =====
-        // Adds run-type classification, variance control, role stability, and trap flags.
-        // Defensive by design: if any input is missing, it falls back to neutral defaults
-        // and never blocks the core mismatch response.
-        const propEngine = evaluateHitterPropContext({
-          hitter: h,
-          overall,
-          matchedPitches,
-          maxXwoba,
-          adjustedMaxXwoba,
-          adjustedEdgeScore: adjustedEdge,
-          parkFactor,
-          weatherImpact: results.weatherImpact,
-          bullpenMaxXwoba,
-          bullpenTier,
-          battingOrder: h.battingOrder || null,
-          propRecs,
-          tier,
-          inningSplits,
-          bullpenProfile: bullpen,
-          pitcherRole
-        });
-
         return {
           hitterId: h.id,
           hitter: h.name,
@@ -495,16 +471,7 @@ export default async function handler(req, res) {
           adjustments,
           tier,
           description,
-          propRecs: propEngine.propRecs,
-          propEngine: {
-            version: propEngine.version,
-            environment: propEngine.environment,
-            roleStability: propEngine.roleStability,
-            lateInningEquity: propEngine.lateInningEquity,
-            matchupScore: propEngine.matchupScore,
-            bestPropType: propEngine.bestPropType,
-            warnings: propEngine.warnings
-          },
+          propRecs,
           platoonMeta,
           hasDeepData,
           // Bullpen cross-reference
