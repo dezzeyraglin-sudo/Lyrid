@@ -8,6 +8,16 @@ import { fetchSavantCSV, arsenalURL, expectedStatsURL } from './savant.js';
 const CUSTOM_URL = (season) =>
   `https://baseballsavant.mlb.com/leaderboard/custom?year=${season}&type=batter&filter=&min=10&selections=exit_velocity_avg%2Cbrl_percent%2Chard_hit_percent%2Ck_percent%2Cbb_percent&chart=false&x=exit_velocity_avg&y=exit_velocity_avg&r=no&chartType=beeswarm&sortDir=desc&csv=true`;
 
+// Statcast batted-ball leaderboard — separate endpoint from the custom CSV.
+// As of the 2026 season, Savant's /leaderboard/custom CSV stopped returning
+// `brl_percent` values (column header still appears, cells are empty). The
+// /leaderboard/statcast endpoint still returns Barrel% reliably under the same
+// column name, so we fetch it in parallel and merge brl_percent from here.
+// This endpoint also exposes `barrels` (count) and `brl_pa` (barrels-per-PA),
+// which we don't currently use but could swap to in a future refactor.
+const STATCAST_URL = (season) =>
+  `https://baseballsavant.mlb.com/leaderboard/statcast?type=batter&year=${season}&position=&team=&min=10&csv=true`;
+
 // Fetch today's slate with probable pitchers + handedness
 export async function getProbables(date) {
   const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${date}&hydrate=probablePitcher,venue`;
@@ -264,10 +274,11 @@ export async function getLineup(teamId, gamePk, side) {
 export async function getHitterStats(mlbam, season) {
   const pid = String(mlbam).trim();
 
-  const [arsenalRows, expectedRows, customRows] = await Promise.all([
+  const [arsenalRows, expectedRows, customRows, statcastRows] = await Promise.all([
     fetchSavantCSV(arsenalURL(season, 'batter')).catch(() => []),
     fetchSavantCSV(expectedStatsURL(season, 'batter')).catch(() => []),
-    fetchSavantCSV(CUSTOM_URL(season)).catch(() => [])
+    fetchSavantCSV(CUSTOM_URL(season)).catch(() => []),
+    fetchSavantCSV(STATCAST_URL(season)).catch(() => [])
   ]);
 
   const myArsenal = arsenalRows.filter(r => String(r.player_id).trim() === pid);
@@ -285,20 +296,25 @@ export async function getHitterStats(mlbam, season) {
 
   const expRow = expectedRows.find(r => String(r.player_id).trim() === pid) || {};
   const custRow = customRows.find(r => String(r.player_id).trim() === pid) || {};
+  const statcastRow = statcastRows.find(r => String(r.player_id).trim() === pid) || {};
 
-  // Barrel% can come back from Savant under different column names depending on
-  // their custom-leaderboard export schema. Try the common variants in order.
-  // If we find any of them, we use it; otherwise null. Logging the mismatch helps
-  // catch future schema shifts before they silently zero out the HR projection.
-  const brlRaw = custRow.brl_percent
-              ?? custRow.barrel_batted_rate
+  // Barrel% — read from the statcast endpoint first (custom endpoint returns
+  // empty cells as of 2026), fall back to custom variants if statcast is
+  // unavailable. Empty-string check handles the case where Savant returns
+  // `""` instead of an absent field. The fallbacks preserve resilience if
+  // Savant restores brl_percent in the custom CSV later.
+  const brlRaw = (statcastRow.brl_percent !== '' && statcastRow.brl_percent != null) ? statcastRow.brl_percent
+              : (custRow.brl_percent !== '' && custRow.brl_percent != null) ? custRow.brl_percent
+              : custRow.barrel_batted_rate
               ?? custRow.barrels_per_pa_percent
               ?? custRow.barrel_pct
               ?? null;
   if (brlRaw == null && Object.keys(custRow).length > 0 && process.env.NODE_ENV !== 'production') {
-    // We have a custom row but no barrel column — Savant schema likely changed.
+    // Both endpoints failed to provide barrel data — Savant schema likely shifted.
     // Log once per session would be ideal but a simple console.warn is enough for now.
-    console.warn('[data.js] custRow has no recognized barrel% column. Available keys:', Object.keys(custRow).slice(0, 20));
+    console.warn('[data.js] no brl_percent from custom or statcast endpoints. custRow keys:',
+                 Object.keys(custRow).slice(0, 20),
+                 'statcastRow keys:', Object.keys(statcastRow).slice(0, 20));
   }
 
   return {
