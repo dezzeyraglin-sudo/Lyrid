@@ -1,0 +1,14 @@
+{
+  "name": "mismatch-finder",
+  "version": "1.0.0",
+  "description": "Live MLB pitcher-vs-hitter mismatch analysis tool",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "stripe": "^17.0.0"
+  }
+}

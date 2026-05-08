@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 64" width="100" height="64" role="img" aria-label="Lyrid mark">
+  <title>Lyrid mark</title>
+  <desc>A single tilted streak — the Lyrid meteor mark</desc>
+  <!--
+    The meteor: a tapered streak angled at ~25° from horizontal,
+    fading from a bright leading edge (with a single gold point)
+    to a soft trailing tail. Used at sizes where the wordmark won't fit:
+    favicon, app icon, social avatar.
+  -->
+
+  <!-- Trailing streak — wider tail fading into the dark blue -->
+  <defs>
+    <linearGradient id="trail" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1B3A5B" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#1B3A5B" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#1B3A5B" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Main streak: tapered line angled 25° from horizontal -->
+  <path d="M 8 56 L 80 12 L 86 8 L 84 14 L 12 60 Z"
+        fill="url(#trail)" />
+
+  <!-- The leading edge — the meteor's head — single point of museum gold -->
+  <circle cx="86" cy="10" r="3.5" fill="#E8C547" />
+</svg>

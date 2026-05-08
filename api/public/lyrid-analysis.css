@@ -1,0 +1,4176 @@
+/**
+ * Lyrid Analysis Screen Styles
+ *
+ * Overrides for the existing analysis screen markup. The renderAnalysis()
+ * function still produces the same HTML structure — these styles give it
+ * the Sharp Light visual treatment per the Lyrid brand spec.
+ *
+ * In a future session, the renderAnalysis() function will be rewritten to
+ * produce the canonical Lyrid markup directly. This file is the bridge.
+ */
+
+/* ===========================================================
+   ANALYSIS HEADER — game matchup band
+   =========================================================== */
+#analysisContainer .analysis-head {
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#analysisContainer .analysis-title {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+#analysisContainer .analysis-head .ctx-sub,
+#analysisContainer .analysis-head .game-time {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+/* Deep mode toggle / banner — quieter, more refined */
+#analysisContainer .deep-mode-banner,
+#analysisContainer .deep-toggle {
+  background: var(--surface-muted);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin: 0 0 16px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#analysisContainer .deep-mode-banner .dmb-label {
+  color: var(--brand-primary);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+#analysisContainer .deep-mode-banner .dmb-desc {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-style: normal;
+}
+
+#analysisContainer .deep-upgrade-btn {
+  background: var(--brand-primary);
+  color: var(--text-on-primary);
+  border: none;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  margin-left: auto;
+}
+#analysisContainer .deep-upgrade-btn:hover {
+  background: var(--brand-primary-hover);
+}
+
+/* ===========================================================
+   PROJECTION PANEL — Lyrid model column
+   =========================================================== */
+#analysisContainer .projection-panel,
+#analysisContainer .market-panel {
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+
+#analysisContainer .projection-panel {
+  background: linear-gradient(135deg, rgba(27, 58, 91, 0.025), rgba(27, 58, 91, 0.005));
+  border: 0.5px solid rgba(27, 58, 91, 0.20);
+}
+
+#analysisContainer .projection-panel .pp-brand,
+#analysisContainer .market-panel .mp-brand {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+#analysisContainer .projection-panel .pp-brand {
+  color: var(--brand-primary);
+}
+
+/* Score line numbers in mono */
+#analysisContainer .pp-total,
+#analysisContainer .mp-total {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+#analysisContainer .projection-panel .pp-total {
+  color: var(--brand-primary);
+}
+
+#analysisContainer .pp-team-row,
+#analysisContainer .mp-team-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-secondary);
+  padding: 4px 0;
+}
+
+#analysisContainer .pp-team-row .pp-team-runs,
+#analysisContainer .mp-team-row .mp-team-runs {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===========================================================
+   DIVERGENCE CALLOUT — model vs market
+   =========================================================== */
+#analysisContainer .divergence-panel {
+  background: var(--surface-card);
+  border-left: 3px solid var(--brand-primary);
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  padding: 12px 18px;
+  margin: 16px 0;
+}
+
+#analysisContainer .divergence-head {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--brand-primary);
+  margin-bottom: 4px;
+}
+
+#analysisContainer .divergence-panel p,
+#analysisContainer .divergence-panel .edge-desc {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ===========================================================
+   GAME LINES (ML/Spread/Total)
+   =========================================================== */
+#analysisContainer .gamelines-panel {
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  margin: 16px 0;
+}
+
+#analysisContainer .gamelines-panel .glb-head,
+#analysisContainer .gamelines-panel .glb-brand {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+#analysisContainer .glb-best {
+  background: var(--brand-tint);
+  border: 1px solid var(--brand-primary);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+#analysisContainer .glb-best-label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--brand-primary);
+}
+
+#analysisContainer .glb-best-pick {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+#analysisContainer .glb-best-price,
+#analysisContainer .glb-price {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+#analysisContainer .glb-best-units,
+#analysisContainer .glb-prob {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--brand-primary);
+  background: var(--surface-card);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--border-hairline);
+}
+
+#analysisContainer .glb-rows {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+#analysisContainer .glb-rows > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+#analysisContainer .glb-type {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 500;
+  min-width: 60px;
+}
+
+#analysisContainer .glb-pick {
+  flex: 1;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+#analysisContainer .glb-tier {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+
+#analysisContainer .glb-tier.STRONG {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+}
+#analysisContainer .glb-tier.MODERATE {
+  background: var(--data-live-surface);
+  color: var(--data-live);
+}
+#analysisContainer .glb-tier.SLIGHT {
+  background: var(--data-warning-surface);
+  color: var(--data-warning);
+}
+#analysisContainer .glb-tier.PASS {
+  background: var(--surface-muted);
+  color: var(--text-muted);
+}
+
+#analysisContainer .glb-best-reasons {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  width: 100%;
+  margin-top: 8px;
+}
+
+#analysisContainer .glb-log-btn {
+  background: var(--brand-primary);
+  color: var(--text-on-primary);
+  border: none;
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: 0;
+  margin-top: 8px;
+}
+#analysisContainer .glb-log-btn:hover { background: var(--brand-primary-hover); }
+#analysisContainer .glb-log-btn:disabled {
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+#analysisContainer .glb-empty,
+#analysisContainer .glb-disclaimer {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+  padding: 12px;
+}
+
+/* ===========================================================
+   FIRST INNING (YRFI/NRFI)
+   =========================================================== */
+#analysisContainer .yrfi-panel,
+#analysisContainer .first-inning-panel {
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  margin: 16px 0;
+}
+
+#analysisContainer .yrfi-panel .ig-k,
+#analysisContainer .first-inning-panel .ig-k {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+#analysisContainer .inn-callouts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+#analysisContainer .inn-g-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* ===========================================================
+   ENVIRONMENT — park / weather / umpire chips
+   =========================================================== */
+#analysisContainer .ctx-item {
+  background: var(--surface-muted);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  border: none;
+}
+
+#analysisContainer .ctx-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+#analysisContainer .ctx-value {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+#analysisContainer .ctx-sub,
+#analysisContainer .ctx-pf {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+#analysisContainer .ctx-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===========================================================
+   TOP PICK (the surviving one across both sides)
+   =========================================================== */
+#analysisContainer .top-pick-card,
+#analysisContainer .dual-picks {
+  background: var(--surface-card);
+  border: 2px solid var(--brand-primary);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin: 20px 0;
+  position: relative;
+}
+
+#analysisContainer .top-pick-card::before,
+#analysisContainer .dual-picks::before {
+  content: "Tonight's signal";
+  position: absolute;
+  top: -12px;
+  left: 20px;
+  background: var(--brand-primary);
+  color: var(--brand-secondary);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  line-height: 1;
+}
+
+/* ===========================================================
+   HITTERS — mismatch list
+   =========================================================== */
+#analysisContainer .hitter-row,
+#analysisContainer .mismatch-card {
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin: 6px 0;
+  transition: border-color var(--duration-fast) var(--easing-standard);
+}
+
+#analysisContainer .hitter-row:hover,
+#analysisContainer .mismatch-card:hover {
+  border-color: var(--border-strong);
+}
+
+#analysisContainer .hitter-row .hand,
+#analysisContainer .mismatch-card .hand {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* Tier pills */
+#analysisContainer .tier-elite,
+#analysisContainer .tier-strong,
+#analysisContainer .tier-solid {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+#analysisContainer .tier-elite,
+#analysisContainer [class*="tier-elite"] {
+  background: var(--tier-elite-fill);
+  color: var(--tier-elite-text);
+}
+#analysisContainer .tier-strong,
+#analysisContainer [class*="tier-strong"] {
+  background: var(--tier-strong-fill);
+  color: var(--tier-strong-text);
+}
+#analysisContainer .tier-solid,
+#analysisContainer [class*="tier-solid"] {
+  background: var(--tier-solid-fill);
+  color: var(--tier-solid-text);
+}
+
+/* xwOBA display */
+#analysisContainer .xwoba-value {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pitch arsenal chips */
+#analysisContainer .pitch-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  margin-right: 4px;
+  margin-bottom: 4px;
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+#analysisContainer .pitch-chip .pct {
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+/* ===========================================================
+   PROBABILITY CHIPS (4-tier color)
+   =========================================================== */
+#analysisContainer .prob-chip,
+#analysisContainer [class*="prob-tier"] {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  font-variant-numeric: tabular-nums;
+}
+#analysisContainer .prob-tier-high {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+}
+#analysisContainer .prob-tier-mid {
+  background: var(--brand-tint);
+  color: var(--brand-primary);
+}
+#analysisContainer .prob-tier-low {
+  background: var(--data-warning-surface);
+  color: var(--data-warning);
+}
+#analysisContainer .prob-tier-vlow {
+  background: var(--data-negative-surface);
+  color: var(--data-negative);
+}
+
+/* ===========================================================
+   PITCHER PROPS — DK/FD section
+   =========================================================== */
+#analysisContainer .pp-panel,
+#analysisContainer .pitcher-props {
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  margin: 16px 0;
+}
+
+/* ===========================================================
+   AB-TIMING / BULLPEN TIER chips
+   =========================================================== */
+#analysisContainer .bp-label {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-tint);
+  color: var(--brand-primary);
+}
+
+#analysisContainer .ab-meltdown-flag,
+#analysisContainer .ab-timing-row {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 4px 0;
+}
+
+#analysisContainer .ab-timing-best {
+  color: var(--brand-primary);
+  font-weight: 500;
+}
+
+/* ===========================================================
+   LIVE SCORE BAR adjustments inside analysis container
+   =========================================================== */
+#analysisContainer .live-score-bar {
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+#analysisContainer .live-badge {
+  background: var(--data-negative);
+  color: #FFF;
+  font-family: var(--font-sans);
+  letter-spacing: 0.12em;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: 10px;
+  animation: pulse 2s ease-in-out infinite;
+}
+#analysisContainer .live-badge.final {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+  animation: none;
+}
+
+#analysisContainer .live-score {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+#analysisContainer .live-inning {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+#analysisContainer .audit-mini {
+  border-top: 0.5px solid var(--border-hairline);
+}
+
+#analysisContainer .audit-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+#analysisContainer .audit-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+}
+
+#analysisContainer .audit-good {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+}
+#analysisContainer .audit-ok {
+  background: var(--data-warning-surface);
+  color: var(--data-warning);
+}
+#analysisContainer .audit-miss {
+  background: var(--data-negative-surface);
+  color: var(--data-negative);
+}
+
+/* ===========================================================
+   GENERIC SECTION TITLES
+   =========================================================== */
+#analysisContainer h2,
+#analysisContainer h3 {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+#analysisContainer h3 {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 20px 0 12px;
+}
+
+/* Quieten the legacy "ANALYSIS" / "PROJECTION" / "PICKS" eyebrows */
+#analysisContainer .section-eyebrow,
+#analysisContainer .panel-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* ===========================================================
+   BAN / TAG buttons inside analysis
+   =========================================================== */
+#analysisContainer .ban-quick-btn,
+#analysisContainer .deep-dive-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 0.5px solid var(--border-hairline);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: 0;
+  transition: all var(--duration-fast) var(--easing-standard);
+}
+#analysisContainer .ban-quick-btn:hover,
+#analysisContainer .deep-dive-btn:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+  background: var(--brand-tint);
+}
+
+/* ===========================================================
+   CONTRAST FIXES — chips that were calibrated for dark backgrounds
+   These rgba() backgrounds become almost invisible on the light surface.
+   Override with Lyrid's calibrated *-surface + *-text tokens that maintain
+   readable contrast on off-white.
+   =========================================================== */
+
+/* Tag chips — applied to hitters/pitchers via the tagging system.
+   Each tag gets a semantic color family from the Lyrid data palette. */
+#analysisContainer .tag-chip,
+.tag-chip {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  border: none;
+}
+
+/* Fantasy/target — positive (forest green family) */
+#analysisContainer .tag-chip.fantasy,
+#analysisContainer .tag-chip.target,
+.tag-chip.fantasy,
+.tag-chip.target {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+  border: 0.5px solid var(--data-positive);
+}
+
+/* HR / HRR — warning (amber family) */
+#analysisContainer .tag-chip.hr,
+#analysisContainer .tag-chip.hrr,
+.tag-chip.hr,
+.tag-chip.hrr {
+  background: var(--data-warning-surface);
+  color: var(--data-warning);
+  border: 0.5px solid var(--data-warning);
+}
+
+/* Hit — informational (navy family) */
+#analysisContainer .tag-chip.hit,
+.tag-chip.hit {
+  background: var(--data-live-surface);
+  color: var(--data-live);
+  border: 0.5px solid var(--data-live);
+}
+
+/* TB (Total Bases) — brand primary tint to differentiate from Hit */
+#analysisContainer .tag-chip.tb,
+.tag-chip.tb {
+  background: var(--brand-tint);
+  color: var(--brand-primary);
+  border: 0.5px solid var(--brand-primary);
+}
+
+/* Fade / ban — negative (brick red family) */
+#analysisContainer .tag-chip.fade,
+#analysisContainer .tag-chip.ban,
+.tag-chip.fade,
+.tag-chip.ban {
+  background: var(--data-negative-surface);
+  color: var(--data-negative);
+  border: 0.5px solid var(--data-negative);
+}
+
+/* Monitor — neutral muted */
+#analysisContainer .tag-chip.monitor,
+.tag-chip.monitor {
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  border: 0.5px solid var(--border-strong);
+}
+
+/* Adj-chip — adjustments shown next to projections.
+   Differentiates "this works against the hitter" from "this works against the pitcher". */
+#analysisContainer .adj-chip,
+.adj-chip {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: none;
+}
+
+#analysisContainer .adj-chip.hitter,
+.adj-chip.hitter {
+  background: var(--data-warning-surface);
+  color: var(--data-warning);
+  border: 0.5px solid rgba(168, 117, 50, 0.40);
+}
+
+#analysisContainer .adj-chip.pitcher,
+.adj-chip.pitcher {
+  background: var(--data-live-surface);
+  color: var(--data-live);
+  border: 0.5px solid rgba(26, 84, 144, 0.40);
+}
+
+/* Platoon chips — pitch-vs-hand favorability indicators */
+#analysisContainer .platoon-chip,
+.platoon-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  border: 0.5px solid var(--border-hairline);
+  color: var(--text-secondary);
+}
+
+#analysisContainer .platoon-chip.favor-hitter,
+.platoon-chip.favor-hitter {
+  background: var(--data-positive-surface);
+  border-color: rgba(45, 122, 62, 0.30);
+  color: var(--data-positive);
+}
+
+#analysisContainer .platoon-chip.favor-pitcher,
+.platoon-chip.favor-pitcher {
+  background: var(--data-live-surface);
+  border-color: rgba(26, 84, 144, 0.30);
+  color: var(--data-live);
+}
+
+#analysisContainer .platoon-chip b,
+.platoon-chip b {
+  font-weight: 500;
+  color: inherit;
+}
+
+/* Prop pills — DK/FD probability indicators next to props */
+#analysisContainer .prop-pill,
+.prop-pill {
+  background: var(--surface-muted);
+  border: 0.5px solid var(--border-hairline);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+#analysisContainer .prop-pill .pp-key,
+.prop-pill .pp-key {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+#analysisContainer .prop-pill.best,
+.prop-pill.best {
+  background: var(--brand-tint);
+  border-color: var(--brand-primary);
+}
+
+#analysisContainer .prop-pill.best::before,
+.prop-pill.best::before {
+  content: '★ BEST';
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--brand-primary);
+  color: var(--brand-secondary);
+  font-size: 9px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+#analysisContainer .prop-pill.best .pp-key,
+.prop-pill.best .pp-key {
+  color: var(--brand-primary);
+}
+
+/* Match hitter name styling — was using Archivo Black on dark; needs serif on light */
+#analysisContainer .match-hitter,
+.match-hitter {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--text-primary);
+  letter-spacing: 0;
+}
+
+#analysisContainer .match-hitter .hand,
+.match-hitter .hand {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+/* Lean indicator on context — direction the matchup leans */
+.ctx-lean-hitter {
+  color: var(--data-warning);
+  font-weight: 500;
+}
+
+.ctx-lean-pitcher {
+  color: var(--data-live);
+  font-weight: 500;
+}
+
+/* Wind arrows on weather chip */
+.wind-arrow.hot {
+  color: var(--data-warning);
+  text-shadow: none;
+}
+
+.wind-arrow.cold {
+  color: var(--data-live);
+  text-shadow: none;
+}
+
+/* Scratch badge — red "BANNED" indicator */
+.scratch-badge {
+  background: var(--data-negative);
+  color: var(--text-on-primary);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+/* Track-subnav (under TRACK tab) — subtle underline-style tabs */
+.track-subnav-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--easing-standard), border-color var(--duration-fast) var(--easing-standard);
+}
+
+.track-subnav-btn:hover {
+  color: var(--text-primary);
+}
+
+.track-subnav-btn.active {
+  color: var(--brand-primary);
+  border-bottom-color: var(--brand-primary);
+}
+
+/* Stat cards on Track tab — eyebrow + big mono number + caption */
+.stat-card {
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+}
+
+.stat-card .val {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.stat-card .lbl {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Stats bar layout — 4-column grid on Track */
+.stats-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+/* Date pill — fix legacy "live" styling (was lime-on-dark) */
+.date-pill {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+}
+.date-pill.live {
+  background: var(--brand-tint);
+  color: var(--brand-primary);
+}
+.date-pill.loading {
+  background: var(--data-warning-surface);
+  color: var(--data-warning);
+}
+
+/* ===========================================================
+   TOP PICK BLOCK (.tpb-*) — used in the Tonight's Signal callout
+   These styles override the legacy dark-theme styling.
+   =========================================================== */
+
+.tpb-hitter-name {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 18px;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.tpb-hitter-hand {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  margin-left: 6px;
+}
+
+/* Tier chips on top pick — restrained, semantic colors */
+.tpb-tier-chip {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  font-weight: 500;
+  padding: 4px 9px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  text-transform: uppercase;
+  border: none;
+}
+
+.tpb-tier-chip.elite {
+  background: var(--data-live-surface);
+  color: var(--data-live);
+  border: 0.5px solid var(--data-live);
+}
+
+.tpb-tier-chip.strong {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+  border: 0.5px solid var(--data-positive);
+}
+
+.tpb-tier-chip.solid {
+  background: var(--data-warning-surface);
+  color: var(--data-warning);
+  border: 0.5px solid var(--data-warning);
+}
+
+/* Top pick prop row — best prop highlighted within the callout */
+.tpb-prop-row {
+  background: var(--brand-tint);
+  border: 0.5px solid var(--brand-primary);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  margin-top: 8px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tpb-prop-row .pp-key,
+.tpb-prop-row b {
+  color: var(--brand-primary);
+  font-weight: 500;
+}
+
+/* ===========================================================
+   TOP PICKS BANNER LAYOUT
+   When only one side has a winning pick (the cross-side comparison
+   nulled the other), render it as a single full-width card rather
+   than half a grid with empty space.
+   =========================================================== */
+.top-picks-banner.single-pick .tpb-grid.single {
+  grid-template-columns: 1fr !important;
+}
+
+.top-picks-banner.single-pick .tpb-side {
+  max-width: none;
+}
+
+/* Center the lone pick a bit so it doesn't feel orphaned */
+.top-picks-banner.single-pick .tpb-grid.single .tpb-side {
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Top pick eyebrow label */
+[class*="tpb-eyebrow"],
+.tpb-label {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* ===========================================================
+   PITCH CHIPS — pitcher arsenal display
+   =========================================================== */
+.pitch-chip {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--border-hairline);
+}
+
+.pitch-chip .pct,
+.pitch-chip .pitch-pct {
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+/* Edge description — model insight box, was lime-tint on dark */
+.edge-desc {
+  background: var(--brand-tint);
+  border-left: 3px solid var(--brand-primary);
+  border-radius: 0;
+  padding: 10px 14px;
+  margin-top: 10px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.edge-desc b,
+.edge-desc strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Lineup tier blocks — exploitable/leaky/spot classifications */
+.lineup-tier {
+  background: var(--surface-card);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin: 8px 0;
+}
+
+.lineup-tier.exploitable {
+  border-left: 3px solid var(--data-warning);
+  background: var(--data-warning-surface);
+}
+
+.lineup-tier.leaky {
+  border-left: 3px solid var(--data-positive);
+  background: var(--data-positive-surface);
+}
+
+.lineup-tier.spot {
+  border-left: 3px solid var(--data-live);
+  background: var(--data-live-surface);
+}
+
+/* Lineup tier count badges */
+.lt-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.lt-count.strong {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+  border: 0.5px solid var(--data-positive);
+}
+
+.lt-count.solid {
+  background: var(--data-live-surface);
+  color: var(--data-live);
+  border: 0.5px solid var(--data-live);
+}
+
+.lt-count.weak {
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  border: 0.5px solid var(--border-hairline);
+}
+
+/* ===========================================================
+   DARK-ON-DARK CHIP FIXES
+   Many small chips were styled as solid-brand-blue background with
+   near-black text. After the dark-to-light theme remap, those chips
+   read as a black blob. Fix by either:
+     a) inverting to brand-primary background with WHITE text, OR
+     b) using a tinted surface with brand-primary text
+   =========================================================== */
+
+/* Top pick "★ TOP PICK" star badge — most-prominent place this matters */
+.top-pick-star {
+  background: var(--brand-primary) !important;
+  color: var(--brand-secondary) !important;  /* gold on blue — signature Lyrid combination */
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  animation: none;  /* drop the lime-glow keyframe animation */
+  box-shadow: none;
+}
+
+/* Match card with the "top pick" attribute — calm border-left, clean bg */
+.match.top-pick {
+  border-left-color: var(--brand-primary) !important;
+  background: linear-gradient(90deg, var(--brand-tint), transparent 30%) !important;
+}
+
+/* DT (deep target) combo badge — FULL GAME / SP ONLY / BP ONLY */
+.dt-combo-badge {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: none;
+}
+
+.dt-combo-badge.full {
+  background: var(--brand-primary) !important;
+  color: var(--text-on-primary) !important;
+}
+
+.dt-combo-badge.sp-only {
+  background: var(--data-positive-surface) !important;
+  color: var(--data-positive) !important;
+  border: 0.5px solid var(--data-positive);
+}
+
+.dt-combo-badge.bp-only {
+  background: var(--data-live-surface) !important;
+  color: var(--data-live) !important;
+  border: 0.5px solid var(--data-live);
+}
+
+/* Source badge — DEEP / SHALLOW / SMALL marker on data points */
+.source-badge {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.source-badge.deep {
+  background: var(--brand-primary) !important;
+  color: var(--text-on-primary) !important;
+}
+
+.source-badge.shallow {
+  background: var(--surface-muted) !important;
+  color: var(--text-secondary) !important;
+}
+
+.source-badge.small {
+  background: var(--data-warning-surface) !important;
+  color: var(--data-warning) !important;
+  border: 0.5px solid var(--data-warning);
+}
+
+/* Small-sample-flag — yellow border thing on "vs LHP small sample" type indicators */
+.small-sample-flag {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--data-warning) !important;
+  background: var(--data-warning-surface) !important;
+  padding: 2px 6px;
+  border: 0.5px solid var(--data-warning) !important;
+  border-radius: var(--radius-sm);
+}
+
+/* HR badge — Home Run chance indicator (was orange-on-dark) */
+.hr-badge {
+  background: var(--data-warning-surface) !important;
+  color: var(--data-warning) !important;
+  border: 0.5px solid var(--data-warning);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+
+/* HR criteria mode chip ("✓ DEEP" or "⏳ FAST" next to HR analysis) */
+.hr-cr {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  margin-left: 6px;
+}
+
+.hr-cr.deep {
+  background: var(--brand-primary);
+  color: var(--text-on-primary);
+}
+
+.hr-cr.fast {
+  background: var(--data-warning-surface);
+  color: var(--data-warning);
+  border: 0.5px solid var(--data-warning);
+}
+
+/* Pick status verification badges */
+.pick-status-badge {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+.pick-status-badge.verified {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+  border: 0.5px solid var(--data-positive);
+}
+
+.pick-status-badge.unverified {
+  background: var(--data-warning-surface);
+  color: var(--data-warning);
+  border: 0.5px solid var(--data-warning);
+}
+
+/* Dual-pick-mode chip (DEEP/FAST mode indicator on top picks) */
+.dual-pick-mode {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+.dual-pick-mode.deep {
+  background: var(--brand-primary);
+  color: var(--text-on-primary);
+}
+
+.dual-pick-mode.fast {
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+}
+
+/* Tag chip (the "+ TAG" button on hitters) — was barely visible */
+.tag-add-btn,
+button.tag-btn,
+.btn-add-tag {
+  background: var(--surface-card);
+  color: var(--brand-primary);
+  border: 0.5px solid var(--brand-primary);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tag-add-btn:hover,
+button.tag-btn:hover,
+.btn-add-tag:hover {
+  background: var(--brand-tint);
+}
+
+/* DEEP DIVE / DEEP MODE banner button — primary blue with white text */
+.deep-dive-btn,
+.deep-toggle {
+  background: var(--surface-card);
+  color: var(--brand-primary);
+  border: 0.5px solid var(--brand-primary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.deep-toggle.active {
+  background: var(--brand-primary);
+  color: var(--text-on-primary);
+}
+
+.deep-toggle:hover,
+.deep-dive-btn:hover {
+  background: var(--brand-tint);
+}
+
+.deep-toggle.active:hover {
+  background: var(--brand-primary-hover);
+}
+/* ===========================================================
+   RISP (Runners In Scoring Position) UI
+   Per-batter chip in deep mode showing regressed RISP avg + sample size
+   =========================================================== */
+.risp-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: 3px 8px 3px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  border: 0.5px solid var(--border-hairline);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: help;
+}
+
+.risp-chip b {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.risp-chip .risp-ab {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.risp-chip.elite-risp {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+  border-color: var(--data-positive);
+}
+.risp-chip.elite-risp b { color: var(--data-positive); }
+
+.risp-chip.strong-risp {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+  border-color: rgba(45, 122, 62, 0.40);
+}
+.risp-chip.strong-risp b { color: var(--data-positive); }
+
+.risp-chip.weak-risp {
+  background: var(--data-negative-surface);
+  color: var(--data-negative);
+  border-color: var(--data-negative);
+}
+.risp-chip.weak-risp b { color: var(--data-negative); }
+
+.risp-chip.below-risp {
+  background: var(--data-warning-surface);
+  color: var(--data-warning);
+  border-color: rgba(168, 117, 50, 0.40);
+}
+.risp-chip.below-risp b { color: var(--data-warning); }
+
+.risp-chip.neutral-risp {
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+}
+
+.risp-chip.insufficient {
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  font-style: italic;
+}
+
+/* ===========================================================
+   LINEUP CONVERSION TIER (DEEP MODE)
+   Sits alongside the arsenal-based lineup tier, tells the user how many
+   batters in this lineup are above-avg RISP performers.
+   =========================================================== */
+.lineup-conv-tier {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 6px 0 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-left-width: 3px;
+}
+
+.lineup-conv-tier.clutch {
+  border-left-color: var(--data-positive);
+  background: var(--data-positive-surface);
+}
+
+.lineup-conv-tier.capable {
+  border-left-color: var(--data-live);
+  background: var(--data-live-surface);
+}
+
+.lineup-conv-tier.average {
+  border-left-color: var(--border-strong);
+  background: var(--surface-muted);
+}
+
+.lineup-conv-tier.stranded {
+  border-left-color: var(--data-negative);
+  background: var(--data-negative-surface);
+}
+
+.lct-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.lineup-conv-tier.clutch .lct-label { color: var(--data-positive); }
+.lineup-conv-tier.capable .lct-label { color: var(--data-live); }
+.lineup-conv-tier.stranded .lct-label { color: var(--data-negative); }
+
+.lct-summary {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.lct-counts {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.lct-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.lct-count.elite {
+  background: var(--data-positive);
+  color: var(--text-on-primary);
+}
+
+.lct-count.strong {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+  border: 0.5px solid var(--data-positive);
+}
+
+.lct-count.weak {
+  background: var(--data-negative-surface);
+  color: var(--data-negative);
+  border: 0.5px solid var(--data-negative);
+}
+
+.lct-count.size {
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+/* ===========================================================
+   SHARP K PROJECTION BREAKDOWN (DEEP MODE)
+   Surfaces the lineup-vs-arsenal analysis that produced the K projection.
+   =========================================================== */
+.pp-sharp-k {
+  background: var(--surface-muted);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin: 12px 0 10px;
+}
+
+.pp-sharp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.pp-sharp-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pp-sharp-confidence {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+}
+
+.pp-sharp-confidence.high {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+  border: 0.5px solid var(--data-positive);
+}
+
+.pp-sharp-confidence.medium {
+  background: var(--data-warning-surface);
+  color: var(--data-warning);
+  border: 0.5px solid var(--data-warning);
+}
+
+.pp-sharp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pp-sharp-numbers {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.pp-sharp-label {
+  color: var(--text-secondary);
+}
+
+.pp-sharp-value {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-sharp-value.sharp {
+  color: var(--brand-primary);
+  font-size: 14px;
+}
+
+.pp-sharp-edge {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--border-hairline);
+}
+
+.pp-sharp-edge.edge-positive {
+  color: var(--data-positive);
+}
+
+.pp-sharp-edge.edge-negative {
+  color: var(--data-negative);
+}
+
+.pp-sharp-edge.edge-neutral {
+  color: var(--text-secondary);
+}
+
+/* ===========================================================
+   PITCHER PROP LINE GRADING
+   Auto-pulled DK lines + manual entry fallback. Tiered recommendation chips
+   matching the visual language used for game-line bets.
+   =========================================================== */
+
+/* Auto-pulled line + edge chip — shown beneath the projection when DK line is found */
+.pp-line-grade {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  border: 0.5px solid var(--border-hairline);
+  border-left-width: 3px;
+}
+
+.pp-line-grade.pp-tier-play {
+  border-left-color: var(--data-positive);
+  background: var(--data-positive-surface);
+}
+
+.pp-line-grade.pp-tier-lean {
+  border-left-color: var(--data-live);
+  background: var(--data-live-surface);
+}
+
+.pp-line-grade.pp-tier-slight {
+  border-left-color: var(--border-strong);
+  background: var(--surface-muted);
+}
+
+.pp-line-grade.pp-tier-no-play {
+  border-left-color: var(--border-hairline);
+  background: var(--surface-card);
+  opacity: 0.7;
+}
+
+.pp-line-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
+.pp-line-book {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  background: var(--brand-primary);
+  color: var(--text-on-primary);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.pp-line-value {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-line-odds {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-line-tier {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  margin-left: auto;
+}
+
+.pp-tier-play .pp-line-tier {
+  background: var(--data-positive);
+  color: var(--text-on-primary);
+}
+
+.pp-tier-lean .pp-line-tier {
+  background: var(--data-live);
+  color: var(--text-on-primary);
+}
+
+.pp-tier-slight .pp-line-tier {
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  border: 0.5px solid var(--border-strong);
+}
+
+.pp-tier-no-play .pp-line-tier {
+  background: var(--surface-card);
+  color: var(--text-muted);
+  border: 0.5px solid var(--border-hairline);
+}
+
+.pp-line-edge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-tier-play .pp-line-edge { color: var(--data-positive); }
+.pp-tier-lean .pp-line-edge { color: var(--data-live); }
+
+/* Manual-entry input — when no auto-line is available */
+.pp-manual-line {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  border: 0.5px dashed var(--border-hairline);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
+.pp-manual-label {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 10px;
+}
+
+.pp-manual-input {
+  width: 60px;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--border-hairline);
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+.pp-manual-input:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+  background: var(--surface-card);
+}
+
+.pp-manual-btn {
+  padding: 3px 10px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--brand-primary);
+  background: var(--surface-card);
+  color: var(--brand-primary);
+  cursor: pointer;
+}
+
+.pp-manual-btn:hover {
+  background: var(--brand-tint);
+}
+
+.pp-manual-result {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.pp-manual-grade {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+}
+
+.pp-manual-grade.pp-tier-play {
+  background: var(--data-positive);
+  color: var(--text-on-primary);
+}
+
+.pp-manual-grade.pp-tier-lean {
+  background: var(--data-live);
+  color: var(--text-on-primary);
+}
+
+.pp-manual-grade.pp-tier-slight {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  border: 0.5px solid var(--border-strong);
+}
+
+.pp-manual-grade.pp-tier-no-play {
+  background: var(--surface-card);
+  color: var(--text-muted);
+  border: 0.5px solid var(--border-hairline);
+}
+
+.pp-manual-err {
+  color: var(--data-negative);
+  font-size: 10px;
+  font-style: italic;
+}
+
+/* ===========================================================
+   PITCHER PROPS — RICHER MATCHUP DETAIL
+   Per-batter K breakdown, recent form trend, home/road split callout
+   =========================================================== */
+
+/* Per-batter K breakdown panel — sorted by projected K rate */
+.pkb-panel {
+  background: var(--surface-muted);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin: 10px 0;
+}
+
+.pkb-head {
+  margin-bottom: 8px;
+}
+
+.pkb-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pkb-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pkb-row {
+  display: grid;
+  grid-template-columns: 22px minmax(110px, 1.2fr) 50px 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 0.5px solid var(--border-hairline);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.pkb-row:last-child {
+  border-bottom: none;
+}
+
+.pkb-slot {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pkb-name {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.pkb-rate {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--brand-primary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pkb-driver {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.pkb-small {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--data-warning);
+  background: var(--data-warning-surface);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--data-warning);
+}
+
+/* Recent form trend pills */
+.form-trend {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.form-trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.form-trend-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.form-trend-note {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+.form-trend-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.form-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  font-family: var(--font-sans);
+  min-width: 90px;
+}
+
+.form-pill.good {
+  border-left: 3px solid var(--data-positive);
+}
+
+.form-pill.avg {
+  border-left: 3px solid var(--border-strong);
+}
+
+.form-pill.short {
+  border-left: 3px solid var(--data-warning);
+}
+
+.form-ip {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.form-line {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.form-opp {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Home/road split callout */
+.hr-split {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-left-width: 3px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.hr-split.split-favorable {
+  border-left-color: var(--data-positive);
+  background: var(--data-positive-surface);
+}
+
+.hr-split.split-unfavorable {
+  border-left-color: var(--data-negative);
+  background: var(--data-negative-surface);
+}
+
+.hr-split-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.split-favorable .hr-split-eyebrow {
+  color: var(--data-positive);
+}
+
+.split-unfavorable .hr-split-eyebrow {
+  color: var(--data-negative);
+}
+
+.hr-split-value {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.hr-split-vs {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+
+/* ===========================================================
+   HR PROJECTION DRIVERS PANEL
+   Empirically-calibrated HR badges show drivers and confidence.
+   =========================================================== */
+
+.hr-rate {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  margin-left: 4px;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.hr-drivers-panel {
+  background: var(--data-warning-surface);
+  border: 0.5px solid var(--data-warning);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+
+.hr-sample-warn {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--data-warning);
+  font-weight: 500;
+  margin-bottom: 6px;
+  padding: 3px 6px;
+  background: var(--surface-card);
+  border-left: 2px solid var(--data-warning);
+  border-radius: var(--radius-sm);
+}
+
+.hr-drivers-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.hr-drivers-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--data-warning);
+}
+
+.hr-drivers-conf {
+  font-family: var(--font-sans);
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+
+.hr-drivers-conf.high {
+  background: var(--data-positive);
+  color: var(--text-on-primary);
+}
+
+.hr-drivers-conf.medium {
+  background: var(--data-warning);
+  color: var(--text-on-primary);
+}
+
+.hr-drivers-conf.low {
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  border: 0.5px solid var(--border-strong);
+}
+
+.hr-drivers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hr-driver {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.4fr) minmax(140px, 2fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  padding: 3px 0;
+}
+
+.hr-driver-feature {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.hr-driver-detail {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.hr-driver-weight {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.hr-driver-weight.pos {
+  color: var(--data-positive);
+}
+
+.hr-driver-weight.neg {
+  color: var(--data-negative);
+}
+
+/* ===========================================================
+   HISTORY TAB REBUILD — Lyrid styling for the bet-tracking dashboards
+   Overrides the legacy dark-theme primitives for all 5 history views:
+   BEST BETS, GAME BETS, YRFI/NRFI, CALIBRATION, MY BETS
+   =========================================================== */
+
+/* ---------- History subnav row ---------- */
+/* Underline-active style matching the Track tab subnav for consistency */
+.history-subnav {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 18px;
+  padding-bottom: 0;
+  border-bottom: 0.5px solid var(--border-hairline);
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.history-subnav-btn {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  color: var(--text-secondary) !important;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 8px 14px;
+  border-radius: 0;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--easing-standard), border-color var(--duration-fast) var(--easing-standard);
+  position: relative;
+  top: 1px;  /* visual alignment with bottom border */
+}
+
+.history-subnav-btn:hover {
+  color: var(--text-primary) !important;
+  background: transparent !important;
+}
+
+.history-subnav-btn.active {
+  color: var(--brand-primary) !important;
+  border-bottom-color: var(--brand-primary) !important;
+  background: transparent !important;
+}
+
+/* Action buttons (GRADE ALL, ADD HITTER) inside the subnav row */
+.history-subnav .btn.sm,
+.history-subnav button.btn {
+  background: var(--surface-card);
+  color: var(--brand-primary);
+  border: 0.5px solid var(--brand-primary);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  margin-bottom: 4px;
+  margin-top: 4px;
+  align-self: center;
+}
+
+.history-subnav .btn.sm:hover,
+.history-subnav button.btn:hover {
+  background: var(--brand-tint);
+}
+
+/* ---------- Stats dashboard ---------- */
+/* Replace dark-panel grid with calm hairline cards using eyebrow + mono number + caption pattern */
+.bestbet-stats {
+  margin-bottom: 24px;
+}
+
+.bbs-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .bbs-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 420px) {
+  .bbs-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.bbs-cell {
+  background: var(--surface-card) !important;
+  border: 0.5px solid var(--border-hairline) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 14px 12px !important;
+  text-align: left !important;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bbs-label {
+  font-family: var(--font-sans) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.10em !important;
+  text-transform: uppercase;
+  color: var(--text-muted) !important;
+  margin-bottom: 4px !important;
+}
+
+.bbs-value {
+  font-family: var(--font-mono) !important;
+  font-size: 22px !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.bbs-value.profit-pos {
+  color: var(--data-positive) !important;
+}
+
+.bbs-value.profit-neg {
+  color: var(--data-negative) !important;
+}
+
+.bbs-sub {
+  font-family: var(--font-sans) !important;
+  font-size: 11px !important;
+  color: var(--text-secondary) !important;
+  margin-top: 2px !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+/* ---------- Bet entries ---------- */
+/* Date group header — eyebrow style matching the Lyrid spec */
+.bb-date-group {
+  margin-bottom: 18px;
+}
+
+.bb-date-head {
+  font-family: var(--font-sans) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.10em !important;
+  text-transform: uppercase;
+  color: var(--text-muted) !important;
+  padding: 0 0 8px 0 !important;
+  margin-bottom: 0 !important;
+  border-bottom: 0.5px solid var(--border-hairline);
+}
+
+/* Entry row — replace dark-with-tint pattern with clean white card + hairline */
+.bb-entry,
+.bb-entry.glb-history-entry {
+  background: var(--surface-card) !important;
+  border: 0.5px solid var(--border-hairline) !important;
+  border-bottom: 0.5px solid var(--border-hairline) !important;
+  border-left: 3px solid var(--border-hairline) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 12px 14px !important;
+  margin-bottom: 6px;
+}
+
+.bb-entry:last-child {
+  margin-bottom: 0;
+}
+
+/* Result-state border accents (replacing the dark-theme glow pattern).
+   The parent .bb-entry doesn't get the result class — we read it from the child
+   .bb-entry-result chip via :has() which is supported in modern Safari/Chrome. */
+.bb-entry:has(.bb-entry-result.res-win),
+.bb-entry:has(.bb-entry-result.win),
+.bb-entry.win,
+.bb-entry[data-result="win"] {
+  border-left-color: var(--data-positive) !important;
+  background: var(--surface-card) !important;
+}
+
+.bb-entry:has(.bb-entry-result.res-loss),
+.bb-entry:has(.bb-entry-result.loss),
+.bb-entry.loss,
+.bb-entry[data-result="loss"] {
+  border-left-color: var(--data-negative) !important;
+  background: var(--surface-card) !important;
+}
+
+.bb-entry:has(.bb-entry-result.res-push),
+.bb-entry:has(.bb-entry-result.push),
+.bb-entry:has(.bb-entry-result.didnotplay),
+.bb-entry.didnotplay,
+.bb-entry.push {
+  border-left-color: var(--data-warning) !important;
+  background: var(--surface-card) !important;
+  opacity: 1 !important;
+}
+
+.bb-entry:has(.bb-entry-result.res-pending),
+.bb-entry:has(.bb-entry-result.pending),
+.bb-entry.pending {
+  border-left-color: var(--border-hairline) !important;
+}
+
+/* Entry head — flex row of metadata */
+.bb-entry-head {
+  display: flex;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  align-items: center !important;
+  flex-wrap: wrap;
+}
+
+/* Tier chip — restrained semantic surface + hairline + dark text */
+.bb-entry-tier,
+.glb-tier-strong,
+.glb-tier-moderate,
+.glb-tier-slight {
+  font-family: var(--font-sans) !important;
+  font-size: 9px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.10em !important;
+  padding: 2px 7px !important;
+  border-radius: var(--radius-sm) !important;
+  text-transform: uppercase;
+}
+
+.glb-tier-strong,
+.bb-entry-tier.glb-tier-strong {
+  background: var(--data-positive-surface) !important;
+  color: var(--data-positive) !important;
+  border: 0.5px solid var(--data-positive);
+}
+
+.glb-tier-moderate,
+.bb-entry-tier.glb-tier-moderate {
+  background: var(--data-live-surface) !important;
+  color: var(--data-live) !important;
+  border: 0.5px solid var(--data-live);
+}
+
+.glb-tier-slight,
+.bb-entry-tier.glb-tier-slight {
+  background: var(--data-warning-surface) !important;
+  color: var(--data-warning) !important;
+  border: 0.5px solid var(--data-warning);
+}
+
+/* Type chip (TOTAL/ML/RUN LINE/etc) — calm muted surface */
+.bb-entry-type {
+  font-family: var(--font-sans) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.06em !important;
+  color: var(--text-muted) !important;
+  padding: 2px 7px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+}
+
+/* Pick description — primary text, takes available space */
+.bb-entry-pick {
+  font-family: var(--font-sans) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+  flex: 1;
+}
+
+/* Price odds — mono, secondary color */
+.bb-entry-price {
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  color: var(--text-secondary) !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+/* Units staked — restrained mono */
+.bb-entry-units {
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  color: var(--brand-primary) !important;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  background: var(--brand-tint);
+  border-radius: var(--radius-sm);
+}
+
+/* Result chip — restrained semantic surface (replace bright filled pattern) */
+.bb-entry-result {
+  font-family: var(--font-sans) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.10em !important;
+  padding: 3px 9px !important;
+  border-radius: var(--radius-sm) !important;
+  flex-shrink: 0;
+}
+
+.bb-entry-result.res-win,
+.bb-entry-result.win {
+  background: var(--data-positive) !important;
+  color: var(--text-on-primary) !important;
+  border: none !important;
+}
+
+.bb-entry-result.res-loss,
+.bb-entry-result.loss {
+  background: var(--data-negative) !important;
+  color: var(--text-on-primary) !important;
+  border: none !important;
+}
+
+.bb-entry-result.res-push,
+.bb-entry-result.push,
+.bb-entry-result.didnotplay {
+  background: var(--data-warning-surface) !important;
+  color: var(--data-warning) !important;
+  border: 0.5px solid var(--data-warning) !important;
+}
+
+.bb-entry-result.res-pending,
+.bb-entry-result.pending {
+  background: var(--surface-muted) !important;
+  color: var(--text-muted) !important;
+  border: 0.5px solid var(--border-hairline) !important;
+}
+
+/* Entry meta line (game, score, etc.) — secondary mono */
+.bb-entry-meta {
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  color: var(--text-secondary) !important;
+  margin-top: 6px !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+/* Entry name (used on best-bets entries) */
+.bb-entry-name {
+  font-family: var(--font-sans) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Tier dot indicator on best-bets entries */
+.bb-tier-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.bb-tier-dot.elite {
+  background: var(--brand-secondary);  /* gold for elite */
+  box-shadow: 0 0 0 1px var(--brand-primary);
+}
+
+.bb-tier-dot.strong {
+  background: var(--data-positive);
+}
+
+/* Prop description (pp tier + reason on best bets) */
+.bb-entry-prop {
+  font-family: var(--font-sans) !important;
+  font-size: 11px !important;
+  color: var(--text-secondary) !important;
+  margin-top: 4px !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.bb-prop-label {
+  font-family: var(--font-mono) !important;
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+  letter-spacing: 0;
+  font-size: 11px !important;
+  background: var(--surface-muted);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.bb-prop-reason {
+  font-style: italic;
+  color: var(--text-secondary) !important;
+  font-family: var(--font-sans);
+}
+
+/* Line text (line + odds shown beneath name on best bets) */
+.bb-line {
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  color: var(--text-secondary) !important;
+  margin-top: 6px !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+/* Action button row at bottom of entry */
+.bb-entry-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 0.5px dashed var(--border-hairline);
+}
+
+/* Small action buttons (W/L/Pending/etc grading buttons) — Lyrid outline style */
+.bb-entry-actions .result-btn,
+.result-btn.sm {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--border-hairline);
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--easing-standard);
+}
+
+.bb-entry-actions .result-btn:hover,
+.result-btn.sm:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+  background: var(--brand-tint);
+}
+
+.result-btn.win-btn:hover {
+  border-color: var(--data-positive);
+  color: var(--data-positive);
+  background: var(--data-positive-surface);
+}
+
+.result-btn.loss-btn:hover {
+  border-color: var(--data-negative);
+  color: var(--data-negative);
+  background: var(--data-negative-surface);
+}
+
+/* ---------- Empty states ---------- */
+/* Scoped to History and Track contexts so we don't break inline empties
+   in analysis screens or game cards. */
+#historyList .empty,
+#trackList .empty {
+  text-align: center;
+  padding: 56px 24px !important;
+  background: var(--surface-card) !important;
+  border: 0.5px solid var(--border-hairline) !important;
+  border-radius: var(--radius-lg) !important;
+  margin-top: 8px;
+}
+
+#historyList .empty .empty-icon,
+#trackList .empty .empty-icon {
+  font-size: 32px !important;
+  color: var(--text-muted) !important;
+  margin-bottom: 16px !important;
+  display: block;
+  font-family: var(--font-sans);
+  font-weight: 300;
+  opacity: 0.6;
+}
+
+#historyList .empty > div:not(.empty-icon):first-of-type,
+#trackList .empty > div:not(.empty-icon):first-of-type {
+  font-family: var(--font-serif);
+  font-size: 18px !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+  margin-bottom: 10px;
+  letter-spacing: -0.01em;
+}
+
+#historyList .empty > div[style*="font-size"],
+#trackList .empty > div[style*="font-size"] {
+  font-family: var(--font-sans) !important;
+  font-size: 13px !important;
+  color: var(--text-secondary) !important;
+  line-height: 1.5;
+  max-width: 440px;
+  margin: 0 auto !important;
+  font-weight: 400;
+}
+
+/* ===========================================================
+   CALIBRATION VIEW — Lyrid styling for the model audit dashboard
+   =========================================================== */
+
+.calibration-view {
+  padding: 0;
+}
+
+/* Headline card — top-of-tab "model accuracy" summary */
+.cal-headline {
+  background: var(--surface-card) !important;
+  border: 0.5px solid var(--brand-primary) !important;
+  border-left: 3px solid var(--brand-primary) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 18px 20px !important;
+  margin-bottom: 18px !important;
+}
+
+.cal-headline-label {
+  font-family: var(--font-sans) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase;
+  color: var(--brand-primary) !important;
+  margin-bottom: 8px !important;
+}
+
+.cal-headline-value {
+  font-family: var(--font-mono) !important;
+  font-size: 28px !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+  letter-spacing: -0.01em !important;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-headline-sub {
+  font-family: var(--font-sans) !important;
+  font-size: 12px !important;
+  color: var(--text-secondary) !important;
+  margin-top: 6px !important;
+  font-style: italic;
+}
+
+/* Cell grid */
+.cal-row {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 10px !important;
+  margin-bottom: 10px !important;
+}
+
+.cal-cell {
+  background: var(--surface-card) !important;
+  border: 0.5px solid var(--border-hairline) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 14px !important;
+}
+
+.cal-cell-label {
+  font-family: var(--font-sans) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.10em !important;
+  text-transform: uppercase;
+  color: var(--text-muted) !important;
+  margin-bottom: 6px !important;
+}
+
+.cal-cell-value {
+  font-family: var(--font-mono) !important;
+  font-size: 20px !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.cal-cell-sub {
+  font-family: var(--font-sans) !important;
+  font-size: 11px !important;
+  color: var(--text-secondary) !important;
+  margin-top: 4px !important;
+}
+
+/* Compare panel — projection vs market comparison */
+.cal-compare {
+  background: var(--surface-card) !important;
+  border: 0.5px solid var(--border-hairline) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 14px 16px !important;
+  margin-bottom: 18px !important;
+}
+
+.cal-compare-head {
+  font-family: var(--font-sans) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase;
+  color: var(--text-muted) !important;
+  margin-bottom: 10px !important;
+}
+
+.cal-compare-row {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  padding: 6px 0 !important;
+  border-bottom: 0.5px solid var(--border-hairline) !important;
+}
+
+.cal-compare-label {
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+}
+
+.cal-compare-val {
+  font-family: var(--font-mono) !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-compare-val.good {
+  color: var(--data-positive) !important;
+}
+
+/* Per-game audit entry rows */
+.cal-entry {
+  background: var(--surface-card) !important;
+  border: 0.5px solid var(--border-hairline) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 10px 14px !important;
+  margin-bottom: 6px !important;
+}
+
+.cal-entry-date {
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  color: var(--text-muted) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-entry-matchup {
+  font-family: var(--font-sans) !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  color: var(--text-primary) !important;
+}
+
+.cal-entry-proj, .cal-entry-actual {
+  font-family: var(--font-mono) !important;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary) !important;
+}
+
+.cal-entry-err {
+  font-family: var(--font-sans) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.06em !important;
+  padding: 2px 8px !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+.cal-entry-err.audit-good {
+  color: var(--data-positive) !important;
+  background: var(--data-positive-surface) !important;
+  border: 0.5px solid var(--data-positive) !important;
+}
+
+.cal-entry-err.audit-ok {
+  color: var(--data-warning) !important;
+  background: var(--data-warning-surface) !important;
+  border: 0.5px solid var(--data-warning) !important;
+}
+
+.cal-entry-err.audit-miss {
+  color: var(--data-negative) !important;
+  background: var(--data-negative-surface) !important;
+  border: 0.5px solid var(--data-negative) !important;
+}
+
+/* ===========================================================
+   SETTINGS TAB REBUILD — Lyrid styling for the settings panel
+   Scoped to #settings-panel to avoid affecting other tabs.
+   Covers: ban lists, notes, data management, personal override.
+   =========================================================== */
+
+/* Panel container baseline */
+#settings-panel {
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  padding: 4px 0;
+}
+
+/* ---------- Section headers (h2) ---------- */
+/* Replace Archivo Black with the Lyrid serif heading at calmer weight */
+#settings-panel h2 {
+  font-family: var(--font-serif) !important;
+  font-size: 22px !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.01em !important;
+  color: var(--text-primary) !important;
+  margin: 28px 0 12px !important;
+  padding-bottom: 8px;
+  border-bottom: 0.5px solid var(--border-hairline);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  text-transform: none !important;
+}
+
+#settings-panel h2:first-child {
+  margin-top: 4px !important;
+}
+
+#settings-panel h2 .count {
+  font-family: var(--font-mono) !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  color: var(--text-muted) !important;
+  letter-spacing: 0 !important;
+}
+
+/* ---------- Subsection headers (h3) ---------- */
+/* Replace ▸ + caps with calm eyebrow */
+#settings-panel h3 {
+  font-family: var(--font-sans) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.10em !important;
+  text-transform: uppercase;
+  color: var(--text-muted) !important;
+  margin: 20px 0 8px !important;
+}
+
+/* ---------- Hint boxes ---------- */
+/* Restrained left-border + brand tint */
+#settings-panel .hint-box {
+  background: var(--surface-card) !important;
+  border: 0.5px solid var(--border-hairline) !important;
+  border-left: 3px solid var(--brand-primary) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 12px 14px !important;
+  margin-bottom: 16px !important;
+  font-family: var(--font-sans);
+  font-size: 12px !important;
+  color: var(--text-secondary) !important;
+  line-height: 1.55 !important;
+}
+
+#settings-panel .hint-box b {
+  color: var(--brand-primary) !important;
+  font-weight: 500;
+}
+
+/* ---------- Form labels ---------- */
+#settings-panel label {
+  font-family: var(--font-sans) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.10em !important;
+  text-transform: uppercase;
+  color: var(--text-muted) !important;
+  display: block !important;
+  margin: 14px 0 4px !important;
+}
+
+/* ---------- Inputs / textarea / select ---------- */
+#settings-panel input[type="text"],
+#settings-panel input[type="number"],
+#settings-panel input[type="date"],
+#settings-panel select,
+#settings-panel textarea {
+  background: var(--surface-card) !important;
+  color: var(--text-primary) !important;
+  border: 0.5px solid var(--border-hairline) !important;
+  padding: 9px 12px !important;
+  border-radius: var(--radius-md) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 13px !important;
+  width: 100%;
+  transition: border-color var(--duration-fast) var(--easing-standard), background var(--duration-fast) var(--easing-standard);
+}
+
+#settings-panel input[type="text"]:focus,
+#settings-panel input[type="number"]:focus,
+#settings-panel input[type="date"]:focus,
+#settings-panel select:focus,
+#settings-panel textarea:focus {
+  outline: none;
+  border-color: var(--brand-primary) !important;
+  background: var(--surface-card) !important;
+}
+
+#settings-panel textarea {
+  resize: vertical;
+  min-height: 80px !important;
+  line-height: 1.5 !important;
+  font-family: var(--font-sans) !important;
+}
+
+/* ---------- Controls row ---------- */
+#settings-panel .controls {
+  display: flex !important;
+  gap: 8px !important;
+  margin-bottom: 12px !important;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ---------- Buttons ---------- */
+/* Default outline button — calm secondary action */
+#settings-panel .btn {
+  background: var(--surface-card) !important;
+  color: var(--text-primary) !important;
+  border: 0.5px solid var(--border-strong) !important;
+  font-family: var(--font-sans) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.06em !important;
+  padding: 8px 14px !important;
+  border-radius: var(--radius-md) !important;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--easing-standard);
+}
+
+#settings-panel .btn:hover {
+  background: var(--surface-muted) !important;
+  border-color: var(--brand-primary) !important;
+  color: var(--brand-primary) !important;
+}
+
+/* Primary button — filled brand */
+#settings-panel .btn.primary {
+  background: var(--brand-primary) !important;
+  color: var(--text-on-primary) !important;
+  border-color: var(--brand-primary) !important;
+}
+
+#settings-panel .btn.primary:hover:not(:disabled) {
+  background: var(--brand-primary-hover, #143049) !important;
+  border-color: var(--brand-primary-hover, #143049) !important;
+  color: var(--text-on-primary) !important;
+}
+
+/* Danger button — restrained red outline */
+#settings-panel .btn.danger {
+  background: var(--surface-card) !important;
+  color: var(--data-negative) !important;
+  border: 0.5px solid var(--data-negative) !important;
+}
+
+#settings-panel .btn.danger:hover {
+  background: var(--data-negative-surface) !important;
+  color: var(--data-negative) !important;
+  border-color: var(--data-negative) !important;
+}
+
+/* ---------- Banned chips ---------- */
+/* Replace red pill with muted surface + small danger X */
+#settings-panel .banned-list {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  margin-top: 10px !important;
+  margin-bottom: 6px;
+}
+
+#settings-panel .banned-chip {
+  background: var(--surface-muted) !important;
+  border: 0.5px solid var(--border-hairline) !important;
+  color: var(--text-primary) !important;
+  padding: 5px 6px 5px 12px !important;
+  border-radius: var(--radius-pill, 100px) !important;
+  font-family: var(--font-sans) !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+#settings-panel .banned-chip .x-btn {
+  background: transparent !important;
+  border: none !important;
+  color: var(--text-muted) !important;
+  cursor: pointer !important;
+  font-size: 14px !important;
+  font-weight: 400;
+  padding: 0 6px !important;
+  opacity: 0.6;
+  transition: color var(--duration-fast), opacity var(--duration-fast);
+  line-height: 1;
+}
+
+#settings-panel .banned-chip .x-btn:hover {
+  opacity: 1 !important;
+  color: var(--data-negative) !important;
+}
+
+/* "No banned X" inline empty state */
+#settings-panel .banned-list ~ * + div[style*="No banned"],
+#settings-panel #bannedList > div[style*="color"],
+#settings-panel #bannedHittersList > div[style*="color"],
+#settings-panel #bannedTeamsList > div[style*="color"] {
+  font-family: var(--font-sans) !important;
+  font-size: 12px !important;
+  color: var(--text-muted) !important;
+  font-style: italic;
+  margin-top: 8px !important;
+}
+
+/* ---------- Divider ---------- */
+#settings-panel .divider,
+#settings-panel hr.divider {
+  border: none !important;
+  height: 1px !important;
+  background: var(--border-hairline) !important;
+  margin: 28px 0 !important;
+}
+
+/* ---------- Personal Override (special section) ---------- */
+/* Reserved gold accent — the only place outside Sharp tier badge that uses it */
+#settings-panel #secretFilterSection {
+  margin-top: 28px !important;
+  padding: 20px 22px !important;
+  border-top: none !important;
+  background: var(--surface-card);
+  border: 0.5px solid var(--brand-secondary, #E8C547);
+  border-left: 3px solid var(--brand-secondary, #E8C547);
+  border-radius: var(--radius-md);
+}
+
+#settings-panel #secretFilterSection h2 {
+  color: var(--brand-secondary, #E8C547) !important;
+  border-bottom: 0.5px solid rgba(232, 197, 71, 0.25) !important;
+  padding-bottom: 8px !important;
+  margin-top: 0 !important;
+}
+
+#settings-panel #secretFilterSection .hint-box {
+  border-color: rgba(232, 197, 71, 0.25) !important;
+  border-left-color: var(--brand-secondary, #E8C547) !important;
+  background: rgba(232, 197, 71, 0.04) !important;
+}
+
+#settings-panel #secretFilterSection .hint-box b {
+  color: var(--brand-secondary, #E8C547) !important;
+}
+
+/* Override section enable checkbox row */
+#settings-panel #secretFilterSection label[style*="flex"] {
+  font-family: var(--font-sans) !important;
+  font-size: 12px !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  color: var(--text-primary) !important;
+  font-weight: 400 !important;
+  margin: 12px 0 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+/* Status indicator at bottom of override section */
+#settings-panel #secretFilterSection > div[style*="font-size:10px"],
+#settings-panel #secretFilterSection > div:last-child {
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  color: var(--text-muted) !important;
+  margin-top: 14px !important;
+  padding-top: 12px;
+  border-top: 0.5px dashed rgba(232, 197, 71, 0.3);
+}
+
+#settings-panel #secretFilterSection #sfActiveIndicator {
+  color: var(--brand-secondary, #E8C547);
+  font-weight: 500;
+}
+
+/* Hidden file input — keep hidden */
+#settings-panel input[type="file"] {
+  display: none !important;
+}
+
+/* ===========================================================
+   HR PROJECTION AUDIT PANEL
+   Diagnostic display showing top 3 HR projections regardless of tier.
+   Calm gray styling — this is for confirming model behavior, not user UX.
+   Will be replaced/quieted once gold-prominence treatment ships.
+   =========================================================== */
+
+.hr-audit-panel {
+  background: var(--surface-muted);
+  border: 0.5px solid var(--border-hairline);
+  border-left: 2px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  margin: 12px 0;
+  font-family: var(--font-sans);
+}
+
+.hr-audit-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hr-audit-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.hr-audit-baseline {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-style: italic;
+}
+
+.hr-audit-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hr-audit-row {
+  display: grid;
+  grid-template-columns: 18px minmax(110px, 1.5fr) 50px 48px auto minmax(100px, 2fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 0.5px solid var(--border-hairline);
+  font-size: 11px;
+}
+
+.hr-audit-row:last-child {
+  border-bottom: none;
+}
+
+.hr-audit-rank {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.hr-audit-name {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.hr-audit-hand {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-left: 4px;
+  letter-spacing: 0.05em;
+}
+
+.hr-audit-rate {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-size: 12px;
+}
+
+.hr-audit-mult {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.hr-audit-tier {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.hr-audit-tier.tier-elite {
+  background: var(--data-warning-surface);
+  color: var(--data-warning);
+  border: 0.5px solid var(--data-warning);
+}
+
+.hr-audit-tier.tier-strong {
+  background: var(--data-positive-surface);
+  color: var(--data-positive);
+  border: 0.5px solid var(--data-positive);
+}
+
+.hr-audit-tier.tier-solid {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  border: 0.5px solid var(--border-strong);
+}
+
+.hr-audit-below {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.hr-audit-drivers {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hr-audit-warn {
+  font-family: var(--font-sans);
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--data-warning);
+  background: var(--data-warning-surface);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--data-warning);
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .hr-audit-row {
+    grid-template-columns: 16px 1fr 44px 40px;
+    gap: 6px;
+  }
+  .hr-audit-tier,
+  .hr-audit-below,
+  .hr-audit-drivers,
+  .hr-audit-warn {
+    grid-column: 2 / -1;
+    margin-left: 0;
+    margin-top: 2px;
+  }
+}
+
+/* ===========================================================
+   NAV BADGE — newly-graded count indicator on History tab
+   Subtle gold pill on the History nav button when bets auto-graded.
+   Clears when user actually visits History.
+   =========================================================== */
+
+.lyrid-nav-btn .nav-badge,
+.tab .nav-badge {
+  display: inline-block;
+  background: var(--brand-secondary);
+  color: var(--brand-primary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill, 999px);
+  margin-left: 6px;
+  vertical-align: 1px;
+  line-height: 1.2;
+  min-width: 14px;
+  text-align: center;
+}
+
+/* ===========================================================
+   ROLLUP VIEW — Unified calibration dashboard
+   Aggregates all graded bet types into one clean Lyrid layout.
+   =========================================================== */
+
+.rollup-view {
+  padding: 0;
+}
+
+/* Top-of-view headline — overall accuracy across all bet types */
+.rollup-headline {
+  background: var(--surface-card);
+  border: 0.5px solid var(--brand-primary);
+  border-left: 3px solid var(--brand-primary);
+  border-radius: var(--radius-md);
+  padding: 20px 22px;
+  margin-bottom: 22px;
+}
+
+.rollup-headline-label {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brand-primary);
+  margin-bottom: 8px;
+}
+
+.rollup-headline-value {
+  font-family: var(--font-mono);
+  font-size: 36px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.rollup-headline-sub {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  font-style: italic;
+}
+
+/* Section titles within the rollup */
+.rollup-section-title {
+  font-family: var(--font-sans) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.10em !important;
+  text-transform: uppercase;
+  color: var(--text-muted) !important;
+  margin: 24px 0 10px !important;
+  padding-bottom: 6px;
+  border-bottom: 0.5px solid var(--border-hairline);
+}
+
+/* Stat cell grid */
+.rollup-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 720px) {
+  .rollup-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .rollup-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rollup-cell {
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 14px;
+}
+
+.rollup-cell-label {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.rollup-cell-value {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.rollup-cell-sub {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Per-prop-type breakdown table */
+.rollup-prop-table {
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.rollup-prop-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 0.6fr;
+  gap: 8px;
+  padding: 10px 14px;
+  align-items: baseline;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  border-bottom: 0.5px solid var(--border-hairline);
+}
+
+.rollup-prop-row:last-child {
+  border-bottom: none;
+}
+
+.rollup-prop-row.rollup-prop-header {
+  background: var(--surface-muted);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 8px 14px;
+}
+
+.rollup-prop-key {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.rollup-prop-record {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.rollup-prop-rate {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.rollup-prop-rate.rate-good {
+  color: var(--data-positive);
+}
+
+.rollup-prop-rate.rate-bad {
+  color: var(--data-negative);
+}
+
+.rollup-prop-vol {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  text-align: right;
+}
+
+.rollup-footnote {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 18px;
+  padding: 12px 14px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-md);
+  line-height: 1.5;
+}
+
+/* ===========================================================
+   CSV IMPORT UI — Settings tab bulk import for hitter prop bets
+   =========================================================== */
+
+#settings-panel .csv-spec {
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-top: 6px;
+  margin-bottom: 12px;
+}
+
+#settings-panel .csv-spec-row {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.8fr) minmax(140px, 1.4fr) minmax(140px, 1.6fr);
+  gap: 12px;
+  padding: 7px 12px;
+  border-bottom: 0.5px solid var(--border-hairline);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  align-items: baseline;
+}
+
+#settings-panel .csv-spec-row:last-child {
+  border-bottom: none;
+}
+
+#settings-panel .csv-spec-row.csv-spec-header {
+  background: var(--surface-muted);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 7px 12px;
+}
+
+#settings-panel .csv-spec-col {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--brand-primary);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+#settings-panel .csv-spec-eg {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+#settings-panel .csv-spec-note {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+#settings-panel .csv-spec-tip {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-md);
+  border-left: 2px solid var(--brand-primary);
+  line-height: 1.55;
+}
+
+#settings-panel .csv-spec-tip code {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+#settings-panel .csv-result-summary {
+  background: var(--surface-card);
+  border: 0.5px solid var(--brand-primary);
+  border-left: 3px solid var(--brand-primary);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+
+#settings-panel .csv-result-headline {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+#settings-panel .csv-result-detail {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+#settings-panel .csv-result-info {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 10px 12px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-md);
+  border-left: 2px solid var(--brand-primary);
+  font-style: italic;
+}
+
+#settings-panel .csv-result-err {
+  background: var(--data-negative-surface);
+  border: 0.5px solid var(--data-negative);
+  border-left: 3px solid var(--data-negative);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  margin-top: 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+#settings-panel .csv-result-err b {
+  color: var(--data-negative);
+  font-weight: 500;
+}
+
+#settings-panel .csv-result-err ul {
+  margin: 6px 0 0 0;
+  padding-left: 18px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+#settings-panel .csv-result-err li {
+  margin: 2px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+#settings-panel .csv-result-err code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--surface-card);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+
+#settings-panel .csv-result-warn {
+  background: var(--data-warning-surface);
+  border: 0.5px solid var(--data-warning);
+  border-left: 3px solid var(--data-warning);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  margin-top: 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+#settings-panel .csv-result-warn b {
+  color: var(--data-warning);
+  font-weight: 500;
+}
+
+#settings-panel .csv-result-warn ul {
+  margin: 6px 0 0 0;
+  padding-left: 18px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+#settings-panel .csv-result-warn li {
+  margin: 2px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* ===========================================================
+   PITCHER PROP BET LOGGING — Inline form on the pp-row
+   The "+ LOG" toggle button + the expanded form for capturing bet details.
+   =========================================================== */
+
+.pp-log-toggle {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  background: var(--surface-card);
+  color: var(--brand-primary);
+  border: 0.5px solid var(--brand-primary);
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--easing-standard);
+  margin-left: auto;
+  align-self: center;
+  white-space: nowrap;
+}
+
+.pp-log-toggle:hover {
+  background: var(--brand-tint);
+}
+
+.pp-log-form {
+  flex-basis: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--surface-muted);
+  border: 0.5px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+}
+
+.pp-log-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-family: var(--font-sans);
+}
+
+.pp-log-side-group {
+  display: inline-flex;
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.pp-log-side {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 5px 12px;
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  border: none;
+  cursor: pointer;
+  border-right: 0.5px solid var(--border-hairline);
+  transition: all var(--duration-fast) var(--easing-standard);
+}
+
+.pp-log-side:last-child {
+  border-right: none;
+}
+
+.pp-log-side:hover:not(.active) {
+  background: var(--surface-muted);
+}
+
+.pp-log-side.active {
+  background: var(--brand-primary);
+  color: var(--text-on-primary);
+}
+
+.pp-log-input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  width: 80px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-log-input.pp-log-line {
+  width: 60px;
+}
+
+.pp-log-input.pp-log-units {
+  width: 60px;
+}
+
+.pp-log-input:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+
+.pp-log-submit {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  background: var(--brand-primary);
+  color: var(--text-on-primary);
+  border: none;
+  padding: 5px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  margin-left: auto;
+  transition: background var(--duration-fast) var(--easing-standard);
+}
+
+.pp-log-submit:hover {
+  background: var(--brand-primary-hover);
+}
+
+/* Mobile: stack the form fields vertically when narrow */
+@media (max-width: 600px) {
+  .pp-log-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .pp-log-side-group {
+    width: 100%;
+    justify-content: stretch;
+  }
+  .pp-log-side {
+    flex: 1;
+  }
+  .pp-log-input {
+    width: 100%;
+  }
+  .pp-log-submit {
+    margin-left: 0;
+  }
+}
+
+/* Result class for "didnotplay" on pitcher prop bet entries */
+.bb-entry-result.res-dnp {
+  background: var(--surface-muted) !important;
+  color: var(--text-muted) !important;
+  border: 0.5px solid var(--border-strong) !important;
+}
+
+/* ===========================================================
+   PITCHER PROPS — BONUS MARKETS (Quality Start, No-Hitter)
+   Collapsible "+ MORE MARKETS" section below the core 5 prop rows.
+   =========================================================== */
+
+.pp-bonus-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 0.5px dashed var(--border-hairline);
+}
+
+.pp-bonus-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--easing-standard);
+}
+
+.pp-bonus-toggle:hover {
+  color: var(--brand-primary);
+}
+
+.pp-bonus-toggle-arrow {
+  font-size: 9px;
+  color: var(--text-muted);
+  width: 10px;
+  text-align: center;
+}
+
+.pp-bonus-toggle-label {
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.pp-bonus-toggle-hint {
+  font-style: italic;
+  color: var(--text-muted);
+  margin-left: auto;
+  font-size: 10px;
+}
+
+.pp-bonus-content {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pp-bonus-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-card);
+  border: 0.5px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+}
+
+.pp-bonus-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+
+.pp-bonus-note {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ===========================================================
+   ROLLUP — Tier note for the "PITCHER PROPS · BY MODEL TIER" section
+   =========================================================== */
+
+.rollup-tier-note {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: -4px 0 10px 0;
+  padding: 0 2px;
+  line-height: 1.5;
+  max-width: 720px;
+}
+
+/* ===========================================================
+   HR AUDIT DEBUG LINE — diagnostic-only, shown inline below each
+   audit row so we can identify which input or multiplier is
+   producing a wrong projection. Visually subdued (mono, small).
+   =========================================================== */
+
+.hr-audit-debug {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  padding: 4px 0 0 28px;
+  margin-top: 2px;
+  border-top: 0.5px dashed var(--border-hairline);
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+.hr-audit-debug-label {
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+
+.hr-audit-debug b {
+  color: var(--brand-primary);
+  font-weight: 600;
+}
