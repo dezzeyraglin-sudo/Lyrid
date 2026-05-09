@@ -4840,6 +4840,74 @@ function renderAnalysis(data) {
       `;
     }
 
+    // ==== ENV AUDIT PANEL (DEEP MODE only, diagnostic) ====
+    // Surfaces the composite environment runMult breakdown so we can verify
+    // the Session 1 math is producing the right answers. Mirrors the HR audit
+    // panel pattern. Shows: base park × base weather × interactions = composite.
+    // When a hot/wind-out/altitude interaction fires, this is where we see it
+    // in the math — not just in the narrative.
+    //
+    // Reads `data.envImpact._debug` for the structured breakdown. If envImpact
+    // is null (no park/weather data) this panel is suppressed entirely.
+    const envDbg = data.envImpact?._debug;
+    const envInter = data.envImpact?.interactions || [];
+    if (data.deepMode && envDbg) {
+      // Console-log the trace so we can copy from DevTools when investigating
+      // a projection that looks off. Same pattern as HR audit.
+      console.group(`[ENV AUDIT] ${awayName} @ ${homeName}`);
+      console.log('  composite runMult:', envDbg.compositeRunMult);
+      console.log('  base park:', envDbg.baseParkRun);
+      console.log('  base weather:', envDbg.baseWeatherRun);
+      console.log('  interaction multiplier:', envDbg.interactionMult);
+      console.log('  conditions:', envDbg.conditions);
+      console.log('  interactions:', envInter);
+      console.groupEnd();
+    }
+    const envAuditHtml = (data.deepMode && envDbg) ? `
+      <div class="env-audit-panel">
+        <div class="env-audit-head">
+          <span class="env-audit-eyebrow">ENVIRONMENT AUDIT · diagnostic</span>
+          <span class="env-audit-baseline">composite runMult — check console for full trace</span>
+        </div>
+        <div class="env-audit-formula">
+          <span class="env-audit-label">park</span>
+          <span class="env-audit-val">${envDbg.baseParkRun.toFixed(3)}</span>
+          <span class="env-audit-op">×</span>
+          <span class="env-audit-label">weather</span>
+          <span class="env-audit-val">${envDbg.baseWeatherRun.toFixed(3)}</span>
+          <span class="env-audit-op">×</span>
+          <span class="env-audit-label">interactions</span>
+          <span class="env-audit-val ${envDbg.interactionMult > 1.005 ? 'env-up' : envDbg.interactionMult < 0.995 ? 'env-down' : ''}">${envDbg.interactionMult.toFixed(3)}</span>
+          <span class="env-audit-op">=</span>
+          <span class="env-audit-composite">×${envDbg.compositeRunMult.toFixed(3)}</span>
+        </div>
+        ${envInter.length > 0 ? `
+          <div class="env-audit-interactions">
+            ${envInter.map(ix => {
+              const sign = ix.magnitude >= 0 ? '+' : '';
+              const cls = ix.magnitude >= 0 ? 'env-up' : 'env-down';
+              return `<div class="env-audit-row">
+                <span class="env-audit-row-name">${ix.name.replace(/_/g, ' ')}</span>
+                <span class="env-audit-row-mag ${cls}">${sign}${(ix.magnitude * 100).toFixed(1)}%</span>
+                <div class="env-audit-row-narrative">${ix.narrative}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        ` : `
+          <div class="env-audit-empty">No interactions fired — flat park × weather product applied.</div>
+        `}
+        ${envDbg.conditions ? `
+          <div class="env-audit-conditions">
+            <span class="env-audit-label">conditions:</span>
+            ${envDbg.conditions.tempF != null ? `temp=${envDbg.conditions.tempF}°F` : 'temp=∅'}
+            · ${envDbg.conditions.windCat ? `wind=${envDbg.conditions.windCat.toLowerCase().replace(/_/g, ' ')} (${envDbg.conditions.windSpeed}mph)` : 'wind=calm'}
+            · park PF runs=${envDbg.conditions.parkRuns ?? '∅'}
+            · exposure=${envDbg.conditions.exposure?.toFixed(1) ?? '∅'}
+          </div>
+        ` : ''}
+      </div>
+    ` : '';
+
     // ==== DIVERGENCE ANALYSIS (when our projection meaningfully differs from market) ====
     let divergenceHtml = '';
     const mc = proj.marketComparison;
@@ -5043,6 +5111,7 @@ function renderAnalysis(data) {
           ${marketPanel}
         </div>
         <div id="liveScore_${data.gamePk}" class="live-score-bar hidden"></div>
+        ${envAuditHtml}
         ${divergenceHtml}
         ${gameLinesHtml}
         ${firstInningHtml}
@@ -6997,61 +7066,96 @@ function computeProjectionStats(entries) {
       winnerAccuracy: null,
       deepModeMae: null,
       fastModeMae: null,
-      byTotalRange: {}
+      byTotalRange: {},
+      eraSplit: null
     };
   }
 
-  // Mean Absolute Error on total
-  let sumAbsErr = 0;
-  let sumSignedErr = 0;
-  let winnerCorrect = 0;
-  let winnerAttempted = 0;
-  let deepErrs = [];
-  let fastErrs = [];
+    // Era split — track pre/post environment refactor (May 8, 2026).
+    // Lets us see at a glance whether the +2.9 UNDER bias actually corrected
+    // after the env composite shipped. Only meaningful once the post-refactor
+    // sample reaches ~10+ graded games.
+    //
+    // NOTE on sign convention: existing display code at the calibration view
+    // treats `stats.bias > 0` as "model under-projects". The math here uses
+    // err = projTotal - actualTotal, so err > 0 means proj > actual = model
+    // OVER-projects. The existing display has been inverting this implicitly
+    // — we preserve the existing convention here (bias = sumSignedErr / count)
+    // to avoid silently breaking the calibration UI. If the sign is genuinely
+    // backwards, that's a separate fix to surface deliberately, not a quiet
+    // change inside this work.
+    const ENV_REFACTOR_DATE = '2026-05-08';
+    const preRefactor = { absErrs: [], signedErrs: [] };
+    const postRefactor = { absErrs: [], signedErrs: [] };
 
-  // Bucket errors by projected total range (to see if we're worse on high-total games)
-  const buckets = { low: [], mid: [], high: [] };
+    graded.forEach(e => {
+      const err = e.projTotal - e.actualTotal;
+      sumAbsErr += Math.abs(err);
+      sumSignedErr += err;
 
-  graded.forEach(e => {
-    const err = e.projTotal - e.actualTotal;
-    sumAbsErr += Math.abs(err);
-    sumSignedErr += err;
+      if (e.winner && e.projWinner) {
+        winnerAttempted++;
+        if (e.winner === e.projWinner) winnerCorrect++;
+      }
 
-    if (e.winner && e.projWinner) {
-      winnerAttempted++;
-      if (e.winner === e.projWinner) winnerCorrect++;
+      if (e.deepMode) deepErrs.push(Math.abs(err));
+      else fastErrs.push(Math.abs(err));
+
+      // Bucket
+      if (e.projTotal < 8) buckets.low.push(Math.abs(err));
+      else if (e.projTotal < 10) buckets.mid.push(Math.abs(err));
+      else buckets.high.push(Math.abs(err));
+
+      // Era split
+      if (e.date < ENV_REFACTOR_DATE) {
+        preRefactor.absErrs.push(Math.abs(err));
+        preRefactor.signedErrs.push(err);
+      } else {
+        postRefactor.absErrs.push(Math.abs(err));
+        postRefactor.signedErrs.push(err);
+      }
+    });
+
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+
+    // Build era-split output only if there's data
+    let eraSplit = null;
+    if (preRefactor.absErrs.length >= 1 || postRefactor.absErrs.length >= 1) {
+      eraSplit = {
+        cutoffDate: ENV_REFACTOR_DATE,
+        pre: {
+          count: preRefactor.absErrs.length,
+          mae: preRefactor.absErrs.length ? +avg(preRefactor.absErrs).toFixed(2) : null,
+          bias: preRefactor.signedErrs.length ? +avg(preRefactor.signedErrs).toFixed(2) : null
+        },
+        post: {
+          count: postRefactor.absErrs.length,
+          mae: postRefactor.absErrs.length ? +avg(postRefactor.absErrs).toFixed(2) : null,
+          bias: postRefactor.signedErrs.length ? +avg(postRefactor.signedErrs).toFixed(2) : null
+        }
+      };
     }
 
-    if (e.deepMode) deepErrs.push(Math.abs(err));
-    else fastErrs.push(Math.abs(err));
-
-    // Bucket
-    if (e.projTotal < 8) buckets.low.push(Math.abs(err));
-    else if (e.projTotal < 10) buckets.mid.push(Math.abs(err));
-    else buckets.high.push(Math.abs(err));
-  });
-
-  const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-
-  return {
-    total: entries.length,
-    graded: graded.length,
-    pending: entries.length - graded.length,
-    mae: +(sumAbsErr / graded.length).toFixed(2),
-    bias: +(sumSignedErr / graded.length).toFixed(2),
-    winnerAccuracy: winnerAttempted > 0 ? +((winnerCorrect / winnerAttempted) * 100).toFixed(1) : null,
-    winnerCorrect,
-    winnerAttempted,
-    deepModeMae: deepErrs.length ? +avg(deepErrs).toFixed(2) : null,
-    fastModeMae: fastErrs.length ? +avg(fastErrs).toFixed(2) : null,
-    deepModeCount: deepErrs.length,
-    fastModeCount: fastErrs.length,
-    byTotalRange: {
-      low: { count: buckets.low.length, mae: buckets.low.length ? +avg(buckets.low).toFixed(2) : null, label: '<8 runs' },
-      mid: { count: buckets.mid.length, mae: buckets.mid.length ? +avg(buckets.mid).toFixed(2) : null, label: '8-10 runs' },
-      high: { count: buckets.high.length, mae: buckets.high.length ? +avg(buckets.high).toFixed(2) : null, label: '10+ runs' }
-    }
-  };
+    return {
+      total: entries.length,
+      graded: graded.length,
+      pending: entries.length - graded.length,
+      mae: +(sumAbsErr / graded.length).toFixed(2),
+      bias: +(sumSignedErr / graded.length).toFixed(2),
+      winnerAccuracy: winnerAttempted > 0 ? +((winnerCorrect / winnerAttempted) * 100).toFixed(1) : null,
+      winnerCorrect,
+      winnerAttempted,
+      deepModeMae: deepErrs.length ? +avg(deepErrs).toFixed(2) : null,
+      fastModeMae: fastErrs.length ? +avg(fastErrs).toFixed(2) : null,
+      deepModeCount: deepErrs.length,
+      fastModeCount: fastErrs.length,
+      byTotalRange: {
+        low: { count: buckets.low.length, mae: buckets.low.length ? +avg(buckets.low).toFixed(2) : null, label: '<8 runs' },
+        mid: { count: buckets.mid.length, mae: buckets.mid.length ? +avg(buckets.mid).toFixed(2) : null, label: '8-10 runs' },
+        high: { count: buckets.high.length, mae: buckets.high.length ? +avg(buckets.high).toFixed(2) : null, label: '10+ runs' }
+      },
+      eraSplit
+    };
 }
 
 
@@ -7851,6 +7955,70 @@ function renderHistory() {
           </p>
         </div>
       `}
+
+      ${stats.eraSplit && (stats.eraSplit.pre.count >= 1 && stats.eraSplit.post.count >= 1) ? (() => {
+        // Era split panel — pre/post environment refactor (May 8, 2026).
+        // Only renders when there's data on both sides of the cutoff.
+        // Useful for verifying whether the env refactor actually corrected
+        // the +2.9 UNDER bias once the post-refactor sample reaches ~10+ games.
+        const pre = stats.eraSplit.pre;
+        const post = stats.eraSplit.post;
+        const biasDelta = (pre.bias != null && post.bias != null)
+          ? (post.bias - pre.bias).toFixed(2)
+          : null;
+        const maeDelta = (pre.mae != null && post.mae != null)
+          ? (post.mae - pre.mae).toFixed(2)
+          : null;
+        const postSampleStrong = post.count >= 10;
+        const verdictLine = (() => {
+          if (!postSampleStrong) {
+            return `Post-refactor sample is small (${post.count} games) — meaningful comparison needs ~10+ post-refactor games`;
+          }
+          if (biasDelta == null) return null;
+          const biasDirection = pre.bias > 0.5
+            ? `Pre-refactor model under-projected by ${pre.bias.toFixed(2)} runs avg`
+            : pre.bias < -0.5
+            ? `Pre-refactor model over-projected by ${Math.abs(pre.bias).toFixed(2)} runs avg`
+            : `Pre-refactor bias was small (${pre.bias.toFixed(2)})`;
+          const postDescription = Math.abs(post.bias) < 0.5
+            ? `now near zero (${post.bias.toFixed(2)})`
+            : post.bias > 0
+            ? `still under-projecting at ${post.bias.toFixed(2)}`
+            : `now over-projecting at ${Math.abs(post.bias).toFixed(2)}`;
+          return `${biasDirection}; ${postDescription}`;
+        })();
+        return `
+          <div class="calib-era-split">
+            <div class="calib-era-head">
+              <span class="calib-era-eyebrow">ERA SPLIT · pre/post environment refactor</span>
+              <span class="calib-era-cutoff">cutoff ${stats.eraSplit.cutoffDate}</span>
+            </div>
+            <div class="calib-era-grid">
+              <div class="calib-era-cell">
+                <div class="calib-era-label">PRE-REFACTOR</div>
+                <div class="calib-era-mae">MAE ${pre.mae ?? '—'}</div>
+                <div class="calib-era-bias">bias ${pre.bias != null ? (pre.bias >= 0 ? '+' : '') + pre.bias : '—'}</div>
+                <div class="calib-era-count">${pre.count} games</div>
+              </div>
+              <div class="calib-era-arrow">→</div>
+              <div class="calib-era-cell">
+                <div class="calib-era-label">POST-REFACTOR</div>
+                <div class="calib-era-mae">MAE ${post.mae ?? '—'}</div>
+                <div class="calib-era-bias">bias ${post.bias != null ? (post.bias >= 0 ? '+' : '') + post.bias : '—'}</div>
+                <div class="calib-era-count">${post.count} games</div>
+              </div>
+              ${biasDelta != null ? `
+                <div class="calib-era-delta">
+                  <div class="calib-era-delta-label">Δ BIAS</div>
+                  <div class="calib-era-delta-value ${parseFloat(biasDelta) > 0 ? 'delta-up' : parseFloat(biasDelta) < 0 ? 'delta-down' : ''}">${biasDelta >= 0 ? '+' : ''}${biasDelta}</div>
+                  ${maeDelta != null ? `<div class="calib-era-delta-mae">Δ MAE ${maeDelta >= 0 ? '+' : ''}${maeDelta}</div>` : ''}
+                </div>
+              ` : ''}
+            </div>
+            ${verdictLine ? `<div class="calib-era-verdict">${verdictLine}</div>` : ''}
+          </div>
+        `;
+      })() : ''}
 
       ${sortedDates.map(d => {
         const entries = byDate[d].sort((a, b) => b.gradedAt - a.gradedAt);

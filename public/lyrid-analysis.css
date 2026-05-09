@@ -4174,3 +4174,341 @@ button.tag-btn:hover,
   color: var(--brand-primary);
   font-weight: 600;
 }
+
+/* ===========================================================================
+   ENV AUDIT PANEL — Session 2 of environment refactor
+   Diagnostic surfacing for composite environment runMult breakdown.
+   Mirrors hr-audit-panel patterns. Deep mode only. Calm gray styling — this
+   is information for verifying model behavior, not user-facing UX.
+   =========================================================================== */
+
+.env-audit-panel {
+  background: var(--surface-muted);
+  border: 0.5px solid var(--border-hairline);
+  border-left: 2px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  margin: 12px 0;
+  font-family: var(--font-sans);
+}
+
+.env-audit-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.env-audit-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.env-audit-baseline {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-style: italic;
+}
+
+.env-audit-formula {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  padding: 6px 0;
+  border-bottom: 0.5px solid var(--border-hairline);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 8px;
+}
+
+.env-audit-label {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+
+.env-audit-val {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-feature-settings: "tnum";
+}
+
+.env-audit-val.env-up {
+  color: var(--success-strong, #1b7d3f);
+}
+
+.env-audit-val.env-down {
+  color: var(--danger-strong, #b8404a);
+}
+
+.env-audit-op {
+  color: var(--text-muted);
+  font-weight: 400;
+  margin: 0 2px;
+}
+
+.env-audit-composite {
+  color: var(--brand-primary);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.env-audit-interactions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.env-audit-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  padding: 4px 0;
+  border-bottom: 0.5px solid var(--border-hairline);
+}
+
+.env-audit-row:last-child {
+  border-bottom: none;
+}
+
+.env-audit-row-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  text-transform: lowercase;
+}
+
+.env-audit-row-mag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.env-audit-row-mag.env-up {
+  color: var(--success-strong, #1b7d3f);
+}
+
+.env-audit-row-mag.env-down {
+  color: var(--danger-strong, #b8404a);
+}
+
+.env-audit-row-narrative {
+  grid-column: 1 / -1;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.env-audit-empty {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+  margin-bottom: 6px;
+}
+
+.env-audit-conditions {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  padding-top: 6px;
+  border-top: 0.5px solid var(--border-hairline);
+}
+
+.env-audit-conditions .env-audit-label {
+  margin-right: 4px;
+}
+
+@media (max-width: 480px) {
+  .env-audit-formula {
+    font-size: 10px;
+  }
+  .env-audit-composite {
+    font-size: 11px;
+  }
+  .env-audit-row-narrative {
+    font-size: 10px;
+  }
+}
+
+/* ===========================================================================
+   CALIBRATION ERA SPLIT — Session 2 of environment refactor
+   Pre/post environment refactor comparison panel. Renders in calibration view
+   only when graded data exists on both sides of the May 8 cutoff.
+   =========================================================================== */
+
+.calib-era-split {
+  background: var(--surface-muted);
+  border: 0.5px solid var(--border-hairline);
+  border-left: 2px solid var(--brand-primary);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin: 16px 0;
+}
+
+.calib-era-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.calib-era-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.calib-era-cutoff {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.calib-era-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.calib-era-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.calib-era-label {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.calib-era-mae {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.calib-era-bias {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.calib-era-count {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.calib-era-arrow {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--text-muted);
+}
+
+.calib-era-delta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding-left: 12px;
+  border-left: 0.5px solid var(--border-hairline);
+}
+
+.calib-era-delta-label {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.calib-era-delta-value {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.calib-era-delta-value.delta-up {
+  color: var(--success-strong, #1b7d3f);
+}
+
+.calib-era-delta-value.delta-down {
+  color: var(--danger-strong, #b8404a);
+}
+
+.calib-era-delta-mae {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.calib-era-verdict {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 0.5px solid var(--border-hairline);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-primary);
+  line-height: 1.4;
+  font-style: italic;
+}
+
+@media (max-width: 480px) {
+  .calib-era-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .calib-era-arrow {
+    display: none;
+  }
+  .calib-era-delta {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    justify-content: space-around;
+    border-left: none;
+    border-top: 0.5px solid var(--border-hairline);
+    padding-top: 8px;
+    padding-left: 0;
+  }
+}
