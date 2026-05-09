@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 80" width="300" height="80" role="img" aria-label="Lyrid">
+  <title>Lyrid</title>
+  <desc>The Lyrid wordmark — Source Serif Pro semibold in deep observatory blue</desc>
+  <!--
+    The wordmark is set in Source Serif Pro 600 at 56px, deep observatory blue.
+    Letter spacing is tightened to -0.02em via the textLength + lengthAdjust attributes
+    or the explicit letter-spacing CSS property.
+
+    Use: <img src="lyrid-wordmark.svg" alt="Lyrid" />
+    Or inline for color customization via CSS currentColor.
+  -->
+  <text x="0" y="58"
+        font-family="'Source Serif Pro', Georgia, 'Times New Roman', serif"
+        font-weight="600"
+        font-size="56"
+        letter-spacing="-1px"
+        fill="#1B3A5B">Lyrid</text>
+</svg>
