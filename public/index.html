@@ -3935,6 +3935,16 @@ function renderAnalysis(data) {
                   ${m.risp && m.risp.signal === 'insufficient' ? `<span class="risp-chip insufficient" title="${m.risp.detail}">RISP SMALL</span>` : ''}
                   ${xwobaDisplay}
                 </div>` : ''}
+              ${(m.seasonStats?.gbPct || m.seasonStats?.fbPct || m.seasonStats?.ldPct) ? `
+                <div class="stat-row" title="Phase 1 damage quality data — diagnostic display verifying batted-ball % flow from Savant">
+                  <span class="stat-chip" style="opacity:0.85" title="Diagnostic: damage quality data flowing">DAMAGE</span>
+                  ${m.seasonStats.gbPct?`<span class="stat-chip">GB% <b>${m.seasonStats.gbPct}</b></span>`:''}
+                  ${m.seasonStats.fbPct?`<span class="stat-chip">FB% <b>${m.seasonStats.fbPct}</b></span>`:''}
+                  ${m.seasonStats.ldPct?`<span class="stat-chip">LD% <b>${m.seasonStats.ldPct}</b></span>`:''}
+                  ${m.seasonStats.popupPct?`<span class="stat-chip">PU% <b>${m.seasonStats.popupPct}</b></span>`:''}
+                  ${m.seasonStats.sweetSpotPct?`<span class="stat-chip">Sweet% <b>${m.seasonStats.sweetSpotPct}</b></span>`:''}
+                  ${m.seasonStats.pullPct?`<span class="stat-chip">Pull% <b>${m.seasonStats.pullPct}</b></span>`:''}
+                </div>` : ''}
               ${adjHtml}
               ${propsHtml}
               ${tagChipsHtml}

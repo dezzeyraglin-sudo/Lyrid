@@ -5,8 +5,39 @@
 import { getAbbr } from '../_data/teams.js';
 import { fetchSavantCSV, arsenalURL, expectedStatsURL } from './savant.js';
 
+// PHASE 1 OF DAMAGE QUALITY SYSTEM (May 9, 2026)
+//
+// Added batted-ball % column selections: groundballs/flyballs/linedrives/popups
+// percentages, plus sweet-spot% and pull/oppo distribution. These power the
+// damage quality archetype classifier (Phase 2).
+//
+// Column name reality check: Savant has used multiple naming conventions over
+// the years. Current schema (verified in browser dev-tools against the live
+// custom CSV) uses these exact slugs:
+//   - groundballs_percent, flyballs_percent, linedrives_percent, popups_percent
+//   - sweet_spot_percent
+//   - pull_percent, straightaway_percent, oppo_percent
+//
+// If any column returns empty across all rows, the data layer logs a warning
+// and downstream classification falls back to "BALANCED" archetype rather
+// than producing garbage. See the brl_percent fallback chain below for
+// the same pattern.
 const CUSTOM_URL = (season) =>
-  `https://baseballsavant.mlb.com/leaderboard/custom?year=${season}&type=batter&filter=&min=10&selections=exit_velocity_avg%2Cbrl_percent%2Chard_hit_percent%2Ck_percent%2Cbb_percent&chart=false&x=exit_velocity_avg&y=exit_velocity_avg&r=no&chartType=beeswarm&sortDir=desc&csv=true`;
+  `https://baseballsavant.mlb.com/leaderboard/custom?year=${season}&type=batter&filter=&min=10&selections=` +
+  `exit_velocity_avg%2C` +
+  `brl_percent%2C` +
+  `hard_hit_percent%2C` +
+  `k_percent%2C` +
+  `bb_percent%2C` +
+  `groundballs_percent%2C` +
+  `flyballs_percent%2C` +
+  `linedrives_percent%2C` +
+  `popups_percent%2C` +
+  `sweet_spot_percent%2C` +
+  `pull_percent%2C` +
+  `straightaway_percent%2C` +
+  `oppo_percent` +
+  `&chart=false&x=exit_velocity_avg&y=exit_velocity_avg&r=no&chartType=beeswarm&sortDir=desc&csv=true`;
 
 // Statcast batted-ball leaderboard — separate endpoint from the custom CSV.
 // As of the 2026 season, Savant's /leaderboard/custom CSV stopped returning
@@ -317,6 +348,43 @@ export async function getHitterStats(mlbam, season) {
                  'statcastRow keys:', Object.keys(statcastRow).slice(0, 20));
   }
 
+  // PHASE 1 DAMAGE QUALITY: Read batted-ball percentages with defensive parsing.
+  // Each field uses the same empty-string-check pattern as brl_percent because
+  // Savant returns `""` when a column is requested but the underlying value is
+  // unavailable (small sample, recent call-up, etc.). Returning null in those
+  // cases lets the classifier (Phase 2) fall back to BALANCED rather than
+  // computing on bad data.
+  //
+  // Fallback aliases included for the most common Savant rename patterns.
+  // If all fail, the field is null and the classifier ignores it.
+  const parsePctField = (row, ...fieldNames) => {
+    for (const name of fieldNames) {
+      const raw = row[name];
+      if (raw !== '' && raw != null && !isNaN(parseFloat(raw))) {
+        return parseFloat(raw).toFixed(1);
+      }
+    }
+    return null;
+  };
+
+  const gbPct = parsePctField(custRow, 'groundballs_percent', 'gb_percent', 'ground_ball_percent');
+  const fbPct = parsePctField(custRow, 'flyballs_percent', 'fb_percent', 'fly_ball_percent');
+  const ldPct = parsePctField(custRow, 'linedrives_percent', 'ld_percent', 'line_drive_percent');
+  const puPct = parsePctField(custRow, 'popups_percent', 'pu_percent', 'popup_percent');
+  const sweetSpotPct = parsePctField(custRow, 'sweet_spot_percent', 'sweetspot_percent');
+  const pullPct = parsePctField(custRow, 'pull_percent');
+  const straightawayPct = parsePctField(custRow, 'straightaway_percent', 'straight_percent');
+  const oppoPct = parsePctField(custRow, 'oppo_percent', 'opposite_percent');
+
+  // Phase 1 diagnostic: log once per process start whether the batted-ball
+  // columns are populating. If GB/FB/LD all return null for a hitter that
+  // has barrel% data (so we know the row is non-empty), the URL selections
+  // probably need updating.
+  if (gbPct == null && fbPct == null && ldPct == null && brlRaw != null && process.env.NODE_ENV !== 'production') {
+    console.warn('[data.js] Phase 1 damage quality: batted-ball columns empty despite valid row. custRow keys:',
+                 Object.keys(custRow).slice(0, 30));
+  }
+
   return {
     overall: {
       xwoba: { value: expRow.est_woba ? parseFloat(expRow.est_woba).toFixed(3) : null },
@@ -325,7 +393,16 @@ export async function getHitterStats(mlbam, season) {
       barrel_batted_rate: { value: brlRaw != null ? parseFloat(brlRaw).toFixed(1) : null },
       hard_hit_percent: { value: custRow.hard_hit_percent ? parseFloat(custRow.hard_hit_percent).toFixed(1) : null },
       avg_exit_velocity: { value: custRow.exit_velocity_avg ? parseFloat(custRow.exit_velocity_avg).toFixed(1) : null },
-      k_percent: { value: custRow.k_percent ? parseFloat(custRow.k_percent).toFixed(1) : null }
+      k_percent: { value: custRow.k_percent ? parseFloat(custRow.k_percent).toFixed(1) : null },
+      // PHASE 1 DAMAGE QUALITY fields — null when Savant doesn't return data
+      gb_percent: { value: gbPct },
+      fb_percent: { value: fbPct },
+      ld_percent: { value: ldPct },
+      popup_percent: { value: puPct },
+      sweet_spot_percent: { value: sweetSpotPct },
+      pull_percent: { value: pullPct },
+      straightaway_percent: { value: straightawayPct },
+      oppo_percent: { value: oppoPct }
     },
     pitchTypes
   };

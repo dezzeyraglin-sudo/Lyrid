@@ -551,7 +551,17 @@ export default async function handler(req, res) {
             barrelPct: overall.barrel_batted_rate?.value || null,
             hardHitPct: overall.hard_hit_percent?.value || null,
             avgEV: overall.avg_exit_velocity?.value || null,
-            kPct: overall.k_percent?.value || null
+            kPct: overall.k_percent?.value || null,
+            // PHASE 1 DAMAGE QUALITY: batted-ball percentages for archetype
+            // classification. Null when Savant doesn't return data — Phase 2
+            // classifier treats null as BALANCED (no archetype edge).
+            gbPct: overall.gb_percent?.value || null,
+            fbPct: overall.fb_percent?.value || null,
+            ldPct: overall.ld_percent?.value || null,
+            popupPct: overall.popup_percent?.value || null,
+            sweetSpotPct: overall.sweet_spot_percent?.value || null,
+            pullPct: overall.pull_percent?.value || null,
+            oppoPct: overall.oppo_percent?.value || null
           },
           // HR Chance scoring (v2 — EMPIRICALLY-CALIBRATED, see _lib/hrEmpirical.js)
           // Replaces v1's hand-tuned integer scoring with multipliers grounded in
