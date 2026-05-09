@@ -62,7 +62,8 @@ export function buildPitcherProps(pitcher, opts = {}) {
     weatherImpact,
     umpire,
     gameLog = [],
-    opposingLineup = null  // DEEP MODE: lineup with deepPitchTypes for sharp K projection
+    opposingLineup = null,  // DEEP MODE: lineup with deepPitchTypes for sharp K projection
+    careerStats = null      // PITCHER NOVELTY: career PA / starts for novelty K boost
   } = opts;
 
   // ======= ROLE GATE =======
@@ -204,6 +205,27 @@ export function buildPitcherProps(pitcher, opts = {}) {
 
   // Umpire K-factor (applies regardless of sharp/baseline path)
   if (umpire?.factors?.k) projKs *= umpire.factors.k;
+
+  // PITCHER NOVELTY K BOOST (May 9, 2026)
+  // When the lineup has no MLB tape on this pitcher's arsenal, K rate spikes
+  // significantly first time through the order. This is the K-rate side of
+  // the same Yesavage failure mode that the YRFI suppression catches.
+  //
+  // Magnitudes calibrated against known debut performances:
+  //   Strider's debut: 35%+ K rate (vs season-projected ~28%)
+  //   Skenes' debut: 38% K rate
+  //   Yesavage tonight: dominated, multiple Ks first inning
+  //
+  // HIGH novelty (rookie/recent callup): ×1.20 K projection
+  // MODERATE: ×1.10
+  // Capped multiplicatively so we don't double-count if K rate was already elite.
+  if (careerStats?.noviceTier === 'HIGH') {
+    projKs *= 1.20;
+    projection.reasoning.push(`Novel pitcher boost (${careerStats.careerPa} career PA, ${careerStats.careerStarts} MLB starts) — lineup has no tape on arsenal`);
+  } else if (careerStats?.noviceTier === 'MODERATE') {
+    projKs *= 1.10;
+    projection.reasoning.push(`Limited MLB sample (${careerStats.careerPa} career PA) — modest K boost`);
+  }
 
   projection.ks = +projKs.toFixed(2);
 

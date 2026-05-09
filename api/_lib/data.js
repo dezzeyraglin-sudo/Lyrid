@@ -436,8 +436,16 @@ export async function getHitterSplits(mlbam, season) {
           doubles: s.doubles || 0,
           triples: s.triples || 0
         };
-        // K rate (since MLB API doesn't return K%)
-        row.kPct = row.pa > 0 ? ((row.k / row.pa) * 100).toFixed(1) : null;
+        // K rate fallback chain: prefer K/PA, fall back to K/AB when PA is 0
+        // (MLB API occasionally returns PA=0 for early-season low-sample splits)
+        if (row.pa > 0) {
+          row.kPct = ((row.k / row.pa) * 100).toFixed(1);
+        } else if (s.atBats && s.atBats > 0 && row.k > 0) {
+          row.kPct = ((row.k / s.atBats) * 100).toFixed(1);
+          row.pa = s.atBats;  // surface AB as PA for display
+        } else {
+          row.kPct = null;
+        }
         row.iso = s.sluggingPct && s.battingAvg
           ? (parseFloat(s.sluggingPct) - parseFloat(s.battingAvg)).toFixed(3)
           : null;
@@ -475,8 +483,25 @@ export async function getPitcherSplits(mlbam, season) {
           bb: s.baseOnBalls || 0,
           hitsAllowed: s.hits || 0
         };
-        row.kPct = row.pa > 0 ? ((row.k / row.pa) * 100).toFixed(1) : null;
-        row.bbPct = row.pa > 0 ? ((row.bb / row.pa) * 100).toFixed(1) : null;
+        // Compute K% from K/PA, with fallback to AB-based denominator if PA is 0.
+        // MLB Stats API can return PA=0 for some early-season splits even when
+        // K and AB are populated. AB is always >= K so we can use it as a
+        // safe denominator when PA is missing. K rate from AB is slightly higher
+        // than K rate from PA (PA includes walks/HBP that AB doesn't), so this
+        // is a small over-estimate when used as fallback — acceptable for display.
+        if (row.pa > 0) {
+          row.kPct = ((row.k / row.pa) * 100).toFixed(1);
+          row.bbPct = ((row.bb / row.pa) * 100).toFixed(1);
+        } else if (s.atBats && s.atBats > 0 && row.k > 0) {
+          // PA missing but AB+K available — use AB as fallback denominator
+          row.kPct = ((row.k / s.atBats) * 100).toFixed(1);
+          row.bbPct = row.bb > 0 ? ((row.bb / s.atBats) * 100).toFixed(1) : null;
+          // Update PA to AB so display doesn't show 0PA
+          row.pa = s.atBats;
+        } else {
+          row.kPct = null;
+          row.bbPct = null;
+        }
         // 'vr' for pitcher = vs RHB, 'vl' = vs LHB
         if (code === 'vr') splits.vsR = row;
         else if (code === 'vl') splits.vsL = row;
@@ -570,6 +595,64 @@ export async function getPitcherRecentStarts(mlbam, season, n = 3) {
     return games.slice(0, n);
   } catch (err) {
     return [];
+  }
+}
+
+// =============================================================
+// Pitcher career stats — for novelty detection
+// =============================================================
+// Pulls career-level pitching stats from MLB Stats API. Used by the pitcher
+// novelty detector to flag rookies and recent call-ups whose lineups have
+// minimal MLB exposure to their arsenal. Same endpoint pattern as
+// batterRisp.js but on the pitching group.
+//
+// Returns: { careerPa, careerIp, careerStarts, careerKs, isRookieOrCallup }
+// or null on fetch failure.
+//
+// "Rookie or callup" is defined as career PA faced < 150 — captures both
+// debut starts and pitchers within their first dozen MLB outings. Magnitude
+// based on the Yesavage failure mode + known debut performances (Strider,
+// Skenes) showing dominant first-time-through-order effects below this threshold.
+export async function getPitcherCareerStats(mlbam) {
+  try {
+    const url = `https://statsapi.mlb.com/api/v1/people/${mlbam}/stats?stats=careerRegularSeason&group=pitching`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return null;
+    const data = await r.json();
+
+    const split = data?.stats?.[0]?.splits?.[0]?.stat;
+    if (!split) {
+      // No career stats means no MLB tape — true rookie / first start
+      return {
+        careerPa: 0,
+        careerIp: 0,
+        careerStarts: 0,
+        careerKs: 0,
+        isRookieOrCallup: true,
+        noviceTier: 'HIGH'  // strongest novelty
+      };
+    }
+
+    const careerPa = parseInt(split.battersFaced) || 0;
+    const careerIpRaw = parseFloat(split.inningsPitched) || 0;
+    const careerStarts = parseInt(split.gamesStarted) || 0;
+    const careerKs = parseInt(split.strikeOuts) || 0;
+
+    // Tier classification
+    let noviceTier = 'NONE';
+    if (careerPa < 50 || careerStarts < 3) noviceTier = 'HIGH';
+    else if (careerPa < 150 || careerStarts < 8) noviceTier = 'MODERATE';
+
+    return {
+      careerPa,
+      careerIp: careerIpRaw,
+      careerStarts,
+      careerKs,
+      isRookieOrCallup: noviceTier !== 'NONE',
+      noviceTier
+    };
+  } catch (err) {
+    return null;
   }
 }
 

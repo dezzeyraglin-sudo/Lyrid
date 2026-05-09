@@ -106,6 +106,43 @@ export function computeFirstInningProbability(awaySide, homeSide, context = {}) 
     else if (ump.k <= 0.96) reasoning.push(`Tight-zone ump inflates 1st-inn scoring`);
   }
 
+  // PITCHER NOVELTY SUPPRESSION (May 9, 2026)
+  // When a starter has limited MLB sample, the opposing lineup has no tape on
+  // his arsenal. First time through the order, hitters can't time the release,
+  // recognize spin, or identify the out pitch. Result: dominant first inning
+  // even from pitchers whose stats look mediocre.
+  //
+  // Yesavage failure mode: TOR vs LAA, Yesavage struck out side on splitters
+  // off the plate. Tool projected over. Lineup had never faced him.
+  //
+  // awaySide.pitcherCareerStats describes the AWAY pitcher (who pitches to
+  // the home lineup → affects homeScoresProb). Same for the other side.
+  // homeSide.pitcherCareerStats describes the HOME pitcher (affects awayScoresProb).
+  //
+  // Magnitude:
+  //   HIGH novelty (career PA < 50 OR < 3 starts): ×0.65 (35% reduction)
+  //   MODERATE (PA < 150 OR < 8 starts):           ×0.85 (15% reduction)
+  //
+  // Apply to the side whose offense faces the novel pitcher.
+  const homeSpNovelty = awaySide?.pitcherCareerStats;  // away's "home SP" perspective
+  const awaySpNovelty = homeSide?.pitcherCareerStats;  // home's "away SP" perspective
+
+  if (homeSpNovelty?.noviceTier === 'HIGH') {
+    awayScoresProb *= 0.65;
+    reasoning.push(`Home SP novel to lineup (${homeSpNovelty.careerPa} career PA, ${homeSpNovelty.careerStarts} MLB starts) — suppress`);
+  } else if (homeSpNovelty?.noviceTier === 'MODERATE') {
+    awayScoresProb *= 0.85;
+    reasoning.push(`Home SP limited MLB sample (${homeSpNovelty.careerPa} career PA) — modest suppress`);
+  }
+
+  if (awaySpNovelty?.noviceTier === 'HIGH') {
+    homeScoresProb *= 0.65;
+    reasoning.push(`Away SP novel to lineup (${awaySpNovelty.careerPa} career PA, ${awaySpNovelty.careerStarts} MLB starts) — suppress`);
+  } else if (awaySpNovelty?.noviceTier === 'MODERATE') {
+    homeScoresProb *= 0.85;
+    reasoning.push(`Away SP limited MLB sample (${awaySpNovelty.careerPa} career PA) — modest suppress`);
+  }
+
   // Clamp individual probs
   awayScoresProb = Math.max(0.05, Math.min(0.75, awayScoresProb));
   homeScoresProb = Math.max(0.05, Math.min(0.75, homeScoresProb));

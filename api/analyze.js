@@ -4,7 +4,7 @@
 
 import { PARK_FACTORS_BY_TEAM, PARK_GEO, getParkGeo } from './_data/parkFactors.js';
 import { UMPIRE_FACTORS, classifyUmp, getAbsAdjustedFactors } from './_data/umpireFactors.js';
-import { getProbables, getPitcherArsenal, getBullpenProfile, getLineup, getHitterStats, getHitterSplits, getPitcherSplits, getHitterPitchTypeByHand, getGameOdds, getPitcherHomeRoadSplits, getPitcherRecentStarts } from './_lib/data.js';
+import { getProbables, getPitcherArsenal, getBullpenProfile, getLineup, getHitterStats, getHitterSplits, getPitcherSplits, getHitterPitchTypeByHand, getGameOdds, getPitcherHomeRoadSplits, getPitcherRecentStarts, getPitcherCareerStats } from './_lib/data.js';
 import { getBlendedInningSplits } from './_lib/pitcherInnings.js';
 import { getWeatherForecast, computeWeatherImpact } from './_lib/weather.js';
 import { computeEnvironmentImpact } from './_lib/environmentImpact.js';
@@ -225,7 +225,7 @@ export default async function handler(req, res) {
     const sideResults = await Promise.all(sides.map(async s => {
       if (!s.pitcher || !s.hitTeamId) return null;
 
-      const [arsenal, lineup, bullpen, pitcherSplits, inningSplits, pitcherRole, homeRoadSplits, recentStarts] = await Promise.all([
+      const [arsenal, lineup, bullpen, pitcherSplits, inningSplits, pitcherRole, homeRoadSplits, recentStarts, careerStats] = await Promise.all([
         getPitcherArsenal(s.pitcher.id, season).catch(() => []),
         getLineup(s.hitTeamId, gamePk, s.side).catch(() => []),
         getBullpenProfile(s.pitTeamAbbr, season, s.pitcher.id).catch(() => ({ pitches: [], pitcherCount: 0 })),
@@ -239,7 +239,12 @@ export default async function handler(req, res) {
         getPitcherHomeRoadSplits(s.pitcher.id, season).catch(() => ({ home: null, road: null })),
         // Recent starts — last 3 starts with IP/K/BB/ER. Used for form trend display
         // and to inform Outs projection (already in role data, but explicit history adds context).
-        getPitcherRecentStarts(s.pitcher.id, season, 3).catch(() => [])
+        getPitcherRecentStarts(s.pitcher.id, season, 3).catch(() => []),
+        // PITCHER NOVELTY (May 9, 2026): career stats for novelty detection.
+        // Lineups facing rookies/recent-callups have no MLB tape on the arsenal,
+        // get dominated first time through. The Yesavage failure mode.
+        // Cheap MLB Stats API call; fails gracefully to null.
+        getPitcherCareerStats(s.pitcher.id).catch(() => null)
       ]);
 
       const keyPitches = arsenal.slice(0, 3);
@@ -846,7 +851,9 @@ export default async function handler(req, res) {
         weatherImpact: results.weatherImpact,
         umpire: results.umpire,
         // DEEP MODE: pass lineup with per-pitch deep data for sharp K projection
-        opposingLineup: deepMode ? hitterData : null
+        opposingLineup: deepMode ? hitterData : null,
+        // PITCHER NOVELTY: career stats for rookie/callup K boost
+        careerStats
       });
 
       // Top 3 HR projections regardless of tier — used for diagnostic display so
@@ -880,6 +887,7 @@ export default async function handler(req, res) {
           pitcherSplits,
           pitcherHomeRoadSplits: homeRoadSplits,
           pitcherRecentStarts: recentStarts,
+          pitcherCareerStats: careerStats,  // PITCHER NOVELTY: surfaces rookie/callup status
           inningSplits,
           pitcherNarrative,
           pitcherRole,

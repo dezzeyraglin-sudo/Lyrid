@@ -486,6 +486,9 @@
   .pitcher-slot .label{font-size:9px;color:var(--dim);margin-bottom:3px;letter-spacing:0.1em;margin-top:0}
   .pitcher-slot .name{font-weight:700;color:var(--ink)}
   .scratch-badge{display:inline-block;background:var(--danger);color:#0a0d0a;font-size:9px;padding:2px 6px;border-radius:3px;letter-spacing:0.1em;font-weight:700;margin-left:6px}
+  .novelty-badge{display:inline-block;font-size:9px;padding:2px 6px;border-radius:3px;letter-spacing:0.08em;font-weight:700;margin-left:6px;cursor:help}
+  .novelty-badge.high{background:#7d3a00;color:#ffd980;border:1px solid #b87a30}
+  .novelty-badge.moderate{background:#3d3a20;color:#d8c570;border:1px solid #8a7a40}
 
   .analysis-panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-top:12px}
   .analysis-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--line)}
@@ -4585,7 +4588,7 @@ function renderAnalysis(data) {
           })()}
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
             <div>
-              <div class="ph-name">${s.pitcher.name} (${s.pitcher.hand}HP)${oppPitcherBanned ? '<span class="scratch-badge" style="margin-left:6px">BANNED</span>' : ''}</div>
+              <div class="ph-name">${s.pitcher.name} (${s.pitcher.hand}HP)${oppPitcherBanned ? '<span class="scratch-badge" style="margin-left:6px">BANNED</span>' : ''}${s.pitcherCareerStats?.noviceTier === 'HIGH' ? `<span class="novelty-badge high" title="Limited MLB sample (${s.pitcherCareerStats.careerPa} career PA, ${s.pitcherCareerStats.careerStarts} starts) — lineup unlikely to have tape on his arsenal. YRFI suppressed, K projection boosted.">ROOKIE/CALLUP</span>` : s.pitcherCareerStats?.noviceTier === 'MODERATE' ? `<span class="novelty-badge moderate" title="Limited MLB sample (${s.pitcherCareerStats.careerPa} career PA) — modest novelty effect applied.">LIMITED MLB SAMPLE</span>` : ''}</div>
               <div class="ph-meta">Arsenal (by usage):</div>
             </div>
             <div style="display:flex;gap:6px">
