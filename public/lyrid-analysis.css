@@ -4512,3 +4512,36 @@ button.tag-btn:hover,
     padding-left: 0;
   }
 }
+
+/* Flag-off indicator on env audit panel — when ENV_REFACTOR_ENABLED is false,
+   the panel renders the passthrough math but signals visually that the
+   composite is dormant. Quiet styling — informational, not an alarm. */
+.env-audit-panel.env-audit-flagged-off {
+  border-left-color: var(--text-muted);
+  opacity: 0.92;
+}
+
+.env-audit-flag-off {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  margin-left: 6px;
+  font-style: italic;
+}
+
+/* Selection-bias caveat in calibration era-split panel.
+   Surfaces honestly that projectionAudit is user-curated, not population data. */
+.calib-era-caveat {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: var(--surface-warn, rgba(229, 162, 78, 0.06));
+  border-left: 2px solid var(--warn, #c89656);
+  border-radius: var(--radius-sm, 4px);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}

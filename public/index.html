@@ -4864,9 +4864,9 @@ function renderAnalysis(data) {
       console.groupEnd();
     }
     const envAuditHtml = (data.deepMode && envDbg) ? `
-      <div class="env-audit-panel">
+      <div class="env-audit-panel ${envDbg.flagDisabled ? 'env-audit-flagged-off' : ''}">
         <div class="env-audit-head">
-          <span class="env-audit-eyebrow">ENVIRONMENT AUDIT · diagnostic</span>
+          <span class="env-audit-eyebrow">ENVIRONMENT AUDIT · diagnostic ${envDbg.flagDisabled ? '<span class="env-audit-flag-off">(flag off · passthrough)</span>' : ''}</span>
           <span class="env-audit-baseline">composite runMult — check console for full trace</span>
         </div>
         <div class="env-audit-formula">
@@ -8016,6 +8016,12 @@ function renderHistory() {
               ` : ''}
             </div>
             ${verdictLine ? `<div class="calib-era-verdict">${verdictLine}</div>` : ''}
+            <div class="calib-era-caveat">
+              ⚠ Sample is user-curated (only games you analyzed) — not a representative MLB-wide population.
+              These bias figures show how the model performs on games YOU find interesting,
+              not how it performs in general. For population-level calibration, run a batch backfill
+              across full slates (planned future work).
+            </div>
           </div>
         `;
       })() : ''}

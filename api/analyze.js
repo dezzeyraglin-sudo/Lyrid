@@ -20,6 +20,61 @@ import { getLineupRispPerformance, applyRispAdjustment, buildLineupConversionTie
 import { fetchPitcherPropsLines, getPitcherLinesByName } from './_lib/pitcherPropsLines.js';
 import { tryAuth, checkAndIncrementQuota, AuthError } from './_lib/auth.js';
 
+// PITCHER'S DUEL FIX (May 9, 2026)
+// Feature-flagged calibration changes that address the model's failure to
+// detect pitcher's duels. See PITCHERS_DUEL_FIX.md for the full analysis.
+//
+// Three changes work together:
+//   1. lineupMult uses a regressed xwOBA (50% max + 50% weighted) instead of
+//      pure best-case max — recognizes that elite pitchers control which
+//      pitches hitters see
+//   2. pitcherMult has an amplified slope below xwOBA-against 0.290 — true
+//      elite pitchers suppress runs much more than the linear mapping suggests
+//   3. Dual-elite SP detector applies an additional -7% suppression when both
+//      starting pitchers have xwOBA-against ≤ 0.290
+//
+// Flag default: ON. The fix is well-justified by the 9-game analysis showing
+// 8 of 9 games projected 10+ runs when the actuals averaged 8.0. Flip to OFF
+// via Vercel env var if it overcorrects.
+const PITCHER_DUEL_FIX_ENABLED = (() => {
+  const v = process.env.PITCHER_DUEL_FIX_ENABLED;
+  if (v === 'false' || v === '0' || v === 'no') return false;
+  return true;  // default on
+})();
+
+// SLUGFEST FIX (May 9, 2026)
+// Mirror of the pitcher's duel fix for the OPPOSITE failure mode: model
+// projects 9-13 on games that end 14-20+ runs. SEA@CWS finished 20 runs,
+// projected 12.87 — and the model COULDN'T tell that game apart from
+// NYY@MIL (both elite SPs) which projected 12.64. The model compresses
+// every game into the 10-13 range.
+//
+// The fix uses a multi-factor conjunction signal: when bad pitching meets
+// stacked lineups in a hitter park with multiple HR threats, the projection
+// gets nudged up. Magnitude is intentionally modest (+7% / +10%) — better
+// to nudge in the right direction than overshoot.
+//
+// Flag default: ON. Flip via Vercel env var if it overshoots.
+const SLUGFEST_FIX_ENABLED = (() => {
+  const v = process.env.SLUGFEST_FIX_ENABLED;
+  if (v === 'false' || v === '0' || v === 'no') return false;
+  return true;  // default on
+})();
+
+// Amplified pitcher multiplier — adds a non-linear correction for elite
+// xwOBA-against. The base linear mapping ((xw - 0.320) × 2.0) systematically
+// undercounts truly elite SPs because their impact is non-linear: a .240 SP
+// doesn't suppress runs 10% more than a .280 SP, he suppresses them 30% more.
+//
+// When xwOBA-against drops below 0.290, each additional 0.010 below adds
+// another 4% suppression on top of the base linear contribution.
+function pitcherMultFromXwAmplified(xw) {
+  if (xw == null) return 1.0;
+  const baseDelta = (xw - 0.320) * 2.0;
+  const eliteAmp = xw < 0.290 ? (0.290 - xw) * 4.0 : 0;
+  return Math.max(0.5, 1.0 + baseDelta - eliteAmp);  // floor at 0.5x to prevent runaway
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -1033,11 +1088,25 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
     if (!side) return { lineupMult: 1.0, pitcherMult: 1.0, bullpenMult: 1.0, factors: {} };
 
     const lt = side.lineupTier;
-    // Lineup quality: map the average max-xwoba-vs-this-arsenal to a run multiplier
-    // League avg is around .320 — elite lineup tier tops out near .380
-    // Use a soft curve so elite lineups don't over-project
+    // Lineup quality: map the average xwOBA-vs-this-arsenal to a run multiplier.
+    //
+    // PITCHER DUEL FIX: When enabled, regress avgMaxXwoba (best-case per
+    // hitter) toward avgWeightedXwoba (expected vs actual pitch distribution).
+    // The "max" is what hitters do when they get their pitch; the "weighted"
+    // is what they actually average across the pitcher's full arsenal. Pitchers
+    // — especially elite ones — control which pitches hitters see, so the
+    // weighted is closer to reality. 50/50 blend recognizes neither extreme is
+    // quite right.
+    //
+    // Without the fix, lineupMult could push to 1.22+ on EXPLOITABLE-tier
+    // lineups, which combined with weak pitcher suppression produced 12+ run
+    // projections on games that ended 4-6 runs.
     const avgMaxXw = parseFloat(lt?.avgMaxXwoba || 0.320);
-    const lineupMult = 1.0 + ((avgMaxXw - 0.320) * 2.4);   // .040 above avg → +9.6%
+    const avgWeightedXw = parseFloat(lt?.avgWeightedXwoba || avgMaxXw);
+    const effectiveXw = PITCHER_DUEL_FIX_ENABLED && avgWeightedXw > 0
+      ? (avgMaxXw * 0.5) + (avgWeightedXw * 0.5)
+      : avgMaxXw;
+    const lineupMult = 1.0 + ((effectiveXw - 0.320) * 2.4);   // .040 above avg → +9.6%
 
     // Pitcher quality: use starter's season xwOBA-against (from arsenal weighted avg)
     let pitcherXwAgainst = null;
@@ -1051,10 +1120,15 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
         pitcherXwAgainst = weighted / totalPitches;
       }
     }
-    // Lower xwOBA-against = better pitcher = suppresses runs
-    // League avg xwOBA-against is ~.320; ace at ~.270; replacement at ~.360
+    // Lower xwOBA-against = better pitcher = suppresses runs.
+    //
+    // PITCHER DUEL FIX: Use the amplified mapping (defined at top of file) that
+    // adds non-linear suppression below 0.290 xwOBA. Truly elite SPs (.240-.280)
+    // suppress runs much more aggressively than the linear curve suggests.
     const pitcherMult = pitcherXwAgainst
-      ? 1.0 + ((pitcherXwAgainst - 0.320) * 2.0)   // ace .270 → 0.90x, bad .360 → 1.08x
+      ? (PITCHER_DUEL_FIX_ENABLED
+          ? pitcherMultFromXwAmplified(pitcherXwAgainst)
+          : 1.0 + ((pitcherXwAgainst - 0.320) * 2.0))
       : 1.0;
 
     // Bullpen quality: similar mapping using weighted xwOBA-against across bullpen arsenal
@@ -1102,6 +1176,8 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
       bullpenMult,
       factors: {
         avgMaxXw: avgMaxXw.toFixed(3),
+        avgWeightedXw: avgWeightedXw > 0 ? avgWeightedXw.toFixed(3) : null,
+        effectiveXw: effectiveXw.toFixed(3),
         pitcherXwAgainst: pitcherXwAgainst ? pitcherXwAgainst.toFixed(3) : null,
         bullpenXwAgainst: bullpenXwAgainst ? bullpenXwAgainst.toFixed(3) : null,
         inningMult: inningMult.toFixed(3),
@@ -1149,6 +1225,96 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
   const awayPitcherBlend = (awayComp.pitcherMult * aw.sp) + (awayComp.bullpenMult * aw.bp);
   const homePitcherBlend = (homeComp.pitcherMult * hw.sp) + (homeComp.bullpenMult * hw.bp);
 
+  // PITCHER DUEL FIX (Change 3 of 3): Dual-elite SP detector.
+  //
+  // When BOTH starting pitchers have xwOBA-against ≤ 0.290, apply an
+  // additional -7% multiplicative suppression to both teams' projections.
+  // This catches the conjunction effect that the additive multiplier chain
+  // misses: two elite SPs together suppress runs more than the product of
+  // their individual suppressions.
+  //
+  // Magnitude (-7%) is intentionally modest because Changes 1 and 2 already
+  // do most of the work. This is the "extra nudge" for the specific case
+  // where both starters can lock down their respective opposing lineups.
+  //
+  // Surfaces in factors.dualEliteSuppression so we can see when it fires.
+  const awaySpXw = parseFloat(awayComp.factors.pitcherXwAgainst || 0.320);
+  const homeSpXw = parseFloat(homeComp.factors.pitcherXwAgainst || 0.320);
+  const awaySpElite = awaySpXw > 0 && awaySpXw <= 0.290;
+  const homeSpElite = homeSpXw > 0 && homeSpXw <= 0.290;
+  const dualEliteFactor = (PITCHER_DUEL_FIX_ENABLED && awaySpElite && homeSpElite) ? 0.93 : 1.0;
+
+  // SLUGFEST FIX: Multi-factor conjunction detector for explosive offensive games.
+  //
+  // Pattern from SEA@CWS (12.87 projected → 20 actual):
+  //   - Both SPs xwOBA-against ≥ 0.330 (mediocre to bad)
+  //   - Both lineups EXPLOITABLE-tier with 7+/9 hitters tiered
+  //   - Hitter-friendly park (Rate Field: +13% HR, runMult ≥ 1.05)
+  //   - Multiple HR-elite hitters (3+ projected ≥ 6%/PA)
+  //
+  // Score the conjunction. When 3+ signals fire, nudge projection up.
+  // When 4+ fire, nudge harder. Modest magnitudes (+7% / +10%) because
+  // we don't want to overshoot and create new failure modes.
+  //
+  // Surfaces in factors.slugfestScore + factors.slugfestFactor for diagnostics.
+  let slugfestScore = 0;
+  const slugfestSignals = [];
+
+  // Signal 1: Both SPs bad (≥ 0.330 xwOBA-against)
+  const bothSPsBad = awaySpXw >= 0.330 && homeSpXw >= 0.330;
+  if (bothSPsBad) {
+    slugfestScore += 1;
+    slugfestSignals.push(`both SPs bad (${awaySpXw.toFixed(3)}/${homeSpXw.toFixed(3)})`);
+  }
+
+  // Signal 2: Both lineups EXPLOITABLE with high hitter coverage (7+/9 tiered)
+  const awayLineupTier = awayVsHome?.lineupTier;
+  const homeLineupTier = homeVsAway?.lineupTier;
+  const awayStacked = awayLineupTier?.tier === 'exploitable' && (awayLineupTier.tieredCount || 0) >= 7;
+  const homeStacked = homeLineupTier?.tier === 'exploitable' && (homeLineupTier.tieredCount || 0) >= 7;
+  if (awayStacked && homeStacked) {
+    slugfestScore += 1;
+    slugfestSignals.push(`both lineups stacked (${awayLineupTier.tieredCount}/9 + ${homeLineupTier.tieredCount}/9 EXPLOITABLE)`);
+  }
+
+  // Signal 3: Hitter park (env multiplier ≥ 1.05 OR park HR factor strongly positive)
+  // Use envRunMult since it's already computed and incorporates park × weather
+  const hitterEnvironment = envRunMult >= 1.05;
+  if (hitterEnvironment) {
+    slugfestScore += 1;
+    slugfestSignals.push(`hitter park/weather (env ×${envRunMult.toFixed(3)})`);
+  }
+
+  // Signal 4: Multiple HR-elite hitters across both lineups (3+ projected ≥ 6% HR/PA)
+  // hrAuditTop is the top-3 per side from the empirical HR projection module
+  const awayHrTop = awayVsHome?.hrAuditTop || [];
+  const homeHrTop = homeVsAway?.hrAuditTop || [];
+  const allHrProjections = [...awayHrTop, ...homeHrTop]
+    .map(h => h.projectedHrPerPa || 0);
+  const hrEliteCount = allHrProjections.filter(p => p >= 0.06).length;
+  if (hrEliteCount >= 3) {
+    slugfestScore += 1;
+    slugfestSignals.push(`${hrEliteCount} HR-elite hitters`);
+  }
+
+  // Signal 5 (half-weight): Both pitchers have a meltdown inning ≤ 7th
+  // Indicates both teams have a high-leverage scoring window in regulation
+  const awayMeltInn = parseInt(awayComp.factors.meltdownInning || 0, 10);
+  const homeMeltInn = parseInt(homeComp.factors.meltdownInning || 0, 10);
+  const dualMeltdownAlign = awayMeltInn > 0 && awayMeltInn <= 7 && homeMeltInn > 0 && homeMeltInn <= 7;
+  if (dualMeltdownAlign) {
+    slugfestScore += 0.5;
+    slugfestSignals.push(`meltdown innings align (away ${awayMeltInn}th / home ${homeMeltInn}th)`);
+  }
+
+  // Convert score to multiplicative factor
+  let slugfestFactor = 1.0;
+  if (SLUGFEST_FIX_ENABLED) {
+    if (slugfestScore >= 4) slugfestFactor = 1.10;       // 4+ signals: +10%
+    else if (slugfestScore >= 3) slugfestFactor = 1.07;  // 3 signals: +7%
+    // Below 3 signals: no boost — conjunction not strong enough
+  }
+
   // Conversion rate multipliers: how efficiently each team converts scoring chances into runs.
   // Applied to the team's OWN run total (their offense converts their own opportunities).
   // 1.0 = league avg; <1.0 = strands runners; >1.0 = clutch / efficient.
@@ -1156,9 +1322,9 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
   const awayConvMult = conversionRates?.away?.conversionMult || 1.0;
   const homeConvMult = conversionRates?.home?.conversionMult || 1.0;
 
-  // Final projections — now including conversion rate and composite environment
-  const projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * envRunMult * umpRunMult * awayConvMult;
-  const projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * envRunMult * umpRunMult * homeConvMult;
+  // Final projections — now including conversion rate, composite environment, dual-elite, and slugfest
+  const projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * envRunMult * umpRunMult * awayConvMult * dualEliteFactor * slugfestFactor;
+  const projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * envRunMult * umpRunMult * homeConvMult * dualEliteFactor * slugfestFactor;
   const projTotal = projAwayRuns + projHomeRuns;
 
   // Win probability via Pythagorean expectation (exp = 1.83 for MLB)
@@ -1322,6 +1488,20 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
     envImpact.interactions.forEach(ix => projReasoning.push(ix.narrative));
   }
 
+  // Dual-elite SP suppression reasoning — fires when both starters have
+  // xwOBA-against ≤ 0.290. Communicates the conjunction effect that's been
+  // applied to the projection.
+  if (dualEliteFactor < 1.0) {
+    projReasoning.push(`Dual-elite pitcher's duel — both SPs suppress (xwOBA-against ${awaySpXw.toFixed(3)} vs ${homeSpXw.toFixed(3)}) — projection reduced ${Math.round((1 - dualEliteFactor) * 100)}%`);
+  }
+
+  // Slugfest reasoning — fires when 3+ signals align (bad SPs + stacked
+  // lineups + hitter park + multiple HR threats). Communicates the
+  // multi-factor conjunction that's been detected.
+  if (slugfestFactor > 1.0) {
+    projReasoning.push(`Slugfest setup — ${slugfestSignals.join(' · ')} — projection boosted ${Math.round((slugfestFactor - 1) * 100)}%`);
+  }
+
   // Conversion rate reasoning — only push when there's a meaningful signal
   if (conversionRates?.away && conversionRates.away.signal !== 'neutral' && conversionRates.away.signal !== 'insufficient') {
     if (conversionRates.away.signal === 'efficient' || conversionRates.away.signal === 'slight-edge') {
@@ -1436,7 +1616,13 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
       envInteractions: envImpact?.interactions?.length || 0,
       umpRunMult: umpRunMult.toFixed(3),
       awayConvMult: awayConvMult.toFixed(3),
-      homeConvMult: homeConvMult.toFixed(3)
+      homeConvMult: homeConvMult.toFixed(3),
+      dualEliteFactor: dualEliteFactor.toFixed(3),
+      pitcherDuelFixEnabled: PITCHER_DUEL_FIX_ENABLED,
+      slugfestScore: slugfestScore.toFixed(1),
+      slugfestFactor: slugfestFactor.toFixed(3),
+      slugfestSignals,
+      slugfestFixEnabled: SLUGFEST_FIX_ENABLED
     },
     conversionRates: conversionRates || { away: null, home: null },
     marketComparison,
@@ -1557,6 +1743,20 @@ function computeLineupTier(analyzedHitters, arsenal) {
     ? (xwobas.reduce((a, b) => a + b, 0) / xwobas.length)
     : 0;
 
+  // Average usage-weighted xwOBA across whole lineup. This is the EXPECTED
+  // xwOBA when accounting for the pitcher's actual pitch distribution, not
+  // just each hitter's best-case match. Used in buildGameProjection's
+  // lineupMult math to regress maxXwoba toward expected.
+  //
+  // edgeScore is already computed per-hitter as sum(xw * usage_fraction),
+  // which is the weighted xwoba directly. We average it across the lineup.
+  const edgeScores = analyzedHitters
+    .map(h => parseFloat(h.adjustedEdgeScore != null ? h.adjustedEdgeScore : h.edgeScore))
+    .filter(x => !isNaN(x) && x > 0);
+  const avgWeightedXwoba = edgeScores.length > 0
+    ? (edgeScores.reduce((a, b) => a + b, 0) / edgeScores.length)
+    : 0;
+
   // Weighted score: elite counts 3x, strong 2x, solid 1x
   // Plus bonus for high average xwOBA across whole lineup
   const weightedScore = (eliteCount * 3) + (strongCount * 2) + (solidCount * 1);
@@ -1596,6 +1796,7 @@ function computeLineupTier(analyzedHitters, arsenal) {
     tieredCount,
     lineupSize: total,
     avgMaxXwoba: avgMaxXwoba.toFixed(3),
+    avgWeightedXwoba: avgWeightedXwoba.toFixed(3),
     totalScore,
     summary
   };

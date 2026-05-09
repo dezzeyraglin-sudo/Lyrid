@@ -4,8 +4,8 @@
 // state into a single coherent run/HR multiplier with interaction terms.
 //
 // Replaces the previous flat `parkRunMult * weatherRunMult` chain in
-// analyze.js's buildGameProjection. Addresses the +2.9 runs UNDER calibration
-// bias by surfacing interactions the flat product misses:
+// analyze.js's buildGameProjection. Surfaces interactions the flat product
+// misses:
 //
 //   - Hot × wind-out (compounding carry — hot air with wind helping
 //     produces more than the linear product suggests)
@@ -13,17 +13,43 @@
 //     when cold)
 //   - Altitude × hot (altitude amplifies temperature carry effects)
 //   - Pitcher-park × cold (cold suppresses already-suppressive parks more)
+//   - Hitter-park × wind-in (partial neutralization of park boost)
 //
-// Asymmetric design: boost environments are amplified more than suppressive
-// environments are deepened, because the calibration bias is +2.9 UNDER —
-// the model already over-suppresses correctly-suppressive parks. We don't
-// want to over-correct in the opposite direction.
+// FEATURE FLAG: Gated behind `process.env.ENV_REFACTOR_ENABLED`. When false
+// (default), this module returns a passthrough — `parkRunMult * weatherRunMult`
+// with no interactions, exactly the old math. When true, the full composite
+// fires.
+//
+// Why flagged: the original premise for this refactor was correcting a "+2.9
+// runs UNDER" calibration bias. After shipping, we discovered that bias figure
+// was computed from a user-curated sample (`projectionAudit` only contains
+// games the user manually analyzed, not all MLB games), so it doesn't reliably
+// represent population-level model behavior. We need representative calibration
+// data — likely from a batch backfill that runs analyze across full slates —
+// before flipping the flag and trusting the asymmetric correction.
+//
+// To flip the flag: set ENV_REFACTOR_ENABLED=true in Vercel env vars (no code
+// change required). When the flag is on, the asymmetric design assumes the
+// model under-projects on average; if real calibration data shows the opposite,
+// the asymmetry would need to be inverted before enabling.
+//
+// The diagnostic UI (env audit panel in deep mode) renders regardless of flag
+// state — when off, it shows interactionMult: 1.000 and "No interactions
+// fired", which is useful for verifying the flag is doing what it claims.
 //
 // Returns a structured object that:
 //   - Replaces the runMult chain in buildGameProjection
 //   - Preserves all existing weatherImpact fields (hrMultLHH, hrMultRHH,
 //     narrative, etc.) so the HR module is unaffected
-//   - Surfaces interactions array for diagnostics (Session 2 will render this)
+//   - Surfaces interactions array for diagnostics
+
+// Read flag at module load. Vercel env vars come in as strings, so we
+// explicitly check for the truthy string values rather than relying on
+// JS truthiness (the string "false" is truthy by default).
+const ENV_REFACTOR_ENABLED = (() => {
+  const v = process.env.ENV_REFACTOR_ENABLED;
+  return v === 'true' || v === '1' || v === 'yes';
+})();
 
 /**
  * @param {Object} parkFactor   { runs, hr, lhbHr, rhbHr, name, ... }
@@ -42,6 +68,37 @@ export function computeEnvironmentImpact(parkFactor, weatherImpact, parkGeo) {
   // Base multipliers (current flat math, what we replace)
   const baseParkRun = parkFactor ? (parkFactor.runs || 100) / 100 : 1.0;
   const baseWeatherRun = weatherImpact?.runMult || 1.0;
+
+  // FEATURE FLAG: when disabled (default), return a passthrough that exactly
+  // matches the old `parkRunMult * weatherRunMult` math. The diagnostic UI
+  // can still render — it'll show interactionMult: 1.000 and an empty
+  // interactions array, which makes it clear the flag is off and the new
+  // math is dormant. Flip the flag via the ENV_REFACTOR_ENABLED env var
+  // when we have representative calibration data to verify the direction
+  // of the asymmetric correction.
+  if (!ENV_REFACTOR_ENABLED) {
+    return {
+      runMult: baseParkRun * baseWeatherRun,
+      hrMultLHH: weatherImpact?.hrMultLHH || 1.0,
+      hrMultRHH: weatherImpact?.hrMultRHH || 1.0,
+      interactions: [],
+      _debug: {
+        baseParkRun: parseFloat(baseParkRun.toFixed(4)),
+        baseWeatherRun: parseFloat(baseWeatherRun.toFixed(4)),
+        interactionMult: 1.0,
+        compositeRunMult: parseFloat((baseParkRun * baseWeatherRun).toFixed(4)),
+        interactions: [],
+        flagDisabled: true,
+        conditions: {
+          tempF: weatherImpact?.tempF ?? null,
+          windCat: weatherImpact?.windRelative?.category ?? null,
+          windSpeed: weatherImpact?.windSpeedMph || 0,
+          exposure: parkGeo?.exposure ?? null,
+          parkRuns: parkFactor?.runs ?? null
+        }
+      }
+    };
+  }
 
   // No park/weather data → return neutral
   if (!parkFactor && !weatherImpact) {
