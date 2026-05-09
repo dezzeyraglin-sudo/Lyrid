@@ -61,6 +61,40 @@ const SLUGFEST_FIX_ENABLED = (() => {
   return true;  // default on
 })();
 
+// HITTER TIER REGRESSION (May 9, 2026) — DEFAULT OFF
+// The pitcher's duel fix added regression of avgMaxXwoba toward avgWeightedXwoba
+// for the run total's lineupMult. That was server-side and applied at the
+// LINEUP level. The same root-cause issue still exists at the PER-HITTER level:
+// individual hitter tier classification (elite/strong/solid) and top pick
+// selection both use raw adjustedMaxXwoba — the theoretical best-case xwOBA
+// against the pitcher's best matchup pitch.
+//
+// Empirical evidence from 928 graded picks (May 9):
+//   All-time:    463-465  (49.9%)
+//   Top picks:   154-177  (46.5%)  <-- WORST, should be best
+//   Elite tier:  391-397  (49.6%)
+//   Strong tier:  72-68   (51.4%)  <-- BEST, should be lower than Elite
+//
+// Tier inversion (Strong > Elite) and top-pick underperformance both indicate
+// the picker is selecting hitters whose theoretical max is high but expected
+// output is normal. Same demon-trap pattern the pitcher's duel fix addressed
+// for run totals.
+//
+// This flag enables: per-hitter regression of adjustedMaxXwoba toward
+// adjustedEdgeScore (usage-weighted xwOBA) using a 50/50 blend, same as the
+// lineup-level fix. Re-tuned tier thresholds will follow once empirical
+// calibration data is collected next session.
+//
+// Flag default: OFF. We need to validate calibration before flipping live —
+// untuned regression could shift the tier distribution unpredictably and
+// briefly degrade results before we re-tune thresholds. See
+// HITTER_TIER_REGRESSION_DESIGN.md for the calibration plan.
+const HITTER_TIER_REGRESSION_ENABLED = (() => {
+  const v = process.env.HITTER_TIER_REGRESSION_ENABLED;
+  if (v === 'true' || v === '1' || v === 'yes') return true;
+  return false;  // default off — calibration needed first
+})();
+
 // Amplified pitcher multiplier — adds a non-linear correction for elite
 // xwOBA-against. The base linear mapping ((xw - 0.320) × 2.0) systematically
 // undercounts truly elite SPs because their impact is non-linear: a .240 SP
@@ -493,10 +527,22 @@ export default async function handler(req, res) {
         const adjustedMaxXwoba = maxXwoba * contextMultiplier;
         const adjustedEdge = edgeScore * contextMultiplier;
 
+        // HITTER TIER REGRESSION (flag-gated, default OFF)
+        // 50/50 blend of best-case (adjustedMaxXwoba) and expected (adjustedEdge).
+        // edgeScore is already usage-weighted (sum of xw × usage_pct for matched
+        // pitches), so it represents the expected xwOBA across the pitcher's
+        // actual arsenal distribution — not the theoretical max.
+        //
+        // When the flag is on, tier classification uses regressed value. When
+        // off, behavior is identical to before (uses adjustedMaxXwoba). Both
+        // values are always surfaced in the output for diagnostic comparison.
+        const regressedMaxXwoba = (adjustedMaxXwoba + adjustedEdge) / 2;
+        const tierEvalXwoba = HITTER_TIER_REGRESSION_ENABLED ? regressedMaxXwoba : adjustedMaxXwoba;
+
         let tier = null;
-        if (adjustedMaxXwoba >= 0.420) tier = 'elite';
-        else if (adjustedMaxXwoba >= 0.370) tier = 'strong';
-        else if (adjustedMaxXwoba >= 0.330) tier = 'solid';
+        if (tierEvalXwoba >= 0.420) tier = 'elite';
+        else if (tierEvalXwoba >= 0.370) tier = 'strong';
+        else if (tierEvalXwoba >= 0.330) tier = 'solid';
 
         // Build plain-language edge description
         const description = buildEdgeDescription({
@@ -539,6 +585,11 @@ export default async function handler(req, res) {
           adjustedMaxXwoba: adjustedMaxXwoba.toFixed(3),
           edgeScore: edgeScore.toFixed(3),
           adjustedEdgeScore: adjustedEdge.toFixed(3),
+          // HITTER TIER REGRESSION diagnostic — always populated, used to
+          // compare classifier behavior with/without the flag enabled.
+          regressedMaxXwoba: regressedMaxXwoba.toFixed(3),
+          tierEvalXwoba: tierEvalXwoba.toFixed(3),
+          tierRegressionEnabled: HITTER_TIER_REGRESSION_ENABLED,
           contextMultiplier: contextMultiplier.toFixed(3),
           adjustments,
           tier,
@@ -664,8 +715,13 @@ export default async function handler(req, res) {
       let topPick = null;
       if (withTopPickScore.length > 0) {
         const candidate = withTopPickScore[0];
+        // Use the same regressed value as tier classification when flag is on,
+        // so the qualification check is consistent with the tier assignment.
+        const candidateQualifyingXw = HITTER_TIER_REGRESSION_ENABLED
+          ? parseFloat(candidate.regressedMaxXwoba || candidate.adjustedMaxXwoba)
+          : parseFloat(candidate.adjustedMaxXwoba);
         const candidateQualifies = candidate.tier === 'elite' ||
-                                   (candidate.tier === 'strong' && parseFloat(candidate.adjustedMaxXwoba) >= 0.380) ||
+                                   (candidate.tier === 'strong' && candidateQualifyingXw >= 0.380) ||
                                    (candidate.tier === 'solid' && candidate.bullpenTier);
         if (candidateQualifies) {
           candidate.isTopPick = true;
