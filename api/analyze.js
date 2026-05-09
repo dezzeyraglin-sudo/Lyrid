@@ -7,6 +7,7 @@ import { UMPIRE_FACTORS, classifyUmp, getAbsAdjustedFactors } from './_data/umpi
 import { getProbables, getPitcherArsenal, getBullpenProfile, getLineup, getHitterStats, getHitterSplits, getPitcherSplits, getHitterPitchTypeByHand, getGameOdds, getPitcherHomeRoadSplits, getPitcherRecentStarts } from './_lib/data.js';
 import { getBlendedInningSplits } from './_lib/pitcherInnings.js';
 import { getWeatherForecast, computeWeatherImpact } from './_lib/weather.js';
+import { computeEnvironmentImpact } from './_lib/environmentImpact.js';
 import { getHitterSituationalByMlbam } from './_lib/brefSplits.js';
 import { detectPitcherRole } from './_lib/pitcherRole.js';
 import { buildGameLineRecommendations } from './_lib/gameLineBets.js';
@@ -108,6 +109,7 @@ export default async function handler(req, res) {
       umpire: null,
       weather: null,
       weatherImpact: null,
+      envImpact: null,
       deepMode,
       awayVsHome: null,
       homeVsAway: null
@@ -140,6 +142,16 @@ export default async function handler(req, res) {
     if (weather && parkGeo) {
       results.weather = weather;
       results.weatherImpact = computeWeatherImpact(weather, parkGeo);
+    }
+
+    // Composite environment impact: park × weather + interaction terms.
+    // Replaces the flat `parkRunMult * weatherRunMult` chain in
+    // buildGameProjection. Addresses the +2.9 runs UNDER calibration bias
+    // by surfacing interactions (hot×wind-out, hitter-park×hot, altitude×hot,
+    // pitcher-park×cold) the flat product missed. Computed even when weather
+    // is unavailable — falls back gracefully to park-only multiplier.
+    if (parkFactor || results.weatherImpact) {
+      results.envImpact = computeEnvironmentImpact(parkFactor, results.weatherImpact, parkGeo);
     }
 
     const sides = [
@@ -941,6 +953,7 @@ export default async function handler(req, res) {
       parkFactor,
       umpire: results.umpire,
       weatherImpact: results.weatherImpact,
+      envImpact: results.envImpact,    // NEW: composite park×weather with interactions
       conversionRates,                  // NEW: stranded-runner / RISP signal
       odds
     });
@@ -1011,7 +1024,7 @@ export default async function handler(req, res) {
 
 // ===== GAME PROJECTION =====
 // Build expected runs per team, win probability, and compare to market O/U
-function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weatherImpact, conversionRates, odds }) {
+function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weatherImpact, envImpact, conversionRates, odds }) {
   // MLB 2024-2025 league avg runs per team per game: ~4.45
   const BASELINE_RUNS = 4.45;
 
@@ -1111,6 +1124,17 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
   // Weather factor: temperature + wind + precip effect on run environment
   const weatherRunMult = weatherImpact?.runMult || 1.0;
 
+  // Composite environment multiplier: park × weather + interaction terms.
+  // When envImpact is available, it replaces `parkRunMult * weatherRunMult`
+  // in the run projection chain. Surfaces interactions the flat product
+  // missed (hot×wind-out compounding, hitter-park×hot, altitude×hot, etc.)
+  // that drive the +2.9 runs UNDER calibration bias.
+  //
+  // We keep parkRunMult and weatherRunMult defined separately above for the
+  // narrative section that references them, but the actual projection math
+  // uses the composite when available.
+  const envRunMult = envImpact?.runMult ?? (parkRunMult * weatherRunMult);
+
   // Blend starter + bullpen influence on opposing offense
   // Traditional SP: 60/40 SP/BP. Opener/bulk/shifted: 25/75 (bullpen carries more innings).
   // Short-starter: 45/55 (still starts but gives way earlier).
@@ -1132,9 +1156,9 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
   const awayConvMult = conversionRates?.away?.conversionMult || 1.0;
   const homeConvMult = conversionRates?.home?.conversionMult || 1.0;
 
-  // Final projections — now including conversion rate
-  const projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * parkRunMult * umpRunMult * weatherRunMult * awayConvMult;
-  const projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * parkRunMult * umpRunMult * weatherRunMult * homeConvMult;
+  // Final projections — now including conversion rate and composite environment
+  const projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * envRunMult * umpRunMult * awayConvMult;
+  const projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * envRunMult * umpRunMult * homeConvMult;
   const projTotal = projAwayRuns + projHomeRuns;
 
   // Win probability via Pythagorean expectation (exp = 1.83 for MLB)
@@ -1291,6 +1315,13 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
     projReasoning.push(weatherImpact.narrative[0] || 'Dome environment — no weather effect');
   }
 
+  // Environment interaction reasoning — surfaces compounding effects the
+  // flat park*weather product missed. Hot×wind-out, hitter-park×hot, etc.
+  // Full diagnostic UI lands in Session 2 of the environment refactor.
+  if (envImpact?.interactions?.length) {
+    envImpact.interactions.forEach(ix => projReasoning.push(ix.narrative));
+  }
+
   // Conversion rate reasoning — only push when there's a meaningful signal
   if (conversionRates?.away && conversionRates.away.signal !== 'neutral' && conversionRates.away.signal !== 'insufficient') {
     if (conversionRates.away.signal === 'efficient' || conversionRates.away.signal === 'slight-edge') {
@@ -1400,6 +1431,9 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
       away: awayComp.factors,
       home: homeComp.factors,
       parkRunMult: parkRunMult.toFixed(3),
+      weatherRunMult: weatherRunMult.toFixed(3),
+      envRunMult: envRunMult.toFixed(3),
+      envInteractions: envImpact?.interactions?.length || 0,
       umpRunMult: umpRunMult.toFixed(3),
       awayConvMult: awayConvMult.toFixed(3),
       homeConvMult: homeConvMult.toFixed(3)

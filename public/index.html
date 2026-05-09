@@ -4019,11 +4019,20 @@ function renderAnalysis(data) {
             // Inline diagnostic — the values we need to see at a glance to identify
             // a broken multiplier. Barrel% is the smoking-gun input; the per-feature
             // multiplier values reveal which factor is dragging the projection down.
+            // Show the regressed Barrel% inline when small-sample regression pulls
+            // the observed value meaningfully (≥0.5pp difference) — visualizes
+            // why a 23% small-sample bbl produces a moderate (not extreme) multiplier.
             const dbg = b._debug;
+            const showRegression = dbg && dbg.inputs.barrelPct != null
+              && dbg.inputs.regressedBarrelPct != null
+              && Math.abs(dbg.inputs.barrelPct - dbg.inputs.regressedBarrelPct) >= 0.5;
+            const bblDisplay = dbg ? (showRegression
+              ? `bbl=${dbg.inputs.barrelPct}→${dbg.inputs.regressedBarrelPct}`
+              : `bbl=${dbg.inputs.barrelPct ?? '∅'}`) : '';
             const dbgLine = dbg ? `
               <div class="hr-audit-debug">
                 <span class="hr-audit-debug-label">inputs:</span>
-                bbl=${dbg.inputs.barrelPct ?? '∅'}
+                ${bblDisplay}
                 · hh=${dbg.inputs.hardHitPct ?? '∅'}
                 · k=${dbg.inputs.kPct ?? '∅'}
                 · pHR/9=${dbg.inputs.pitcherHrPer9 ?? '∅'}

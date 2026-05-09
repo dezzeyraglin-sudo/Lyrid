@@ -300,10 +300,34 @@ function computeRawProjection(ctx) {
     bullpenTier
   } = ctx;
 
+  // Sample-size regression for Barrel%.
+  //
+  // Without regression, a hitter with 23.1% Barrel% in 39 PA gets the same
+  // multiplier as one with 23.1% Barrel% in 600 PA — but the first is almost
+  // certainly small-sample noise, while the second is real elite power. We
+  // pull observed Barrel% toward league average using a prior weight.
+  //
+  // Formula: regressed = (observed×PA + league×prior_PA) / (PA + prior_PA)
+  //
+  // Prior choice (BARREL_REGRESSION_PRIOR_PA = 120) calibrated so that:
+  //   - 39 PA observed: weight observed 25%, league 75%  (heavy regression)
+  //   - 100 PA observed: weight 45/55                    (notable regression)
+  //   - 300 PA observed: weight 71/29                    (light regression)
+  //   - 600 PA observed: weight 83/17                    (mostly trust observed)
+  //
+  // This matches Barrel%'s known ~150-200 PA stabilization point. We do NOT
+  // regress hard-hit% — it stabilizes faster and the existing math already
+  // works correctly for full-season samples.
+  const BARREL_REGRESSION_PRIOR_PA = 120;
+  const regressedBarrel = (barrelPct != null && seasonPa > 0)
+    ? (barrelPct * seasonPa + LEAGUE_BARREL_PCT * BARREL_REGRESSION_PRIOR_PA)
+        / (seasonPa + BARREL_REGRESSION_PRIOR_PA)
+    : barrelPct;
+
   // Compute each feature multiplier and collect drivers
   // Keep names so the _debug trace can identify each multiplier source
   const featureFns = [
-    ['barrel', () => barrelMultiplier(barrelPct)],
+    ['barrel', () => barrelMultiplier(regressedBarrel)],
     ['hardHit', () => hardHitMultiplier(hardHitPct)],
     ['pitchMatchup', () => pitchMatchupMultiplier(bestMatchedXwoba, dominantPitch)],
     ['pitcherHr', () => pitcherHrMultiplier(pitcherHrPer9)],
@@ -368,6 +392,7 @@ function computeRawProjection(ctx) {
     _debug: {
       inputs: {
         barrelPct: barrelPct == null ? null : parseFloat(barrelPct.toFixed ? barrelPct.toFixed(2) : barrelPct),
+        regressedBarrelPct: regressedBarrel == null ? null : parseFloat(regressedBarrel.toFixed ? regressedBarrel.toFixed(2) : regressedBarrel),
         hardHitPct: hardHitPct == null ? null : parseFloat(hardHitPct.toFixed ? hardHitPct.toFixed(2) : hardHitPct),
         kPct: kPct == null ? null : parseFloat(kPct.toFixed ? kPct.toFixed(2) : kPct),
         seasonPa,
