@@ -2437,9 +2437,11 @@
   <!-- TODAY view -->
   <div id="track-today">
     <div class="hint-box"><b>TRACK BOARD:</b> Tagged hitters auto-populate here on their game days. Pick the outcome type for each, then auto-grade after the game (or mark manually).</div>
-    <div class="controls" style="margin-bottom:14px">
+    <div class="controls" style="margin-bottom:14px;flex-wrap:wrap;gap:8px">
       <button class="btn" onclick="autoGradeAll()">⚡ AUTO-GRADE ALL</button>
       <button class="btn sm" onclick="renderTrack()">⟳ REFRESH</button>
+      <button class="btn sm" onclick="exportFullState()" title="Download all picks/state as JSON for backup or analysis">⬇ EXPORT ALL DATA</button>
+      <button class="btn sm" onclick="exportPicksCsv()" title="Download picks as CSV for spreadsheet analysis">⬇ EXPORT PICKS (CSV)</button>
     </div>
     <div id="trackTodayList"></div>
   </div>
@@ -5338,6 +5340,333 @@ function filterTier(tier, gamePk) {
 // Philosophy: tagged hitters automatically populate the track board on game days.
 // Auto-grade when game is final via /api/batter-line, with manual override.
 
+// =============================================================
+// DATA EXPORT — backup + analysis pipeline
+// =============================================================
+// localStorage-only persistence means a Safari cache clear wipes everything.
+// These exports give the user a way to back up their data AND extract it for
+// analysis (e.g. tier calibration). Everything runs client-side, no API calls.
+//
+// Two formats:
+//   1. exportFullState(): Full JSON of state object — backup-grade, can be
+//      restored if browser storage is wiped. Includes everything: picks,
+//      tagged hitters, projection audit, settings.
+//   2. exportPicksCsv(): Flattened CSV of all graded picks with the fields
+//      needed for tier calibration analysis (xwoba, edge, tier, outcome).
+
+function exportFullState() {
+  try {
+    const stateJson = JSON.stringify(state, null, 2);
+    const blob = new Blob([stateJson], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `lyrid-full-backup-${date}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('Export failed: ' + err.message);
+  }
+}
+
+function exportPicksCsv() {
+  // Flatten picks into a CSV with fields useful for calibration analysis.
+  // Pulls from state.picks (manual logged bets) AND state.taggedHitters
+  // (auto-tracked hitters with grading outcomes).
+  try {
+    const rows = [];
+    const headers = [
+      'date', 'gamePk', 'hitter', 'team', 'opp',
+      'tier', 'isTopPick', 'propType', 'line', 'side', 'units',
+      'maxXwoba', 'adjustedMaxXwoba', 'edgeScore', 'adjustedEdgeScore',
+      'regressedMaxXwoba',
+      'bullpenTier', 'lineupTierLabel',
+      'outcome', 'actualValue', 'gameFinal',
+      'projectedHrPerPa', 'hrTier'
+    ];
+    rows.push(headers.join(','));
+
+    // From manual picks (state.picks)
+    if (state.picks && Array.isArray(state.picks)) {
+      state.picks.forEach(p => {
+        rows.push([
+          csvEscape(p.date || ''),
+          csvEscape(p.gamePk || ''),
+          csvEscape(p.hitter || ''),
+          csvEscape(p.team || ''),
+          csvEscape(p.opp || ''),
+          csvEscape(p.tier || ''),
+          csvEscape(p.isTopPick ? 'true' : 'false'),
+          csvEscape(p.propType || ''),
+          csvEscape(p.line != null ? p.line : ''),
+          csvEscape(p.side || ''),
+          csvEscape(p.units != null ? p.units : ''),
+          csvEscape(p.maxXwoba != null ? p.maxXwoba : ''),
+          csvEscape(p.adjustedMaxXwoba != null ? p.adjustedMaxXwoba : ''),
+          csvEscape(p.edgeScore != null ? p.edgeScore : ''),
+          csvEscape(p.adjustedEdgeScore != null ? p.adjustedEdgeScore : ''),
+          csvEscape(p.regressedMaxXwoba != null ? p.regressedMaxXwoba : ''),
+          csvEscape(p.bullpenTier || ''),
+          csvEscape(p.lineupTierLabel || ''),
+          csvEscape(p.outcome || p.result || ''),
+          csvEscape(p.actualValue != null ? p.actualValue : ''),
+          csvEscape(p.gameFinal ? 'true' : 'false'),
+          csvEscape(p.projectedHrPerPa != null ? p.projectedHrPerPa : ''),
+          csvEscape(p.hrTier || '')
+        ].join(','));
+      });
+    }
+
+    // From tagged hitters (state.taggedHitters / state.trackedHitters)
+    const tagged = state.taggedHitters || state.trackedHitters || {};
+    if (tagged && typeof tagged === 'object') {
+      Object.entries(tagged).forEach(([key, h]) => {
+        if (!h || typeof h !== 'object') return;
+        rows.push([
+          csvEscape(h.date || ''),
+          csvEscape(h.gamePk || ''),
+          csvEscape(h.hitter || h.name || ''),
+          csvEscape(h.team || ''),
+          csvEscape(h.opp || ''),
+          csvEscape(h.tier || ''),
+          csvEscape(h.isTopPick ? 'true' : 'false'),
+          csvEscape(h.propType || h.outcomeType || ''),
+          csvEscape(h.line != null ? h.line : ''),
+          csvEscape(h.side || ''),
+          csvEscape(h.units != null ? h.units : ''),
+          csvEscape(h.maxXwoba != null ? h.maxXwoba : ''),
+          csvEscape(h.adjustedMaxXwoba != null ? h.adjustedMaxXwoba : ''),
+          csvEscape(h.edgeScore != null ? h.edgeScore : ''),
+          csvEscape(h.adjustedEdgeScore != null ? h.adjustedEdgeScore : ''),
+          csvEscape(h.regressedMaxXwoba != null ? h.regressedMaxXwoba : ''),
+          csvEscape(h.bullpenTier || ''),
+          csvEscape(h.lineupTierLabel || ''),
+          csvEscape(h.outcome || h.result || ''),
+          csvEscape(h.actualValue != null ? h.actualValue : ''),
+          csvEscape(h.gameFinal ? 'true' : 'false'),
+          csvEscape(h.projectedHrPerPa != null ? h.projectedHrPerPa : ''),
+          csvEscape(h.hrTier || '')
+        ].join(','));
+      });
+    }
+
+    const csv = rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `lyrid-picks-${date}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('CSV export failed: ' + err.message);
+  }
+}
+
+// CSV cell escaping — wraps in quotes if value contains comma, quote, or newline
+function csvEscape(value) {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  if (/[",\n\r]/.test(str)) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+// =============================================================
+// DATA IMPORT — restore from backup or merge across devices
+// =============================================================
+// Accepts JSON (full state backup from EXPORT ALL DATA) or CSV (picks export).
+// JSON imports merge into state; CSV imports merge picks into state.picks.
+// Always confirms before overwriting/merging since this can clobber the
+// active session.
+
+function handleImportFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const text = e.target.result;
+      const isJson = file.name.toLowerCase().endsWith('.json');
+      const isCsv = file.name.toLowerCase().endsWith('.csv');
+
+      if (isJson) {
+        importJsonState(text);
+      } else if (isCsv) {
+        importPicksCsv(text);
+      } else {
+        alert('Unsupported file type. Use .json (full backup) or .csv (picks export).');
+      }
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+      console.error('[Import] Error:', err);
+    }
+    // Reset input so same file can be re-imported if needed
+    event.target.value = '';
+  };
+  reader.onerror = () => {
+    alert('Could not read file.');
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function importJsonState(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    alert('Not valid JSON. Make sure you exported with EXPORT ALL DATA.');
+    return;
+  }
+
+  // Sanity check the shape — should have at least one expected top-level key
+  const expectedKeys = ['picks', 'taggedHitters', 'projectionAudit', 'gameLineBets', 'firstInningBets', 'pitcherPropBets'];
+  const hasExpectedShape = expectedKeys.some(k => k in parsed);
+  if (!hasExpectedShape) {
+    alert('JSON does not look like a Lyrid state backup. None of the expected keys (picks, taggedHitters, projectionAudit, etc.) are present.');
+    return;
+  }
+
+  // Count what's coming in for the confirm dialog
+  const incomingCounts = {
+    picks: Array.isArray(parsed.picks) ? parsed.picks.length : 0,
+    taggedHitters: parsed.taggedHitters ? Object.keys(parsed.taggedHitters).length : 0,
+    projectionAudit: parsed.projectionAudit ? Object.keys(parsed.projectionAudit).length : 0,
+    gameLineBets: parsed.gameLineBets ? Object.keys(parsed.gameLineBets).length : 0,
+    firstInningBets: parsed.firstInningBets ? Object.keys(parsed.firstInningBets).length : 0,
+    pitcherPropBets: parsed.pitcherPropBets ? Object.keys(parsed.pitcherPropBets).length : 0
+  };
+
+  const currentCounts = {
+    picks: Array.isArray(state.picks) ? state.picks.length : 0,
+    taggedHitters: state.taggedHitters ? Object.keys(state.taggedHitters).length : 0,
+    projectionAudit: state.projectionAudit ? Object.keys(state.projectionAudit).length : 0,
+    gameLineBets: state.gameLineBets ? Object.keys(state.gameLineBets).length : 0,
+    firstInningBets: state.firstInningBets ? Object.keys(state.firstInningBets).length : 0,
+    pitcherPropBets: state.pitcherPropBets ? Object.keys(state.pitcherPropBets).length : 0
+  };
+
+  const summary =
+    `Importing:\n` +
+    `  • picks: ${incomingCounts.picks} (current: ${currentCounts.picks})\n` +
+    `  • tagged hitters: ${incomingCounts.taggedHitters} (current: ${currentCounts.taggedHitters})\n` +
+    `  • projection audit: ${incomingCounts.projectionAudit} (current: ${currentCounts.projectionAudit})\n` +
+    `  • game-line bets: ${incomingCounts.gameLineBets} (current: ${currentCounts.gameLineBets})\n` +
+    `  • YRFI bets: ${incomingCounts.firstInningBets} (current: ${currentCounts.firstInningBets})\n` +
+    `  • pitcher bets: ${incomingCounts.pitcherPropBets} (current: ${currentCounts.pitcherPropBets})\n\n` +
+    `Choose merge strategy:\n` +
+    `  • OK = MERGE (incoming wins on key conflicts)\n` +
+    `  • Cancel = abort import`;
+
+  if (!confirm(summary)) return;
+
+  // Merge each top-level key. For object-type stores (audit/bets keyed by id),
+  // use Object.assign — incoming entries overwrite same-keyed existing entries
+  // but unique existing entries are preserved. For arrays (picks), we
+  // de-duplicate by a stable key if available, otherwise concat.
+  if (parsed.taggedHitters && typeof parsed.taggedHitters === 'object') {
+    state.taggedHitters = Object.assign({}, state.taggedHitters || {}, parsed.taggedHitters);
+  }
+  if (parsed.projectionAudit && typeof parsed.projectionAudit === 'object') {
+    state.projectionAudit = Object.assign({}, state.projectionAudit || {}, parsed.projectionAudit);
+  }
+  if (parsed.gameLineBets && typeof parsed.gameLineBets === 'object') {
+    state.gameLineBets = Object.assign({}, state.gameLineBets || {}, parsed.gameLineBets);
+  }
+  if (parsed.firstInningBets && typeof parsed.firstInningBets === 'object') {
+    state.firstInningBets = Object.assign({}, state.firstInningBets || {}, parsed.firstInningBets);
+  }
+  if (parsed.pitcherPropBets && typeof parsed.pitcherPropBets === 'object') {
+    state.pitcherPropBets = Object.assign({}, state.pitcherPropBets || {}, parsed.pitcherPropBets);
+  }
+  if (Array.isArray(parsed.picks)) {
+    // De-duplicate picks by id+date+gamePk+hitter signature where possible
+    const existingPicks = Array.isArray(state.picks) ? state.picks : [];
+    const sigOf = p => `${p.id || ''}|${p.date || ''}|${p.gamePk || ''}|${p.hitter || ''}|${p.propType || ''}`;
+    const existingSigs = new Set(existingPicks.map(sigOf));
+    const newPicks = parsed.picks.filter(p => !existingSigs.has(sigOf(p)));
+    state.picks = existingPicks.concat(newPicks);
+  }
+
+  saveState();
+  alert(`Import complete. Refreshing views.`);
+  // Re-render whatever view is active
+  if (typeof renderHistory === 'function') renderHistory();
+  if (typeof renderTrack === 'function') renderTrack();
+}
+
+function importPicksCsv(text) {
+  // Parse CSV. Same simple parser as the Savant CSV in api/_lib/savant.js,
+  // adapted for client-side: handles quoted fields with embedded commas
+  // and double-quote escaping.
+  const lines = text.split(/\r?\n/).filter(l => l.length > 0);
+  if (lines.length < 2) {
+    alert('CSV has no data rows. Expected header + at least one row.');
+    return;
+  }
+
+  const parseLine = (line) => {
+    const result = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (ch === ',' && !inQuotes) {
+        result.push(cur); cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    result.push(cur);
+    return result.map(s => s.trim());
+  };
+
+  const headers = parseLine(lines[0]);
+  const incomingPicks = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseLine(lines[i]);
+    const row = {};
+    headers.forEach((h, idx) => {
+      row[h] = values[idx] !== undefined ? values[idx] : '';
+    });
+    incomingPicks.push(row);
+  }
+
+  const summary =
+    `CSV import:\n` +
+    `  • ${incomingPicks.length} picks parsed\n` +
+    `  • ${headers.length} columns\n` +
+    `  • Current state.picks: ${(state.picks || []).length}\n\n` +
+    `Choose merge strategy:\n` +
+    `  • OK = MERGE (de-duplicated by hitter+date+gamePk+propType)\n` +
+    `  • Cancel = abort`;
+
+  if (!confirm(summary)) return;
+
+  const existingPicks = Array.isArray(state.picks) ? state.picks : [];
+  const sigOf = p => `${p.date || ''}|${p.gamePk || ''}|${p.hitter || ''}|${p.propType || ''}|${p.line || ''}`;
+  const existingSigs = new Set(existingPicks.map(sigOf));
+  const newPicks = incomingPicks.filter(p => !existingSigs.has(sigOf(p)));
+
+  state.picks = existingPicks.concat(newPicks);
+  saveState();
+  alert(`Imported ${newPicks.length} new picks (skipped ${incomingPicks.length - newPicks.length} duplicates).`);
+  if (typeof renderHistory === 'function') renderHistory();
+  if (typeof renderTrack === 'function') renderTrack();
+}
+
 function switchTrackView(view) {
   currentTrackView = view;
   document.querySelectorAll('.track-subnav-btn').forEach(b => {
@@ -7068,7 +7397,22 @@ async function gradeProjectionAudit() {
  * Compute aggregate calibration metrics across all graded projections.
  */
 function computeProjectionStats(entries) {
-  const graded = entries.filter(e => e.graded && e.actualTotal != null);
+  // Defensive: filter to graded entries with valid numeric projTotal AND actualTotal.
+  // iPhone import / older state schemas can produce entries with stringified
+  // numbers, missing fields, or NaN values that propagate through arithmetic
+  // and break the whole calculation. Strict numeric check upfront prevents
+  // NaN-poisoning of MAE/bias.
+  const graded = entries.filter(e => {
+    if (!e || !e.graded) return false;
+    if (e.actualTotal == null || e.projTotal == null) return false;
+    const proj = typeof e.projTotal === 'number' ? e.projTotal : parseFloat(e.projTotal);
+    const actual = typeof e.actualTotal === 'number' ? e.actualTotal : parseFloat(e.actualTotal);
+    if (isNaN(proj) || isNaN(actual)) return false;
+    // Coerce to numbers in-place so downstream math is safe
+    e.projTotal = proj;
+    e.actualTotal = actual;
+    return true;
+  });
   if (graded.length === 0) {
     return {
       total: entries.length,
@@ -7100,6 +7444,19 @@ function computeProjectionStats(entries) {
     const ENV_REFACTOR_DATE = '2026-05-08';
     const preRefactor = { absErrs: [], signedErrs: [] };
     const postRefactor = { absErrs: [], signedErrs: [] };
+
+    // BUGFIX (May 9, 2026): These accumulator variables were referenced inside
+    // the forEach loop below but never initialized. The function would crash
+    // with ReferenceError on first iteration, breaking the entire Calibration
+    // tab silently (the History view's render path catches the throw and shows
+    // nothing). Initialize all accumulators here.
+    let sumAbsErr = 0;
+    let sumSignedErr = 0;
+    let winnerCorrect = 0;
+    let winnerAttempted = 0;
+    const deepErrs = [];
+    const fastErrs = [];
+    const buckets = { low: [], mid: [], high: [] };
 
     graded.forEach(e => {
       const err = e.projTotal - e.actualTotal;
@@ -7505,7 +7862,7 @@ function renderHistory() {
       <button class="history-subnav-btn ${historyView==='calibration'?'active':''}" data-hist-view="calibration" onclick="switchHistoryView('calibration')">◎ CALIBRATION</button>
       <button class="history-subnav-btn ${historyView==='rollup'?'active':''}" data-hist-view="rollup" onclick="switchHistoryView('rollup')">∑ ROLLUP</button>
       <button class="history-subnav-btn ${historyView==='picks'?'active':''}" data-hist-view="picks" onclick="switchHistoryView('picks')">$ MY BETS</button>
-      ${historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button>` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
+      ${historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
       <button class="btn sm" onclick="gradeAllBestBets()" style="margin-left:6px">⚡ GRADE ALL</button>`}
     </div>
   `;
@@ -7868,23 +8225,24 @@ function renderHistory() {
 
   // CALIBRATION view — self-auditing projection accuracy
   if (historyView === 'calibration') {
-    const allEntries = Object.values(state.projectionAudit || {});
-    if (allEntries.length === 0) {
-      container.innerHTML = subnavHtml + `
-        <div class="empty">
-          <div class="empty-icon">◎</div>
-          <div>No projection snapshots yet.</div>
-          <div style="font-size:11px;color:var(--dim);margin-top:8px;max-width:400px;text-align:center">
-            Every time you analyze a game, the tool snapshots its projection.
-            After games finalize, tap GRADE ALL to see how close your projections were.
-            Over 20+ games, this reveals whether the model is systematically over or under.
-          </div>
-        </div>`;
-      return;
-    }
+    try {
+      const allEntries = Object.values(state.projectionAudit || {});
+      if (allEntries.length === 0) {
+        container.innerHTML = subnavHtml + `
+          <div class="empty">
+            <div class="empty-icon">◎</div>
+            <div>No projection snapshots yet.</div>
+            <div style="font-size:11px;color:var(--dim);margin-top:8px;max-width:400px;text-align:center">
+              Every time you analyze a game, the tool snapshots its projection.
+              After games finalize, tap GRADE ALL to see how close your projections were.
+              Over 20+ games, this reveals whether the model is systematically over or under.
+            </div>
+          </div>`;
+        return;
+      }
 
-    const stats = computeProjectionStats(allEntries);
-    const graded = allEntries.filter(e => e.graded && e.actualTotal != null);
+      const stats = computeProjectionStats(allEntries);
+      const graded = allEntries.filter(e => e.graded && e.actualTotal != null);
 
     // Bias interpretation
     const biasDirection = stats.bias == null ? ''
@@ -8068,6 +8426,27 @@ function renderHistory() {
       }).join('')}
     `;
     return;
+    } catch (err) {
+      // BUGFIX (May 9, 2026): Calibration view was silently breaking when
+      // computeProjectionStats threw on bad data (uninitialized accumulators
+      // before this fix, or malformed entries from iPhone import). With the
+      // fix in place this catch is belt-and-suspenders — surfaces the error
+      // visibly instead of leaving the History tab blank.
+      console.error('[Calibration view] render error:', err);
+      container.innerHTML = subnavHtml + `
+        <div class="empty">
+          <div class="empty-icon">⚠</div>
+          <div>Calibration view error</div>
+          <div style="font-size:11px;color:var(--dim);margin-top:8px;max-width:500px;text-align:center">
+            ${err.message || 'Unknown error rendering calibration data.'}
+            <br><br>
+            Open DevTools console for full trace. If this persists, export your
+            data via Track tab → EXPORT ALL DATA, then we can inspect the
+            problematic entry directly.
+          </div>
+        </div>`;
+      return;
+    }
   }
 
   if (historyView === 'rollup') {
