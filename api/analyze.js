@@ -95,18 +95,6 @@ const HITTER_TIER_REGRESSION_ENABLED = (() => {
   return false;  // default off — calibration needed first
 })();
 
-// TB 1.5 prop generation flag.
-// Disabled May 10, 2026 — 928-pick analysis showed TB 1.5 hit at 33.3% on 12
-// historical picks. Sample is small but the result is so far below break-even
-// that surfacing TB recs is net-negative EV. Re-enable once Damage Quality
-// Phase 2 archetype classifier can scope TB to ELITE_POWER hitters
-// specifically — that's the population for whom TB 1.5 is a real edge.
-const TB_PROP_ENABLED = (() => {
-  const v = process.env.TB_PROP_ENABLED;
-  if (v === 'true' || v === '1' || v === 'yes') return true;
-  return false;  // default off
-})();
-
 // Amplified pitcher multiplier — adds a non-linear correction for elite
 // xwOBA-against. The base linear mapping ((xw - 0.320) × 2.0) systematically
 // undercounts truly elite SPs because their impact is non-linear: a .240 SP
@@ -536,17 +524,8 @@ export default async function handler(req, res) {
           };
         }
 
-        // CALIBRATION (May 10, 2026): Cap cumulative contextMultiplier at 1.40.
-        // 928-pick calibration revealed that picks with adjustedMaxXwoba > 0.70
-        // hit at 39.8% (n=140) — anti-predictive vs mid-zone picks at 50%.
-        // Root cause: park × umpire × platoon multipliers compounded to 1.5+
-        // on hitter-friendly games, inflating adjustedMaxXwoba beyond the
-        // predictive zone and clustering picks on chalk matchups the market
-        // had already priced in. Cap preserves all context signal up to a
-        // reasonable ceiling.
-        const cappedContextMultiplier = Math.min(1.40, contextMultiplier);
-        const adjustedMaxXwoba = maxXwoba * cappedContextMultiplier;
-        const adjustedEdge = edgeScore * cappedContextMultiplier;
+        const adjustedMaxXwoba = maxXwoba * contextMultiplier;
+        const adjustedEdge = edgeScore * contextMultiplier;
 
         // HITTER TIER REGRESSION (flag-gated, default OFF)
         // 50/50 blend of best-case (adjustedMaxXwoba) and expected (adjustedEdge).
@@ -612,7 +591,6 @@ export default async function handler(req, res) {
           tierEvalXwoba: tierEvalXwoba.toFixed(3),
           tierRegressionEnabled: HITTER_TIER_REGRESSION_ENABLED,
           contextMultiplier: contextMultiplier.toFixed(3),
-          cappedContextMultiplier: cappedContextMultiplier.toFixed(3),
           adjustments,
           tier,
           description,
@@ -720,14 +698,8 @@ export default async function handler(req, res) {
       const withTopPickScore = tiered.map(h => {
         let topScore = parseFloat(h.adjustedEdgeScore || 0);
         topScore *= (tierWeight[h.tier] || 1.0);
-        // FULL GAME bonus REMOVED (May 10, 2026 calibration).
-        // 928-pick analysis confirmed the design doc hypothesis: SP-only picks
-        // hit 51.8% (n=247), FULL GAME picks hit 49.1% (n=698). The bullpen edge
-        // correlates with the SP edge (same pitcher tendencies surfacing twice
-        // in the arsenal), so the 1.18× was treating correlated signals as
-        // independent. Visual FULL GAME label still surfaces for context, but
-        // it no longer biases pick selection.
-        // if (h.tier && h.bullpenTier) topScore *= 1.18;
+        // FULL GAME bonus (edges vs both SP and BP)
+        if (h.tier && h.bullpenTier) topScore *= 1.18;
         // Reverse split / strong platoon bonus (if adjustment is meaningfully hitter-favoring)
         const platoonAdj = (h.adjustments || []).find(a => a.type === 'platoon' && a.favor === 'hitter');
         if (platoonAdj) {
@@ -736,11 +708,6 @@ export default async function handler(req, res) {
         }
         // Reverse split specifically gets extra weight (market undervalued angle)
         if (h.platoonMeta?.reverseSplit) topScore *= 1.05;
-        // Switch-hitter vs RHP boost (May 10, 2026 calibration).
-        // 928-pick analysis: switch hitters vs RHP hit 60.4% (n=53). Durable
-        // empirical edge with no current modifier. Modest boost (1.06) since
-        // sample is moderate and we don't want to overweight a single signal.
-        if (h.hand === 'S' && h.platoonMeta?.pitcherHand === 'R') topScore *= 1.06;
         return { ...h, _topPickScore: topScore };
       }).sort((a, b) => b._topPickScore - a._topPickScore);
 
@@ -2026,11 +1993,7 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
   const allProps = [
     { key: 'H',        label: 'HITS 0.5',       platform: 'BOTH', score: hitScore,   reason: hitReason(maxXwoba, kPct, hardHit, runParkBoost) + bpTag },
     { key: 'HR',       label: 'HR 0.5',         platform: 'BOTH', score: hrScore,    reason: hrReason(barrel, ev, maxXslg, hrParkBoost, hitter.hand, parkFactor) + bpTag },
-    // TB 1.5 disabled by default — see TB_PROP_ENABLED flag definition near top of file.
-    // Scoped to ELITE_POWER archetype hitters only after Damage Quality Phase 2 ships.
-    ...(TB_PROP_ENABLED ? [
     { key: 'TB',       label: 'TB 1.5',         platform: 'BOTH', score: tbScore,    reason: tbReason(maxXslg, barrel, hrParkBoost) + bpTag },
-    ] : []),
     { key: 'RBI',      label: 'RBI 0.5',        platform: 'BOTH', score: rbiScore,   reason: rbiReason(maxXwoba, barrel, runParkBoost) + bpTag },
     { key: 'R',        label: 'RUNS 0.5',       platform: 'BOTH', score: rScore,     reason: rReason(maxXwoba, kPct, runParkBoost) + bpTag },
     { key: 'HRR',      label: 'H+R+RBI 1.5',    platform: 'PP',   score: hrr,        reason: 'Multiple pathways to over' + bpTag },

@@ -237,34 +237,15 @@ function strikeoutPenalty(kPct) {
 }
 
 /**
- * Hitter's edge vs bullpen arsenal → HR multiplier.
- *
- * NAMING NOTE: The field `bullpenTier` describes the HITTER's xwOBA edge AGAINST
- * the bullpen's arsenal — NOT the bullpen's quality. 'elite' means the hitter
- * has the largest edge, not that the bullpen is elite. The driver text below
- * reflects this correctly.
- *
- * CALIBRATION (May 10, 2026): 928-pick analysis showed that 'elite' tier picks
- * (largest edge against bullpen) hit at 48.6% — UNDERPERFORMING 'solid' tier
- * picks at 55.6%. The 'elite' label loaded on chalk matchups the market had
- * priced in. Multiplier reduced from 1.18 to 1.08 to capture the real but
- * smaller signal without amplifying chalk-stacking.
- *
- * Bullpens see ~50% of HRs allowed (later innings, fatigued arms), so the
- * underlying hypothesis is sound. The fix is the magnitude, not the existence.
+ * Bullpen HR vulnerability → boost.
+ * If bullpen is in the same elite/strong tier the hitter has against the starter,
+ * the FULL GAME HR potential is materially higher (50%+ of HRs come off bullpens).
  */
-function bullpenEdgeMultiplier(bullpenEdgeTier) {
-  if (bullpenEdgeTier === 'elite' || bullpenEdgeTier === 'strong') {
-    return {
-      mult: 1.08,
-      driver: {
-        feature: 'Bullpen edge',
-        detail: 'Hitter strong vs bullpen arsenal',
-        weight: 1.08
-      }
-    };
-  } else if (bullpenEdgeTier === 'solid') {
-    return { mult: 1.05, driver: null };
+function bullpenMultiplier(bullpenTier) {
+  if (bullpenTier === 'elite' || bullpenTier === 'strong') {
+    return { mult: 1.18, driver: { feature: 'Bullpen edge', detail: 'FULL GAME HR vulnerable', weight: 1.18 } };
+  } else if (bullpenTier === 'solid') {
+    return { mult: 1.06, driver: null };
   }
   return { mult: 1.0, driver: null };
 }
@@ -354,7 +335,7 @@ function computeRawProjection(ctx) {
     ['weather', () => weatherMultiplier(weatherImpact, batSide)],
     ['platoon', () => platoonMultiplier(platoonAdjustment)],
     ['kPenalty', () => strikeoutPenalty(kPct)],
-    ['bullpen', () => bullpenEdgeMultiplier(bullpenTier)],
+    ['bullpen', () => bullpenMultiplier(bullpenTier)],
   ];
 
   // Combine multipliers + capture per-feature trace for diagnostics
