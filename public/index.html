@@ -4042,8 +4042,8 @@ function renderAnalysis(data) {
               && dbg.inputs.regressedBarrelPct != null
               && Math.abs(dbg.inputs.barrelPct - dbg.inputs.regressedBarrelPct) >= 0.5;
             const bblDisplay = dbg ? (showRegression
-              ? `bbl=${dbg.inputs.barrelPct}→${dbg.inputs.regressedBarrelPct}`
-              : `bbl=${dbg.inputs.barrelPct ?? '∅'}`) : '';
+              ? `bbl=${dbg.inputs.barrelPct}→${dbg.inputs.regressedBarrelPct} (${dbg.inputs.seasonPa ?? '?'} PA)`
+              : `bbl=${dbg.inputs.barrelPct ?? '∅'} (${dbg.inputs.seasonPa ?? '?'} PA)`) : '';
             const dbgLine = dbg ? `
               <div class="hr-audit-debug">
                 <span class="hr-audit-debug-label">inputs:</span>
@@ -6518,6 +6518,12 @@ function logBestBets(data) {
     // Track every HR-chance hitter (for self-auditing, separate from top-pick logging)
     for (const m of sideData.mismatches) {
       if (m.hrChance && m.hitterId) {
+        // Banned-list enforcement at log time. Display filter at line ~3757
+        // catches banned hitters in the analysis panel, but the auto-log path
+        // ran independently and bypassed it. Without this guard, banned
+        // hitters' HR audit entries kept accumulating after the ban shipped.
+        if (isBanned('hitters', m.hitter)) continue;
+        if (isBanned('teams', side.hitTeam)) continue;
         logHrChanceEntry({
           date, gamePk: data.gamePk, hitterId: m.hitterId, hitterName: m.hitter,
           team: side.hitTeam, opponent: side.oppTeam,
@@ -6531,6 +6537,12 @@ function logBestBets(data) {
     for (const m of sideData.mismatches) {
       // Only log the TOP PICK from each side (one per team per game)
       if (!m.isTopPick) continue;
+      // Banned-list enforcement (see comment above on HR audit log).
+      // Without this, banned hitters/teams continued getting logged as top
+      // picks for analytics purposes even after exclusion. 5 logged picks for
+      // banned players found in May 1-9 audit confirmed this gap.
+      if (isBanned('hitters', m.hitter)) continue;
+      if (isBanned('teams', side.hitTeam)) continue;
       const bestBet = (m.propRecs || []).find(p => p.isBest);
       if (!bestBet) continue;
 
@@ -6559,6 +6571,16 @@ function logBestBets(data) {
         platform: bestBet.platform,
         reason: bestBet.reason,
         adjustedMaxXwoba: m.adjustedMaxXwoba,
+        // CALIBRATION FIELDS (May 10, 2026): These were missing from the
+        // historical log, blocking the Step 1 calibration in
+        // HITTER_TIER_REGRESSION_DESIGN.md. Now logged on every pick so a
+        // future calibration session can build hit-rate curves on the
+        // regressed/edge metrics, not just on adjustedMaxXwoba.
+        adjustedEdgeScore: m.adjustedEdgeScore,
+        regressedMaxXwoba: m.regressedMaxXwoba,
+        tierEvalXwoba: m.tierEvalXwoba,
+        contextMultiplier: m.contextMultiplier,
+        cappedContextMultiplier: m.cappedContextMultiplier,
         bullpenTier: m.bullpenTier,
         loggedAt: state.bestBetHistory[date][entryId]?.loggedAt || Date.now(),
         result: state.bestBetHistory[date][entryId]?.result || null,
@@ -7433,14 +7455,12 @@ function computeProjectionStats(entries) {
     // after the env composite shipped. Only meaningful once the post-refactor
     // sample reaches ~10+ graded games.
     //
-    // NOTE on sign convention: existing display code at the calibration view
-    // treats `stats.bias > 0` as "model under-projects". The math here uses
+    // SIGN CONVENTION (corrected May 10, 2026):
     // err = projTotal - actualTotal, so err > 0 means proj > actual = model
-    // OVER-projects. The existing display has been inverting this implicitly
-    // — we preserve the existing convention here (bias = sumSignedErr / count)
-    // to avoid silently breaking the calibration UI. If the sign is genuinely
-    // backwards, that's a separate fix to surface deliberately, not a quiet
-    // change inside this work.
+    // OVER-projects. The display in computeProjectionStats render now matches:
+    // bias > 0 → "over-projects". 928-pick validation (May 2026) confirmed the
+    // model over-projects by ~2.8 runs/game on average — the prior display had
+    // this label inverted and gave the wrong impression about model behavior.
     const ENV_REFACTOR_DATE = '2026-05-08';
     const preRefactor = { absErrs: [], signedErrs: [] };
     const postRefactor = { absErrs: [], signedErrs: [] };
@@ -8246,8 +8266,8 @@ function renderHistory() {
 
     // Bias interpretation
     const biasDirection = stats.bias == null ? ''
-      : stats.bias > 0.2 ? `under-projects by ${stats.bias.toFixed(2)} runs on avg`
-      : stats.bias < -0.2 ? `over-projects by ${Math.abs(stats.bias).toFixed(2)} runs on avg`
+      : stats.bias > 0.2 ? `over-projects by ${stats.bias.toFixed(2)} runs on avg`
+      : stats.bias < -0.2 ? `under-projects by ${Math.abs(stats.bias).toFixed(2)} runs on avg`
       : 'very balanced (near zero bias)';
 
     // MAE quality label
@@ -8296,7 +8316,7 @@ function renderHistory() {
           <div class="bbs-cell">
             <div class="bbs-label">BIAS</div>
             <div class="bbs-value">${stats.bias == null ? '—' : (stats.bias >= 0 ? '+' : '') + stats.bias}</div>
-            <div class="bbs-sub">${stats.bias == null ? 'need more' : stats.bias > 0 ? 'runs under' : 'runs over'}</div>
+            <div class="bbs-sub">${stats.bias == null ? 'need more' : stats.bias > 0 ? 'runs over' : 'runs under'}</div>
           </div>
           <div class="bbs-cell">
             <div class="bbs-label">DEEP MAE</div>
