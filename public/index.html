@@ -3897,7 +3897,7 @@ function renderAnalysis(data) {
               <div class="match-head">
                 <div class="match-hitter">
                   ${m.isTopPick ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}
-                  ${m.hrChance && data.deepMode ? `<span class="hr-badge ${m.hrChance.tier}" title="HR ${m.hrChance.tierLabel || m.hrChance.tier.toUpperCase()} · ${m.hrChance.projectedHrPerPa ? (m.hrChance.projectedHrPerPa * 100).toFixed(1) + '% HR/PA' : 'projected'}">${m.hrChance.emoji} HR ${(m.hrChance.tierLabel || m.hrChance.tier).toUpperCase()}${m.hrChance.projectedHrPerPa ? ` <span class="hr-rate">${(m.hrChance.projectedHrPerPa * 100).toFixed(1)}%</span>` : ''}</span>` : ''}
+                  ${m.hrChance && data.deepMode ? `<span class="hr-badge ${m.hrChance.tier}" title="HR ${m.hrChance.tierLabel || m.hrChance.tier.toUpperCase()} · ${m.hrChance.projectedHrPerPa ? (m.hrChance.projectedHrPerPa * 100).toFixed(1) + '% HR/PA' : 'projected'}${m.hrChance.score ? ' · Score ' + m.hrChance.score : ''}">${m.hrChance.emoji} HR ${(m.hrChance.tierLabel || m.hrChance.tier).toUpperCase()}${m.hrChance.projectedHrPerPa ? ` <span class="hr-rate">${(m.hrChance.projectedHrPerPa * 100).toFixed(1)}%</span>` : ''}${m.hrChance.score ? ` <span class="hr-rate" style="opacity:0.85; font-variant-numeric: tabular-nums; padding-left:2px; border-left:1px solid currentColor; margin-left:4px">${m.hrChance.score}</span>` : ''}</span>` : ''}
                   ${m.hitter}<span class="hand">${m.hand || ''}</span>
                   ${hasActionableSituational ? `<button class="deep-dive-btn" onclick='openDeepDive(${deepDiveCtx})' title="Situational splits">◎ DEEP DIVE</button>` : ''}
                 </div>
