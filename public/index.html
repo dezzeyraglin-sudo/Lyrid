@@ -7265,15 +7265,43 @@ function gradeProjectionFromLiveData(gamePk, liveData) {
     const home = liveData.score?.home;
     if (away == null || home == null) return;
     const winner = home > away ? entry.homeTeam : away > home ? entry.awayTeam : null;
+    const actualTotal = away + home;
+
+    // Lean grading (May 15, 2026): if we captured a market line at projection
+    // time, compute which side Lyrid would have bet (lyridLean) and grade it
+    // against the actual total. PUSH zone is ±0.25 runs (no real edge).
+    let lyridLean = null;
+    let lyridLeanGrade = null;
+    let lyridEdgeRuns = null;
+    if (entry.projTotal != null && entry.marketTotal != null) {
+      const delta = entry.projTotal - entry.marketTotal;
+      lyridEdgeRuns = +Math.abs(delta).toFixed(2);
+      if (Math.abs(delta) < 0.25) {
+        lyridLean = 'push';
+        lyridLeanGrade = 'push';
+      } else {
+        lyridLean = delta > 0 ? 'over' : 'under';
+        if (actualTotal === entry.marketTotal) {
+          lyridLeanGrade = 'push';  // game landed on the market line
+        } else {
+          const actualSide = actualTotal > entry.marketTotal ? 'over' : 'under';
+          lyridLeanGrade = lyridLean === actualSide ? 'win' : 'loss';
+        }
+      }
+    }
+
     state.projectionAudit[key] = {
       ...entry,
       actualAwayRuns: away,
       actualHomeRuns: home,
-      actualTotal: away + home,
+      actualTotal,
       winner,
       isFinal: true,
       graded: true,
-      gradedAt: Date.now()
+      gradedAt: Date.now(),
+      lyridLean,
+      lyridLeanGrade,
+      lyridEdgeRuns
     };
     saveState();
     return;
@@ -7546,6 +7574,156 @@ function computeProjectionStats(entries) {
       },
       eraSplit
     };
+}
+
+
+// ==================== LEAN GRADING STATS (May 15, 2026) ====================
+
+/**
+ * Compute Lyrid's directional lean performance against the market.
+ *
+ * For each graded game with a market line:
+ *   - Lyrid leans OVER if projTotal > marketTotal by ≥ 0.25 runs
+ *   - Lyrid leans UNDER if projTotal < marketTotal by ≥ 0.25 runs
+ *   - PUSH otherwise (no actionable edge)
+ *
+ * Grading:
+ *   - Lean was correct → win
+ *   - Lean was wrong → loss
+ *   - PUSH or game landed exactly on market line → push
+ *
+ * Returns null if no graded games have lean data (e.g. market never captured).
+ */
+function computeLeanStats(entries) {
+  const graded = entries.filter(e =>
+    e && e.graded && e.lyridLeanGrade && e.marketTotal != null && e.projTotal != null
+  );
+  if (graded.length === 0) return null;
+
+  let wins = 0, losses = 0, pushes = 0;
+  const byDirection = {
+    over: { wins: 0, losses: 0, pushes: 0 },
+    under: { wins: 0, losses: 0, pushes: 0 }
+  };
+  const byEdgeSize = {
+    small: { wins: 0, losses: 0, pushes: 0, label: '0.25-0.75 runs' },
+    medium: { wins: 0, losses: 0, pushes: 0, label: '0.75-1.5 runs' },
+    large: { wins: 0, losses: 0, pushes: 0, label: '1.5+ runs' }
+  };
+
+  graded.forEach(e => {
+    if (e.lyridLeanGrade === 'win') wins++;
+    else if (e.lyridLeanGrade === 'loss') losses++;
+    else if (e.lyridLeanGrade === 'push') pushes++;
+
+    if (e.lyridLean === 'over' || e.lyridLean === 'under') {
+      const d = byDirection[e.lyridLean];
+      if (e.lyridLeanGrade === 'win') d.wins++;
+      else if (e.lyridLeanGrade === 'loss') d.losses++;
+      else d.pushes++;
+    }
+
+    if (e.lyridEdgeRuns != null && e.lyridLean !== 'push') {
+      const bucket = e.lyridEdgeRuns >= 1.5 ? 'large'
+        : e.lyridEdgeRuns >= 0.75 ? 'medium'
+        : 'small';
+      if (e.lyridLeanGrade === 'win') byEdgeSize[bucket].wins++;
+      else if (e.lyridLeanGrade === 'loss') byEdgeSize[bucket].losses++;
+      else byEdgeSize[bucket].pushes++;
+    }
+  });
+
+  const decided = wins + losses;
+  const winPct = decided > 0 ? +((wins / decided) * 100).toFixed(1) : null;
+
+  const fmtBucket = b => {
+    const dec = b.wins + b.losses;
+    return {
+      wins: b.wins,
+      losses: b.losses,
+      pushes: b.pushes,
+      winPct: dec > 0 ? +((b.wins / dec) * 100).toFixed(1) : null,
+      n: b.wins + b.losses + b.pushes,
+      label: b.label
+    };
+  };
+
+  return {
+    graded: graded.length,
+    wins,
+    losses,
+    pushes,
+    winPct,
+    byDirection: {
+      over: fmtBucket(byDirection.over),
+      under: fmtBucket(byDirection.under)
+    },
+    byEdgeSize: {
+      small: fmtBucket(byEdgeSize.small),
+      medium: fmtBucket(byEdgeSize.medium),
+      large: fmtBucket(byEdgeSize.large)
+    }
+  };
+}
+
+/**
+ * Compute user's game-line bet performance from state.gameLineBets.
+ * Independent of lean stats — this is what the USER actually bet.
+ */
+function computeUserBetStats() {
+  const bets = Object.values(state.gameLineBets || {});
+  const graded = bets.filter(b => b && b.graded && (b.result === 'win' || b.result === 'loss' || b.result === 'push'));
+  if (graded.length === 0) return null;
+
+  let wins = 0, losses = 0, pushes = 0, unitsRisked = 0, unitsNet = 0;
+  const byTier = {};
+  const byType = {};
+
+  graded.forEach(b => {
+    const units = parseFloat(b.units) || 0;
+    unitsRisked += units;
+    if (b.result === 'win') { wins++; unitsNet += units; }
+    else if (b.result === 'loss') { losses++; unitsNet -= units; }
+    else if (b.result === 'push') { pushes++; }
+
+    const t = b.tier || 'unknown';
+    byTier[t] = byTier[t] || { wins: 0, losses: 0, pushes: 0 };
+    if (b.result === 'win') byTier[t].wins++;
+    else if (b.result === 'loss') byTier[t].losses++;
+    else byTier[t].pushes++;
+
+    const typ = b.type || 'unknown';
+    byType[typ] = byType[typ] || { wins: 0, losses: 0, pushes: 0 };
+    if (b.result === 'win') byType[typ].wins++;
+    else if (b.result === 'loss') byType[typ].losses++;
+    else byType[typ].pushes++;
+  });
+
+  const decided = wins + losses;
+  const fmt = b => {
+    const dec = b.wins + b.losses;
+    return {
+      ...b,
+      winPct: dec > 0 ? +((b.wins / dec) * 100).toFixed(1) : null,
+      n: b.wins + b.losses + b.pushes
+    };
+  };
+  const byTierFmt = {};
+  for (const t in byTier) byTierFmt[t] = fmt(byTier[t]);
+  const byTypeFmt = {};
+  for (const t in byType) byTypeFmt[t] = fmt(byType[t]);
+
+  return {
+    graded: graded.length,
+    wins,
+    losses,
+    pushes,
+    winPct: decided > 0 ? +((wins / decided) * 100).toFixed(1) : null,
+    unitsRisked: +unitsRisked.toFixed(2),
+    unitsNet: +unitsNet.toFixed(2),
+    byTier: byTierFmt,
+    byType: byTypeFmt
+  };
 }
 
 
@@ -8346,6 +8524,132 @@ function renderHistory() {
           </p>
         </div>
       `}
+
+      ${(() => {
+        // LEAN GRADING SECTION (May 15, 2026)
+        const leanStats = computeLeanStats(allEntries);
+        if (!leanStats) {
+          return `
+            <div class="calib-insight calib-insight-thin" style="margin-top:14px">
+              <div class="calib-insight-label">◎ LYRID'S LEAN PERFORMANCE</div>
+              <p style="font-size:11px;color:var(--dim);margin:6px 0 0;line-height:1.5">
+                No graded games with market lines yet. Lean tracking started ${new Date().toISOString().split('T')[0]}.
+                As market lines get captured and games finalize, this section will show how often
+                Lyrid's directional read (OVER/UNDER vs market) is correct.
+              </p>
+            </div>
+          `;
+        }
+        const decided = leanStats.wins + leanStats.losses;
+        const breakEven = 52.4;
+        const winColor = leanStats.winPct == null ? 'var(--dim)'
+          : leanStats.winPct >= 55 ? 'var(--accent)'
+          : leanStats.winPct >= breakEven ? 'var(--cool)'
+          : 'var(--warn)';
+        return `
+          <div class="bestbet-stats" style="margin-top:14px">
+            <div class="calib-insight-label" style="padding:0 4px 8px">◎ LYRID'S LEAN PERFORMANCE</div>
+            <div class="bbs-grid">
+              <div class="bbs-cell">
+                <div class="bbs-label">LEAN WIN%</div>
+                <div class="bbs-value" style="color:${winColor}">${leanStats.winPct ?? '—'}%</div>
+                <div class="bbs-sub">${leanStats.wins}-${leanStats.losses}${leanStats.pushes > 0 ? `-${leanStats.pushes}` : ''}</div>
+              </div>
+              <div class="bbs-cell">
+                <div class="bbs-label">OVER LEANS</div>
+                <div class="bbs-value">${leanStats.byDirection.over.winPct ?? '—'}%</div>
+                <div class="bbs-sub">${leanStats.byDirection.over.wins}-${leanStats.byDirection.over.losses}</div>
+              </div>
+              <div class="bbs-cell">
+                <div class="bbs-label">UNDER LEANS</div>
+                <div class="bbs-value">${leanStats.byDirection.under.winPct ?? '—'}%</div>
+                <div class="bbs-sub">${leanStats.byDirection.under.wins}-${leanStats.byDirection.under.losses}</div>
+              </div>
+              <div class="bbs-cell">
+                <div class="bbs-label">BIG EDGE (1.5+)</div>
+                <div class="bbs-value">${leanStats.byEdgeSize.large.winPct ?? '—'}%</div>
+                <div class="bbs-sub">${leanStats.byEdgeSize.large.wins}-${leanStats.byEdgeSize.large.losses}</div>
+              </div>
+              <div class="bbs-cell">
+                <div class="bbs-label">SMALL EDGE (0.25-0.75)</div>
+                <div class="bbs-value">${leanStats.byEdgeSize.small.winPct ?? '—'}%</div>
+                <div class="bbs-sub">${leanStats.byEdgeSize.small.wins}-${leanStats.byEdgeSize.small.losses}</div>
+              </div>
+            </div>
+            ${decided >= 5 ? `
+              <div class="calib-insight" style="margin-top:10px">
+                <ul class="calib-insight-list">
+                  <li>Break-even at -110 vig is 52.4%. Lyrid leans hit at <b>${leanStats.winPct}%</b> over ${decided} graded games.</li>
+                  ${leanStats.byEdgeSize.large.winPct != null && leanStats.byEdgeSize.small.winPct != null
+                    ? `<li>Big edges (1.5+ runs from market) hit <b>${leanStats.byEdgeSize.large.winPct}%</b>; small edges hit <b>${leanStats.byEdgeSize.small.winPct}%</b> — ${leanStats.byEdgeSize.large.winPct > leanStats.byEdgeSize.small.winPct + 5 ? 'edge size is predictive, bet bigger when edge is bigger' : 'edge size does not strongly predict outcomes yet'}</li>`
+                    : ''}
+                  ${leanStats.byDirection.over.winPct != null && leanStats.byDirection.under.winPct != null
+                    ? `<li>OVER leans: <b>${leanStats.byDirection.over.winPct}%</b> (${leanStats.byDirection.over.wins}-${leanStats.byDirection.over.losses}). UNDER leans: <b>${leanStats.byDirection.under.winPct}%</b> (${leanStats.byDirection.under.wins}-${leanStats.byDirection.under.losses}).</li>`
+                    : ''}
+                </ul>
+              </div>
+            ` : `
+              <div class="calib-insight calib-insight-thin" style="margin-top:10px">
+                <p style="font-size:11px;color:var(--dim);margin:0;line-height:1.5">
+                  ${decided} graded leans so far. Need ~20+ for trustworthy directional read.
+                </p>
+              </div>
+            `}
+          </div>
+        `;
+      })()}
+
+      ${(() => {
+        // USER BET PERFORMANCE SECTION (May 15, 2026)
+        const userStats = computeUserBetStats();
+        if (!userStats) return '';
+        const decided = userStats.wins + userStats.losses;
+        const winColor = userStats.winPct == null ? 'var(--dim)'
+          : userStats.winPct >= 55 ? 'var(--accent)'
+          : userStats.winPct >= 52.4 ? 'var(--cool)'
+          : 'var(--warn)';
+        const unitsColor = userStats.unitsNet > 0 ? 'var(--accent)'
+          : userStats.unitsNet < 0 ? 'var(--warn)'
+          : 'var(--dim)';
+        const tierRows = Object.entries(userStats.byTier)
+          .filter(([t, r]) => r.n >= 2)
+          .map(([t, r]) => `<li>${t.toUpperCase()}: <b>${r.winPct ?? '—'}%</b> (${r.wins}-${r.losses}${r.pushes > 0 ? `-${r.pushes}` : ''})</li>`)
+          .join('');
+        const typeRows = Object.entries(userStats.byType)
+          .filter(([t, r]) => r.n >= 2)
+          .map(([t, r]) => `<li>${t}: <b>${r.winPct ?? '—'}%</b> (${r.wins}-${r.losses}${r.pushes > 0 ? `-${r.pushes}` : ''})</li>`)
+          .join('');
+        return `
+          <div class="bestbet-stats" style="margin-top:14px">
+            <div class="calib-insight-label" style="padding:0 4px 8px">◎ YOUR BET PERFORMANCE</div>
+            <div class="bbs-grid">
+              <div class="bbs-cell">
+                <div class="bbs-label">WIN%</div>
+                <div class="bbs-value" style="color:${winColor}">${userStats.winPct ?? '—'}%</div>
+                <div class="bbs-sub">${userStats.wins}-${userStats.losses}${userStats.pushes > 0 ? `-${userStats.pushes}` : ''}</div>
+              </div>
+              <div class="bbs-cell">
+                <div class="bbs-label">UNITS NET</div>
+                <div class="bbs-value" style="color:${unitsColor}">${userStats.unitsNet >= 0 ? '+' : ''}${userStats.unitsNet}u</div>
+                <div class="bbs-sub">on ${userStats.unitsRisked}u risked</div>
+              </div>
+              <div class="bbs-cell">
+                <div class="bbs-label">SAMPLE</div>
+                <div class="bbs-value">${userStats.graded}</div>
+                <div class="bbs-sub">graded bets</div>
+              </div>
+            </div>
+            ${(tierRows || typeRows) ? `
+              <div class="calib-insight" style="margin-top:10px">
+                <ul class="calib-insight-list">
+                  ${typeRows}
+                  ${tierRows}
+                </ul>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      })()}
 
       ${stats.eraSplit && (stats.eraSplit.pre.count >= 1 && stats.eraSplit.post.count >= 1) ? (() => {
         // Era split panel — pre/post environment refactor (May 8, 2026).
