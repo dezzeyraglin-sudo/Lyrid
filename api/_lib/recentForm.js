@@ -258,15 +258,32 @@ function classifyForm({ recent, season }) {
     cold: false
   };
 
-  // INJURY_RISK: severely degraded contact suggesting player is hurt/benched
-  // Two signals:
-  //   (a) 0 hits + ≤1 BB over 15+ PA  → no contact, no patience (extreme)
-  //   (b) AVG ≤ 0.075 AND ISO ≤ 0.075 over 20+ PA → ghost-of-self performance
-  // The OR captures cases like Seager (2H/39PA, 0HR, AVG 0.059, ISO 0.059)
-  // where the hitter is making token contact but materially broken.
+  // INJURY_RISK: severely degraded contact suggesting player is hurt/benched.
+  //
+  // CALIBRATION UPDATE (May 16, 2026 — live shadow validation):
+  // Initial threshold missed Corey Seager case (3H/43PA, 1HR, AVG .070).
+  // Root cause: a single HR over 40+ PA inflates ISO above the 0.075 cutoff
+  // (TB-H over AB), so a slumping hitter with one fluke power outcome
+  // escapes INJURY_RISK and falls through to NEUTRAL. The historical
+  // analysis predicted Seager as INJURY_RISK at 0/9 HR conversion, so
+  // this miss is empirical, not theoretical.
+  //
+  // Fix: add a third trigger that gates on AVG + low hit count over a
+  // larger sample, regardless of ISO. The reasoning: if a hitter has 3
+  // or fewer hits in 30+ PA with sub-.100 AVG, they're broken. ISO from
+  // a single HR doesn't change that.
+  //
+  // Three triggers, OR-combined:
+  //   (a) Extreme no-contact:  0H + ≤1 BB over 15+ PA      → totally lost
+  //   (b) Ghost performance:   AVG ≤ .075 + ISO ≤ .075 over 20+ PA → both stats broken
+  //   (c) Slump with fluke HR: AVG ≤ .100 + H ≤ 3 over 30+ PA → catches Seager
+  //
+  // Trigger (c) intentionally doesn't gate on ISO because that's exactly
+  // the failure mode it's designed to catch.
   const extremeNoContact = recent.pa >= 15 && recent.h === 0 && recent.bb <= 1;
   const ghostPerformance = recent.pa >= 20 && recent.avg <= 0.075 && recent.iso <= 0.075;
-  if (extremeNoContact || ghostPerformance) {
+  const slumpWithFlukeHr = recent.pa >= 30 && recent.h <= 3 && recent.avg <= 0.100;
+  if (extremeNoContact || ghostPerformance || slumpWithFlukeHr) {
     flags.injuryRisk = true;
     return { formLabel: 'INJURY_RISK', formMultiplier: MULTIPLIER.INJURY_RISK, flags };
   }
