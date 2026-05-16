@@ -16,6 +16,7 @@ import { buildPitcherProps, evaluatePitcherProp } from './_lib/pitcherProps.js';
 import { computeFirstInningProbability } from './_lib/firstInning.js';
 import { computeHrProjection, computeHrAudit } from './_lib/hrEmpirical.js';
 import { classifyHitter, classifyPitcher, getTierShift, applyTierShift, buildDamageNote, detectDemonTrap } from './_lib/damageArchetype.js';
+import { getRecentFormCached, fetchHitterGameLog } from './_lib/recentForm.js';
 import { getMatchupConversionRates } from './_lib/conversionRate.js';
 import { getLineupRispPerformance, applyRispAdjustment, buildLineupConversionTier } from './_lib/batterRisp.js';
 import { fetchPitcherPropsLines, getPitcherLinesByName } from './_lib/pitcherPropsLines.js';
@@ -132,6 +133,27 @@ const DAMAGE_QUALITY_DEMON_TRAPS = (() => {
   const v = process.env.DAMAGE_QUALITY_DEMON_TRAPS;
   if (v === 'true' || v === '1' || v === 'yes') return true;
   return false;  // default off — requires market data flow first
+})();
+
+// RECENT FORM WEIGHTING (Wave 4, May 15, 2026)
+// Two flags for staged rollout:
+//   _ENABLED:  apply the formMultiplier to HR scoring (model behavior change)
+//   _DISPLAY:  compute and surface the form record in UI (no model impact)
+//
+// Initial deploy: _ENABLED=false, _DISPLAY=true (shadow mode). Module computes
+// classifications for every hitter, logs them with each pick, surfaces in UI,
+// but HR projection is not adjusted. After 1 week of data we validate that
+// HOT/SCORCHING picks outperform NEUTRAL and COLD/INJURY_RISK underperform.
+// If criteria met, flip _ENABLED to apply multipliers.
+const RECENT_FORM_ENABLED = (() => {
+  const v = process.env.RECENT_FORM_ENABLED;
+  if (v === 'true' || v === '1' || v === 'yes') return true;
+  return false;  // default off — validate in shadow mode first
+})();
+const RECENT_FORM_DISPLAY = (() => {
+  const v = process.env.RECENT_FORM_DISPLAY;
+  if (v === 'false' || v === '0' || v === 'no') return false;
+  return true;  // default on — surface form info even when not applied
 })();
 
 // Amplified pitcher multiplier — adds a non-linear correction for elite
@@ -325,6 +347,7 @@ export default async function handler(req, res) {
       const topHitters = lineup.slice(0, 9);
 
       // Fetch hitter stats + splits in parallel (plus deep per-pitch-per-hand if requested)
+      // Also fetch recent form (last 10 games) when feature is enabled, in parallel.
       const hitterData = await Promise.all(topHitters.map(async h => {
         try {
           // In deep mode, fetch per-pitch-type xwOBA filtered by THIS pitcher's handedness
@@ -333,14 +356,31 @@ export default async function handler(req, res) {
             ? getHitterPitchTypeByHand(h.id, season, s.pitcher.hand).catch(() => [])
             : Promise.resolve([]);
 
-          const [stats, splits, deepPitchTypes] = await Promise.all([
+          // Recent form fetch — only when display or active flag is on.
+          // Uses hrAudit cache first, falls back to MLB API. Defensive: any
+          // failure returns null and we proceed without form data.
+          const recentFormPromise = (RECENT_FORM_DISPLAY || RECENT_FORM_ENABLED)
+            ? getRecentFormCached({
+                hitterId: h.id,
+                hitterName: h.name,
+                seasonStats: null,  // populated downstream once we have season stats
+                hrAuditEntries: [],  // populated server-side: state.hrAudit is client-only
+                fetchGameLog: (id) => fetchHitterGameLog(id, season)
+              }).catch(err => {
+                console.warn(`[recentForm] failed for ${h.name}:`, err.message);
+                return null;
+              })
+            : Promise.resolve(null);
+
+          const [stats, splits, deepPitchTypes, recentForm] = await Promise.all([
             getHitterStats(h.id, season),
             getHitterSplits(h.id, season).catch(() => ({ vsR: null, vsL: null })),
-            deepPromise
+            deepPromise,
+            recentFormPromise
           ]);
-          return { ...h, stats, splits, deepPitchTypes };
+          return { ...h, stats, splits, deepPitchTypes, recentForm };
         } catch {
-          return { ...h, stats: { overall: {}, pitchTypes: [] }, splits: { vsR: null, vsL: null }, deepPitchTypes: [] };
+          return { ...h, stats: { overall: {}, pitchTypes: [] }, splits: { vsR: null, vsL: null }, deepPitchTypes: [], recentForm: null };
         }
       }));
 
@@ -696,6 +736,27 @@ export default async function handler(req, res) {
           damageTierShift,
           damageNote,
           damageShadowMode: DAMAGE_QUALITY_ENABLED && !DAMAGE_QUALITY_APPLY_TIER_SHIFTS,
+          // RECENT FORM fields (Wave 4, May 15, 2026). When DISPLAY is on,
+          // surface a slim summary for the UI chip + audit log. The full
+          // record (with rates and deltas) lives in h.recentForm but isn't
+          // serialized into the response to keep payload size sane.
+          recentForm: (RECENT_FORM_DISPLAY && h.recentForm) ? {
+            label: h.recentForm.formLabel,
+            multiplier: h.recentForm.formMultiplier,
+            gamesUsed: h.recentForm.gamesUsed,
+            paUsed: h.recentForm.paUsed,
+            source: h.recentForm.source,
+            hot: h.recentForm.flags?.hot || false,
+            scorching: h.recentForm.flags?.scorching || false,
+            cold: h.recentForm.flags?.cold || false,
+            injuryRisk: h.recentForm.flags?.injuryRisk || false,
+            applied: RECENT_FORM_ENABLED,  // false = shadow mode (display only)
+            // Small selection of useful stats for the audit panel
+            recentH: h.recentForm.recent?.h ?? null,
+            recentHR: h.recentForm.recent?.hr ?? null,
+            recentAvg: h.recentForm.recent?.avg != null ? parseFloat(h.recentForm.recent.avg.toFixed(3)) : null,
+            recentIso: h.recentForm.recent?.iso != null ? parseFloat(h.recentForm.recent.iso.toFixed(3)) : null
+          } : null,
           seasonStats: {
             xwoba: overall.xwoba?.value || null,
             barrelPct: overall.barrel_batted_rate?.value || null,
@@ -758,6 +819,10 @@ export default async function handler(req, res) {
 
             // Single computation, both outputs. computeHrAudit always returns the
             // projection; we derive hrChance by gating on the SOLID threshold.
+            //
+            // Wave 4 (May 15, 2026): pass recentForm only when RECENT_FORM_ENABLED.
+            // When in shadow mode (_DISPLAY only), we surface the record at the
+            // hitter level for UI but DON'T apply the multiplier to scoring.
             const audit = computeHrAudit({
               barrelPct: barrel,
               hardHitPct: hardHit,
@@ -771,7 +836,8 @@ export default async function handler(req, res) {
               weatherImpact: results.weatherImpact,
               batSide: effectiveBatSide,
               platoonAdjustment,
-              bullpenTier
+              bullpenTier,
+              recentForm: RECENT_FORM_ENABLED ? h.recentForm : null
             });
 
             return {

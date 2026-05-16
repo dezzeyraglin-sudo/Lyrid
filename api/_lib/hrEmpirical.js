@@ -269,6 +269,45 @@ function bullpenEdgeMultiplier(bullpenEdgeTier) {
   return { mult: 1.0, driver: null };
 }
 
+/**
+ * Recent form multiplier (Wave 4, May 15, 2026).
+ *
+ * Adjusts HR projection based on hitter's last 10 games. The classification
+ * was already done in recentForm.js; this just translates the formMultiplier
+ * into our (mult, driver) shape and produces a human-readable driver entry.
+ *
+ * Safe with null/undefined: returns no-op multiplier when no record provided.
+ * Safe with INSUFFICIENT: also returns 1.0 (no adjustment, no driver shown).
+ */
+function recentFormMultiplier(recentFormRecord) {
+  if (!recentFormRecord) return { mult: 1.0, driver: null };
+  if (recentFormRecord.formLabel === 'INSUFFICIENT') return { mult: 1.0, driver: null };
+  if (recentFormRecord.formLabel === 'NEUTRAL') return { mult: 1.0, driver: null };
+
+  const mult = recentFormRecord.formMultiplier;
+  const label = recentFormRecord.formLabel;
+  const games = recentFormRecord.gamesUsed || '?';
+  const pa = recentFormRecord.paUsed || '?';
+
+  // Build driver entry for the audit panel. The detail string surfaces
+  // enough info to debug without overwhelming.
+  let detail;
+  if (label === 'SCORCHING') detail = `Hot bat last ${games}G (${pa}PA, +HR rate)`;
+  else if (label === 'HOT')   detail = `Hot last ${games}G (${pa}PA)`;
+  else if (label === 'COLD')  detail = `Cold last ${games}G (${pa}PA, ↓contact)`;
+  else if (label === 'INJURY_RISK') detail = `Injury risk — minimal contact last ${games}G (${pa}PA)`;
+  else detail = `Recent form: ${label}`;
+
+  return {
+    mult,
+    driver: {
+      feature: 'Recent form',
+      detail,
+      weight: mult
+    }
+  };
+}
+
 // =============================================================
 // MAIN SCORING FUNCTION
 // =============================================================
@@ -316,7 +355,11 @@ function computeRawProjection(ctx) {
     parkHrMult, parkName,
     weatherImpact, batSide,
     platoonAdjustment,
-    bullpenTier
+    bullpenTier,
+    recentForm = null   // Wave 4 (May 15, 2026): optional recent-form record.
+                        // When provided AND not in shadow mode, contributes a
+                        // multiplier in [0.75, 1.15] based on hitter's last 10
+                        // games. See recentForm.js for classification logic.
   } = ctx;
 
   // Sample-size regression for Barrel%.
@@ -355,6 +398,9 @@ function computeRawProjection(ctx) {
     ['platoon', () => platoonMultiplier(platoonAdjustment)],
     ['kPenalty', () => strikeoutPenalty(kPct)],
     ['bullpen', () => bullpenEdgeMultiplier(bullpenTier)],
+    // Wave 4 (May 15, 2026): recent-form multiplier. Returns 1.0 (no driver)
+    // if no record provided or INSUFFICIENT, so safe to always include.
+    ['recentForm', () => recentFormMultiplier(recentForm)],
   ];
 
   // Combine multipliers + capture per-feature trace for diagnostics

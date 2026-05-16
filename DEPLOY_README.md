@@ -1,181 +1,177 @@
-# Wave 1+2 Deploy Bundle — Ready for GitHub Upload
-*May 10, 2026 — Lyrid Calibration Update*
+# Wave 4 Session 2 — Recent Form Weighting (Shadow Mode)
+*May 15, 2026*
 
-## What's in this zip
+## What this ships
 
-Four files with **all Wave 1+2 patches applied**. These are drop-in replacements for the originals.
+The `recentForm.js` module from Session 1 is now wired into the production code, running in **shadow mode** by default. Every hitter gets a form classification (HOT/SCORCHING/NEUTRAL/COLD/INJURY_RISK) based on their last 10 games, surfaced as a UI chip on the hitter card, and logged on every pick for validation.
+
+**The multiplier is NOT applied to HR scoring yet.** That happens after 1 week of shadow data validates the classifier.
+
+## Four files to deploy
 
 ```
-wave12-deploy/
-├── public/
-│   └── index.html           ← Replace your current public/index.html
-├── api/
-│   ├── analyze.js           ← Replace your current api/analyze.js
-│   └── _lib/
-│       └── hrEmpirical.js   ← Replace your current api/_lib/hrEmpirical.js
-└── Lyrid-ROADMAP.md         ← Replace your current Lyrid-ROADMAP.md (root)
+public/index.html              ← Replace (UI: RECENT FORM chip + audit logging)
+api/analyze.js                 ← Replace (parallel fetch + flag handling + return)
+api/_lib/hrEmpirical.js        ← Replace (recentFormMultiplier function in pipeline)
+api/_lib/recentForm.js         ← NEW FILE (the module itself)
 ```
 
-All files passed Node syntax-check before bundling. No partial edits, no broken references.
+## Feature flags
 
-## What was changed in each file
+Two environment variables in Vercel:
 
-### `public/index.html` (4 edits)
-- **Patch 1** — Bias-sign label fix in Calibration tab (lines ~8248, ~8299, comment block ~7436)
-- **Patch 2** — Banned-list filter wired into auto-log function (HR audit + top pick paths, ~line 6519 and ~6531)
-- **Patch 3** — `seasonPa` displayed next to Barrel% in HR audit debug line (~line 4044)
-- **Patch 7** — Calibration fields (`regressedMaxXwoba`, `tierEvalXwoba`, `adjustedEdgeScore`, `cappedContextMultiplier`) now logged on every pick (~line 6573)
-
-### `api/analyze.js` (3 edits)
-- **Patch 4** — `contextMultiplier` capped at 1.40 to prevent inflated `adjustedMaxXwoba` (~line 527)
-- **Patch 5** — FULL GAME bonus (1.18×) removed from top-pick scoring; switch-hitter-vs-RHP boost (1.06×) added (~line 695-712)
-- **Patch 8** — `TB_PROP_ENABLED` flag added (default OFF); TB 1.5 props no longer generated (~line 92, ~line 2014)
-
-### `api/_lib/hrEmpirical.js` (1 edit)
-- **Patch 6** — `bullpenMultiplier` renamed to `bullpenEdgeMultiplier`; recalibrated from 1.18× to 1.08× elite/strong, 1.06 → 1.05 solid; misleading "FULL GAME HR vulnerable" driver text replaced with "Hitter strong vs bullpen arsenal" (~line 244)
-
-### `Lyrid-ROADMAP.md` (2 edits)
-- Line 17: "under-projects" → "over-projects"
-- Item #1 acceptance criterion: bias direction sign corrected, note added about reducing projections
-
----
-
-## How to upload to GitHub (Mac, GitHub Desktop)
-
-Per your handoff, you've been using GitHub Desktop with local clone at `~/Documents/GitHub/Lyrid`.
-
-### Recommended flow:
-
-1. **Backup current state first.** In GitHub Desktop, your current state is the safety net. If you have uncommitted changes, commit or stash them before this upload.
-
-2. **Open the unzipped `wave12-deploy/` folder in Finder.**
-
-3. **In a separate Finder window, open `~/Documents/GitHub/Lyrid/`.**
-
-4. **Replace files one by one** (drag-and-drop into the matching folder, click "Replace" when prompted):
-   - `wave12-deploy/public/index.html` → `~/Documents/GitHub/Lyrid/public/index.html`
-   - `wave12-deploy/api/analyze.js` → `~/Documents/GitHub/Lyrid/api/analyze.js`
-   - `wave12-deploy/api/_lib/hrEmpirical.js` → `~/Documents/GitHub/Lyrid/api/_lib/hrEmpirical.js`
-   - `wave12-deploy/Lyrid-ROADMAP.md` → `~/Documents/GitHub/Lyrid/Lyrid-ROADMAP.md`
-
-5. **Open GitHub Desktop.** It should show 4 changed files in the left panel.
-
-6. **Review the diffs** in GitHub Desktop's diff viewer — you should see only the changes documented above. If you see unexpected diffs, stop and ask before committing.
-
-7. **Commit message** (suggested):
-   ```
-   Wave 1+2 calibration update: bias sign, banned filter, contextMultiplier cap, FULL GAME bonus removal, bullpen recalibration, TB props disabled
-
-   Patches 1-8 from May 10 calibration analysis (928-pick study).
-   - Bias label flipped (+/- was inverted in display)
-   - Banned-list filter wired into auto-log
-   - seasonPa surfaced in HR audit debug line
-   - regressedMaxXwoba and friends now logged on every pick
-   - contextMultiplier capped at 1.40 to fix the >0.70 anti-predictive zone
-   - FULL GAME 1.18x bonus removed (data showed it double-counts correlated signals)
-   - Switch-hitter-vs-RHP boost added (60.4% empirical hit rate)
-   - bullpenMultiplier -> bullpenEdgeMultiplier rename + 1.18 -> 1.08
-   - TB_PROP_ENABLED flag added; TB 1.5 disabled until archetype-aware
-   - Roadmap line 17 sign correction
-   ```
-
-8. **Push to origin.** Vercel auto-deploys from main; site should update in 1-2 min.
-
----
-
-## After deploy — validation checklist
-
-### Wave 1 (the cleanup) — verify in production within first hour:
-
-1. **Bias label fix**
-   - Open History → Calibration tab
-   - Bias should display a number (e.g. "-2.78")
-   - Below the number: should say "runs over" (not "runs under")
-   - "WHAT THIS MEANS" section should say "Model over-projects by 2.78 runs on avg"
-
-2. **Banned-list filter**
-   - Settings → BAN LISTS — verify your bans are still there
-   - Run a deep-mode analysis on a slate that includes a banned player or team
-   - Open DevTools → Console → check `state.bestBetHistory[CURRENT_DATE]` keys
-   - Should NOT contain new entries for banned hitters or teams
-
-3. **seasonPa in HR audit**
-   - Open the HR audit panel for any side
-   - Each row's debug line should show "(N PA)" next to bbl
-   - For early-season hitters (PA < 100), the regression arrow should appear AND the PA count should explain why
-
-4. **Calibration fields logging**
-   - DevTools → Console: `Object.values(state.bestBetHistory[CURRENT_DATE])[0]`
-   - The latest pick entry should have `regressedMaxXwoba`, `tierEvalXwoba`, `cappedContextMultiplier` populated
-
-### Wave 2 (the calibration changes) — track over next 7-10 days:
-
-5. **contextMultiplier cap firing**
-   - DevTools → Console: inspect `state.bestBetHistory` entries
-   - `contextMultiplier` may be > 1.40 sometimes; `cappedContextMultiplier` should be ≤ 1.40 always
-   - `adjustedMaxXwoba` should not exceed ~0.70 for any hitter
-
-6. **FULL GAME bonus removed**
-   - Top picks should still appear (the visual badge "FULL GAME" still surfaces)
-   - But the *selection* of which hitter is top pick should differ — expect more SP-only edge picks promoted, fewer bullpen-amplified picks
-
-7. **Switch-hitter boost**
-   - Switch hitters facing RHP should appear more often as top picks when they have an edge
-   - Watch for SHH (switch-handed hitters) appearing in top-pick slots they wouldn't have before
-
-8. **TB props gone**
-   - No "TB 1.5" entries in the prop recommendation list on any hitter card
-   - History tab should still show old TB picks (legacy data preserved)
-
-9. **Bullpen text update**
-   - HR audit panel: when a hitter has bullpen edge, driver should read "Hitter strong vs bullpen arsenal" (not "FULL GAME HR vulnerable")
-   - Multiplier shown should be `1.08` for elite/strong, `1.05` for solid
-
-### Performance metrics to watch (50-100 picks needed):
-
-| Metric | Pre-rollout baseline | Post-rollout target |
+| Flag | Default | What it controls |
 |---|---|---|
-| Top picks hit rate | 46.5% | **50%+** |
-| Elite tier hit rate | 49.6% | **53%+** |
-| Overall hit rate | 49.9% | **52%+** |
+| `RECENT_FORM_DISPLAY` | **true** (on) | Shows the RECENT FORM chip in UI, logs form on picks |
+| `RECENT_FORM_ENABLED` | **false** (off) | Actually applies the multiplier to HR projection |
 
-If these don't improve over 100 picks, send the next backup and we'll dig into why.
+Initial state: **`_DISPLAY=true`, `_ENABLED=false`** (shadow mode). You'll see the form chip on every hitter card, you'll see logging in `state.bestBetHistory`, but HR scores are not affected by recent form yet.
 
----
+## How to deploy
 
-## Rollback plan (if something breaks)
+### Step 1: Replace three existing files
 
-GitHub Desktop's commit history is your rollback. If anything breaks in production:
+1. Open Finder to `~/Documents/GitHub/Lyrid/`
+2. From the downloaded files, drag-and-replace:
+   - `index.html` → into `~/Documents/GitHub/Lyrid/public/` (replaces existing)
+   - `analyze.js` → into `~/Documents/GitHub/Lyrid/api/` (replaces existing)
+   - `hrEmpirical.js` → into `~/Documents/GitHub/Lyrid/api/_lib/` (replaces existing)
 
-1. Open GitHub Desktop → History tab
-2. Right-click the commit before this one → "Revert this Commit"
-3. Push the revert
-4. Vercel redeploys to previous state in ~1 min
+### Step 2: Add the new module file
 
-The patches are designed to fail safe — even if one patch has an edge case I missed, the syntax checks passed and the boost function tolerates missing TB keys silently. But the rollback is there if you need it.
+3. Drag `recentForm.js` into `~/Documents/GitHub/Lyrid/api/_lib/`
+4. This is a NEW file — GitHub Desktop will show it with a "+" indicator
 
----
+### Step 3: Verify in GitHub Desktop
 
-## What's NOT in this deploy
+GitHub Desktop should show **exactly 4 changed files**:
+- ✏️ `public/index.html` (modified)
+- ✏️ `api/analyze.js` (modified)
+- ✏️ `api/_lib/hrEmpirical.js` (modified)
+- ➕ `api/_lib/recentForm.js` (NEW file, green indicator)
 
-Wave 3 (Damage Quality Phase 2 archetype classifier) is intentionally not included. That's the next session's work, after Wave 1+2 has 5-7 days of validation data.
+⚠️ If you see deletions OR more than 4 files, STOP and discard.
 
-The standalone `damageArchetype.js` module file is in the previous bundle (`lyrid-rollout-1.zip`) along with `PATCH_9_archetype_integration.md` — those are ready when you are, but don't apply them yet. Validate Wave 1+2 first.
+### Step 4: Commit + push
 
----
+```
+Wave 4 S2: Recent form weighting (shadow mode)
 
-## Questions to expect from this deploy
+- Adds api/_lib/recentForm.js — classifies hitters by last 10 games
+- 5 tiers: SCORCHING (+15%), HOT (+10%), NEUTRAL, COLD (-10%), INJURY_RISK (-25%)
+- Wired into analyze.js parallel fetch alongside seasonStats
+- hrEmpirical.js gets new recentFormMultiplier in featureFns chain
+- UI: RECENT FORM chip on hitter cards (warning style for INJURY_RISK)
+- Audit logging: recentFormLabel/Multiplier/Applied/etc. on every pick
+- Feature flags:
+  - RECENT_FORM_DISPLAY=true  (default — show chip, log form)
+  - RECENT_FORM_ENABLED=false (default — DON'T apply multiplier yet)
+- Validation: 8 of 9 historical hitters classified correctly vs expected
+  (Schwarber→SCORCHING, Seager→INJURY_RISK, Nimmo→COLD, etc.)
+```
 
-**"Why are some of my elite-tier hitters now strong-tier?"**
-The contextMultiplier cap (Patch 4) reduces inflation on extreme-context games. Hitters who were riding park × umpire × platoon stacking into elite tier may now land in strong tier. That's correct behavior — the data showed those picks were 40% hits.
+Push → Vercel auto-deploys in 1-2 min.
 
-**"Why don't I see any TB 1.5 props anymore?"**
-Patch 8 disabled them — 33% historical hit rate. Re-enabled in Wave 3 only for ELITE_POWER archetype hitters (Phase 2 work).
+## What you'll see after deploy
 
-**"Why does the HR audit say 'Hitter strong vs bullpen arsenal' instead of 'FULL GAME HR vulnerable'?"**
-The old text was semantically backwards. New text matches what the field actually represents.
+Every hitter card now has a **RECENT FORM** row showing:
+- Form label (SCORCHING / HOT / NEUTRAL / COLD / INJURY_RISK)
+- Recent line (e.g. "7H/29PA, 5HR (last 7G)")
+- Multiplier badge if non-1.0 (+10%, +15%, -10%, -25%)
+- `shadow` indicator confirming multiplier is NOT applied yet
 
-**"Why did my switch-hitter top pick suddenly become much more prominent?"**
-60.4% hit rate observed on switch-hitters vs RHP. Patch 5 added a 1.06× boost for that matchup.
+Visual hierarchy:
+- **INJURY_RISK** — red/warning style, draws attention
+- **HOT/SCORCHING** — amber, signals heat
+- **COLD** — cool blue, signals fade
+- **NEUTRAL** — gray, low visual weight
+- **INSUFFICIENT** — hidden (no chip shown)
 
-If any of these questions have answers different from what's documented above, that means the deploy didn't take — re-check the file replacement step.
+## Performance impact
+
+Each slate analysis now adds:
+- ~25 hitters × 1 MLB Stats API call = 25 extra HTTP requests per slate
+- All run in parallel via `Promise.all` so total slate time barely changes
+- 30-min in-memory cache means re-running analysis within same session is free
+
+MLB Stats API rate limits: no documented hard cap, anecdotally tolerates hundreds of req/min. We're nowhere near. If we ever hit a limit, the module fails gracefully (returns INSUFFICIENT, no slate breakage).
+
+## Validation plan (1 week)
+
+After 5-7 slates with shadow data:
+
+1. Pull a fresh backup
+2. Group post-deploy picks by `recentFormLabel`
+3. Compute hit rate per label
+
+**Acceptance criteria to flip `RECENT_FORM_ENABLED=true`:**
+
+| Label | Expected Hit Rate vs NEUTRAL |
+|---|---|
+| SCORCHING | ≥1.4x NEUTRAL |
+| HOT | ≥1.2x NEUTRAL |
+| NEUTRAL | (baseline) |
+| COLD | ≤0.7x NEUTRAL |
+| INJURY_RISK | ≤0.5x NEUTRAL |
+
+If criteria met → set `RECENT_FORM_ENABLED=true` in Vercel + redeploy. Live behavior change.
+
+If criteria NOT met → keep in shadow mode, tune thresholds in `recentForm.js`, redeploy, revalidate.
+
+## DevTools verification commands
+
+After tonight's slate analysis, in Safari console:
+
+```javascript
+// Check recentForm data is flowing
+const latestPick = Object.values(state.bestBetHistory[getTodayStr()] || {})[0];
+console.log('Recent form data on latest pick:', {
+  label: latestPick.recentFormLabel,
+  multiplier: latestPick.recentFormMultiplier,
+  applied: latestPick.recentFormApplied,
+  gamesUsed: latestPick.recentFormGamesUsed
+});
+```
+
+```javascript
+// Count form distribution on tonight's picks
+const today = getTodayStr();
+const picks = Object.values(state.bestBetHistory[today] || {});
+const dist = {};
+picks.forEach(p => { dist[p.recentFormLabel] = (dist[p.recentFormLabel] || 0) + 1; });
+console.log('Tonight form distribution:', dist);
+```
+
+Expected output: most hitters NEUTRAL, ~5-15% HOT/SCORCHING, ~5-10% COLD, occasional INJURY_RISK.
+
+## Rollback options
+
+**Soft (env var):** Set `RECENT_FORM_DISPLAY=false` in Vercel + redeploy. Module still loaded but UI chip disappears, no audit logging. Useful for debugging UI issues.
+
+**Hard (commit revert):** GitHub Desktop → History → Revert the Wave 4 S2 commit → Push.
+
+## What's NOT in this session
+
+- ❌ Multiplier NOT applied to HR scoring (Session 3, after validation)
+- ❌ HRR scoring uses recent form (Session 3 extension)
+- ❌ Distribution-based UNDER recommendations (Session 4)
+- ❌ Fantasy Score line analysis (Wave 6 territory)
+
+## Risk summary
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| MLB API rate limiting | Very Low | Slate gets stale recent data | Cache aggressively, fail gracefully to INSUFFICIENT |
+| Module loaded but not used | N/A | None — that's shadow mode | (this is the intent) |
+| Classifications look wrong on UI | Medium | User confusion | Shadow mode catches before live; we can tune |
+| Performance degradation | Low | Slower slate analysis | Parallel fetching keeps total time stable |
+| Production cache memory | Very Low | Slow Vercel function | TTL + per-invocation reset |
+
+## Why this is a clean ship
+
+1. **Module is validated.** 8 of 9 historical hitters classified correctly. The one outlier (Witt/Buxton showing NEUTRAL in test) was a test-fixture artifact, not a module bug — they classified SCORCHING when given real season stats.
+2. **MLB API fetcher live-tested.** Pulled Schwarber's actual 2026 gameLog successfully. 45 games returned with correct field shapes.
+3. **Two-flag staged rollout.** Display first, multiplier second. We can see the data before changing model behavior.
+4. **Audit log is set up for validation.** Every pick now records its form label so we can score the model retroactively.
+
+Ship when you're ready. Send the next backup ~7 days out and we'll do the validation analysis.

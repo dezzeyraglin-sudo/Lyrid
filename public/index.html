@@ -3956,6 +3956,36 @@ function renderAnalysis(data) {
                   <span class="stat-chip" style="font-size:11px">${m.damageNote}</span>
                   ${m.damageShadowMode ? `<span class="stat-chip" style="opacity:0.5; font-size:9px">shadow</span>` : ''}
                 </div>` : ''}
+              ${m.recentForm ? (() => {
+                // RECENT FORM chip (Wave 4 — May 15, 2026)
+                // Shows form label + recent line + multiplier.
+                // INJURY_RISK gets a distinctive warning color.
+                const label = m.recentForm.label;
+                const isHot = label === 'HOT' || label === 'SCORCHING';
+                const isCold = label === 'COLD' || label === 'INJURY_RISK';
+                const isInjury = label === 'INJURY_RISK';
+                const chipStyle = isInjury
+                  ? 'background:#fce7e7; color:#8b1f1f; font-weight:700; letter-spacing:0.05em'
+                  : isHot
+                    ? 'background:#fff1d6; color:#a06f1d; font-weight:600; letter-spacing:0.05em'
+                    : isCold
+                      ? 'background:#e8eef8; color:#3f5a8c; font-weight:600; letter-spacing:0.05em'
+                      : 'background:#f0f0f0; color:#666; font-weight:500; letter-spacing:0.05em';
+                if (label === 'INSUFFICIENT') return '';  // skip if no data
+                const recentLine = (m.recentForm.recentH != null && m.recentForm.recentHR != null)
+                  ? `${m.recentForm.recentH}H/${m.recentForm.paUsed}PA, ${m.recentForm.recentHR}HR (last ${m.recentForm.gamesUsed}G)`
+                  : `last ${m.recentForm.gamesUsed}G (${m.recentForm.paUsed}PA)`;
+                const multBadge = m.recentForm.multiplier !== 1.0
+                  ? `<span class="stat-chip" style="font-size:11px; font-variant-numeric: tabular-nums">${m.recentForm.multiplier >= 1 ? '+' : ''}${((m.recentForm.multiplier - 1) * 100).toFixed(0)}%</span>`
+                  : '';
+                return `
+                  <div class="stat-row" title="Wave 4: hitter's last 10 games — ${m.recentForm.applied ? 'applied to HR scoring' : 'shadow mode, not affecting score'}">
+                    <span class="stat-chip" style="${chipStyle}">RECENT FORM</span>
+                    <span class="stat-chip" style="font-size:11px">${label} — ${recentLine}</span>
+                    ${multBadge}
+                    ${!m.recentForm.applied ? `<span class="stat-chip" style="opacity:0.5; font-size:9px">shadow</span>` : ''}
+                  </div>`;
+              })() : ''}
               ${adjHtml}
               ${propsHtml}
               ${tagChipsHtml}
@@ -6588,6 +6618,17 @@ function logBestBets(data) {
         contextMultiplier: m.contextMultiplier,
         cappedContextMultiplier: m.cappedContextMultiplier,
         bullpenTier: m.bullpenTier,
+        // RECENT FORM (Wave 4 — May 15, 2026): log per-pick for shadow-mode
+        // validation. After ~1 week we'll pull a backup and check whether
+        // HOT/SCORCHING picks outperformed and COLD/INJURY_RISK underperformed.
+        // The "applied" flag tells us whether the multiplier was active at
+        // pick time (RECENT_FORM_ENABLED=true) or shadow mode (false).
+        recentFormLabel: m.recentForm?.label || null,
+        recentFormMultiplier: m.recentForm?.multiplier || null,
+        recentFormApplied: m.recentForm?.applied || false,
+        recentFormGamesUsed: m.recentForm?.gamesUsed || null,
+        recentFormPaUsed: m.recentForm?.paUsed || null,
+        recentFormSource: m.recentForm?.source || null,
         loggedAt: state.bestBetHistory[date][entryId]?.loggedAt || Date.now(),
         result: state.bestBetHistory[date][entryId]?.result || null,
         line: state.bestBetHistory[date][entryId]?.line || null,
