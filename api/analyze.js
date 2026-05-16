@@ -15,6 +15,7 @@ import { estimatePropProbability, estimateTotalProbability, estimateSpreadProbab
 import { buildPitcherProps, evaluatePitcherProp } from './_lib/pitcherProps.js';
 import { computeFirstInningProbability } from './_lib/firstInning.js';
 import { computeHrProjection, computeHrAudit } from './_lib/hrEmpirical.js';
+import { classifyHitter, classifyPitcher, getTierShift, applyTierShift, buildDamageNote, detectDemonTrap } from './_lib/damageArchetype.js';
 import { getMatchupConversionRates } from './_lib/conversionRate.js';
 import { getLineupRispPerformance, applyRispAdjustment, buildLineupConversionTier } from './_lib/batterRisp.js';
 import { fetchPitcherPropsLines, getPitcherLinesByName } from './_lib/pitcherPropsLines.js';
@@ -105,6 +106,32 @@ const TB_PROP_ENABLED = (() => {
   const v = process.env.TB_PROP_ENABLED;
   if (v === 'true' || v === '1' || v === 'yes') return true;
   return false;  // default off
+})();
+
+// DAMAGE QUALITY PHASE 2 — ARCHETYPE CLASSIFIER (May 15, 2026)
+// Three flags for staged rollout:
+//   _ENABLED:           classify hitter/pitcher archetypes, log them, surface in UI (no model effect)
+//   _APPLY_TIER_SHIFTS: actually apply the tier matrix to per-hitter tier classification
+//   _DEMON_TRAPS:       run demon trap detection on high-confidence prop lines
+//
+// Initial deploy: _ENABLED=true, others=false (shadow mode). Lets us audit
+// classification accuracy and tier-shift recommendations against real outcomes
+// for 3-5 slates before changing model behavior. After validation, flip
+// _APPLY_TIER_SHIFTS. Demon traps last — requires market data reliability.
+const DAMAGE_QUALITY_ENABLED = (() => {
+  const v = process.env.DAMAGE_QUALITY_ENABLED;
+  if (v === 'false' || v === '0' || v === 'no') return false;
+  return true;  // default on (shadow mode is safe — just adds data)
+})();
+const DAMAGE_QUALITY_APPLY_TIER_SHIFTS = (() => {
+  const v = process.env.DAMAGE_QUALITY_APPLY_TIER_SHIFTS;
+  if (v === 'true' || v === '1' || v === 'yes') return true;
+  return false;  // default off — shadow mode until validated
+})();
+const DAMAGE_QUALITY_DEMON_TRAPS = (() => {
+  const v = process.env.DAMAGE_QUALITY_DEMON_TRAPS;
+  if (v === 'true' || v === '1' || v === 'yes') return true;
+  return false;  // default off — requires market data flow first
 })();
 
 // Amplified pitcher multiplier — adds a non-linear correction for elite
@@ -582,6 +609,43 @@ export default async function handler(req, res) {
         else if (bullpenMaxXwoba >= 0.370) bullpenTier = 'strong';
         else if (bullpenMaxXwoba >= 0.330) bullpenTier = 'solid';
 
+        // DAMAGE QUALITY PHASE 2 — archetype classification + matchup tier shift
+        // (May 15, 2026). Phase 1 already populates seasonStats batted-ball %s
+        // (gbPct, fbPct, ldPct, etc) and arsenal is already loaded. This block
+        // classifies both hitter and pitcher, computes the matchup tier shift,
+        // and optionally applies it (when DAMAGE_QUALITY_APPLY_TIER_SHIFTS is on).
+        //
+        // In shadow mode (default), archetypes are computed and surfaced in the
+        // output but tier classification stays on the existing logic. Lets us
+        // validate classification accuracy before changing model behavior.
+        let damageHitterArchetype = null;
+        let damagePitcherArchetype = null;
+        let damageTierShift = 0;
+        let damageNote = null;
+        if (DAMAGE_QUALITY_ENABLED) {
+          // classifyHitter expects raw season stats with batted-ball % keys.
+          // Build the input object from the data we already have.
+          damageHitterArchetype = classifyHitter({
+            gb_percent: overall.gb_percent?.value,
+            fb_percent: overall.fb_percent?.value,
+            ld_percent: overall.ld_percent?.value,
+            popup_percent: overall.popup_percent?.value,
+            sweet_spot_percent: overall.sweet_spot_percent?.value,
+            pull_percent: overall.pull_percent?.value,
+            barrel_batted_rate: overall.barrel_batted_rate?.value,
+            k_percent: overall.k_percent?.value,
+            batted_balls: overall.batted_balls?.value ?? overall.bbe?.value ?? 0
+          });
+          damagePitcherArchetype = classifyPitcher(arsenal);
+          damageTierShift = getTierShift(damageHitterArchetype, damagePitcherArchetype);
+          damageNote = buildDamageNote(damageHitterArchetype, damagePitcherArchetype, damageTierShift);
+
+          // SHADOW MODE: only apply the shift if the second flag is on.
+          if (DAMAGE_QUALITY_APPLY_TIER_SHIFTS && tier && damageTierShift !== 0) {
+            tier = applyTierShift(tier, damageTierShift);
+          }
+        }
+
         // Build ranked prop recommendations
         const propRecs = buildPropRecommendations({
           hitter: h,
@@ -624,6 +688,14 @@ export default async function handler(req, res) {
           bullpenMaxXwoba: bullpenMaxXwoba.toFixed(3),
           bullpenEdgeScore: bullpenEdgeScore.toFixed(3),
           bullpenTier,
+          // DAMAGE QUALITY PHASE 2 fields (always populated when flag is on,
+          // null when DAMAGE_QUALITY_ENABLED=false). Shadow mode flag tells
+          // the UI to show "(shadow)" indicator when tier isn't actually shifted.
+          damageHitterArchetype,
+          damagePitcherArchetype,
+          damageTierShift,
+          damageNote,
+          damageShadowMode: DAMAGE_QUALITY_ENABLED && !DAMAGE_QUALITY_APPLY_TIER_SHIFTS,
           seasonStats: {
             xwoba: overall.xwoba?.value || null,
             barrelPct: overall.barrel_batted_rate?.value || null,

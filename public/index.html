@@ -3950,6 +3950,12 @@ function renderAnalysis(data) {
                   ${m.seasonStats.sweetSpotPct?`<span class="stat-chip">Sweet% <b>${m.seasonStats.sweetSpotPct}</b></span>`:''}
                   ${m.seasonStats.pullPct?`<span class="stat-chip">Pull% <b>${m.seasonStats.pullPct}</b></span>`:''}
                 </div>` : ''}
+              ${m.damageNote ? `
+                <div class="stat-row" title="Phase 2: hitter archetype vs pitcher archetype matchup">
+                  <span class="stat-chip" style="background:var(--accent-bg, #f0e7d8); color:var(--accent, #8a6d3b); font-weight:600; letter-spacing:0.05em">DAMAGE PROFILE</span>
+                  <span class="stat-chip" style="font-size:11px">${m.damageNote}</span>
+                  ${m.damageShadowMode ? `<span class="stat-chip" style="opacity:0.5; font-size:9px">shadow</span>` : ''}
+                </div>` : ''}
               ${adjHtml}
               ${propsHtml}
               ${tagChipsHtml}
