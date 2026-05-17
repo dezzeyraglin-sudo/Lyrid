@@ -3450,6 +3450,22 @@ function logHrChanceEntry(e) {
       existing.hrTier = e.hrTier;
       existing.hrScore = e.hrScore;
       existing.criteria = e.criteria;
+      // Wave 3/4 fields also refresh on re-log. If the user runs deep mode
+      // a second time and the form classification changes (e.g. game logs
+      // updated), capture the latest classification.
+      if (e.damageNote !== undefined) existing.damageNote = e.damageNote || null;
+      if (e.damageShadowMode !== undefined) existing.damageShadowMode = e.damageShadowMode;
+      if (e.damageTierShift !== undefined) existing.damageTierShift = e.damageTierShift;
+      if (e.hitterArchetype !== undefined) existing.hitterArchetype = e.hitterArchetype || null;
+      if (e.pitcherArchetype !== undefined) existing.pitcherArchetype = e.pitcherArchetype || null;
+      if (e.recentFormLabel !== undefined) existing.recentFormLabel = e.recentFormLabel || null;
+      if (e.recentFormMultiplier !== undefined) existing.recentFormMultiplier = e.recentFormMultiplier;
+      if (e.recentFormApplied !== undefined) existing.recentFormApplied = e.recentFormApplied;
+      if (e.recentFormGamesUsed !== undefined) existing.recentFormGamesUsed = e.recentFormGamesUsed;
+      if (e.recentFormPaUsed !== undefined) existing.recentFormPaUsed = e.recentFormPaUsed;
+      if (e.recentFormRecentH !== undefined) existing.recentFormRecentH = e.recentFormRecentH;
+      if (e.recentFormRecentHR !== undefined) existing.recentFormRecentHR = e.recentFormRecentHR;
+      if (e.recentFormSource !== undefined) existing.recentFormSource = e.recentFormSource || null;
     }
     return;
   }
@@ -3465,6 +3481,32 @@ function logHrChanceEntry(e) {
     hrTier: e.hrTier,
     hrScore: e.hrScore,
     criteria: e.criteria,
+    // WAVE 3 / WAVE 4 AUDIT FIELDS (May 17, 2026):
+    // Previously these features rendered in the UI and logged to
+    // bestBetHistory (top picks only), but the HR audit log — which is
+    // the per-hitter validation source of truth — captured neither.
+    // Without these fields we cannot validate whether SCORCHING/HOT/COLD/
+    // INJURY_RISK classifications actually predict HR outcomes, or whether
+    // damage-archetype tier shifts move hit rate in the predicted direction.
+    // Now logged for every HR-chance hitter so a future calibration session
+    // can build hit-rate-by-classification tables.
+    //
+    // Caller passes recentForm and damageArchetype context (see logHrChanceEntry
+    // call site, ~line 6563). All fields are optional — fall back to null when
+    // not computed (e.g. fast mode, INSUFFICIENT recent form sample).
+    damageNote: e.damageNote || null,
+    damageShadowMode: e.damageShadowMode ?? null,
+    damageTierShift: e.damageTierShift ?? null,
+    hitterArchetype: e.hitterArchetype || null,
+    pitcherArchetype: e.pitcherArchetype || null,
+    recentFormLabel: e.recentFormLabel || null,
+    recentFormMultiplier: e.recentFormMultiplier ?? null,
+    recentFormApplied: e.recentFormApplied ?? null,
+    recentFormGamesUsed: e.recentFormGamesUsed ?? null,
+    recentFormPaUsed: e.recentFormPaUsed ?? null,
+    recentFormRecentH: e.recentFormRecentH ?? null,
+    recentFormRecentHR: e.recentFormRecentHR ?? null,
+    recentFormSource: e.recentFormSource || null,
     actualHR: null,
     graded: false,
     loggedAt: Date.now()
@@ -6565,7 +6607,36 @@ function logBestBets(data) {
           team: side.hitTeam, opponent: side.oppTeam,
           pitcherName: sideData.pitcher?.name,
           hrTier: m.hrChance.tier, hrScore: m.hrChance.score,
-          criteria: m.hrChance.criteria
+          criteria: m.hrChance.criteria,
+          // WAVE 3 / WAVE 4 fields (May 17, 2026):
+          // These were displayed on hitter cards but not persisted to hrAudit,
+          // so we couldn't validate them against actual HR outcomes. Now
+          // captured here so every audited hitter has full context.
+          //
+          // Defensive coding: every field uses optional chaining + null fallback
+          // so a fast-mode pick (no damageNote, no recentForm) won't crash.
+          //
+          // KNOWN FIELDS (confirmed in render path / bestBetHistory writes):
+          //   damageNote, damageShadowMode (Wave 3 display data)
+          //   recentForm.label/multiplier/applied/gamesUsed/paUsed/recentH/recentHR/source
+          //
+          // UNDOCUMENTED FIELDS (may not exist yet — included for forward-compat):
+          //   damageTierShift, hitterArchetype, pitcherArchetype
+          //   If the Wave 3 module exposes these on `m` later, they auto-flow.
+          //   If not, they log as undefined → null. Harmless.
+          damageNote: m.damageNote,
+          damageShadowMode: m.damageShadowMode,
+          damageTierShift: m.damageTierShift,
+          hitterArchetype: m.hitterArchetype,
+          pitcherArchetype: m.pitcherArchetype,
+          recentFormLabel: m.recentForm?.label,
+          recentFormMultiplier: m.recentForm?.multiplier,
+          recentFormApplied: m.recentForm?.applied,
+          recentFormGamesUsed: m.recentForm?.gamesUsed,
+          recentFormPaUsed: m.recentForm?.paUsed,
+          recentFormRecentH: m.recentForm?.recentH,
+          recentFormRecentHR: m.recentForm?.recentHR,
+          recentFormSource: m.recentForm?.source
         });
       }
     }
