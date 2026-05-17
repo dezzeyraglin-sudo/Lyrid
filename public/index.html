@@ -7484,6 +7484,48 @@ function captureProjection(data) {
   const existing = state.projectionAudit[key];
   // Don't overwrite if already graded (actuals locked in)
   if (existing?.graded) return;
+  // Capture projection factors for future calibration (May 17, 2026).
+  //
+  // The projection model has a systematic +1.5-2.0 run OVER bias post-refactor.
+  // Diagnosis: seven multipliers in a multiplicative chain compound — when
+  // every input leans positive, the product overshoots reality by ~30-50%.
+  //
+  // To recalibrate properly we need regression against the SLOPE COEFFICIENTS
+  // (lineupMult slope=2.4, pitcherMult slope=2.0). That requires knowing each
+  // multiplier per game, then regressing actual runs against each component.
+  //
+  // Without these fields persisted, recalibration must use opinion-driven
+  // priors. With them, a future session can run real regression on ~80 games
+  // (one week of slates) and propose data-backed coefficient updates.
+  //
+  // Storing safely:
+  //   - Read from data.projection.factors (already computed by analyze.js)
+  //   - Fall back to null if missing (fast mode may skip some)
+  //   - Strings come in as toFixed values — parse for downstream math
+  const f = data.projection?.factors || {};
+  const projComponents = {
+    lineupMultAway: parseFloatOrNull(f.away?.lineupMult),
+    lineupMultHome: parseFloatOrNull(f.home?.lineupMult),
+    pitcherMultAway: parseFloatOrNull(f.away?.pitcherMult),
+    pitcherMultHome: parseFloatOrNull(f.home?.pitcherMult),
+    bullpenMultAway: parseFloatOrNull(f.away?.bullpenMult),
+    bullpenMultHome: parseFloatOrNull(f.home?.bullpenMult),
+    pitcherXwAwaySp: parseFloatOrNull(f.away?.pitcherXwAgainst),
+    pitcherXwHomeSp: parseFloatOrNull(f.home?.pitcherXwAgainst),
+    lineupTierAway: f.away?.lineupTierLabel || null,
+    lineupTierHome: f.home?.lineupTierLabel || null,
+    parkRunMult: parseFloatOrNull(f.parkRunMult),
+    weatherRunMult: parseFloatOrNull(f.weatherRunMult),
+    envRunMult: parseFloatOrNull(f.envRunMult),
+    umpRunMult: parseFloatOrNull(f.umpRunMult),
+    awayConvMult: parseFloatOrNull(f.awayConvMult),
+    homeConvMult: parseFloatOrNull(f.homeConvMult),
+    dualEliteFactor: parseFloatOrNull(f.dualEliteFactor),
+    slugfestScore: parseFloatOrNull(f.slugfestScore),
+    slugfestFactor: parseFloatOrNull(f.slugfestFactor),
+    slugfestSignalCount: Array.isArray(f.slugfestSignals) ? f.slugfestSignals.length : 0,
+    envInteractionCount: f.envInteractions || 0
+  };
   const entry = {
     date,
     gamePk: data.gamePk,
@@ -7500,6 +7542,8 @@ function captureProjection(data) {
     favoriteML: data.odds?.favoriteML ?? null,
     favorite: data.odds?.favorite ?? null,
     deepMode: data.deepMode || false,
+    // Projection components for future recalibration (May 17, 2026):
+    ...projComponents,
     // Fields filled in on grading:
     actualAwayRuns: existing?.actualAwayRuns ?? null,
     actualHomeRuns: existing?.actualHomeRuns ?? null,
@@ -7512,6 +7556,14 @@ function captureProjection(data) {
 
   state.projectionAudit[key] = entry;
   saveState();
+}
+
+// Safe parseFloat helper that returns null instead of NaN for invalid input.
+// Used by projection-audit capture so missing fields log as null, not NaN.
+function parseFloatOrNull(v) {
+  if (v == null) return null;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**

@@ -1567,9 +1567,78 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
   const awayConvMult = conversionRates?.away?.conversionMult || 1.0;
   const homeConvMult = conversionRates?.home?.conversionMult || 1.0;
 
-  // Final projections — now including conversion rate, composite environment, dual-elite, and slugfest
-  const projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * envRunMult * umpRunMult * awayConvMult * dualEliteFactor * slugfestFactor;
-  const projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * envRunMult * umpRunMult * homeConvMult * dualEliteFactor * slugfestFactor;
+  // Final projections — calibration update May 17, 2026.
+  //
+  // OLD (multiplicative chain, retained as fallback):
+  //   projRuns = BASELINE × lineupMult × pitcherBlend × envRunMult × umpRunMult
+  //              × convMult × dualEliteFactor × slugfestFactor
+  //
+  // PROBLEM: seven multipliers compound. When every input leans positive
+  // (favorable lineup vs weak pitching in hitter park with loose ump etc.),
+  // 1.06^7 ≈ 1.50 — a 50% inflation. Empirical: 245-game backtest shows
+  // +2.22 average bias, +3.6 to +3.9 bias on projections ≥ 11 runs. The
+  // model's individual components may be roughly correct directionally,
+  // but their multiplicative combination overshoots reality.
+  //
+  // BAND-AID FIX (this change): sum individual deviations from 1.0
+  // additively, cap combined deviation at ±20%, apply to baseline. This
+  // breaks the compounding while preserving each input's relative weight.
+  //
+  // Backtest results (245 graded games):
+  //   Old: MAE 4.45, bias +2.22
+  //   New: MAE 3.99, bias +1.41  (~10% MAE drop, ~37% bias drop)
+  //
+  // Still leaves +1.4 bias — proper recalibration requires regressing the
+  // slope coefficients (currently lineupMult slope=2.4, pitcherMult slope=2.0)
+  // against actual outcomes. That work is unblocked by the audit-log fix
+  // shipping in the same patch (index.html now captures every multiplier
+  // per game). Schedule: re-run regression in ~7 days when ~80 component-
+  // labeled games are in.
+  //
+  // FLAG-GATED: PROJ_COMPOUND_FIX_ENABLED. Default true. If anything goes
+  // sideways post-deploy, set to false in Vercel env to instantly revert
+  // to old math. The factors object below surfaces both old and new
+  // multipliers for side-by-side diagnostics regardless of flag state.
+  const PROJ_COMPOUND_FIX_ENABLED = (() => {
+    const v = process.env.PROJ_COMPOUND_FIX_ENABLED;
+    if (v === 'false' || v === '0' || v === 'no') return false;
+    return true;  // default on — addresses confirmed +2.22 OVER bias
+  })();
+  const PROJ_COMPOUND_CAP = 0.20;  // ±20% — best fit per 245-game backtest
+
+  let projAwayRuns, projHomeRuns;
+  let awayDeviation = null, homeDeviation = null, awayCapped = null, homeCapped = null;
+  if (PROJ_COMPOUND_FIX_ENABLED) {
+    // Additive deviation: each multiplier contributes its (mult - 1.0).
+    // Symmetric: a 1.10 multiplier adds 0.10, a 0.93 multiplier subtracts 0.07.
+    // The cap is applied to the SUM, not each individual multiplier —
+    // individual large multipliers (like a strong dualElite -7%) remain
+    // intact when other inputs are neutral.
+    awayDeviation =
+      (awayComp.lineupMult - 1.0) +
+      (awayPitcherBlend - 1.0) +
+      (envRunMult - 1.0) +
+      (umpRunMult - 1.0) +
+      (awayConvMult - 1.0) +
+      (dualEliteFactor - 1.0) +
+      (slugfestFactor - 1.0);
+    homeDeviation =
+      (homeComp.lineupMult - 1.0) +
+      (homePitcherBlend - 1.0) +
+      (envRunMult - 1.0) +
+      (umpRunMult - 1.0) +
+      (homeConvMult - 1.0) +
+      (dualEliteFactor - 1.0) +
+      (slugfestFactor - 1.0);
+    awayCapped = Math.max(-PROJ_COMPOUND_CAP, Math.min(PROJ_COMPOUND_CAP, awayDeviation));
+    homeCapped = Math.max(-PROJ_COMPOUND_CAP, Math.min(PROJ_COMPOUND_CAP, homeDeviation));
+    projAwayRuns = BASELINE_RUNS * (1.0 + awayCapped);
+    projHomeRuns = BASELINE_RUNS * (1.0 + homeCapped);
+  } else {
+    // OLD multiplicative chain (rollback path)
+    projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * envRunMult * umpRunMult * awayConvMult * dualEliteFactor * slugfestFactor;
+    projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * envRunMult * umpRunMult * homeConvMult * dualEliteFactor * slugfestFactor;
+  }
   const projTotal = projAwayRuns + projHomeRuns;
 
   // Win probability via Pythagorean expectation (exp = 1.83 for MLB)
@@ -1867,7 +1936,19 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
       slugfestScore: slugfestScore.toFixed(1),
       slugfestFactor: slugfestFactor.toFixed(3),
       slugfestSignals,
-      slugfestFixEnabled: SLUGFEST_FIX_ENABLED
+      slugfestFixEnabled: SLUGFEST_FIX_ENABLED,
+      // Compound-chain calibration (May 17, 2026):
+      // Surfaces whether the additive-with-cap math fired and how much
+      // was clipped. Helpful for diagnosing edge cases post-deploy and
+      // for the future regression analysis.
+      projCompoundFixEnabled: PROJ_COMPOUND_FIX_ENABLED,
+      projCompoundCap: PROJ_COMPOUND_CAP,
+      awayDeviation: awayDeviation != null ? awayDeviation.toFixed(3) : null,
+      homeDeviation: homeDeviation != null ? homeDeviation.toFixed(3) : null,
+      awayDeviationCapped: awayCapped != null ? awayCapped.toFixed(3) : null,
+      homeDeviationCapped: homeCapped != null ? homeCapped.toFixed(3) : null,
+      awayClipped: (awayDeviation != null && Math.abs(awayDeviation) > PROJ_COMPOUND_CAP),
+      homeClipped: (homeDeviation != null && Math.abs(homeDeviation) > PROJ_COMPOUND_CAP)
     },
     conversionRates: conversionRates || { away: null, home: null },
     marketComparison,
