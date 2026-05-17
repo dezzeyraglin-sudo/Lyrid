@@ -2381,6 +2381,7 @@
   </div>
   <nav class="lyrid-header-nav" role="navigation" aria-label="Main">
     <button class="lyrid-nav-btn active" data-tab="slate" onclick="switchTab('slate')">Slate</button>
+    <button class="lyrid-nav-btn" data-tab="wnba" onclick="switchTab('wnba')">WNBA</button>
     <button class="lyrid-nav-btn" data-tab="track" onclick="switchTab('track')">Track</button>
     <button class="lyrid-nav-btn" data-tab="history" onclick="switchTab('history')">History</button>
     <button class="lyrid-nav-btn" data-tab="settings" onclick="switchTab('settings')">Settings</button>
@@ -2422,6 +2423,45 @@
   <div id="hrPicksView" style="display:none"></div>
   <div id="gamesList"></div>
   <div id="analysisContainer"></div>
+</div>
+
+<!-- WNBA panel (May 17, 2026 — preview surface for /api/wnba/slate) -->
+<!-- Minimum viable UI: lets you SEE what the engine produces without polish. -->
+<!-- Calls POST /api/wnba/slate, renders best plays + per-game breakdowns. -->
+<!-- Shadow-mode banner makes it clear recommendations aren't validated yet. -->
+<div class="panel-content" id="wnba-panel">
+  <div class="lyrid-page-head">
+    <div class="lyrid-page-eyebrow">Preview · Shadow Mode</div>
+    <h1 class="lyrid-page-title">WNBA slate</h1>
+    <p class="lyrid-page-subtitle">Top 4 players per team × points / rebounds / assists. Engine is calibrated but not validated against actual game outcomes — treat as exploratory, not actionable.</p>
+  </div>
+
+  <!-- Shadow mode warning banner -->
+  <div id="wnbaShadowBanner" style="background:#fff7ed;border-left:3px solid #ea580c;padding:12px 16px;margin-bottom:24px;border-radius:4px;font-size:13px;color:#7c2d12">
+    <strong>Shadow mode:</strong> WNBA engine has no calibration data yet.
+    Recommendations are produced by the math you've seen on MLB but with different inputs.
+    Don't bet real money based on these picks until validation accumulates (~2-3 weeks).
+  </div>
+
+  <!-- Date + refresh controls -->
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:24px">
+    <div class="lyrid-date-nav">
+      <button class="lyrid-date-btn" onclick="changeWnbaDate(-1)" aria-label="Previous day">‹</button>
+      <span class="lyrid-date-current" id="wnbaDateDisplay">Loading…</span>
+      <button class="lyrid-date-btn" onclick="changeWnbaDate(1)" aria-label="Next day">›</button>
+    </div>
+    <button class="lyrid-btn primary" id="loadWnbaBtn" onclick="loadWnbaSlate()">Refresh</button>
+    <span id="wnbaStatusText" style="font-size:12px;color:#6b7280;margin-left:8px"></span>
+  </div>
+
+  <!-- Slate content -->
+  <div id="wnbaContent">
+    <div style="text-align:center;color:#6b7280;padding:48px 16px;font-size:14px">
+      Tap <strong>Refresh</strong> to load tonight's WNBA slate.
+      <br><br>
+      First load can take 5–15 seconds (cold cache). Subsequent loads are fast.
+    </div>
+  </div>
 </div>
 
 <!-- TRACK -->
@@ -2971,7 +3011,254 @@ window.switchTab = function(tabName) {
   }
   if (tabName === 'settings') renderSettings();
   if (tabName === 'research') renderResearch();
+  if (tabName === 'wnba') initWnbaTab();
 };
+
+// =============================================================
+// WNBA TAB (May 17, 2026 — preview surface)
+// =============================================================
+// Minimum-viable WNBA UI. Calls /api/wnba/slate, renders best plays + games.
+// No caching, no localStorage persistence — fetched fresh each Refresh.
+// Date defaults to today; user can navigate with arrows.
+
+state.wnbaDate = state.wnbaDate || getTodayStr();
+
+function initWnbaTab() {
+  updateWnbaDateDisplay();
+  // Auto-load on first tab visit; subsequent visits need explicit Refresh
+  if (!state.wnbaAutoLoaded) {
+    state.wnbaAutoLoaded = true;
+    loadWnbaSlate();
+  }
+}
+
+function updateWnbaDateDisplay() {
+  const el = document.getElementById('wnbaDateDisplay');
+  if (!el) return;
+  const d = state.wnbaDate;
+  if (!d) { el.textContent = 'Today'; return; }
+  // Format "May 16, Friday" style — matches MLB UI
+  const date = new Date(d + 'T12:00:00');
+  const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+  el.textContent = date.toLocaleDateString('en-US', opts);
+}
+
+window.changeWnbaDate = function(deltaDays) {
+  const d = new Date((state.wnbaDate || getTodayStr()) + 'T12:00:00');
+  d.setDate(d.getDate() + deltaDays);
+  state.wnbaDate = d.toISOString().slice(0, 10);
+  saveState();
+  updateWnbaDateDisplay();
+  loadWnbaSlate();
+};
+
+window.loadWnbaSlate = async function() {
+  const container = document.getElementById('wnbaContent');
+  const statusEl = document.getElementById('wnbaStatusText');
+  const btn = document.getElementById('loadWnbaBtn');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div style="text-align:center;color:#6b7280;padding:48px 16px;font-size:14px">
+      <div style="margin-bottom:12px">Loading slate…</div>
+      <div style="font-size:12px;opacity:0.7">Cold-cache requests can take 5–15 seconds. The engine is fetching player season stats, game logs, and team data from stats.wnba.com.</div>
+    </div>
+  `;
+  if (statusEl) statusEl.textContent = '';
+  if (btn) btn.disabled = true;
+
+  const started = Date.now();
+  try {
+    const res = await fetch('/api/wnba/slate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: state.wnbaDate })
+    });
+    const data = await res.json();
+    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+
+    if (!data.ok) {
+      container.innerHTML = renderWnbaError(data.error || 'Unknown error', elapsed);
+      if (statusEl) statusEl.textContent = `Failed in ${elapsed}s`;
+    } else {
+      container.innerHTML = renderWnbaSlate(data);
+      if (statusEl) statusEl.textContent = `Loaded in ${elapsed}s · ${data.summary?.totalAnalyses || 0} analyses`;
+    }
+  } catch (err) {
+    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+    container.innerHTML = renderWnbaError(err.message || 'Network error', elapsed);
+    if (statusEl) statusEl.textContent = `Failed in ${elapsed}s`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+function renderWnbaError(msg, elapsed) {
+  return `
+    <div style="background:#fef2f2;border-left:3px solid #dc2626;padding:16px;border-radius:4px;color:#7f1d1d">
+      <div style="font-weight:600;margin-bottom:4px">Slate load failed (${elapsed}s)</div>
+      <div style="font-size:13px;font-family:monospace">${escapeHtml(msg)}</div>
+      <div style="margin-top:12px;font-size:12px;color:#991b1b">
+        Common causes: stats.wnba.com rate-limited the request, no games scheduled for this date, or WNBA endpoint disabled. Try again in a minute or pick a different date.
+      </div>
+    </div>
+  `;
+}
+
+function renderWnbaSlate(data) {
+  const games = data.games || [];
+  const bestPlays = data.bestPlays || [];
+  const analyses = data.analyses || [];
+  const passes = data.passes || [];
+  const summary = data.summary || {};
+  const warnings = data.warnings || [];
+
+  if (games.length === 0) {
+    return `
+      <div style="text-align:center;color:#6b7280;padding:48px 16px;font-size:14px">
+        <div style="font-size:48px;margin-bottom:12px;opacity:0.5">∅</div>
+        No WNBA games found for this date.
+        ${warnings.length ? `<div style="margin-top:16px;font-size:12px;font-family:monospace;color:#92400e">${warnings.map(escapeHtml).join('<br>')}</div>` : ''}
+      </div>
+    `;
+  }
+
+  // Summary strip
+  const summaryStrip = `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px;padding:12px 16px;background:#f9fafb;border-radius:6px;font-size:12px">
+      <div><strong>${games.length}</strong> games</div>
+      <div><strong>${summary.playersAnalyzed || 0}</strong> players</div>
+      <div><strong>${summary.totalAnalyses || 0}</strong> total analyses</div>
+      <div><strong>${summary.recommendations || 0}</strong> recommendations</div>
+      <div><strong>${summary.passes || 0}</strong> passes</div>
+      ${summary.errors ? `<div style="color:#dc2626"><strong>${summary.errors}</strong> errors</div>` : ''}
+    </div>
+  `;
+
+  // Warnings (if any)
+  const warningsBlock = warnings.length > 0 ? `
+    <div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:12px 16px;margin-bottom:24px;border-radius:4px;font-size:12px;color:#78350f">
+      <strong>Data warnings (${warnings.length}):</strong>
+      <div style="margin-top:6px;font-family:monospace">${warnings.slice(0,5).map(escapeHtml).join('<br>')}</div>
+      ${warnings.length > 5 ? `<div style="margin-top:6px;opacity:0.6">+${warnings.length - 5} more</div>` : ''}
+    </div>
+  ` : '';
+
+  // Best plays section
+  const bestPlaysBlock = bestPlays.length > 0 ? `
+    <div style="margin-bottom:32px">
+      <h2 style="font-size:18px;font-weight:600;margin-bottom:12px;color:#1f2937">Best plays</h2>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${bestPlays.slice(0, 10).map(p => renderWnbaPlayCard(p, true)).join('')}
+      </div>
+    </div>
+  ` : `
+    <div style="margin-bottom:32px;padding:24px;background:#f9fafb;border-radius:6px;text-align:center;color:#6b7280;font-size:13px">
+      No top-tier plays found. Most analyses returned PASS because no betting lines were provided for these games. Inject lines via the API to get sharper edges.
+    </div>
+  `;
+
+  // Games list
+  const gamesByMatchup = {};
+  for (const g of games) gamesByMatchup[g.gameId] = { game: g, analyses: [], passes: [] };
+  for (const a of analyses) if (gamesByMatchup[a.gameId]) gamesByMatchup[a.gameId].analyses.push(a);
+  for (const p of passes) if (gamesByMatchup[p.gameId]) gamesByMatchup[p.gameId].passes.push(p);
+
+  const gamesBlock = `
+    <div>
+      <h2 style="font-size:18px;font-weight:600;margin-bottom:12px;color:#1f2937">All games</h2>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        ${Object.values(gamesByMatchup).map(({game, analyses, passes}) => renderWnbaGameBlock(game, analyses, passes)).join('')}
+      </div>
+    </div>
+  `;
+
+  return summaryStrip + warningsBlock + bestPlaysBlock + gamesBlock;
+}
+
+function renderWnbaPlayCard(p, isBestPlay) {
+  const confidence = p.confidence || '';
+  const recommendation = p.recommendation || '';
+  const tierColor = recommendation === 'OVER' ? '#059669'
+                 : recommendation === 'UNDER' ? '#dc2626'
+                 : '#6b7280';
+  const projDelta = (p.projection != null && p.line != null)
+    ? `${p.edge > 0 ? '+' : ''}${p.edge?.toFixed(1) || ''}`
+    : '';
+  const hitRate = p.hitRate != null ? `${p.hitRate}%` : '—';
+  const chips = (p.chips || []).slice(0, 3);
+
+  return `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:white;border:1px solid #e5e7eb;border-left:3px solid ${tierColor};border-radius:4px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+          <strong style="font-size:14px;color:#1f2937">${escapeHtml(p.player)}</strong>
+          <span style="font-size:11px;color:#6b7280">${escapeHtml(p.team)} vs ${escapeHtml(p.opponent)}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:500;color:${tierColor}">${escapeHtml(recommendation)} ${escapeHtml(p.market)} ${p.line ?? ''}</span>
+          <span style="font-size:11px;color:#6b7280">proj ${p.projection?.toFixed(1) ?? '—'} (${projDelta})</span>
+          <span style="font-size:11px;color:#6b7280">hit ${hitRate}</span>
+          ${p.lineSource === 'inferred' ? '<span style="font-size:10px;color:#92400e;background:#fef3c7;padding:1px 6px;border-radius:3px">inferred line</span>' : ''}
+        </div>
+        ${chips.length > 0 ? `
+          <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+            ${chips.map(c => `<span style="font-size:10px;color:#374151;background:#f3f4f6;padding:2px 6px;border-radius:3px">${escapeHtml(c)}</span>`).join('')}
+          </div>
+        ` : ''}
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:13px;font-weight:600;color:${tierColor}">${escapeHtml(confidence)}</div>
+        ${p.label ? `<div style="font-size:10px;color:#6b7280;text-transform:uppercase">${escapeHtml(p.label)}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderWnbaGameBlock(game, analyses, passes) {
+  const status = game.status || 'Unknown';
+  const time = game.gameTimeET ? new Date(game.gameTimeET).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', timeZoneName: 'short'}) : '';
+
+  return `
+    <div style="background:white;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
+      <div style="padding:12px 16px;background:#f9fafb;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <strong style="font-size:14px;color:#1f2937">${escapeHtml(game.away)} @ ${escapeHtml(game.home)}</strong>
+          <span style="font-size:11px;color:#6b7280;margin-left:8px">${escapeHtml(status)}${time ? ' · ' + escapeHtml(time) : ''}</span>
+        </div>
+        <div style="font-size:11px;color:#6b7280">
+          ${game.linesProvided ? `spread ${game.spread}, total ${game.total}` : `<span style="color:#92400e">no lines · using defaults (spread ${game.spread}, total ${game.total})</span>`}
+        </div>
+      </div>
+      ${analyses.length > 0 ? `
+        <div style="padding:12px;display:flex;flex-direction:column;gap:6px">
+          ${analyses.map(a => renderWnbaPlayCard(a, false)).join('')}
+        </div>
+      ` : ''}
+      ${passes.length > 0 ? `
+        <details style="border-top:1px solid #f3f4f6">
+          <summary style="padding:8px 16px;font-size:11px;color:#6b7280;cursor:pointer;background:#fafafa">${passes.length} PASS — show details</summary>
+          <div style="padding:8px 12px;display:flex;flex-direction:column;gap:4px">
+            ${passes.map(p => `
+              <div style="font-size:11px;color:#6b7280;padding:4px 8px">
+                <strong>${escapeHtml(p.player)}</strong> ${escapeHtml(p.market)} ${p.line ?? ''} → PASS (proj ${p.projection?.toFixed(1) ?? '—'})
+                ${p.hardFlags?.length ? `<span style="color:#92400e">— ${p.hardFlags.map(escapeHtml).join(', ')}</span>` : ''}
+              </div>
+            `).join('')}
+          </div>
+        </details>
+      ` : ''}
+      ${analyses.length === 0 && passes.length === 0 ? `
+        <div style="padding:12px 16px;font-size:12px;color:#6b7280;text-align:center">No analyses produced for this game.</div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 // Lyrid date navigation
 window.changeSlateDate = function(deltaDays) {
