@@ -439,3 +439,71 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
     }
   };
 }
+
+// =============================================================
+// TOP-N PER TEAM (Session 4 addition)
+// =============================================================
+
+/**
+ * Get the top N players for a team, ranked by usage rate.
+ *
+ * Used by the slate endpoint to pick which players to analyze per game.
+ * Top usage = most likely to have PrizePicks/Underdog prop lines.
+ *
+ * SESSION 4 (May 16, 2026): added for slate generation.
+ *
+ * @param {string} teamAbbr - 3-letter team code (e.g. "LVA")
+ * @param {number} n - number of players to return
+ * @param {number} season - e.g. 2026
+ * @param {string} market - which market for seasonAvg (defaults to points)
+ * @returns {Promise<Array<Object>>} array of merged player objects
+ */
+export async function getTopPlayersForTeam(teamAbbr, n = 4, season = 2026, market = 'points') {
+  if (!teamAbbr) return [];
+
+  // Pull all four data sources once — same as getPlayerSeasonStats / findPlayerByName.
+  // Cached after first slate-level call, so per-team fetches are free.
+  const [base, advanced, bio, touches] = await Promise.all([
+    listAllPlayers(season),
+    listAllPlayersAdvanced(season),
+    listAllPlayersBio(season).catch(() => []),
+    listAllPlayersTouches(season).catch(() => [])
+  ]);
+
+  // Filter to team
+  const teamPlayers = base.filter(
+    p => String(p.TEAM_ABBREVIATION || '').toUpperCase() === String(teamAbbr).toUpperCase()
+  );
+
+  if (teamPlayers.length === 0) return [];
+
+  // For each team player, look up usage in advanced data.
+  // Sort by usage descending. Tiebreak: minutes played.
+  const withUsage = teamPlayers.map(p => {
+    const adv = advanced.find(a => Number(a.PLAYER_ID) === Number(p.PLAYER_ID));
+    const usage = Number(adv?.USG_PCT ?? 0);
+    return {
+      basePlayer: p,
+      advPlayer: adv,
+      usage: usage > 1.0 ? usage : usage * 100,  // normalize to percentage form
+      minutes: Number(p.MIN) || 0
+    };
+  });
+
+  // Sort: highest usage first, then highest minutes as tiebreak
+  withUsage.sort((a, b) => {
+    if (b.usage !== a.usage) return b.usage - a.usage;
+    return b.minutes - a.minutes;
+  });
+
+  // Filter to actual rotation players — under 12 MPG isn't getting prop lines
+  // anyway, so don't waste an analysis slot on them.
+  const rotationPlayers = withUsage.filter(p => p.minutes >= 12);
+
+  // Return top N, fully merged with bio + touches
+  return rotationPlayers.slice(0, n).map(p => {
+    const bioRow = bio.find(b => Number(b.PLAYER_ID) === Number(p.basePlayer.PLAYER_ID));
+    const touchRow = touches.find(t => Number(t.PLAYER_ID) === Number(p.basePlayer.PLAYER_ID));
+    return mergePlayerStats(p.basePlayer, p.advPlayer, market, bioRow, touchRow);
+  }).filter(Boolean);
+}
