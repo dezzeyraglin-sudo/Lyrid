@@ -392,10 +392,42 @@ function inferLineFromPlayer(player, market) {
 // HANDLER
 // =============================================================
 
+// =============================================================
+// REQUEST BODY HELPER
+// =============================================================
+// Vercel Node.js serverless functions don't have req.json() — that's the
+// Web/Edge Functions API. For Node functions, req is an IncomingMessage
+// and Vercel automatically parses JSON bodies when Content-Type matches.
+//
+// BUG HISTORY (May 17, 2026): the original implementation used req.json(),
+// which is the Fetch API method available on Web Requests. Calling it on
+// a Node IncomingMessage produces a non-obvious error chain ending in
+// "string did not match the expected pattern", a 0.1s response that looks
+// like rate-limiting but is actually the platform rejecting the call before
+// any external fetch.
+//
+// Three cases to handle:
+//   - req.body is already an object → return it (Vercel pre-parsed)
+//   - req.body is a string → try JSON.parse
+//   - req.body is missing → manual stream read (older Vercel behavior)
 async function readBody(req) {
-  if (req.method !== "POST") return {};
-  try { return await req.json(); }
-  catch { return {}; }
+  if (req.method !== 'POST') return {};
+  // Case 1: Vercel pre-parsed the body
+  if (req.body && typeof req.body === 'object') return req.body;
+  // Case 2: Vercel left it as a string
+  if (typeof req.body === 'string') {
+    try { return JSON.parse(req.body); } catch { return {}; }
+  }
+  // Case 3: Manual stream read (defensive fallback)
+  return await new Promise((resolve) => {
+    let data = '';
+    req.on('data', (chunk) => { data += chunk; });
+    req.on('end', () => {
+      if (!data) return resolve({});
+      try { resolve(JSON.parse(data)); } catch { resolve({}); }
+    });
+    req.on('error', () => resolve({}));
+  });
 }
 
 export default async function handler(req, res) {

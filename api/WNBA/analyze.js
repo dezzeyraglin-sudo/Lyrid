@@ -55,13 +55,31 @@ const WNBA_DATA_LAYER_ENABLED = (() => {
   return true;  // default on — opt-in via request payload
 })();
 
+// Vercel Node.js serverless functions don't have req.json() — that's the
+// Web/Edge Functions API. For Node functions, req is an IncomingMessage
+// and Vercel automatically parses JSON bodies when Content-Type matches.
+//
+// Fixed May 17, 2026 — original used req.json() which crashed on POST with
+// "string did not match the expected pattern" (Vercel platform error, not
+// network failure). See slate.js for full bug history.
 async function readBody(req) {
   if (req.method !== "POST") return {};
-  try {
-    return await req.json();
-  } catch {
-    return {};
+  // Case 1: Vercel pre-parsed the body
+  if (req.body && typeof req.body === 'object') return req.body;
+  // Case 2: Vercel left it as a string
+  if (typeof req.body === 'string') {
+    try { return JSON.parse(req.body); } catch { return {}; }
   }
+  // Case 3: Manual stream read (defensive fallback)
+  return await new Promise((resolve) => {
+    let data = '';
+    req.on('data', (chunk) => { data += chunk; });
+    req.on('end', () => {
+      if (!data) return resolve({});
+      try { resolve(JSON.parse(data)); } catch { resolve({}); }
+    });
+    req.on('error', () => resolve({}));
+  });
 }
 
 function queryInput(req) {
