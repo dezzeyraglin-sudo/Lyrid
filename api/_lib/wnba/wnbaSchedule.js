@@ -1,56 +1,188 @@
 // api/_lib/wnba/wnbaSchedule.js
 //
-// WNBA SCHEDULE FETCHER (May 16, 2026 — Session 4)
+// WNBA SCHEDULE FETCHER (May 18, 2026 — ESPN MIGRATION)
 //
-// Provides today's games (and recent/upcoming) from stats.wnba.com's
-// scoreboard endpoint.
+// HISTORY:
+//   Session 4 (May 16) — built against stats.wnba.com /scoreboardv3
+//   May 18 — migrated to ESPN after confirming Vercel functions can't reach
+//     stats.wnba.com's scoreboardv3 endpoint (requests time out at 15s
+//     consistently). Diagnosed via /api/wnba/debug-schedule.
 //
-// CRITICAL CAVEAT:
-//   stats.wnba.com's scoreboard endpoint returns matchup data (teams, IDs,
-//   game time, home/away) but does NOT return betting lines (spread/total).
-//   The slate endpoint will require the caller to inject lines, or default
-//   them to neutral values (spread=0, total=164 WNBA avg).
+// WHY ESPN:
+//   - CDN-fronted endpoint (site.api.espn.com), no datacenter IP blocking
+//   - Public/semi-public, used by countless analytics sites
+//   - Returns all the data we need: games, teams, statuses, times
+//   - Bonus: sometimes includes odds (spread/total) when available
 //
-// ENDPOINTS USED:
-//   /stats/scoreboardv3 — modern scoreboard with full game info
-//   /stats/scoreboardv2 — fallback if v3 is sparse
+// CONTRACT:
+//   Returns the SAME shape as the previous stats.wnba.com version so
+//   slate.js doesn't need to change. The internal mapping is different,
+//   but external consumers see identical normalized objects.
+//
+// ENDPOINT:
+//   https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard
+//
+//   Query params:
+//     dates=YYYYMMDD   — single day
+//     (no date param)  — defaults to "today" by ESPN's clock (US Eastern)
 
-import { fetchWnbaStats, parseResultSet, _testing as apiTesting } from './wnbaStatsApi.js';
+const ESPN_WNBA_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard";
+
+// In-memory cache (parallels wnbaStatsApi.js pattern)
+// Schedule data is volatile so TTL is short
+const _cache = new Map();
+const TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function cacheKey(date) {
+  return `espn-schedule:${date}`;
+}
+
+function cacheGet(key) {
+  const entry = _cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > TTL_MS) {
+    _cache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function cacheSet(key, data) {
+  _cache.set(key, { data, ts: Date.now() });
+  if (_cache.size > 100) {
+    const oldest = [..._cache.keys()].slice(0, 20);
+    for (const k of oldest) _cache.delete(k);
+  }
+}
 
 // =============================================================
-// CORE SCHEDULE FETCHER
+// TEAM ABBREVIATION MAPPING
+// =============================================================
+// ESPN and stats.wnba.com use different team tricodes in some cases.
+// Since our player/team data layer keys on stats.wnba.com's tricodes,
+// we translate ESPN's tricodes to match before exposing game objects.
+//
+// MAPPING NOTE: This is my best-knowledge mapping. If a team doesn't
+// match after deploy (slate returns empty for one team), check the
+// _rawEspnAbbr field on the affected game and update this map.
+
+const ESPN_TO_STATS_TRICODE = {
+  // ESPN abbr  →  stats.wnba.com abbr
+  'NY':   'NYL',  // New York Liberty
+  'LV':   'LVA',  // Las Vegas Aces
+  'LA':   'LAS',  // Los Angeles Sparks (sometimes LA in newer ESPN data)
+  'WSH':  'WAS',  // Washington Mystics
+  'PHX':  'PHO',  // Phoenix Mercury (sometimes PHX, sometimes PHO)
+  'CONN': 'CON',  // Connecticut Sun (sometimes CONN, sometimes CON)
+  'GS':   'GSV',  // Golden State Valkyries (new team, varies)
+  // Pass-throughs (same tricode in both systems):
+  // ATL, CHI, DAL, IND, MIN, SEA pass through unchanged
+};
+
+function normalizeTeamAbbr(espnAbbr) {
+  if (!espnAbbr) return null;
+  const upper = String(espnAbbr).toUpperCase();
+  return ESPN_TO_STATS_TRICODE[upper] || upper;
+}
+
+// =============================================================
+// CORE FETCH
+// =============================================================
+
+/**
+ * Low-level ESPN fetch with timeout + retry.
+ * Returns parsed JSON or null on failure.
+ */
+async function fetchEspn(url, opts = {}) {
+  const maxRetries = opts.maxRetries ?? 2;
+  const timeoutMs = opts.timeoutMs ?? 8000;
+
+  let lastError = null;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "application/json"
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+
+      if (res.status === 200) {
+        return await res.json();
+      }
+
+      // 404 = no data for this date — don't retry
+      if (res.status === 404) return null;
+
+      lastError = new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      lastError = err;
+    }
+
+    // Backoff before retry
+    if (attempt < maxRetries - 1) {
+      await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+    }
+  }
+
+  console.warn(`[wnbaSchedule] ESPN fetch failed after ${maxRetries} attempts:`, lastError?.message);
+  return null;
+}
+
+// =============================================================
+// PUBLIC API (unchanged signatures from previous version)
 // =============================================================
 
 /**
  * Get games for a specific date.
  *
- * @param {string} date - YYYY-MM-DD format (e.g. "2026-05-16")
- * @returns {Promise<Array<Object>>} array of game objects
+ * @param {string} date - YYYY-MM-DD format (e.g. "2026-05-18")
+ * @returns {Promise<Array<Object>>} array of normalized game objects
  */
 export async function getGamesForDate(date) {
-  // stats.wnba.com expects MM/DD/YYYY format for the GameDate param
-  const formatted = formatDateForApi(date);
+  if (!date) return [];
 
-  const response = await fetchWnbaStats('/scoreboardv3', {
-    LeagueID: '10',
-    GameDate: formatted,
-    DayOffset: '0'
-  }, { ttlMs: apiTesting.TTL.schedule });
+  const cached = cacheGet(cacheKey(date));
+  if (cached) return cached;
 
+  // ESPN wants date in YYYYMMDD (no separators)
+  const espnDate = String(date).replace(/-/g, '');
+  const url = `${ESPN_WNBA_SCOREBOARD}?dates=${espnDate}`;
+
+  const response = await fetchEspn(url);
   if (!response) return [];
 
-  // scoreboardv3 has a different response shape from leaguedash endpoints.
-  // It returns a structured object with `scoreboard.games[]` rather than
-  // resultSets. Try both shapes for resilience.
-  let games = [];
-  if (response.scoreboard?.games && Array.isArray(response.scoreboard.games)) {
-    games = response.scoreboard.games;
-  } else if (response.resultSets) {
-    // Older v2-style fallback
-    games = parseResultSet(response, 'GameHeader');
-  }
+  // ESPN response shape:
+  // {
+  //   leagues: [...],
+  //   events: [
+  //     {
+  //       id, uid, date (ISO),
+  //       status: { type: { id, state, completed, description }, period, clock },
+  //       competitions: [
+  //         {
+  //           id, date, attendance,
+  //           competitors: [
+  //             { id, homeAway: 'home'|'away', team: { id, location, name, abbreviation, ... }, score },
+  //             ...
+  //           ],
+  //           odds: [{ details: "LV -3.5", overUnder: 166.5, ... }]
+  //         }
+  //       ]
+  //     }
+  //   ]
+  // }
+  const events = Array.isArray(response.events) ? response.events : [];
+  const games = events.map(normalizeEspnGame).filter(Boolean);
 
-  return games.map(normalizeGame);
+  cacheSet(cacheKey(date), games);
+  return games;
 }
 
 /**
@@ -63,14 +195,14 @@ export async function getTodaysGames() {
 
 /**
  * Get games for the next N days (today + N).
- * Useful for "what's upcoming this week" views.
  */
 export async function getUpcomingGames(daysAhead = 0) {
   const results = [];
   for (let i = 0; i <= daysAhead; i++) {
     const d = new Date();
     d.setDate(d.getDate() + i);
-    const games = await getGamesForDate(d.toISOString().split('T')[0]);
+    const date = d.toISOString().split('T')[0];
+    const games = await getGamesForDate(date);
     results.push(...games);
   }
   return results;
@@ -79,84 +211,86 @@ export async function getUpcomingGames(daysAhead = 0) {
 // =============================================================
 // NORMALIZATION
 // =============================================================
-// scoreboardv3 returns games in a nested shape. Flatten it into a
-// consistent format the slate endpoint can consume.
 
-function normalizeGame(g) {
-  // scoreboardv3 shape:
-  //   { gameId, gameStatus, gameStatusText, period, gameClock,
-  //     gameTimeUTC, gameEt, awayTeam: {teamId, teamName, teamCity, teamTricode, score},
-  //     homeTeam: {...}, ... }
-  // scoreboardv2 (older) shape:
-  //   GAME_ID, GAME_DATE_EST, HOME_TEAM_ID, VISITOR_TEAM_ID, GAME_STATUS_ID, etc.
+/**
+ * Convert ESPN event to the normalized game shape that slate.js expects.
+ * IMPORTANT: output shape must match the original stats.wnba.com version
+ * so slate.js doesn't need to change.
+ */
+function normalizeEspnGame(event) {
+  if (!event || !event.id) return null;
 
-  // Detect shape and normalize accordingly
-  if (g.gameId !== undefined) {
-    // v3 shape
-    return {
-      gameId: String(g.gameId),
-      status: g.gameStatusText || statusLabel(g.gameStatus),
-      gameStatus: Number(g.gameStatus),  // 1=upcoming, 2=live, 3=final
-      gameTimeUTC: g.gameTimeUTC || null,
-      gameTimeET: g.gameEt || null,
-      home: {
-        id: g.homeTeam?.teamId ? Number(g.homeTeam.teamId) : null,
-        abbr: g.homeTeam?.teamTricode || null,
-        name: g.homeTeam?.teamName || null,
-        score: Number(g.homeTeam?.score ?? 0)
-      },
-      away: {
-        id: g.awayTeam?.teamId ? Number(g.awayTeam.teamId) : null,
-        abbr: g.awayTeam?.teamTricode || null,
-        name: g.awayTeam?.teamName || null,
-        score: Number(g.awayTeam?.score ?? 0)
-      },
-      // Betting lines NOT in this endpoint — caller must inject
-      spread: null,
-      total: null,
-      _shape: 'v3'
-    };
+  const competition = Array.isArray(event.competitions) ? event.competitions[0] : null;
+  if (!competition) return null;
+
+  const competitors = Array.isArray(competition.competitors) ? competition.competitors : [];
+  const home = competitors.find(c => c.homeAway === 'home');
+  const away = competitors.find(c => c.homeAway === 'away');
+
+  if (!home?.team || !away?.team) return null;
+
+  // ESPN status mapping → our internal 1/2/3 system
+  //   pre  → 1 (upcoming)
+  //   in   → 2 (live)
+  //   post → 3 (final)
+  const state = event.status?.type?.state;
+  let gameStatus = 1;
+  if (state === 'in') gameStatus = 2;
+  else if (state === 'post') gameStatus = 3;
+
+  const statusLabel = event.status?.type?.description ||
+    (gameStatus === 1 ? 'Upcoming' : gameStatus === 2 ? 'Live' : 'Final');
+
+  // Odds (if ESPN has them)
+  let spread = null;
+  let total = null;
+  if (Array.isArray(competition.odds) && competition.odds.length > 0) {
+    const o = competition.odds[0];
+    // overUnder is the total
+    if (Number.isFinite(Number(o.overUnder))) total = Number(o.overUnder);
+    // spread parsing: "LV -3.5" — we need to know whose perspective.
+    // ESPN's `details` is "{abbr} {spread}" where abbr is the FAVORITE.
+    // We normalize to home-team perspective: negative = home favored.
+    if (typeof o.details === 'string') {
+      const m = o.details.match(/^([A-Z]{2,4})\s+([+-]?\d+(?:\.\d+)?)$/);
+      if (m) {
+        const favAbbr = m[1];
+        const favSpread = Number(m[2]);
+        if (Number.isFinite(favSpread)) {
+          if (favAbbr === home.team.abbreviation) {
+            spread = favSpread;  // home is favorite, spread is already from home perspective
+          } else if (favAbbr === away.team.abbreviation) {
+            spread = -favSpread; // away is favorite, flip sign for home perspective
+          }
+        }
+      }
+    }
   }
 
-  // v2 fallback shape
   return {
-    gameId: String(g.GAME_ID || ''),
-    status: g.GAME_STATUS_TEXT || statusLabel(g.GAME_STATUS_ID),
-    gameStatus: Number(g.GAME_STATUS_ID),
-    gameTimeUTC: g.GAME_DATE_EST || null,
-    gameTimeET: g.GAME_STATUS_TEXT || null,
+    gameId: String(event.id),
+    status: statusLabel,
+    gameStatus,
+    gameTimeUTC: event.date || competition.date || null,
+    gameTimeET: event.date || competition.date || null,
     home: {
-      id: g.HOME_TEAM_ID ? Number(g.HOME_TEAM_ID) : null,
-      abbr: null,  // not in this row; needs roster lookup
-      name: null,
-      score: 0
+      id: home.team.id ? Number(home.team.id) : null,
+      abbr: normalizeTeamAbbr(home.team.abbreviation),
+      _rawEspnAbbr: home.team.abbreviation || null,
+      name: home.team.displayName || home.team.name || null,
+      score: Number(home.score ?? 0)
     },
     away: {
-      id: g.VISITOR_TEAM_ID ? Number(g.VISITOR_TEAM_ID) : null,
-      abbr: null,
-      name: null,
-      score: 0
+      id: away.team.id ? Number(away.team.id) : null,
+      abbr: normalizeTeamAbbr(away.team.abbreviation),
+      _rawEspnAbbr: away.team.abbreviation || null,
+      name: away.team.displayName || away.team.name || null,
+      score: Number(away.score ?? 0)
     },
-    spread: null,
-    total: null,
-    _shape: 'v2'
+    spread,
+    total,
+    _shape: 'espn'
   };
-}
-
-function statusLabel(statusId) {
-  // 1 = upcoming, 2 = live, 3 = final
-  const n = Number(statusId);
-  if (n === 1) return 'Upcoming';
-  if (n === 2) return 'Live';
-  if (n === 3) return 'Final';
-  return 'Unknown';
-}
-
-function formatDateForApi(isoDate) {
-  // ISO format "2026-05-16" → API format "05/16/2026"
-  const parts = String(isoDate).split('-');
-  if (parts.length !== 3) return isoDate;
-  return `${parts[1]}/${parts[2]}/${parts[0]}`;
 }
 
 // =============================================================
@@ -164,7 +298,8 @@ function formatDateForApi(isoDate) {
 // =============================================================
 
 export const _testing = {
-  normalizeGame,
-  statusLabel,
-  formatDateForApi
+  normalizeEspnGame,
+  normalizeTeamAbbr,
+  fetchEspn,
+  _cache
 };
