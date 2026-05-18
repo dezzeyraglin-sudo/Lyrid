@@ -3953,6 +3953,37 @@ function renderAnalysis(data) {
                   ${m.risp && m.risp.signal === 'insufficient' ? `<span class="risp-chip insufficient" title="${m.risp.detail}">RISP SMALL</span>` : ''}
                   ${xwobaDisplay}
                 </div>` : ''}
+              ${(() => {
+                // ARSENAL-MATCHED K RATE CHIP (May 18, 2026)
+                // Pulls arsenal-weighted hitter K% from the contact engine's audit
+                // attached to the first prop. Falls back silently if engine data
+                // is missing. The chip is colored to indicate the GAP versus season K%:
+                //   red    — matched K is well ABOVE season (this matchup is a K trap)
+                //   green  — matched K is well BELOW season (favorable contact spot)
+                //   neutral— small gap
+                const firstProp = (m.propRecs || []).find(p => p._engineAudit && p._engineAudit.matchedHitterK != null);
+                if (!firstProp) return '';
+                const a = firstProp._engineAudit;
+                const matchedK = a.matchedHitterK;
+                const seasonK = a.seasonHitterK;
+                const gap = a.kRateGapVsSeason;  // matched - season
+                let chipColor = '#6b7280', chipBg = '#f3f4f6';
+                let label = 'neutral';
+                if (gap >= 4) { chipColor = '#7f1d1d'; chipBg = '#fee2e2'; label = 'K TRAP'; }
+                else if (gap >= 2) { chipColor = '#92400e'; chipBg = '#fef3c7'; label = 'K RISK'; }
+                else if (gap <= -4) { chipColor = '#14532d'; chipBg = '#dcfce7'; label = 'CONTACT EDGE'; }
+                else if (gap <= -2) { chipColor = '#166534'; chipBg = '#ecfccb'; label = 'CONTACT FAVOR'; }
+                const matchedPitcherK = a.matchedPitcherK;
+                return `
+                <div class="stat-row" title="Arsenal-weighted hitter K% vs this pitcher's pitch mix. Season K% is the player's overall rate; matched K% weights hitter's K% against each pitch type by pitcher's usage. Sharp signal for prop edges.">
+                  <span class="stat-chip" style="background:${chipBg};color:${chipColor};font-weight:600;font-size:10px;letter-spacing:0.04em">${label}</span>
+                  <span class="stat-chip">Season K <b>${seasonK?.toFixed(1)}%</b></span>
+                  <span class="stat-chip">Matched K <b style="color:${chipColor}">${matchedK.toFixed(1)}%</b></span>
+                  <span class="stat-chip" style="font-variant-numeric:tabular-nums">${gap >= 0 ? '+' : ''}${gap?.toFixed(1)}pp</span>
+                  ${matchedPitcherK != null ? `<span class="stat-chip">P arsenal K <b>${matchedPitcherK.toFixed(1)}%</b></span>` : ''}
+                </div>
+                `;
+              })()}
               ${(m.seasonStats?.gbPct || m.seasonStats?.fbPct || m.seasonStats?.ldPct) ? `
                 <div class="stat-row" title="Phase 1 damage quality data — diagnostic display verifying batted-ball % flow from Savant">
                   <span class="stat-chip" style="opacity:0.85" title="Diagnostic: damage quality data flowing">DAMAGE</span>

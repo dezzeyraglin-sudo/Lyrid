@@ -440,6 +440,15 @@ export default async function handler(req, res) {
               hitterXwoba: hitterPerf.xwoba,
               hitterXslg: hitterPerf.xslg,
               hitterPa: hitterPerf.pa || null,
+              // ARSENAL-MATCHED CONTACT METRICS (May 18, 2026)
+              // Hitter's K% and Whiff% AGAINST THIS PITCH TYPE — the strikeout
+              // equivalent of arsenal-matched xwOBA. Feeds the contact-probability
+              // engine's matchedKRate input.
+              hitterKPct: hitterPerf.kPct ? parseFloat(hitterPerf.kPct) : null,
+              hitterWhiffPct: hitterPerf.whiffPct ? parseFloat(hitterPerf.whiffPct) : null,
+              // PITCHER'S whiff/K rate WITH THIS PITCH — how dominant the pitch is
+              pitcherKPct: kp.kPct ? parseFloat(kp.kPct) : null,
+              pitcherWhiffPct: kp.whiffPct ? parseFloat(kp.whiffPct) : null,
               source: hitterPerf._source,    // 'deep' or 'shallow'
               smallSample: hitterPerf._source === 'deep' && hitterPerf.pa < 10
             });
@@ -470,6 +479,8 @@ export default async function handler(req, res) {
               pitcherUsage: bp.usage,
               hitterXwoba: hitterPerf.xwoba,
               hitterXslg: hitterPerf.xslg,
+              hitterKPct: hitterPerf.kPct ? parseFloat(hitterPerf.kPct) : null,
+              hitterWhiffPct: hitterPerf.whiffPct ? parseFloat(hitterPerf.whiffPct) : null,
               bullpenXwobaAllowed: bp.xwoba
             });
             if (xw > bullpenMaxXwoba) bullpenMaxXwoba = xw;
@@ -2060,9 +2071,47 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
   // selection to use probability. See contactProbability.js for the engine.
   const _pitcherInfo = matchedPitches[0] || {};
   const _umpFavor = (adjustments || []).find(a => a.type === 'umpire')?.favor || null;
+
+  // ARSENAL-WEIGHTED K AND WHIFF RATES (May 18, 2026)
+  // Sportsbooks bake hitter-vs-arsenal-K-rate into prop lines. Season K% misses it.
+  // For each pitch the pitcher throws, weight hitter's K% AGAINST THAT PITCH by
+  // how often the pitcher uses it. Sum = expected K% for this matchup.
+  // Same for whiff%. Both fall back to null if pitch-type data is missing — the
+  // engine's contact layer handles nulls by falling back to season-K only.
+  let _matchedKSum = 0, _matchedKWeight = 0;
+  let _matchedWhiffSum = 0, _matchedWhiffWeight = 0;
+  let _matchedPitcherKSum = 0, _matchedPitcherKWeight = 0;
+  for (const mp of matchedPitches) {
+    const usage = parseFloat(mp.pitcherUsage || 0) / 100;
+    if (usage <= 0) continue;
+    if (mp.hitterKPct != null && Number.isFinite(mp.hitterKPct)) {
+      _matchedKSum += mp.hitterKPct * usage;
+      _matchedKWeight += usage;
+    }
+    if (mp.hitterWhiffPct != null && Number.isFinite(mp.hitterWhiffPct)) {
+      _matchedWhiffSum += mp.hitterWhiffPct * usage;
+      _matchedWhiffWeight += usage;
+    }
+    if (mp.pitcherKPct != null && Number.isFinite(mp.pitcherKPct)) {
+      _matchedPitcherKSum += mp.pitcherKPct * usage;
+      _matchedPitcherKWeight += usage;
+    }
+  }
+  // Normalize: divide by weight covered. If pitcher's arsenal only has 70% of pitches
+  // with data, normalize against that 70% so the rate reflects the data we have.
+  const _matchedHitterK = _matchedKWeight > 0 ? _matchedKSum / _matchedKWeight : null;
+  const _matchedHitterWhiff = _matchedWhiffWeight > 0 ? _matchedWhiffSum / _matchedWhiffWeight : null;
+  const _matchedPitcherK = _matchedPitcherKWeight > 0 ? _matchedPitcherKSum / _matchedPitcherKWeight : null;
+
   const _engineInputs = {
     hitter: {
-      kPct: parseFloat(overall.k_percent?.value || 22.5),
+      // Use arsenal-matched K% when available, season K% otherwise.
+      // Matched K% is the strongest signal: it answers "how often does THIS hitter
+      // strike out against THIS pitcher's pitch mix" rather than season average.
+      kPct: _matchedHitterK != null ? _matchedHitterK : parseFloat(overall.k_percent?.value || 22.5),
+      seasonKPct: parseFloat(overall.k_percent?.value || 22.5),
+      matchedKPct: _matchedHitterK,
+      matchedWhiffPct: _matchedHitterWhiff,
       barrelPct: parseFloat(overall.barrel_batted_rate?.value || 8),
       hardHitPct: parseFloat(overall.hard_hit_percent?.value || 38),
       avgEv: parseFloat(overall.avg_exit_velocity?.value || 88.5),
@@ -2073,7 +2122,10 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
       sprintSpeed: parseFloat(overall.sprint_speed?.value || (hitter && hitter.sprintSpeed) || 27)
     },
     pitcher: {
-      kPct: parseFloat(_pitcherInfo.pitcherKPct || _pitcherInfo.kPct || 22.5),
+      // Pitcher K%: use arsenal-weighted K% across pitch types when available
+      kPct: _matchedPitcherK != null ? _matchedPitcherK : parseFloat(_pitcherInfo.pitcherKPct || _pitcherInfo.kPct || 22.5),
+      seasonKPct: parseFloat(_pitcherInfo.pitcherKPct || _pitcherInfo.kPct || 22.5),
+      matchedKPct: _matchedPitcherK,
       allowedHardHit: parseFloat(_pitcherInfo.allowedHardHit || 38),
       allowedEv: parseFloat(_pitcherInfo.allowedEv || 88.5),
       allowedBarrel: parseFloat(_pitcherInfo.allowedBarrel || 7.5)
@@ -2256,7 +2308,16 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
           contact: _pHit?.layers?.contact?.deviation,
           quality: _pHit?.layers?.quality?.deviation,
           conversion: _pHit?.layers?.conversion?.deviation
-        }
+        },
+        // ARSENAL-MATCHED RATES — surface these so we can see where the signal
+        // diverges from season averages. Useful for diagnosing and for UI display.
+        matchedHitterK: _matchedHitterK,
+        matchedHitterWhiff: _matchedHitterWhiff,
+        matchedPitcherK: _matchedPitcherK,
+        seasonHitterK: parseFloat(overall.k_percent?.value || 22.5),
+        kRateGapVsSeason: _matchedHitterK != null
+          ? Number((_matchedHitterK - parseFloat(overall.k_percent?.value || 22.5)).toFixed(2))
+          : null
       };
     }
   });
