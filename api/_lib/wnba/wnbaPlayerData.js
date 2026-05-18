@@ -57,15 +57,18 @@ import { fetchAndParseTable, fetchBbrefPage, unwrapCommentedTables, extractTable
  * @returns {Promise<Array<Object>>}
  */
 export async function listAllPlayers(season = 2026) {
-  const path = `/wnba/years/${season}.html`;
-  const rows = await fetchAndParseTable(path, 'per_game_stats');
-  if (rows.length === 0) {
-    // Some seasons use 'per_game' as the table id. Try fallback.
-    const fallbackRows = await fetchAndParseTable(path, 'per_game');
-    if (fallbackRows.length > 0) return fallbackRows.map(normalizeBaseRow);
-    return [];
+  // bbref WNBA stats live on dedicated sub-pages, not the main year page.
+  // The main /wnba/years/{year}.html page only has standings + team summaries.
+  // Per-game player stats are at /wnba/years/{year}_per_game.html
+  const path = `/wnba/years/${season}_per_game.html`;
+  // Common table IDs (try in priority order)
+  const candidateIds = ['per_game_stats', 'per_game', 'players_per_game'];
+  for (const tableId of candidateIds) {
+    const rows = await fetchAndParseTable(path, tableId);
+    if (rows.length > 0) return rows.map(normalizeBaseRow);
   }
-  return rows.map(normalizeBaseRow);
+  console.warn(`[wnbaPlayerData] No per-game stats table found at ${path}`);
+  return [];
 }
 
 /**
@@ -77,15 +80,15 @@ export async function listAllPlayers(season = 2026) {
  * @returns {Promise<Array<Object>>}
  */
 export async function listAllPlayersAdvanced(season = 2026) {
-  const path = `/wnba/years/${season}.html`;
-  // Advanced table is usually wrapped in HTML comments on bbref
-  const rows = await fetchAndParseTable(path, 'advanced_stats');
-  if (rows.length === 0) {
-    const fallbackRows = await fetchAndParseTable(path, 'advanced');
-    if (fallbackRows.length > 0) return fallbackRows.map(normalizeAdvancedRow);
-    return [];
+  // Advanced stats live at /wnba/years/{year}_advanced.html (not the main page)
+  const path = `/wnba/years/${season}_advanced.html`;
+  const candidateIds = ['advanced_stats', 'advanced', 'players_advanced'];
+  for (const tableId of candidateIds) {
+    const rows = await fetchAndParseTable(path, tableId);
+    if (rows.length > 0) return rows.map(normalizeAdvancedRow);
   }
-  return rows.map(normalizeAdvancedRow);
+  console.warn(`[wnbaPlayerData] No advanced stats table found at ${path}`);
+  return [];
 }
 
 /**
