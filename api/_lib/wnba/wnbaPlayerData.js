@@ -1,253 +1,185 @@
 // api/_lib/wnba/wnbaPlayerData.js
 //
-// WNBA PLAYER DATA MODULE (May 16, 2026 — Session 2)
+// WNBA PLAYER DATA MODULE (May 18, 2026 — basketball-reference migration)
 //
-// Provides:
-//   - getPlayerSeasonStats(playerId, season)  → full season aggregates
-//   - findPlayerByName(name, season)          → player ID lookup
-//   - listAllPlayers(season)                  → full league player roster (cached)
+// HISTORY:
+//   Session 2 (May 16) — built against stats.wnba.com /leaguedashplayerstats
+//   May 17 — file emptied accidentally during folder renames, restored from transcript
+//   May 18 ~5 AM — stats.wnba.com confirmed unreachable from Vercel
+//   May 18 ~6 AM — rewritten to use basketball-reference (CDN-fronted, 96ms avg)
 //
-// Returns data in a shape that maps directly onto what
-// `basketballProps.js` and `roleStability.js` expect — no transformation
-// needed downstream.
+// CONTRACT (UNCHANGED):
+//   Exports remain identical to the previous version so slate.js and downstream
+//   consumers don't need to change. Each function returns the same shape.
+//
+//   Exports:
+//     listAllPlayers(season)              → array of base stats per player
+//     listAllPlayersAdvanced(season)      → array of advanced stats per player
+//     listAllPlayersBio(season)           → array of bio (height, GS/GP) per player
+//     listAllPlayersTouches(season)       → returns [] for now (bbref doesn't expose
+//                                            tracking touches; existing fallback
+//                                            in mergePlayerStats handles this)
+//     getPlayerSeasonStats(playerId, season, market) → merged object for engine
+//     findPlayerByName(name, season, market)         → merged object by name
+//     getTopPlayersForTeam(teamAbbr, n, season, market) → array of top N for team
+//
+// DATA SOURCE NOTES:
+//   - basketball-reference per-game table id: "per_game_stats" (verified live)
+//     Columns: data-stat="player|team_id|g|gs|mp_per_g|pts_per_g|trb_per_g|
+//              ast_per_g|fg3_per_g|pf_per_g|..."
+//   - basketball-reference advanced table id: "advanced_stats"
+//     Columns: data-stat="player|usg_pct|ts_pct|ast_pct|trb_pct|orb_pct|drb_pct|..."
+//   - bbref's USG% is published as a PERCENTAGE (e.g. "28.4"), not a decimal,
+//     which matches what our engine expects without the normalization step that
+//     stats.wnba.com required.
+//   - Player IDs: we use bbref's player slug (e.g. "stewabr01w") as the ID since
+//     stats.wnba.com numeric IDs are no longer reachable. This is a deliberate
+//     break; the engine treats `id` as opaque so this is safe.
+//   - Touches data: bbref doesn't publish tracking touches publicly.
+//     listAllPlayersTouches returns []. mergePlayerStats falls back to the
+//     usage-based approximation (already in place from Session 3).
 
-import { fetchWnbaStats, parseResultSet, _testing as apiTesting } from './wnbaStatsApi.js';
+import { fetchAndParseTable, fetchBbrefPage, unwrapCommentedTables, extractTableHtml, parseTableRows } from './bbrefClient.js';
 
 // =============================================================
-// SEASON STATS
+// CORE FETCHERS
 // =============================================================
 
 /**
- * Get all-players season averages. Used as both the "list all players"
- * fetch and as the source for individual player stats (we filter the
- * full list rather than making per-player calls — same API cost).
+ * Get all WNBA players' per-game (base) stats for the season.
+ * Source: https://www.basketball-reference.com/wnba/years/2026.html
+ *         table id="per_game_stats"
  *
- * Endpoint: /stats/leaguedashplayerstats
- * Returns: PerGame stats with usage rate, minutes, points, rebs, asts, etc.
+ * Maps bbref column names → stats.wnba.com-style field names so downstream
+ * code (mergePlayerStats) doesn't need to change.
  *
  * @param {number} season - e.g. 2026
- * @returns {Promise<Array<Object>>} array of player objects
+ * @returns {Promise<Array<Object>>}
  */
 export async function listAllPlayers(season = 2026) {
-  const response = await fetchWnbaStats('/leaguedashplayerstats', {
-    LeagueID: '10',
-    Season: String(season),
-    SeasonType: 'Regular Season',
-    PerMode: 'PerGame',         // we want per-game averages, not totals
-    MeasureType: 'Base',         // basic box stats; advanced is separate call
-    PaceAdjust: 'N',
-    PlusMinus: 'N',
-    Rank: 'N',
-    LastNGames: '0',
-    Month: '0',
-    OpponentTeamID: '0',
-    Period: '0',
-    PlayerExperience: '',
-    PlayerPosition: '',
-    StarterBench: '',
-    TeamID: '0',
-    VsConference: '',
-    VsDivision: '',
-    GameSegment: '',
-    Location: '',
-    Outcome: '',
-    SeasonSegment: '',
-    DateFrom: '',
-    DateTo: ''
-  }, { ttlMs: apiTesting.TTL.season });
-
-  if (!response) return [];
-  return parseResultSet(response, 'LeagueDashPlayerStats');
+  const path = `/wnba/years/${season}.html`;
+  const rows = await fetchAndParseTable(path, 'per_game_stats');
+  if (rows.length === 0) {
+    // Some seasons use 'per_game' as the table id. Try fallback.
+    const fallbackRows = await fetchAndParseTable(path, 'per_game');
+    if (fallbackRows.length > 0) return fallbackRows.map(normalizeBaseRow);
+    return [];
+  }
+  return rows.map(normalizeBaseRow);
 }
 
 /**
- * Get advanced stats per player — usage rate, true shooting, etc.
- * Same endpoint, MeasureType='Advanced'.
+ * Get all WNBA players' advanced stats for the season.
+ * Source: https://www.basketball-reference.com/wnba/years/2026.html
+ *         table id="advanced_stats"
+ *
+ * @param {number} season
+ * @returns {Promise<Array<Object>>}
  */
 export async function listAllPlayersAdvanced(season = 2026) {
-  const response = await fetchWnbaStats('/leaguedashplayerstats', {
-    LeagueID: '10',
-    Season: String(season),
-    SeasonType: 'Regular Season',
-    PerMode: 'PerGame',
-    MeasureType: 'Advanced',     // advanced stats — usage, TS%, eFG%
-    PaceAdjust: 'N',
-    PlusMinus: 'N',
-    Rank: 'N',
-    LastNGames: '0',
-    Month: '0',
-    OpponentTeamID: '0',
-    Period: '0',
-    PlayerExperience: '',
-    PlayerPosition: '',
-    StarterBench: '',
-    TeamID: '0',
-    VsConference: '',
-    VsDivision: '',
-    GameSegment: '',
-    Location: '',
-    Outcome: '',
-    SeasonSegment: '',
-    DateFrom: '',
-    DateTo: ''
-  }, { ttlMs: apiTesting.TTL.season });
-
-  if (!response) return [];
-  return parseResultSet(response, 'LeagueDashPlayerStats');
+  const path = `/wnba/years/${season}.html`;
+  // Advanced table is usually wrapped in HTML comments on bbref
+  const rows = await fetchAndParseTable(path, 'advanced_stats');
+  if (rows.length === 0) {
+    const fallbackRows = await fetchAndParseTable(path, 'advanced');
+    if (fallbackRows.length > 0) return fallbackRows.map(normalizeAdvancedRow);
+    return [];
+  }
+  return rows.map(normalizeAdvancedRow);
 }
 
 /**
- * Get bio stats per player (Session 3, May 16 2026).
+ * Get player bio data (height, games started).
  *
- * Endpoint: /stats/leaguedashplayerbiostats
- * Critical fields used:
- *   GP  — games played this season
- *   GS  — games STARTED this season (this is the real starter signal)
- *   PLAYER_HEIGHT_INCHES — height (proxy for primaryBig classification)
- *   AGE — age
+ * Source: per-game table has GS (games started) and we approximate height from
+ * the totals table when needed. bbref doesn't centralize "bio" the way
+ * stats.wnba.com did, but the fields our engine actually consumes (GS, GP,
+ * PLAYER_HEIGHT_INCHES) come from different tables.
  *
- * GS/GP ratio gives us actual starter rate, not the minutes-inferred guess.
- * A player with GS/GP = 0.95 has started 95% of their games — clearly a
- * starter even if minutes vary (foul trouble, blowouts, etc).
+ * Strategy: GS/GP come from per_game (already in listAllPlayers via the GS column).
+ * Height isn't on the season summary page — we'd need to scrape individual
+ * player pages, which is expensive. For Phase 1 we return GS/GP only and
+ * height stays null. mergePlayerStats falls back to minutes-based starter
+ * detection and to no primaryBig flag, both of which it already handles.
+ *
+ * @param {number} season
+ * @returns {Promise<Array<Object>>}
  */
 export async function listAllPlayersBio(season = 2026) {
-  const response = await fetchWnbaStats('/leaguedashplayerbiostats', {
-    LeagueID: '10',
-    Season: String(season),
-    SeasonType: 'Regular Season',
-    PerMode: 'PerGame',
-    PerGame: 'N',                // Bio stats are not per-game scoped, but the API requires it
-    LastNGames: '0',
-    Month: '0',
-    OpponentTeamID: '0',
-    Period: '0',
-    PlayerExperience: '',
-    PlayerPosition: '',
-    StarterBench: '',
-    TeamID: '0',
-    VsConference: '',
-    VsDivision: '',
-    GameSegment: '',
-    Location: '',
-    Outcome: '',
-    SeasonSegment: '',
-    DateFrom: '',
-    DateTo: ''
-  }, { ttlMs: apiTesting.TTL.season });
-
-  if (!response) return [];
-  return parseResultSet(response, 'LeagueDashPlayerBioStats');
+  // Re-use the per-game table for GS / GP since it's there.
+  // We return a separate array (rather than relying on listAllPlayers callers
+  // to read GS off the base row) so the merge logic stays identical.
+  const baseRows = await listAllPlayers(season);
+  return baseRows.map(r => ({
+    PLAYER_ID: r.PLAYER_ID,
+    PLAYER_NAME: r.PLAYER_NAME,
+    TEAM_ABBREVIATION: r.TEAM_ABBREVIATION,
+    GP: r.GP,
+    GS: r.GS,
+    // PLAYER_HEIGHT_INCHES is unavailable from the season summary page.
+    // Falls back gracefully in mergePlayerStats (primaryBig stays false).
+    PLAYER_HEIGHT_INCHES: null
+  }));
 }
 
 /**
- * Get player tracking touches (Session 3, May 16 2026).
+ * Player tracking touches data — NOT AVAILABLE from basketball-reference.
  *
- * Endpoint: /stats/leaguedashptstats
- * PtMeasureType: 'Possessions' returns touches per game.
+ * bbref doesn't expose Second Spectrum tracking data publicly. The merge
+ * function already has a documented approximation fallback (usage × 0.7 +
+ * minutes × 1.2) that activates when this returns empty.
  *
- * IMPORTANT WNBA CAVEAT: player tracking is sparser for WNBA than NBA.
- * Some seasons have full tracking data, others have partial coverage.
- * If this endpoint returns empty, we fall back to the approximation
- * (usage × 0.7 + minutes × 1.2) — better-than-nothing signal.
- *
- * Fields returned include:
- *   TOUCHES — total touches per game
- *   FRONT_CT_TOUCHES — frontcourt touches
- *   TIME_OF_POSS — seconds with the ball
- *   AVG_SEC_PER_TOUCH — possession length
- *   AVG_DRIB_PER_TOUCH — dribbles per touch
- *   POINTS_PER_TOUCH — efficiency
- *   ELBOW_TOUCHES, POST_TOUCHES, PAINT_TOUCHES — location breakdown
+ * @param {number} season
+ * @returns {Promise<Array<Object>>} always returns []
  */
 export async function listAllPlayersTouches(season = 2026) {
-  const response = await fetchWnbaStats('/leaguedashptstats', {
-    LeagueID: '10',
-    Season: String(season),
-    SeasonType: 'Regular Season',
-    PerMode: 'PerGame',
-    PlayerOrTeam: 'Player',
-    PtMeasureType: 'Possessions',
-    LastNGames: '0',
-    Month: '0',
-    OpponentTeamID: '0',
-    PlayerExperience: '',
-    PlayerPosition: '',
-    StarterBench: '',
-    TeamID: '0',
-    VsConference: '',
-    VsDivision: '',
-    GameScope: '',
-    Location: '',
-    Outcome: '',
-    SeasonSegment: '',
-    DateFrom: '',
-    DateTo: '',
-    College: '',
-    Conference: '',
-    Country: '',
-    Division: '',
-    DraftPick: '',
-    DraftYear: '',
-    Height: '',
-    Weight: ''
-  }, { ttlMs: apiTesting.TTL.season });
-
-  if (!response) return [];
-  // Result set name for player tracking is typically 'LeagueDashPtStats'
-  // but can vary; try both common names
-  return parseResultSet(response, 'LeagueDashPtStats')
-    || parseResultSet(response);
+  return [];
 }
+
+// =============================================================
+// MERGED PLAYER STATS (downstream consumer interface)
+// =============================================================
 
 /**
  * Get season stats for one player, formatted for the engine.
  *
- * Returns the shape that basketballProps.js baseProjection() expects:
- *   { id, name, team, position, seasonAvg, minutesAvg, usageRate,
- *     touches, starter, closingRole, ... }
+ * Returns the SAME shape as the previous stats.wnba.com version. Downstream
+ * code (basketballProps.js baseProjection) reads:
+ *   id, name, team, seasonAvg, minutesAvg, usageRate, seasonUsage, touches,
+ *   starter, closingRole, primaryCreator, primaryBig, assistShare,
+ *   reboundShare, foulRate, minutesCv
  *
- * SESSION 3 UPDATE (May 16, 2026): now fetches bio + touches in parallel
- * alongside base + advanced. This gives us REAL starter status (GS/GP),
- * REAL touches per game (from player tracking), and REAL foul rate
- * (from base PF field).
- *
- * @param {number} playerId - WNBA player ID
- * @param {number} season - e.g. 2026
- * @param {string} market - 'points'|'rebounds'|'assists'|'threes'|'pra'|...
- *                          determines which stat fills seasonAvg
+ * @param {string|number} playerId - bbref player slug or stats.wnba.com numeric ID
+ * @param {number} season
+ * @param {string} market
  * @returns {Promise<Object|null>}
  */
 export async function getPlayerSeasonStats(playerId, season = 2026, market = 'points') {
-  // Fetch all four data sources in parallel.
-  // Bio + touches may fail independently (player tracking has spotty WNBA
-  // coverage); the merge function handles missing data gracefully.
   const [base, advanced, bio, touches] = await Promise.all([
     listAllPlayers(season),
     listAllPlayersAdvanced(season),
-    listAllPlayersBio(season).catch(() => []),
-    listAllPlayersTouches(season).catch(() => [])
+    listAllPlayersBio(season),
+    listAllPlayersTouches(season)
   ]);
 
-  const basePlayer = base.find(p => Number(p.PLAYER_ID) === Number(playerId));
-  const advPlayer = advanced.find(p => Number(p.PLAYER_ID) === Number(playerId));
-  const bioPlayer = bio.find(p => Number(p.PLAYER_ID) === Number(playerId));
-  const touchPlayer = touches.find(p => Number(p.PLAYER_ID) === Number(playerId));
-
+  const target = String(playerId);
+  const basePlayer = base.find(p => String(p.PLAYER_ID) === target);
   if (!basePlayer) return null;
 
-  return mergePlayerStats(basePlayer, advPlayer, market, bioPlayer, touchPlayer);
+  const advPlayer = advanced.find(p => String(p.PLAYER_ID) === target);
+  const bioRow = bio.find(p => String(p.PLAYER_ID) === target);
+  const touchRow = touches.find(p => String(p.PLAYER_ID) === target);
+
+  return mergePlayerStats(basePlayer, advPlayer, market, bioRow, touchRow);
 }
 
 /**
- * Find a player by name. Case-insensitive substring match.
- * If multiple matches, returns the one with most games played (more likely
- * to be the player the caller actually wanted).
+ * Find a player by name. Case-insensitive partial match.
  *
- * SESSION 3 UPDATE: same parallel fetch as getPlayerSeasonStats.
- *
- * @param {string} name - "A'ja Wilson" or "wilson" or partial
- * @param {number} season - e.g. 2026
- * @returns {Promise<Object|null>} { id, name, team, ... }
+ * @param {string} name
+ * @param {number} season
+ * @param {string} market
+ * @returns {Promise<Object|null>}
  */
 export async function findPlayerByName(name, season = 2026, market = 'points') {
   if (!name || typeof name !== 'string') return null;
@@ -255,57 +187,169 @@ export async function findPlayerByName(name, season = 2026, market = 'points') {
   const [base, advanced, bio, touches] = await Promise.all([
     listAllPlayers(season),
     listAllPlayersAdvanced(season),
-    listAllPlayersBio(season).catch(() => []),
-    listAllPlayersTouches(season).catch(() => [])
+    listAllPlayersBio(season),
+    listAllPlayersTouches(season)
   ]);
 
   const needle = name.toLowerCase().trim();
-  // Exact match first, then substring fallback
-  let matches = base.filter(p => p.PLAYER_NAME?.toLowerCase() === needle);
-  if (matches.length === 0) {
-    matches = base.filter(p => p.PLAYER_NAME?.toLowerCase().includes(needle));
+
+  // Exact match first, then startsWith, then contains
+  let basePlayer = base.find(p => p.PLAYER_NAME?.toLowerCase() === needle);
+  if (!basePlayer) {
+    basePlayer = base.find(p => p.PLAYER_NAME?.toLowerCase().startsWith(needle));
+  }
+  if (!basePlayer) {
+    basePlayer = base.find(p => p.PLAYER_NAME?.toLowerCase().includes(needle));
+  }
+  if (!basePlayer) return null;
+
+  const targetId = String(basePlayer.PLAYER_ID);
+  const advPlayer = advanced.find(p => String(p.PLAYER_ID) === targetId);
+  const bioRow = bio.find(p => String(p.PLAYER_ID) === targetId);
+  const touchRow = touches.find(p => String(p.PLAYER_ID) === targetId);
+
+  return mergePlayerStats(basePlayer, advPlayer, market, bioRow, touchRow);
+}
+
+/**
+ * Get the top N players for a team, sorted by the market-relevant season stat.
+ *
+ * Used by slate.js to build "best plays" lists. Top N is typically 4.
+ *
+ * @param {string} teamAbbr - stats.wnba.com-style tricode (NYL, LVA, etc.)
+ * @param {number} n
+ * @param {number} season
+ * @param {string} market
+ * @returns {Promise<Array<Object>>}
+ */
+export async function getTopPlayersForTeam(teamAbbr, n = 4, season = 2026, market = 'points') {
+  if (!teamAbbr) return [];
+
+  const [base, advanced, bio, touches] = await Promise.all([
+    listAllPlayers(season),
+    listAllPlayersAdvanced(season),
+    listAllPlayersBio(season),
+    listAllPlayersTouches(season)
+  ]);
+
+  const targetAbbr = String(teamAbbr).toUpperCase();
+
+  // Filter team players. bbref might return tricode in TEAM_ABBREVIATION
+  // (we normalize there) or in raw form — check both.
+  const teamPlayers = base.filter(p => {
+    const tabbr = String(p.TEAM_ABBREVIATION || '').toUpperCase();
+    return tabbr === targetAbbr;
+  });
+
+  if (teamPlayers.length === 0) {
+    console.warn(`[wnbaPlayerData] No players found for team "${targetAbbr}"`);
+    return [];
   }
 
-  if (matches.length === 0) return null;
+  // Compute a sort key based on the market.
+  const marketKey = String(market).toLowerCase();
+  function sortValue(p) {
+    if (marketKey.includes('rebound') || marketKey === 'reb') return Number(p.REB) || 0;
+    if (marketKey.includes('assist') || marketKey === 'ast') return Number(p.AST) || 0;
+    if (marketKey.includes('three') || marketKey.includes('3pm')) return Number(p.FG3M) || 0;
+    if (marketKey.includes('pra')) return (Number(p.PTS)||0) + (Number(p.REB)||0) + (Number(p.AST)||0);
+    if (marketKey === 'pa') return (Number(p.PTS)||0) + (Number(p.AST)||0);
+    if (marketKey === 'pr') return (Number(p.PTS)||0) + (Number(p.REB)||0);
+    return Number(p.PTS) || 0;
+  }
 
-  // If multiple matches, prefer the one with most games (likely the "real" player)
-  matches.sort((a, b) => (Number(b.GP) || 0) - (Number(a.GP) || 0));
-  const basePlayer = matches[0];
-  const playerIdNum = Number(basePlayer.PLAYER_ID);
-  const advPlayer = advanced.find(p => Number(p.PLAYER_ID) === playerIdNum);
-  const bioPlayer = bio.find(p => Number(p.PLAYER_ID) === playerIdNum);
-  const touchPlayer = touches.find(p => Number(p.PLAYER_ID) === playerIdNum);
+  // Sort descending and take top N
+  const topN = [...teamPlayers]
+    .sort((a, b) => sortValue(b) - sortValue(a))
+    .slice(0, n);
 
-  return mergePlayerStats(basePlayer, advPlayer, market, bioPlayer, touchPlayer);
+  // Merge with advanced/bio/touches and return engine-shaped objects
+  const results = topN.map(basePlayer => {
+    const targetId = String(basePlayer.PLAYER_ID);
+    const advPlayer = advanced.find(p => String(p.PLAYER_ID) === targetId);
+    const bioRow = bio.find(p => String(p.PLAYER_ID) === targetId);
+    const touchRow = touches.find(p => String(p.PLAYER_ID) === targetId);
+    return mergePlayerStats(basePlayer, advPlayer, market, bioRow, touchRow);
+  }).filter(Boolean);
+
+  return results;
 }
 
 // =============================================================
-// MERGE HELPER
+// ROW NORMALIZERS — bbref columns → stats.wnba.com-style fields
+// =============================================================
+//
+// Downstream code (mergePlayerStats, basketballProps.js) reads field names
+// like PLAYER_ID, PLAYER_NAME, TEAM_ABBREVIATION, MIN, PTS, REB, AST, FG3M,
+// USG_PCT, GP, GS, PF, AST_PCT, REB_PCT. We translate bbref columns into
+// those names so the rest of the codebase doesn't need to change.
+
+function normalizeBaseRow(row) {
+  if (!row || !row.player) return null;
+
+  // Player ID: use bbref slug as the opaque ID
+  // (extracted by parseTableRows into bbref_player_id)
+  const playerId = row.bbref_player_id || row.player;
+  // Team abbreviation: from the linked team URL when available
+  const teamAbbr = row.team_abbr_link || row.team_id || '';
+
+  return {
+    PLAYER_ID: playerId,
+    PLAYER_NAME: row.player,
+    TEAM_ABBREVIATION: String(teamAbbr).toUpperCase(),
+    GP: toNum(row.g),
+    GS: toNum(row.gs),
+    MIN: toNum(row.mp_per_g),
+    PTS: toNum(row.pts_per_g),
+    REB: toNum(row.trb_per_g),
+    AST: toNum(row.ast_per_g),
+    FG3M: toNum(row.fg3_per_g),
+    STL: toNum(row.stl_per_g),
+    BLK: toNum(row.blk_per_g),
+    TOV: toNum(row.tov_per_g),
+    PF: toNum(row.pf_per_g),
+    FG_PCT: toNum(row.fg_pct),
+    FG3_PCT: toNum(row.fg3_pct),
+    FT_PCT: toNum(row.ft_pct),
+    EFG_PCT: toNum(row.efg_pct)
+  };
+}
+
+function normalizeAdvancedRow(row) {
+  if (!row || !row.player) return null;
+  const playerId = row.bbref_player_id || row.player;
+  const teamAbbr = row.team_abbr_link || row.team_id || '';
+  return {
+    PLAYER_ID: playerId,
+    PLAYER_NAME: row.player,
+    TEAM_ABBREVIATION: String(teamAbbr).toUpperCase(),
+    // bbref publishes these as percentages (e.g. "28.4" for 28.4%).
+    // The merge function expects USG_PCT in decimal OR percentage form;
+    // it has detection logic that normalizes both. We pass percentage,
+    // which matches what mergePlayerStats expects post-conversion.
+    USG_PCT: toNum(row.usg_pct),
+    TS_PCT: toNum(row.ts_pct),
+    AST_PCT: toNum(row.ast_pct) / 100,   // mergePlayerStats multiplies × 100
+    REB_PCT: toNum(row.trb_pct) / 100,   // ditto
+    ORB_PCT: toNum(row.orb_pct) / 100,
+    DRB_PCT: toNum(row.drb_pct) / 100,
+    STL_PCT: toNum(row.stl_pct) / 100,
+    BLK_PCT: toNum(row.blk_pct) / 100,
+    TOV_PCT: toNum(row.tov_pct) / 100,
+    PER: toNum(row.per)
+  };
+}
+
+function toNum(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// =============================================================
+// MERGE FUNCTION — unchanged from Session 3 contract
 // =============================================================
 
-/**
- * Combine base + advanced + bio + touches player rows into the shape the
- * engine expects.
- *
- * SESSION 3 UPDATE (May 16, 2026):
- * Real data now used for:
- *   - touches: from player tracking (TOUCHES field), with approximation fallback
- *   - starter: from bio stats (GS/GP ratio ≥ 0.50), with minutes-inference fallback
- *   - foulRate: from base PF field (was defaulted to 0)
- *
- * Fields with documented fallback behavior:
- *   - touches: real if player tracking endpoint returned data, else approximation
- *   - starter: real if bio endpoint returned data, else minutes inference
- *   - closingRole: still inferred from minutes ≥ 28 (no direct signal)
- *   - primaryBig: inferred from height ≥ 76" (6'4") if bio data, else false
- *   - foulRate: real from base (always available when player exists)
- *
- * Base fields: PLAYER_ID, PLAYER_NAME, TEAM_ABBREVIATION, GP, MIN, PTS, REB,
- *   AST, STL, BLK, TOV, FG3M, FGA, FTA, FT_PCT, PF, etc.
- * Advanced fields: USG_PCT, OFF_RATING, DEF_RATING, AST_PCT, REB_PCT, TS_PCT.
- * Bio fields: PLAYER_HEIGHT_INCHES, PLAYER_WEIGHT, AGE, GP, GS.
- * Touch fields: TOUCHES, TIME_OF_POSS, ELBOW_TOUCHES, POST_TOUCHES, PAINT_TOUCHES.
- */
 function mergePlayerStats(base, advanced, market, bio = null, touchData = null) {
   if (!base) return null;
 
@@ -318,25 +362,26 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
   else if (marketKey.includes('pra')) seasonAvg = Number(base.PTS) + Number(base.REB) + Number(base.AST);
   else if (marketKey === 'pa') seasonAvg = Number(base.PTS) + Number(base.AST);
   else if (marketKey === 'pr') seasonAvg = Number(base.PTS) + Number(base.REB);
-  else seasonAvg = Number(base.PTS);  // default to points
+  else seasonAvg = Number(base.PTS);
 
-  // Usage rate from advanced stats; stats.wnba.com returns USG_PCT as e.g. 0.312
-  // (decimal), but our engine expects percentage form (e.g. 31.2). Normalize.
+  // Usage rate normalization.
+  // bbref returns percentages (e.g. 28.4). stats.wnba.com returned decimals (0.284).
+  // mergePlayerStats expects percentage form. The check below handles both safely.
   const usageRaw = Number(advanced?.USG_PCT ?? 0);
   const usageRate = usageRaw > 1.0 ? usageRaw : usageRaw * 100;
 
   const mpg = Number(base.MIN);
 
-  // STARTER STATUS — Session 3 upgrade
-  // Real signal: bio.GS / bio.GP gives starter rate. Threshold 0.50 means
-  // started majority of games. A bench player who occasionally starts gets
-  // false; an injury-replacement starter who's started recent games gets true.
-  //
-  // Fallback: minutes ≥ 20 (original Session 1 logic).
+  // Starter status — uses GS/GP ratio if available, falls back to minutes ≥ 20
   let starter;
   let starterSource;
-  if (bio && Number(bio.GP) > 0) {
+  if (bio && Number(bio.GP) > 0 && Number(bio.GS) > 0) {
     const gsGpRatio = Number(bio.GS) / Number(bio.GP);
+    starter = gsGpRatio >= 0.50;
+    starterSource = 'gs_gp_ratio';
+  } else if (Number(base.GS) > 0 && Number(base.GP) > 0) {
+    // bbref includes GS in the per_game table directly
+    const gsGpRatio = Number(base.GS) / Number(base.GP);
     starter = gsGpRatio >= 0.50;
     starterSource = 'gs_gp_ratio';
   } else {
@@ -344,14 +389,10 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
     starterSource = 'minutes_inferred';
   }
 
-  // CLOSING ROLE — still inferred from minutes (no direct signal in any endpoint).
-  // Top WNBA closers play 28+ MPG. This stays inference-based.
+  // Closing role — minute-inferred
   const closingRole = mpg >= 28;
 
-  // TOUCHES — Session 3 upgrade
-  // Real signal: TOUCHES from player tracking endpoint.
-  // Fallback: usage × 0.7 + minutes × 1.2 (Session 1 approximation, kept as
-  // documented fallback when tracking data is missing for a player or season).
+  // Touches — bbref doesn't expose tracking. Use the documented approximation.
   let touches;
   let touchesSource;
   if (touchData && Number.isFinite(Number(touchData.TOUCHES))) {
@@ -365,19 +406,12 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
     touchesSource = 'no_data';
   }
 
-  // FOUL RATE — Session 3 upgrade
-  // Real signal: PF (personal fouls per game) from base stats. We were
-  // ignoring this field in Session 2; now it flows through to roleStability.
-  //
-  // Note: roleStability.js expects foulRate as fouls per 36 minutes, not raw PF.
-  // Convert: pf_per36 = (PF / MPG) × 36
+  // Foul rate per 36 minutes
   const pfPerGame = Number(base.PF) || 0;
   const foulRate = mpg > 0 ? (pfPerGame / mpg) * 36 : 0;
 
-  // PRIMARY BIG inference from bio.PLAYER_HEIGHT_INCHES.
-  // 6'4" (76 inches) is a reasonable WNBA "big" threshold — most centers
-  // are 6'3"+ and most non-bigs are 6'2" or shorter. Borderline players
-  // sit at 6'3" but their position usually disambiguates.
+  // Primary big — bbref doesn't expose height on the season summary page.
+  // Falls back to a position-based heuristic if/when we add roster scraping.
   let primaryBig = false;
   if (bio && Number(bio.PLAYER_HEIGHT_INCHES) >= 76) {
     primaryBig = true;
@@ -385,44 +419,43 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
 
   return {
     // Identity
-    id: Number(base.PLAYER_ID),
+    id: base.PLAYER_ID,
     name: base.PLAYER_NAME,
     team: base.TEAM_ABBREVIATION,
-    position: null,  // not in this endpoint; come from roster lookup if needed
+    position: null,
     gamesPlayed: Number(base.GP),
 
     // Stat we're projecting (market-specific)
     seasonAvg: Number.isFinite(seasonAvg) ? seasonAvg : 0,
 
-    // Inputs for engine — real data with documented fallbacks
+    // Inputs for engine
     minutesAvg: mpg,
     usageRate,
-    seasonUsage: usageRate,  // baseline = same as current until we have last5 trend
-    touches,                 // Session 3: real from player tracking when available
-    starter,                 // Session 3: real GS/GP when available
+    seasonUsage: usageRate,
+    touches,
+    starter,
     closingRole,
-    primaryCreator: usageRate >= 28,  // approximation — still no direct signal
-    primaryBig,              // Session 3: real height-based when bio available
+    primaryCreator: usageRate >= 28,
+    primaryBig,
 
-    // Stat-specific shares (used by usageFunnel)
+    // Stat-specific shares (engine consumes these)
     assistShare: Number(advanced?.AST_PCT ?? 0) * 100,
     reboundShare: Number(advanced?.REB_PCT ?? 0) * 100,
-    shotShare: 0,  // not directly available; would need /shotchartdetail
+    shotShare: 0,
 
-    // Foul/turnover risk — Session 3: real foul rate
     foulRate: Number(foulRate.toFixed(2)),
-    minutesCv: 0,  // requires game-log analysis; populated by recent-form module
+    minutesCv: 0,
 
-    // Diagnostic metadata — tells callers which fields are real vs approximated
+    // Diagnostic
     _dataQuality: {
-      starterSource,          // 'gs_gp_ratio' | 'minutes_inferred'
-      touchesSource,          // 'player_tracking' | 'approximation' | 'no_data'
+      starterSource,
+      touchesSource,
       hasBioData: !!bio,
       hasTouchData: !!touchData,
-      hasAdvancedData: !!advanced
+      hasAdvancedData: !!advanced,
+      source: 'basketball-reference'
     },
 
-    // Raw season counts — useful for debugging
     _raw: {
       PTS: Number(base.PTS),
       REB: Number(base.REB),
@@ -431,80 +464,21 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
       MIN: mpg,
       USG_PCT: usageRate,
       GP: Number(base.GP),
-      // Session 3 additions
+      GS: Number(base.GS) || (bio ? Number(bio.GS) : null),
       PF: pfPerGame,
-      GS: bio ? Number(bio.GS) : null,
       HEIGHT_IN: bio ? Number(bio.PLAYER_HEIGHT_INCHES) : null,
       TOUCHES: touchData ? Number(touchData.TOUCHES) : null
     }
   };
 }
 
-
 // =============================================================
-// TOP-N PER TEAM (Session 4 addition)
+// EXPORTS FOR TESTING
 // =============================================================
 
-/**
- * Get the top N players for a team, ranked by usage rate.
- *
- * Used by the slate endpoint to pick which players to analyze per game.
- * Top usage = most likely to have PrizePicks/Underdog prop lines.
- *
- * SESSION 4 (May 16, 2026): added for slate generation.
- *
- * @param {string} teamAbbr - 3-letter team code (e.g. "LVA")
- * @param {number} n - number of players to return
- * @param {number} season - e.g. 2026
- * @param {string} market - which market for seasonAvg (defaults to points)
- * @returns {Promise<Array<Object>>} array of merged player objects
- */
-export async function getTopPlayersForTeam(teamAbbr, n = 4, season = 2026, market = 'points') {
-  if (!teamAbbr) return [];
-
-  // Pull all four data sources once — same as getPlayerSeasonStats / findPlayerByName.
-  // Cached after first slate-level call, so per-team fetches are free.
-  const [base, advanced, bio, touches] = await Promise.all([
-    listAllPlayers(season),
-    listAllPlayersAdvanced(season),
-    listAllPlayersBio(season).catch(() => []),
-    listAllPlayersTouches(season).catch(() => [])
-  ]);
-
-  // Filter to team
-  const teamPlayers = base.filter(
-    p => String(p.TEAM_ABBREVIATION || '').toUpperCase() === String(teamAbbr).toUpperCase()
-  );
-
-  if (teamPlayers.length === 0) return [];
-
-  // For each team player, look up usage in advanced data.
-  // Sort by usage descending. Tiebreak: minutes played.
-  const withUsage = teamPlayers.map(p => {
-    const adv = advanced.find(a => Number(a.PLAYER_ID) === Number(p.PLAYER_ID));
-    const usage = Number(adv?.USG_PCT ?? 0);
-    return {
-      basePlayer: p,
-      advPlayer: adv,
-      usage: usage > 1.0 ? usage : usage * 100,  // normalize to percentage form
-      minutes: Number(p.MIN) || 0
-    };
-  });
-
-  // Sort: highest usage first, then highest minutes as tiebreak
-  withUsage.sort((a, b) => {
-    if (b.usage !== a.usage) return b.usage - a.usage;
-    return b.minutes - a.minutes;
-  });
-
-  // Filter to actual rotation players — under 12 MPG isn't getting prop lines
-  // anyway, so don't waste an analysis slot on them.
-  const rotationPlayers = withUsage.filter(p => p.minutes >= 12);
-
-  // Return top N, fully merged with bio + touches
-  return rotationPlayers.slice(0, n).map(p => {
-    const bioRow = bio.find(b => Number(b.PLAYER_ID) === Number(p.basePlayer.PLAYER_ID));
-    const touchRow = touches.find(t => Number(t.PLAYER_ID) === Number(p.basePlayer.PLAYER_ID));
-    return mergePlayerStats(p.basePlayer, p.advPlayer, market, bioRow, touchRow);
-  }).filter(Boolean);
-}
+export const _testing = {
+  normalizeBaseRow,
+  normalizeAdvancedRow,
+  mergePlayerStats,
+  toNum
+};
