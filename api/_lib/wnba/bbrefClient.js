@@ -201,9 +201,17 @@ export function extractTableHtml(html, tableId) {
 export function parseTableRows(tableHtml) {
   if (!tableHtml) return [];
 
-  // Get just the tbody portion (skip thead)
+  // Get just the tbody portion (skip thead).
+  // If <tbody> exists, use it. Otherwise, strip <thead> blocks from the table HTML
+  // so header rows don't get parsed as data rows.
+  let body;
   const tbodyMatch = tableHtml.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
-  const body = tbodyMatch ? tbodyMatch[1] : tableHtml;
+  if (tbodyMatch) {
+    body = tbodyMatch[1];
+  } else {
+    // No <tbody> — strip all <thead>...</thead> blocks then process the rest
+    body = tableHtml.replace(/<thead[^>]*>[\s\S]*?<\/thead>/gi, '');
+  }
 
   // Split into individual <tr> rows
   const rows = [];

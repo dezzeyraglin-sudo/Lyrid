@@ -65,7 +65,10 @@ export async function listAllPlayers(season = 2026) {
   const candidateIds = ['per_game_stats', 'per_game', 'players_per_game'];
   for (const tableId of candidateIds) {
     const rows = await fetchAndParseTable(path, tableId);
-    if (rows.length > 0) return rows.map(normalizeBaseRow);
+    if (rows.length > 0) {
+      const normalized = rows.map(normalizeBaseRow).filter(Boolean);
+      if (normalized.length > 0) return normalized;
+    }
   }
   console.warn(`[wnbaPlayerData] No per-game stats table found at ${path}`);
   return [];
@@ -85,7 +88,10 @@ export async function listAllPlayersAdvanced(season = 2026) {
   const candidateIds = ['advanced_stats', 'advanced', 'players_advanced'];
   for (const tableId of candidateIds) {
     const rows = await fetchAndParseTable(path, tableId);
-    if (rows.length > 0) return rows.map(normalizeAdvancedRow);
+    if (rows.length > 0) {
+      const normalized = rows.map(normalizeAdvancedRow).filter(Boolean);
+      if (normalized.length > 0) return normalized;
+    }
   }
   console.warn(`[wnbaPlayerData] No advanced stats table found at ${path}`);
   return [];
@@ -290,11 +296,16 @@ export async function getTopPlayersForTeam(teamAbbr, n = 4, season = 2026, marke
 function normalizeBaseRow(row) {
   if (!row || !row.player) return null;
 
+  // Skip header rows that leak through the parser (e.g. row where player == "Player").
+  // bbref repeats the column-header row mid-table on long pages.
+  if (row.player === 'Player' || row.team === 'Team' || row.team_id === 'Team') return null;
+
   // Player ID: use bbref slug as the opaque ID
   // (extracted by parseTableRows into bbref_player_id)
   const playerId = row.bbref_player_id || row.player;
-  // Team abbreviation: from the linked team URL when available
-  const teamAbbr = row.team_abbr_link || row.team_id || '';
+  // Team abbreviation: try multiple bbref column names + the link extraction
+  // bbref WNBA pages variously use: team_name_abbr, team_id, team
+  const teamAbbr = row.team_abbr_link || row.team_name_abbr || row.team_id || row.team || '';
 
   return {
     PLAYER_ID: playerId,
@@ -320,8 +331,10 @@ function normalizeBaseRow(row) {
 
 function normalizeAdvancedRow(row) {
   if (!row || !row.player) return null;
+  // Skip header rows
+  if (row.player === 'Player' || row.team === 'Team' || row.team_id === 'Team') return null;
   const playerId = row.bbref_player_id || row.player;
-  const teamAbbr = row.team_abbr_link || row.team_id || '';
+  const teamAbbr = row.team_abbr_link || row.team_name_abbr || row.team_id || row.team || '';
   return {
     PLAYER_ID: playerId,
     PLAYER_NAME: row.player,
