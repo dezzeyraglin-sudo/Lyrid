@@ -2381,7 +2381,6 @@
   </div>
   <nav class="lyrid-header-nav" role="navigation" aria-label="Main">
     <button class="lyrid-nav-btn active" data-tab="slate" onclick="switchTab('slate')">Slate</button>
-    <button class="lyrid-nav-btn" data-tab="wnba" onclick="switchTab('wnba')">WNBA</button>
     <button class="lyrid-nav-btn" data-tab="track" onclick="switchTab('track')">Track</button>
     <button class="lyrid-nav-btn" data-tab="history" onclick="switchTab('history')">History</button>
     <button class="lyrid-nav-btn" data-tab="settings" onclick="switchTab('settings')">Settings</button>
@@ -2423,45 +2422,6 @@
   <div id="hrPicksView" style="display:none"></div>
   <div id="gamesList"></div>
   <div id="analysisContainer"></div>
-</div>
-
-<!-- WNBA panel (May 17, 2026 — preview surface for /api/wnba/slate) -->
-<!-- Minimum viable UI: lets you SEE what the engine produces without polish. -->
-<!-- Calls POST /api/wnba/slate, renders best plays + per-game breakdowns. -->
-<!-- Shadow-mode banner makes it clear recommendations aren't validated yet. -->
-<div class="panel-content" id="wnba-panel">
-  <div class="lyrid-page-head">
-    <div class="lyrid-page-eyebrow">Preview · Shadow Mode</div>
-    <h1 class="lyrid-page-title">WNBA slate</h1>
-    <p class="lyrid-page-subtitle">Top 4 players per team × points / rebounds / assists. Engine is calibrated but not validated against actual game outcomes — treat as exploratory, not actionable.</p>
-  </div>
-
-  <!-- Shadow mode warning banner -->
-  <div id="wnbaShadowBanner" style="background:#fff7ed;border-left:3px solid #ea580c;padding:12px 16px;margin-bottom:24px;border-radius:4px;font-size:13px;color:#7c2d12">
-    <strong>Shadow mode:</strong> WNBA engine has no calibration data yet.
-    Recommendations are produced by the math you've seen on MLB but with different inputs.
-    Don't bet real money based on these picks until validation accumulates (~2-3 weeks).
-  </div>
-
-  <!-- Date + refresh controls -->
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:24px">
-    <div class="lyrid-date-nav">
-      <button class="lyrid-date-btn" onclick="changeWnbaDate(-1)" aria-label="Previous day">‹</button>
-      <span class="lyrid-date-current" id="wnbaDateDisplay">Loading…</span>
-      <button class="lyrid-date-btn" onclick="changeWnbaDate(1)" aria-label="Next day">›</button>
-    </div>
-    <button class="lyrid-btn primary" id="loadWnbaBtn" onclick="loadWnbaSlate()">Refresh</button>
-    <span id="wnbaStatusText" style="font-size:12px;color:#6b7280;margin-left:8px"></span>
-  </div>
-
-  <!-- Slate content -->
-  <div id="wnbaContent">
-    <div style="text-align:center;color:#6b7280;padding:48px 16px;font-size:14px">
-      Tap <strong>Refresh</strong> to load tonight's WNBA slate.
-      <br><br>
-      First load can take 5–15 seconds (cold cache). Subsequent loads are fast.
-    </div>
-  </div>
 </div>
 
 <!-- TRACK -->
@@ -2977,8 +2937,21 @@ function ordinalFrontend(n) {
 }
 
 // Classify a probability (0-1) into a visual tier for styling
-function probTier(p) {
+function probTier(p, baseline) {
+  // May 18, 2026 — generalized for contact-probability engine outputs.
+  // When a baseline is provided (e.g. P(Hit) baseline 0.243, P(HR) baseline 0.030),
+  // tier by RELATIVE deviation above baseline. This makes the same color logic work
+  // for hit-prob (0.24 baseline), HR (0.03 baseline), and XBH (0.075 baseline).
+  // When no baseline, fall back to absolute thresholds (legacy behavior).
   if (p == null) return '';
+  if (baseline != null && baseline > 0 && baseline < 0.5) {
+    const ratio = p / baseline;        // 1.0 = baseline, 1.5 = 50% above baseline
+    if (ratio >= 1.50) return 'prob-high';
+    if (ratio >= 1.25) return 'prob-mid';
+    if (ratio >= 1.05) return 'prob-low';
+    return 'prob-vlow';
+  }
+  // Legacy thresholds for absolute probabilities (no baseline provided)
   if (p >= 0.70) return 'prob-high';
   if (p >= 0.55) return 'prob-mid';
   if (p >= 0.40) return 'prob-low';
@@ -3011,254 +2984,7 @@ window.switchTab = function(tabName) {
   }
   if (tabName === 'settings') renderSettings();
   if (tabName === 'research') renderResearch();
-  if (tabName === 'wnba') initWnbaTab();
 };
-
-// =============================================================
-// WNBA TAB (May 17, 2026 — preview surface)
-// =============================================================
-// Minimum-viable WNBA UI. Calls /api/wnba/slate, renders best plays + games.
-// No caching, no localStorage persistence — fetched fresh each Refresh.
-// Date defaults to today; user can navigate with arrows.
-
-state.wnbaDate = state.wnbaDate || getTodayStr();
-
-function initWnbaTab() {
-  updateWnbaDateDisplay();
-  // Auto-load on first tab visit; subsequent visits need explicit Refresh
-  if (!state.wnbaAutoLoaded) {
-    state.wnbaAutoLoaded = true;
-    loadWnbaSlate();
-  }
-}
-
-function updateWnbaDateDisplay() {
-  const el = document.getElementById('wnbaDateDisplay');
-  if (!el) return;
-  const d = state.wnbaDate;
-  if (!d) { el.textContent = 'Today'; return; }
-  // Format "May 16, Friday" style — matches MLB UI
-  const date = new Date(d + 'T12:00:00');
-  const opts = { weekday: 'short', month: 'short', day: 'numeric' };
-  el.textContent = date.toLocaleDateString('en-US', opts);
-}
-
-window.changeWnbaDate = function(deltaDays) {
-  const d = new Date((state.wnbaDate || getTodayStr()) + 'T12:00:00');
-  d.setDate(d.getDate() + deltaDays);
-  state.wnbaDate = d.toISOString().slice(0, 10);
-  saveState();
-  updateWnbaDateDisplay();
-  loadWnbaSlate();
-};
-
-window.loadWnbaSlate = async function() {
-  const container = document.getElementById('wnbaContent');
-  const statusEl = document.getElementById('wnbaStatusText');
-  const btn = document.getElementById('loadWnbaBtn');
-  if (!container) return;
-
-  container.innerHTML = `
-    <div style="text-align:center;color:#6b7280;padding:48px 16px;font-size:14px">
-      <div style="margin-bottom:12px">Loading slate…</div>
-      <div style="font-size:12px;opacity:0.7">Cold-cache requests can take 5–15 seconds. The engine is fetching player season stats, game logs, and team data from stats.wnba.com.</div>
-    </div>
-  `;
-  if (statusEl) statusEl.textContent = '';
-  if (btn) btn.disabled = true;
-
-  const started = Date.now();
-  try {
-    const res = await fetch('/api/wnba/slate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: state.wnbaDate })
-    });
-    const data = await res.json();
-    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-
-    if (!data.ok) {
-      container.innerHTML = renderWnbaError(data.error || 'Unknown error', elapsed);
-      if (statusEl) statusEl.textContent = `Failed in ${elapsed}s`;
-    } else {
-      container.innerHTML = renderWnbaSlate(data);
-      if (statusEl) statusEl.textContent = `Loaded in ${elapsed}s · ${data.summary?.totalAnalyses || 0} analyses`;
-    }
-  } catch (err) {
-    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-    container.innerHTML = renderWnbaError(err.message || 'Network error', elapsed);
-    if (statusEl) statusEl.textContent = `Failed in ${elapsed}s`;
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-};
-
-function renderWnbaError(msg, elapsed) {
-  return `
-    <div style="background:#fef2f2;border-left:3px solid #dc2626;padding:16px;border-radius:4px;color:#7f1d1d">
-      <div style="font-weight:600;margin-bottom:4px">Slate load failed (${elapsed}s)</div>
-      <div style="font-size:13px;font-family:monospace">${escapeHtml(msg)}</div>
-      <div style="margin-top:12px;font-size:12px;color:#991b1b">
-        Common causes: stats.wnba.com rate-limited the request, no games scheduled for this date, or WNBA endpoint disabled. Try again in a minute or pick a different date.
-      </div>
-    </div>
-  `;
-}
-
-function renderWnbaSlate(data) {
-  const games = data.games || [];
-  const bestPlays = data.bestPlays || [];
-  const analyses = data.analyses || [];
-  const passes = data.passes || [];
-  const summary = data.summary || {};
-  const warnings = data.warnings || [];
-
-  if (games.length === 0) {
-    return `
-      <div style="text-align:center;color:#6b7280;padding:48px 16px;font-size:14px">
-        <div style="font-size:48px;margin-bottom:12px;opacity:0.5">∅</div>
-        No WNBA games found for this date.
-        ${warnings.length ? `<div style="margin-top:16px;font-size:12px;font-family:monospace;color:#92400e">${warnings.map(escapeHtml).join('<br>')}</div>` : ''}
-      </div>
-    `;
-  }
-
-  // Summary strip
-  const summaryStrip = `
-    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px;padding:12px 16px;background:#f9fafb;border-radius:6px;font-size:12px">
-      <div><strong>${games.length}</strong> games</div>
-      <div><strong>${summary.playersAnalyzed || 0}</strong> players</div>
-      <div><strong>${summary.totalAnalyses || 0}</strong> total analyses</div>
-      <div><strong>${summary.recommendations || 0}</strong> recommendations</div>
-      <div><strong>${summary.passes || 0}</strong> passes</div>
-      ${summary.errors ? `<div style="color:#dc2626"><strong>${summary.errors}</strong> errors</div>` : ''}
-    </div>
-  `;
-
-  // Warnings (if any)
-  const warningsBlock = warnings.length > 0 ? `
-    <div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:12px 16px;margin-bottom:24px;border-radius:4px;font-size:12px;color:#78350f">
-      <strong>Data warnings (${warnings.length}):</strong>
-      <div style="margin-top:6px;font-family:monospace">${warnings.slice(0,5).map(escapeHtml).join('<br>')}</div>
-      ${warnings.length > 5 ? `<div style="margin-top:6px;opacity:0.6">+${warnings.length - 5} more</div>` : ''}
-    </div>
-  ` : '';
-
-  // Best plays section
-  const bestPlaysBlock = bestPlays.length > 0 ? `
-    <div style="margin-bottom:32px">
-      <h2 style="font-size:18px;font-weight:600;margin-bottom:12px;color:#1f2937">Best plays</h2>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${bestPlays.slice(0, 10).map(p => renderWnbaPlayCard(p, true)).join('')}
-      </div>
-    </div>
-  ` : `
-    <div style="margin-bottom:32px;padding:24px;background:#f9fafb;border-radius:6px;text-align:center;color:#6b7280;font-size:13px">
-      No top-tier plays found. Most analyses returned PASS because no betting lines were provided for these games. Inject lines via the API to get sharper edges.
-    </div>
-  `;
-
-  // Games list
-  const gamesByMatchup = {};
-  for (const g of games) gamesByMatchup[g.gameId] = { game: g, analyses: [], passes: [] };
-  for (const a of analyses) if (gamesByMatchup[a.gameId]) gamesByMatchup[a.gameId].analyses.push(a);
-  for (const p of passes) if (gamesByMatchup[p.gameId]) gamesByMatchup[p.gameId].passes.push(p);
-
-  const gamesBlock = `
-    <div>
-      <h2 style="font-size:18px;font-weight:600;margin-bottom:12px;color:#1f2937">All games</h2>
-      <div style="display:flex;flex-direction:column;gap:16px">
-        ${Object.values(gamesByMatchup).map(({game, analyses, passes}) => renderWnbaGameBlock(game, analyses, passes)).join('')}
-      </div>
-    </div>
-  `;
-
-  return summaryStrip + warningsBlock + bestPlaysBlock + gamesBlock;
-}
-
-function renderWnbaPlayCard(p, isBestPlay) {
-  const confidence = p.confidence || '';
-  const recommendation = p.recommendation || '';
-  const tierColor = recommendation === 'OVER' ? '#059669'
-                 : recommendation === 'UNDER' ? '#dc2626'
-                 : '#6b7280';
-  const projDelta = (p.projection != null && p.line != null)
-    ? `${p.edge > 0 ? '+' : ''}${p.edge?.toFixed(1) || ''}`
-    : '';
-  const hitRate = p.hitRate != null ? `${p.hitRate}%` : '—';
-  const chips = (p.chips || []).slice(0, 3);
-
-  return `
-    <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:white;border:1px solid #e5e7eb;border-left:3px solid ${tierColor};border-radius:4px">
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-          <strong style="font-size:14px;color:#1f2937">${escapeHtml(p.player)}</strong>
-          <span style="font-size:11px;color:#6b7280">${escapeHtml(p.team)} vs ${escapeHtml(p.opponent)}</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
-          <span style="font-size:12px;font-weight:500;color:${tierColor}">${escapeHtml(recommendation)} ${escapeHtml(p.market)} ${p.line ?? ''}</span>
-          <span style="font-size:11px;color:#6b7280">proj ${p.projection?.toFixed(1) ?? '—'} (${projDelta})</span>
-          <span style="font-size:11px;color:#6b7280">hit ${hitRate}</span>
-          ${p.lineSource === 'inferred' ? '<span style="font-size:10px;color:#92400e;background:#fef3c7;padding:1px 6px;border-radius:3px">inferred line</span>' : ''}
-        </div>
-        ${chips.length > 0 ? `
-          <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
-            ${chips.map(c => `<span style="font-size:10px;color:#374151;background:#f3f4f6;padding:2px 6px;border-radius:3px">${escapeHtml(c)}</span>`).join('')}
-          </div>
-        ` : ''}
-      </div>
-      <div style="text-align:right;flex-shrink:0">
-        <div style="font-size:13px;font-weight:600;color:${tierColor}">${escapeHtml(confidence)}</div>
-        ${p.label ? `<div style="font-size:10px;color:#6b7280;text-transform:uppercase">${escapeHtml(p.label)}</div>` : ''}
-      </div>
-    </div>
-  `;
-}
-
-function renderWnbaGameBlock(game, analyses, passes) {
-  const status = game.status || 'Unknown';
-  const time = game.gameTimeET ? new Date(game.gameTimeET).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', timeZoneName: 'short'}) : '';
-
-  return `
-    <div style="background:white;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
-      <div style="padding:12px 16px;background:#f9fafb;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div>
-          <strong style="font-size:14px;color:#1f2937">${escapeHtml(game.away)} @ ${escapeHtml(game.home)}</strong>
-          <span style="font-size:11px;color:#6b7280;margin-left:8px">${escapeHtml(status)}${time ? ' · ' + escapeHtml(time) : ''}</span>
-        </div>
-        <div style="font-size:11px;color:#6b7280">
-          ${game.linesProvided ? `spread ${game.spread}, total ${game.total}` : `<span style="color:#92400e">no lines · using defaults (spread ${game.spread}, total ${game.total})</span>`}
-        </div>
-      </div>
-      ${analyses.length > 0 ? `
-        <div style="padding:12px;display:flex;flex-direction:column;gap:6px">
-          ${analyses.map(a => renderWnbaPlayCard(a, false)).join('')}
-        </div>
-      ` : ''}
-      ${passes.length > 0 ? `
-        <details style="border-top:1px solid #f3f4f6">
-          <summary style="padding:8px 16px;font-size:11px;color:#6b7280;cursor:pointer;background:#fafafa">${passes.length} PASS — show details</summary>
-          <div style="padding:8px 12px;display:flex;flex-direction:column;gap:4px">
-            ${passes.map(p => `
-              <div style="font-size:11px;color:#6b7280;padding:4px 8px">
-                <strong>${escapeHtml(p.player)}</strong> ${escapeHtml(p.market)} ${p.line ?? ''} → PASS (proj ${p.projection?.toFixed(1) ?? '—'})
-                ${p.hardFlags?.length ? `<span style="color:#92400e">— ${p.hardFlags.map(escapeHtml).join(', ')}</span>` : ''}
-              </div>
-            `).join('')}
-          </div>
-        </details>
-      ` : ''}
-      ${analyses.length === 0 && passes.length === 0 ? `
-        <div style="padding:12px 16px;font-size:12px;color:#6b7280;text-align:center">No analyses produced for this game.</div>
-      ` : ''}
-    </div>
-  `;
-}
-
-function escapeHtml(s) {
-  if (s == null) return '';
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
 
 // Lyrid date navigation
 window.changeSlateDate = function(deltaDays) {
@@ -3737,22 +3463,6 @@ function logHrChanceEntry(e) {
       existing.hrTier = e.hrTier;
       existing.hrScore = e.hrScore;
       existing.criteria = e.criteria;
-      // Wave 3/4 fields also refresh on re-log. If the user runs deep mode
-      // a second time and the form classification changes (e.g. game logs
-      // updated), capture the latest classification.
-      if (e.damageNote !== undefined) existing.damageNote = e.damageNote || null;
-      if (e.damageShadowMode !== undefined) existing.damageShadowMode = e.damageShadowMode;
-      if (e.damageTierShift !== undefined) existing.damageTierShift = e.damageTierShift;
-      if (e.hitterArchetype !== undefined) existing.hitterArchetype = e.hitterArchetype || null;
-      if (e.pitcherArchetype !== undefined) existing.pitcherArchetype = e.pitcherArchetype || null;
-      if (e.recentFormLabel !== undefined) existing.recentFormLabel = e.recentFormLabel || null;
-      if (e.recentFormMultiplier !== undefined) existing.recentFormMultiplier = e.recentFormMultiplier;
-      if (e.recentFormApplied !== undefined) existing.recentFormApplied = e.recentFormApplied;
-      if (e.recentFormGamesUsed !== undefined) existing.recentFormGamesUsed = e.recentFormGamesUsed;
-      if (e.recentFormPaUsed !== undefined) existing.recentFormPaUsed = e.recentFormPaUsed;
-      if (e.recentFormRecentH !== undefined) existing.recentFormRecentH = e.recentFormRecentH;
-      if (e.recentFormRecentHR !== undefined) existing.recentFormRecentHR = e.recentFormRecentHR;
-      if (e.recentFormSource !== undefined) existing.recentFormSource = e.recentFormSource || null;
     }
     return;
   }
@@ -3768,32 +3478,6 @@ function logHrChanceEntry(e) {
     hrTier: e.hrTier,
     hrScore: e.hrScore,
     criteria: e.criteria,
-    // WAVE 3 / WAVE 4 AUDIT FIELDS (May 17, 2026):
-    // Previously these features rendered in the UI and logged to
-    // bestBetHistory (top picks only), but the HR audit log — which is
-    // the per-hitter validation source of truth — captured neither.
-    // Without these fields we cannot validate whether SCORCHING/HOT/COLD/
-    // INJURY_RISK classifications actually predict HR outcomes, or whether
-    // damage-archetype tier shifts move hit rate in the predicted direction.
-    // Now logged for every HR-chance hitter so a future calibration session
-    // can build hit-rate-by-classification tables.
-    //
-    // Caller passes recentForm and damageArchetype context (see logHrChanceEntry
-    // call site, ~line 6563). All fields are optional — fall back to null when
-    // not computed (e.g. fast mode, INSUFFICIENT recent form sample).
-    damageNote: e.damageNote || null,
-    damageShadowMode: e.damageShadowMode ?? null,
-    damageTierShift: e.damageTierShift ?? null,
-    hitterArchetype: e.hitterArchetype || null,
-    pitcherArchetype: e.pitcherArchetype || null,
-    recentFormLabel: e.recentFormLabel || null,
-    recentFormMultiplier: e.recentFormMultiplier ?? null,
-    recentFormApplied: e.recentFormApplied ?? null,
-    recentFormGamesUsed: e.recentFormGamesUsed ?? null,
-    recentFormPaUsed: e.recentFormPaUsed ?? null,
-    recentFormRecentH: e.recentFormRecentH ?? null,
-    recentFormRecentHR: e.recentFormRecentHR ?? null,
-    recentFormSource: e.recentFormSource || null,
     actualHR: null,
     graded: false,
     loggedAt: Date.now()
@@ -4118,7 +3802,7 @@ function renderAnalysis(data) {
                     <div class="prop-pill ${p.isBest ? 'best' : ''}">
                       ${p.platform ? `<span class="pp-platform ${p.platform}">${p.platform}</span>` : ''}
                       <span class="pp-key">${p.label}</span>
-                      ${p.probability != null ? `<span class="pp-prob ${probTier(p.probability)}" title="Estimated probability this prop hits — baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(0) : '?'}%">${(p.probability*100).toFixed(0)}%</span>` : ''}
+                      ${p.probability != null ? `<span class="pp-prob ${probTier(p.probability, p.probabilityBaseline)}" title="Engine probability: ${(p.probability*100).toFixed(1)}% (baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(1) : '?'}%, edge ${p.probabilityBaseline != null ? ((p.probability - p.probabilityBaseline)*100 >= 0 ? '+' : '') + ((p.probability - p.probabilityBaseline)*100).toFixed(1) + 'pp' : '?'})">${(p.probability*100).toFixed(0)}%</span>` : ''}
                       <span class="pp-reason">${p.reason}</span>
                     </div>
                   `).join('')}
@@ -6894,36 +6578,7 @@ function logBestBets(data) {
           team: side.hitTeam, opponent: side.oppTeam,
           pitcherName: sideData.pitcher?.name,
           hrTier: m.hrChance.tier, hrScore: m.hrChance.score,
-          criteria: m.hrChance.criteria,
-          // WAVE 3 / WAVE 4 fields (May 17, 2026):
-          // These were displayed on hitter cards but not persisted to hrAudit,
-          // so we couldn't validate them against actual HR outcomes. Now
-          // captured here so every audited hitter has full context.
-          //
-          // Defensive coding: every field uses optional chaining + null fallback
-          // so a fast-mode pick (no damageNote, no recentForm) won't crash.
-          //
-          // KNOWN FIELDS (confirmed in render path / bestBetHistory writes):
-          //   damageNote, damageShadowMode (Wave 3 display data)
-          //   recentForm.label/multiplier/applied/gamesUsed/paUsed/recentH/recentHR/source
-          //
-          // UNDOCUMENTED FIELDS (may not exist yet — included for forward-compat):
-          //   damageTierShift, hitterArchetype, pitcherArchetype
-          //   If the Wave 3 module exposes these on `m` later, they auto-flow.
-          //   If not, they log as undefined → null. Harmless.
-          damageNote: m.damageNote,
-          damageShadowMode: m.damageShadowMode,
-          damageTierShift: m.damageTierShift,
-          hitterArchetype: m.hitterArchetype,
-          pitcherArchetype: m.pitcherArchetype,
-          recentFormLabel: m.recentForm?.label,
-          recentFormMultiplier: m.recentForm?.multiplier,
-          recentFormApplied: m.recentForm?.applied,
-          recentFormGamesUsed: m.recentForm?.gamesUsed,
-          recentFormPaUsed: m.recentForm?.paUsed,
-          recentFormRecentH: m.recentForm?.recentH,
-          recentFormRecentHR: m.recentForm?.recentHR,
-          recentFormSource: m.recentForm?.source
+          criteria: m.hrChance.criteria
         });
       }
     }
@@ -7771,48 +7426,6 @@ function captureProjection(data) {
   const existing = state.projectionAudit[key];
   // Don't overwrite if already graded (actuals locked in)
   if (existing?.graded) return;
-  // Capture projection factors for future calibration (May 17, 2026).
-  //
-  // The projection model has a systematic +1.5-2.0 run OVER bias post-refactor.
-  // Diagnosis: seven multipliers in a multiplicative chain compound — when
-  // every input leans positive, the product overshoots reality by ~30-50%.
-  //
-  // To recalibrate properly we need regression against the SLOPE COEFFICIENTS
-  // (lineupMult slope=2.4, pitcherMult slope=2.0). That requires knowing each
-  // multiplier per game, then regressing actual runs against each component.
-  //
-  // Without these fields persisted, recalibration must use opinion-driven
-  // priors. With them, a future session can run real regression on ~80 games
-  // (one week of slates) and propose data-backed coefficient updates.
-  //
-  // Storing safely:
-  //   - Read from data.projection.factors (already computed by analyze.js)
-  //   - Fall back to null if missing (fast mode may skip some)
-  //   - Strings come in as toFixed values — parse for downstream math
-  const f = data.projection?.factors || {};
-  const projComponents = {
-    lineupMultAway: parseFloatOrNull(f.away?.lineupMult),
-    lineupMultHome: parseFloatOrNull(f.home?.lineupMult),
-    pitcherMultAway: parseFloatOrNull(f.away?.pitcherMult),
-    pitcherMultHome: parseFloatOrNull(f.home?.pitcherMult),
-    bullpenMultAway: parseFloatOrNull(f.away?.bullpenMult),
-    bullpenMultHome: parseFloatOrNull(f.home?.bullpenMult),
-    pitcherXwAwaySp: parseFloatOrNull(f.away?.pitcherXwAgainst),
-    pitcherXwHomeSp: parseFloatOrNull(f.home?.pitcherXwAgainst),
-    lineupTierAway: f.away?.lineupTierLabel || null,
-    lineupTierHome: f.home?.lineupTierLabel || null,
-    parkRunMult: parseFloatOrNull(f.parkRunMult),
-    weatherRunMult: parseFloatOrNull(f.weatherRunMult),
-    envRunMult: parseFloatOrNull(f.envRunMult),
-    umpRunMult: parseFloatOrNull(f.umpRunMult),
-    awayConvMult: parseFloatOrNull(f.awayConvMult),
-    homeConvMult: parseFloatOrNull(f.homeConvMult),
-    dualEliteFactor: parseFloatOrNull(f.dualEliteFactor),
-    slugfestScore: parseFloatOrNull(f.slugfestScore),
-    slugfestFactor: parseFloatOrNull(f.slugfestFactor),
-    slugfestSignalCount: Array.isArray(f.slugfestSignals) ? f.slugfestSignals.length : 0,
-    envInteractionCount: f.envInteractions || 0
-  };
   const entry = {
     date,
     gamePk: data.gamePk,
@@ -7829,8 +7442,6 @@ function captureProjection(data) {
     favoriteML: data.odds?.favoriteML ?? null,
     favorite: data.odds?.favorite ?? null,
     deepMode: data.deepMode || false,
-    // Projection components for future recalibration (May 17, 2026):
-    ...projComponents,
     // Fields filled in on grading:
     actualAwayRuns: existing?.actualAwayRuns ?? null,
     actualHomeRuns: existing?.actualHomeRuns ?? null,
@@ -7843,14 +7454,6 @@ function captureProjection(data) {
 
   state.projectionAudit[key] = entry;
   saveState();
-}
-
-// Safe parseFloat helper that returns null instead of NaN for invalid input.
-// Used by projection-audit capture so missing fields log as null, not NaN.
-function parseFloatOrNull(v) {
-  if (v == null) return null;
-  const n = parseFloat(v);
-  return Number.isFinite(n) ? n : null;
 }
 
 /**

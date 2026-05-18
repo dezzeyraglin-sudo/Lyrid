@@ -21,6 +21,7 @@ import { getMatchupConversionRates } from './_lib/conversionRate.js';
 import { getLineupRispPerformance, applyRispAdjustment, buildLineupConversionTier } from './_lib/batterRisp.js';
 import { fetchPitcherPropsLines, getPitcherLinesByName } from './_lib/pitcherPropsLines.js';
 import { tryAuth, checkAndIncrementQuota, AuthError } from './_lib/auth.js';
+import { computeHitProbability, computeHrProbability, computeXbhProbability } from './_lib/contactProbability.js';
 
 // PITCHER'S DUEL FIX (May 9, 2026)
 // Feature-flagged calibration changes that address the model's failure to
@@ -1567,78 +1568,9 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
   const awayConvMult = conversionRates?.away?.conversionMult || 1.0;
   const homeConvMult = conversionRates?.home?.conversionMult || 1.0;
 
-  // Final projections — calibration update May 17, 2026.
-  //
-  // OLD (multiplicative chain, retained as fallback):
-  //   projRuns = BASELINE × lineupMult × pitcherBlend × envRunMult × umpRunMult
-  //              × convMult × dualEliteFactor × slugfestFactor
-  //
-  // PROBLEM: seven multipliers compound. When every input leans positive
-  // (favorable lineup vs weak pitching in hitter park with loose ump etc.),
-  // 1.06^7 ≈ 1.50 — a 50% inflation. Empirical: 245-game backtest shows
-  // +2.22 average bias, +3.6 to +3.9 bias on projections ≥ 11 runs. The
-  // model's individual components may be roughly correct directionally,
-  // but their multiplicative combination overshoots reality.
-  //
-  // BAND-AID FIX (this change): sum individual deviations from 1.0
-  // additively, cap combined deviation at ±20%, apply to baseline. This
-  // breaks the compounding while preserving each input's relative weight.
-  //
-  // Backtest results (245 graded games):
-  //   Old: MAE 4.45, bias +2.22
-  //   New: MAE 3.99, bias +1.41  (~10% MAE drop, ~37% bias drop)
-  //
-  // Still leaves +1.4 bias — proper recalibration requires regressing the
-  // slope coefficients (currently lineupMult slope=2.4, pitcherMult slope=2.0)
-  // against actual outcomes. That work is unblocked by the audit-log fix
-  // shipping in the same patch (index.html now captures every multiplier
-  // per game). Schedule: re-run regression in ~7 days when ~80 component-
-  // labeled games are in.
-  //
-  // FLAG-GATED: PROJ_COMPOUND_FIX_ENABLED. Default true. If anything goes
-  // sideways post-deploy, set to false in Vercel env to instantly revert
-  // to old math. The factors object below surfaces both old and new
-  // multipliers for side-by-side diagnostics regardless of flag state.
-  const PROJ_COMPOUND_FIX_ENABLED = (() => {
-    const v = process.env.PROJ_COMPOUND_FIX_ENABLED;
-    if (v === 'false' || v === '0' || v === 'no') return false;
-    return true;  // default on — addresses confirmed +2.22 OVER bias
-  })();
-  const PROJ_COMPOUND_CAP = 0.20;  // ±20% — best fit per 245-game backtest
-
-  let projAwayRuns, projHomeRuns;
-  let awayDeviation = null, homeDeviation = null, awayCapped = null, homeCapped = null;
-  if (PROJ_COMPOUND_FIX_ENABLED) {
-    // Additive deviation: each multiplier contributes its (mult - 1.0).
-    // Symmetric: a 1.10 multiplier adds 0.10, a 0.93 multiplier subtracts 0.07.
-    // The cap is applied to the SUM, not each individual multiplier —
-    // individual large multipliers (like a strong dualElite -7%) remain
-    // intact when other inputs are neutral.
-    awayDeviation =
-      (awayComp.lineupMult - 1.0) +
-      (awayPitcherBlend - 1.0) +
-      (envRunMult - 1.0) +
-      (umpRunMult - 1.0) +
-      (awayConvMult - 1.0) +
-      (dualEliteFactor - 1.0) +
-      (slugfestFactor - 1.0);
-    homeDeviation =
-      (homeComp.lineupMult - 1.0) +
-      (homePitcherBlend - 1.0) +
-      (envRunMult - 1.0) +
-      (umpRunMult - 1.0) +
-      (homeConvMult - 1.0) +
-      (dualEliteFactor - 1.0) +
-      (slugfestFactor - 1.0);
-    awayCapped = Math.max(-PROJ_COMPOUND_CAP, Math.min(PROJ_COMPOUND_CAP, awayDeviation));
-    homeCapped = Math.max(-PROJ_COMPOUND_CAP, Math.min(PROJ_COMPOUND_CAP, homeDeviation));
-    projAwayRuns = BASELINE_RUNS * (1.0 + awayCapped);
-    projHomeRuns = BASELINE_RUNS * (1.0 + homeCapped);
-  } else {
-    // OLD multiplicative chain (rollback path)
-    projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * envRunMult * umpRunMult * awayConvMult * dualEliteFactor * slugfestFactor;
-    projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * envRunMult * umpRunMult * homeConvMult * dualEliteFactor * slugfestFactor;
-  }
+  // Final projections — now including conversion rate, composite environment, dual-elite, and slugfest
+  const projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * envRunMult * umpRunMult * awayConvMult * dualEliteFactor * slugfestFactor;
+  const projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * envRunMult * umpRunMult * homeConvMult * dualEliteFactor * slugfestFactor;
   const projTotal = projAwayRuns + projHomeRuns;
 
   // Win probability via Pythagorean expectation (exp = 1.83 for MLB)
@@ -1936,19 +1868,7 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
       slugfestScore: slugfestScore.toFixed(1),
       slugfestFactor: slugfestFactor.toFixed(3),
       slugfestSignals,
-      slugfestFixEnabled: SLUGFEST_FIX_ENABLED,
-      // Compound-chain calibration (May 17, 2026):
-      // Surfaces whether the additive-with-cap math fired and how much
-      // was clipped. Helpful for diagnosing edge cases post-deploy and
-      // for the future regression analysis.
-      projCompoundFixEnabled: PROJ_COMPOUND_FIX_ENABLED,
-      projCompoundCap: PROJ_COMPOUND_CAP,
-      awayDeviation: awayDeviation != null ? awayDeviation.toFixed(3) : null,
-      homeDeviation: homeDeviation != null ? homeDeviation.toFixed(3) : null,
-      awayDeviationCapped: awayCapped != null ? awayCapped.toFixed(3) : null,
-      homeDeviationCapped: homeCapped != null ? homeCapped.toFixed(3) : null,
-      awayClipped: (awayDeviation != null && Math.abs(awayDeviation) > PROJ_COMPOUND_CAP),
-      homeClipped: (homeDeviation != null && Math.abs(homeDeviation) > PROJ_COMPOUND_CAP)
+      slugfestFixEnabled: SLUGFEST_FIX_ENABLED
     },
     conversionRates: conversionRates || { away: null, home: null },
     marketComparison,
@@ -2133,6 +2053,51 @@ function computeLineupTier(analyzedHitters, arsenal) {
 function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, parkFactor, adjustments, tier, bullpenMaxXwoba, bullpenTier }) {
   if (!tier || matchedPitches.length === 0) return [];
 
+  // === CONTACT PROBABILITY ENGINE (May 18, 2026) — SHADOW MODE ===
+  // Runs alongside existing heuristic scoring. Outputs attach to each prop
+  // so the UI can display probability and audit log captures it for backtesting.
+  // Existing `score` still drives selection. After backtest validation, flip
+  // selection to use probability. See contactProbability.js for the engine.
+  const _pitcherInfo = matchedPitches[0] || {};
+  const _umpFavor = (adjustments || []).find(a => a.type === 'umpire')?.favor || null;
+  const _engineInputs = {
+    hitter: {
+      kPct: parseFloat(overall.k_percent?.value || 22.5),
+      barrelPct: parseFloat(overall.barrel_batted_rate?.value || 8),
+      hardHitPct: parseFloat(overall.hard_hit_percent?.value || 38),
+      avgEv: parseFloat(overall.avg_exit_velocity?.value || 88.5),
+      xwoba: parseFloat(overall.xwoba?.value || 0.315),
+      ldPct: parseFloat(overall.line_drive_percent?.value || overall.ld_percent?.value || 21),
+      fbPct: parseFloat(overall.fly_ball_percent?.value || overall.fb_percent?.value || 24),
+      pullPct: parseFloat(overall.pull_percent?.value || 40),
+      sprintSpeed: parseFloat(overall.sprint_speed?.value || (hitter && hitter.sprintSpeed) || 27)
+    },
+    pitcher: {
+      kPct: parseFloat(_pitcherInfo.pitcherKPct || _pitcherInfo.kPct || 22.5),
+      allowedHardHit: parseFloat(_pitcherInfo.allowedHardHit || 38),
+      allowedEv: parseFloat(_pitcherInfo.allowedEv || 88.5),
+      allowedBarrel: parseFloat(_pitcherInfo.allowedBarrel || 7.5)
+    },
+    matchedXwoba: parseFloat(maxXwoba || 0) || null,
+    parkBoosts: {
+      runs: parkFactor ? (parkFactor.runs || 100) / 100 : 1.0,
+      hr: parkFactor
+        ? ((hitter && hitter.hand === 'L') ? (parkFactor.lhbHr || 100) : (parkFactor.rhbHr || 100)) / 100
+        : 1.0
+    },
+    ump: { favor: _umpFavor }
+  };
+
+  let _pHit = null, _pHr = null, _pXbh = null;
+  try {
+    _pHit = computeHitProbability(_engineInputs);
+    _pHr  = computeHrProbability(_engineInputs);
+    _pXbh = computeXbhProbability(_engineInputs);
+  } catch (err) {
+    console.warn('[contactEngine] computation failed:', err.message);
+  }
+  // === END CONTACT PROBABILITY ENGINE ===
+
   const barrel = parseFloat(overall.barrel_batted_rate?.value || 0);
   const hardHit = parseFloat(overall.hard_hit_percent?.value || 0);
   const ev = parseFloat(overall.avg_exit_velocity?.value || 0);
@@ -2263,8 +2228,38 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
   allProps.sort((a, b) => b.score - a.score);
   const ranked = allProps.slice(0, 4);
 
-  // Tag the first as best bet
-  ranked.forEach((p, i) => { p.rank = i; p.isBest = i === 0; });
+  // Tag the first as best bet, and attach contact-engine probabilities (shadow mode)
+  ranked.forEach((p, i) => {
+    p.rank = i;
+    p.isBest = i === 0;
+
+    // SHADOW-MODE PROBABILITY ATTACHMENT
+    // Different prop keys consume different probability outputs:
+    //   H, R       → P(Hit) — at least one hit / accumulates from PA hits
+    //   HR         → P(HR)
+    //   TB, RBI    → P(XBH) — extra-base-hit probability (most predictive)
+    //   FS_*, HRR  → composite, leave probability null (no clean 1:1 mapping)
+    if (_pHit && p.key === 'H')        { p.probability = _pHit.probability; p.probabilityBaseline = _pHit.baseline; }
+    else if (_pHit && p.key === 'R')   { p.probability = _pHit.probability; p.probabilityBaseline = _pHit.baseline; }
+    else if (_pHr && p.key === 'HR')   { p.probability = _pHr.probability;  p.probabilityBaseline = _pHr.baseline;  }
+    else if (_pXbh && p.key === 'TB')  { p.probability = _pXbh.probability; p.probabilityBaseline = _pXbh.baseline; }
+    else if (_pXbh && p.key === 'RBI') { p.probability = _pXbh.probability; p.probabilityBaseline = _pXbh.baseline; }
+
+    // Audit fields — always attached when available, regardless of prop key
+    if (_pHit || _pHr || _pXbh) {
+      p._engineAudit = {
+        pHit: _pHit?.probability,
+        pHitQuality: _pHit?.quality,
+        pHr: _pHr?.probability,
+        pXbh: _pXbh?.probability,
+        layers: {
+          contact: _pHit?.layers?.contact?.deviation,
+          quality: _pHit?.layers?.quality?.deviation,
+          conversion: _pHit?.layers?.conversion?.deviation
+        }
+      };
+    }
+  });
 
   return ranked;
 }
