@@ -270,7 +270,9 @@ export function parseTableRows(tableHtml) {
 function stripHtml(html) {
   if (!html) return '';
   return html
-    .replace(/<[^>]*>/g, '')         // remove tags
+    .replace(/<[^>]*>/g, '')         // remove fully-formed tags
+    .replace(/<[^\s<>]*$/g, '')     // remove trailing unclosed tag fragment (e.g. "Player</strong")
+    .replace(/^[^\s<>]*>/g, '')     // remove leading unclosed tag fragment (e.g. "strong>Player")
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
