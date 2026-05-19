@@ -2429,17 +2429,25 @@
 <!-- WNBA -->
 <div class="panel-content" id="wnba-panel">
   <div class="lyrid-page-head">
-    <div class="lyrid-page-eyebrow" id="wnbaPageEyebrow">Today · WNBA</div>
-    <h1 class="lyrid-page-title">WNBA slate</h1>
-    <p class="lyrid-page-subtitle">Projections from basketball-reference data. Book lines not yet wired — recommendations are shadow mode only.</p>
+    <div class="lyrid-page-eyebrow" id="wnbaPageEyebrow">Loading…</div>
+    <h1 class="lyrid-page-title">Tonight's slate</h1>
+    <p class="lyrid-page-subtitle">Projections from basketball-reference. Book lines pending — recommendations remain shadow.</p>
   </div>
-  <div class="controls" style="margin-bottom:14px;gap:8px;flex-wrap:wrap">
+
+  <!-- Date navigation + refresh, mirrors slate panel -->
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:24px">
+    <div class="lyrid-date-nav">
+      <button class="lyrid-date-btn" onclick="changeWnbaDate(-1)" aria-label="Previous day">‹</button>
+      <span class="lyrid-date-current" id="lyridWnbaDateDisplay">Today</span>
+      <button class="lyrid-date-btn" onclick="changeWnbaDate(1)" aria-label="Next day">›</button>
+    </div>
     <button class="lyrid-btn primary" id="loadWnbaBtn" onclick="loadWnbaSlate()">Refresh</button>
-    <span id="wnbaMarketFilter" style="display:inline-flex;gap:6px;align-items:center"></span>
-    <span id="wnbaMeta" style="margin-left:auto;font-size:11px;color:var(--dim)"></span>
+    <span id="wnbaMeta" style="margin-left:auto;font-size:11px;color:var(--text-secondary, var(--dim));letter-spacing:0.04em"></span>
   </div>
+
   <div id="wnbaBanner"></div>
   <div id="wnbaGamesList"></div>
+  <div id="wnbaAnalysisContainer"></div>
 </div>
 
 <!-- TRACK -->
@@ -9968,8 +9976,12 @@ async function autoGradeOnAppOpen() {
 })();
 
 // =============================================================
-// WNBA SLATE UI (May 19, 2026 — drop-in rebuild after handoff regression)
+// WNBA SLATE UI (May 19, 2026 — Lyrid-consistent slate cards)
 // =============================================================
+// Visual parity with the MLB slate cards: left-rail timestamp, centered
+// matchup with subtitle, right-side action chip. First card gets the
+// TONIGHT'S SIGNAL band. Date nav mirrors changeSlateDate().
+//
 // Backend at /api/wnba/slate returns: { ok, games[], passes[], bestPlays[],
 //   summary, shadowMode, generatedAt, errors[], season, date }
 //
@@ -9978,41 +9990,60 @@ async function autoGradeOnAppOpen() {
 //                recommendation, confidence, label, hitRate, scores{...},
 //                chips[], hardFlags[], lineSource, shadowMode, _dataQuality{...} }
 //
-// linesProvided is currently false everywhere (DraftKings blocked, no paid feed yet).
-// Edge values are theatrical until real lines wire in — UI must not over-sell them.
+// linesProvided is currently false everywhere. The UI must remain honest about that.
 
 (function() {
   const state = {
     raw: null,
-    market: 'all',         // 'all' | 'points' | 'rebounds' | 'assists'
-    expanded: new Set(),   // gameIds with details open
+    date: null,                  // YYYY-MM-DD, null = today (server picks)
+    expanded: new Set(),         // gameIds with details open in analysis view
+    selectedGameId: null,        // which game is currently being analyzed
     loaded: false
   };
-  window._wnbaState = state;  // for console debugging
+  window._wnbaState = state;     // for debugging
 
   const TEAM_NAMES = {
     ATL:'Atlanta Dream', CHI:'Chicago Sky', CON:'Connecticut Sun', DAL:'Dallas Wings',
     GSV:'Golden State Valkyries', IND:'Indiana Fever', LAS:'Los Angeles Sparks',
     LVA:'Las Vegas Aces', MIN:'Minnesota Lynx', NYL:'New York Liberty',
     PHO:'Phoenix Mercury', SEA:'Seattle Storm', TOR:'Toronto Tempo', WAS:'Washington Mystics',
-    // ESPN tricode variants that might leak through
     NY:'New York Liberty', LV:'Las Vegas Aces', LA:'Los Angeles Sparks',
     WSH:'Washington Mystics', PHX:'Phoenix Mercury', CONN:'Connecticut Sun', GS:'Golden State Valkyries'
   };
 
-  function teamName(abbr) { return TEAM_NAMES[abbr] || abbr; }
+  const TEAM_RECORDS = {};  // placeholder for when backend wires records
 
-  function formatGameTime(iso) {
-    if (!iso) return '';
-    try {
-      const d = new Date(iso);
-      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ' ' +
-             d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    } catch { return iso; }
+  function teamName(abbr) { return TEAM_NAMES[abbr] || abbr; }
+  function teamAbbr(abbr) { return abbr || '—'; }
+
+  function ymdToday() {
+    const d = new Date();
+    return d.toISOString().slice(0, 10);
   }
 
-  // Tier coloring: confidence is "1★" through presumably "5★". Until lines arrive,
-  // every recommendation is PASS so we tier by raw finalEdge score instead.
+  function formatGameTime(iso) {
+    if (!iso) return 'TBD';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    } catch { return 'TBD'; }
+  }
+
+  function formatDateLong(ymd) {
+    if (!ymd) return 'Today';
+    try {
+      const d = new Date(ymd + 'T12:00:00');
+      const today = ymdToday();
+      const tomorrow = (() => { const t = new Date(); t.setDate(t.getDate()+1); return t.toISOString().slice(0,10); })();
+      const yesterday = (() => { const t = new Date(); t.setDate(t.getDate()-1); return t.toISOString().slice(0,10); })();
+      const longLabel = d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+      if (ymd === today) return 'Today · ' + d.toLocaleDateString([], { month: 'long', day: 'numeric' });
+      if (ymd === tomorrow) return 'Tomorrow · ' + d.toLocaleDateString([], { month: 'long', day: 'numeric' });
+      if (ymd === yesterday) return 'Yesterday · ' + d.toLocaleDateString([], { month: 'long', day: 'numeric' });
+      return longLabel;
+    } catch { return ymd; }
+  }
+
   function edgeTier(finalEdge) {
     if (finalEdge >= 80) return { label:'ELITE', bg:'#0f1f3a', color:'#ffffff' };
     if (finalEdge >= 70) return { label:'STRONG', bg:'#0f1f3a', color:'#ffffff' };
@@ -10021,7 +10052,6 @@ async function autoGradeOnAppOpen() {
     return { label:'WEAK', bg:'#f3f4f6', color:'#6b7280' };
   }
 
-  // Score chip color: 0-100 sub-score, green high, red low
   function scoreColor(s) {
     if (s == null || !Number.isFinite(s)) return '#9ca3af';
     if (s >= 80) return '#14532d';
@@ -10031,7 +10061,57 @@ async function autoGradeOnAppOpen() {
     return '#7f1d1d';
   }
 
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // -----------------------------------------------------------
+  // GAME SIGNAL SCORING — which game gets TONIGHT'S SIGNAL?
+  // -----------------------------------------------------------
+  // The first card showcased as "tonight's signal" should be the game where
+  // the engine sees the most actionable spread of plays — i.e. the game whose
+  // best prop has the highest finalEdge across the slate. Mirrors the MLB
+  // pattern's notion of "strongest mismatch."
+  function pickSignalGameId(games, passes) {
+    if (!games || games.length === 0) return null;
+    let bestId = games[0].gameId;
+    let bestScore = -Infinity;
+    for (const g of games) {
+      const gPasses = passes.filter(p => p.gameId === g.gameId);
+      const top = gPasses.reduce((max, p) => Math.max(max, p.scores?.finalEdge ?? 0), 0);
+      if (top > bestScore) {
+        bestScore = top;
+        bestId = g.gameId;
+      }
+    }
+    return bestId;
+  }
+
+  // -----------------------------------------------------------
+  // DATE NAV
+  // -----------------------------------------------------------
+  window.changeWnbaDate = function(deltaDays) {
+    const current = state.date || ymdToday();
+    const d = new Date(current + 'T12:00:00');
+    d.setDate(d.getDate() + deltaDays);
+    state.date = d.toISOString().slice(0, 10);
+    updateWnbaDateDisplay();
+    window.loadWnbaSlate();
+  };
+
+  function updateWnbaDateDisplay() {
+    const el = document.getElementById('lyridWnbaDateDisplay');
+    if (!el) return;
+    const ymd = state.date || ymdToday();
+    el.textContent = formatDateLong(ymd);
+    // Eyebrow line — TODAY · LIVE WNBA, or YESTERDAY · WNBA, etc.
+    const eb = document.getElementById('wnbaPageEyebrow');
+    if (eb) {
+      const today = ymdToday();
+      if (ymd === today) eb.textContent = 'TODAY · LIVE WNBA';
+      else eb.textContent = formatDateLong(ymd).toUpperCase() + ' · WNBA';
+    }
+  }
 
   // -----------------------------------------------------------
   // FETCH
@@ -10040,15 +10120,21 @@ async function autoGradeOnAppOpen() {
     const btn = document.getElementById('loadWnbaBtn');
     const list = document.getElementById('wnbaGamesList');
     const meta = document.getElementById('wnbaMeta');
+    const analysisContainer = document.getElementById('wnbaAnalysisContainer');
     if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
-    if (list) list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--dim);font-size:13px">Fetching slate…</div>';
+    if (list) list.innerHTML = renderSkeleton();
     if (meta) meta.textContent = '';
+    if (analysisContainer) analysisContainer.innerHTML = '';
+    state.selectedGameId = null;
+
+    updateWnbaDateDisplay();
 
     try {
+      const body = state.date ? JSON.stringify({ date: state.date }) : '{}';
       const res = await fetch('/api/wnba/slate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: '{}'
+        body
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
@@ -10057,111 +10143,219 @@ async function autoGradeOnAppOpen() {
       renderWnbaSlate();
     } catch (err) {
       console.error('[wnba] slate fetch failed:', err);
-      if (list) list.innerHTML = `<div style="padding:24px;text-align:center;color:#7f1d1d;font-size:13px">Slate load failed: ${esc(err.message)}<br><small style="color:var(--dim)">Backend may be cold-starting. Try refresh.</small></div>`;
+      if (list) {
+        list.innerHTML = `
+          <div class="lyrid-empty">
+            <div class="lyrid-empty-title">Slate load failed</div>
+            <div class="lyrid-empty-text">${esc(err.message)}. The backend may be cold-starting — try Refresh.</div>
+          </div>`;
+      }
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
     }
   };
 
+  function renderSkeleton() {
+    const card = `<div class="lyrid-skel" style="height:78px;border-radius:var(--radius-lg, 12px);margin-bottom:10px"></div>`;
+    return `<div class="lyrid-games-list">${card.repeat(4)}</div>`;
+  }
+
   // -----------------------------------------------------------
-  // RENDER
+  // SLATE RENDER — MLB-parity cards
   // -----------------------------------------------------------
   function renderWnbaSlate() {
     const data = state.raw;
     const list = document.getElementById('wnbaGamesList');
     const banner = document.getElementById('wnbaBanner');
     const meta = document.getElementById('wnbaMeta');
-    const filter = document.getElementById('wnbaMarketFilter');
     if (!data || !list) return;
 
-    // Meta line
     if (meta) {
       const gen = data.generatedAt ? new Date(data.generatedAt).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) : '';
       const s = data.summary || {};
-      meta.textContent = `${s.games || 0} games · ${s.playersAnalyzed || 0} players · ${s.totalAnalyses || 0} analyses${gen ? ' · ' + gen : ''}`;
+      meta.textContent = `${s.games || 0} GAMES · ${s.playersAnalyzed || 0} PLAYERS${gen ? ' · UPDATED ' + gen : ''}`;
     }
 
-    // Filter chips
-    if (filter) {
-      const markets = ['all', 'points', 'rebounds', 'assists'];
-      filter.innerHTML = markets.map(m => {
-        const active = state.market === m;
-        return `<button onclick="window._wnbaSetMarket('${m}')" style="background:${active ? 'var(--brand-primary)' : 'var(--surface-card)'};color:${active ? 'var(--text-on-primary, #fff)' : 'var(--text-primary)'};border:0.5px solid var(--brand-primary);padding:5px 11px;border-radius:100px;font-size:11px;font-weight:500;letter-spacing:0.04em;cursor:pointer;text-transform:uppercase;font-family:var(--font-sans)">${m}</button>`;
-      }).join('');
-    }
-
-    // Shadow-mode banner — must be honest about the state of lines
     if (banner) {
-      const anyLines = (data.games || []).some(g => g.linesProvided);
-      if (!anyLines) {
-        banner.innerHTML = `<div style="background:#fef3c7;border-left:3px solid #92400e;padding:10px 14px;margin-bottom:14px;border-radius:0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0;font-size:12px;color:#78350f;line-height:1.5"><b style="letter-spacing:0.05em">PROJECTIONS ONLY</b> · Book lines not wired. Edges shown are vs. the engine's own inferred lines and are not actionable. Recommendations stay PASS until paid line feed connects.</div>`;
+      const games = data.games || [];
+      const anyLines = games.some(g => g.linesProvided);
+      if (games.length > 0 && !anyLines) {
+        banner.innerHTML = `
+          <div style="background:var(--surface-card);border:0.5px solid var(--brand-primary, #233859);border-left:3px solid var(--accent, #c9a45e);padding:14px 18px;margin-bottom:18px;border-radius:var(--radius-md, 8px);font-size:12px;color:var(--text-primary);line-height:1.6;letter-spacing:0.01em">
+            <div style="font-size:10px;letter-spacing:0.12em;color:var(--accent, #c9a45e);font-weight:600;margin-bottom:4px">PROJECTIONS ONLY · SHADOW MODE</div>
+            Book lines haven't wired in yet. Edges shown are against the engine's own inferred lines and are not actionable. Recommendations stay PASS until a paid line feed connects.
+          </div>`;
       } else {
         banner.innerHTML = '';
       }
     }
 
-    // Game blocks
     const games = data.games || [];
     if (games.length === 0) {
-      list.innerHTML = '<div style="padding:32px;text-align:center;color:var(--dim);font-size:13px">No WNBA games on this slate.</div>';
+      list.innerHTML = `
+        <div class="lyrid-empty">
+          <div class="lyrid-empty-title">No games scheduled</div>
+          <div class="lyrid-empty-text">Try a different date or refresh in case the slate just posted.</div>
+        </div>`;
       return;
     }
 
-    list.innerHTML = games.map(g => renderWnbaGameBlock(g, data.passes || [])).join('');
+    const signalGameId = pickSignalGameId(games, data.passes || []);
+
+    list.innerHTML = `<div class="lyrid-games-list">${games.map(g => {
+      return renderWnbaGameRow(g, data.passes || [], g.gameId === signalGameId);
+    }).join('')}</div>`;
   }
 
-  function renderWnbaGameBlock(game, allPasses) {
+  // Mirror MLB's `lyrid-game-card` markup so the existing Lyrid stylesheet
+  // styles us automatically — same left rail, same middle column, same right chip.
+  // The "pitcher" line is reused as the records/last-5 line for basketball.
+  function renderWnbaGameRow(game, allPasses, isSignal) {
     const passes = allPasses.filter(p => p.gameId === game.gameId);
-    const expanded = state.expanded.has(game.gameId);
-    const filtered = state.market === 'all' ? passes : passes.filter(p => p.market === state.market);
+    const passCount = passes.length;
+    const time = formatGameTime(game.gameTimeET);
+    const aw = teamAbbr(game.away);
+    const hm = teamAbbr(game.home);
 
-    // Sort by finalEdge desc, fallback to projection
-    const sorted = [...filtered].sort((a, b) => {
-      const aScore = a.scores?.finalEdge ?? 0;
-      const bScore = b.scores?.finalEdge ?? 0;
-      if (bScore !== aScore) return bScore - aScore;
-      return (b.projection || 0) - (a.projection || 0);
-    });
+    // Subtitle line — basketball equivalent of "Slade Cecconi RHP · Framber Valdez LHP".
+    // Until records/last-5 wire in, use a contextual cue: total + spread when available,
+    // otherwise prop count.
+    const ouChip = game.total != null ? `O/U <span style="color:var(--text-primary);font-weight:500">${game.total}</span>` : '';
+    const spreadChip = (game.spread != null && game.spread !== 0)
+      ? `<span style="color:var(--text-secondary, var(--dim))">·</span> Spread <span style="color:var(--text-primary);font-weight:500">${game.spread > 0 ? '+' : ''}${game.spread}</span>`
+      : (game.spread === 0 ? `<span style="color:var(--text-secondary, var(--dim))">·</span> Pick'em` : '');
+    const subtitleParts = [ouChip + spreadChip].filter(Boolean);
+    const subtitle = subtitleParts.length > 0 ? subtitleParts.join(' ') : `${passCount} prop${passCount === 1 ? '' : 's'} projected`;
 
-    // Game header
-    const gameTime = formatGameTime(game.gameTimeET);
-    const totalChip = game.total != null ? `<span class="stat-chip">O/U <b>${game.total}</b></span>` : '';
-    const spreadChip = game.spread != null && game.spread !== 0
-      ? `<span class="stat-chip">Spread <b>${game.spread > 0 ? '+' : ''}${game.spread}</b></span>`
-      : (game.spread === 0 ? '<span class="stat-chip">PICK\'EM</span>' : '');
-    const linesChip = game.linesProvided
-      ? '<span class="stat-chip" style="background:#dcfce7;color:#14532d">LINES</span>'
-      : '<span class="stat-chip" style="background:#fef3c7;color:#92400e">NO LINES</span>';
+    let statusHtml = '';
+    if (game.status && game.status !== 'Scheduled' && game.status !== 'Pre-Game') {
+      const statusLower = game.status.toLowerCase();
+      let statusClass = 'scheduled';
+      if (statusLower.includes('progress') || statusLower.includes('live')) statusClass = 'live';
+      else if (statusLower.includes('final')) statusClass = 'final';
+      statusHtml = `<div class="lyrid-game-status ${statusClass}">${esc(game.status)}</div>`;
+    }
+
+    const cardClass = `lyrid-game-card${isSignal ? ' signal' : ''}`;
 
     return `
-      <div class="wnba-game-block" style="background:var(--surface-card);border:0.5px solid var(--brand-primary, #233859);border-radius:var(--radius-md, 8px);margin-bottom:16px;overflow:hidden">
-        <div onclick="window._wnbaToggleGame('${esc(game.gameId)}')" style="padding:14px 18px;cursor:pointer;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:${expanded ? '0.5px solid var(--brand-primary, #233859)' : 'none'}">
-          <div style="flex:1;min-width:200px">
-            <div style="font-size:15px;font-weight:600;color:var(--text-primary);letter-spacing:0.01em">
-              ${esc(teamName(game.away))} <span style="color:var(--dim);font-weight:400">@</span> ${esc(teamName(game.home))}
-            </div>
-            <div style="font-size:11px;color:var(--dim);margin-top:3px;letter-spacing:0.02em">
-              ${esc(gameTime)} · ${esc(game.status || 'Scheduled')}
-            </div>
-          </div>
-          <div class="stat-row" style="margin:0">
-            ${totalChip}
-            ${spreadChip}
-            ${linesChip}
-            <span class="stat-chip" style="background:var(--panel-3);color:var(--dim)">${sorted.length} prop${sorted.length === 1 ? '' : 's'}</span>
-          </div>
-          <div style="font-size:18px;color:var(--dim);width:14px;text-align:center;transform:rotate(${expanded ? '90deg' : '0deg'});transition:transform 0.2s ease">›</div>
+      <button class="${cardClass}" onclick="analyzeWnbaGame('${esc(game.gameId)}')" type="button" aria-label="Analyze ${esc(teamName(aw))} at ${esc(teamName(hm))}">
+        <div class="lyrid-game-time">
+          <div class="lyrid-game-time-value">${esc(time)}</div>
+          <div class="lyrid-game-time-zone">ET</div>
+          ${statusHtml}
         </div>
-        ${expanded ? renderWnbaGameProps(sorted) : ''}
+        <div class="lyrid-game-matchup">
+          <div class="lyrid-game-teams">
+            <span>${esc(aw)}</span><span class="at">at</span><span>${esc(hm)}</span>
+          </div>
+          <div class="lyrid-game-pitchers">
+            ${subtitle}
+          </div>
+        </div>
+        <div class="lyrid-game-projection${isSignal ? ' signal' : ''}">
+          <div class="lyrid-game-projection-label">${isSignal ? 'Signal' : 'Analyze'}</div>
+          <div class="lyrid-game-projection-value" aria-hidden="true">${isSignal ? '★' : '→'}</div>
+        </div>
+      </button>
+    `;
+  }
+
+  // -----------------------------------------------------------
+  // ANALYSIS VIEW — clicking a game card opens this below the list
+  // -----------------------------------------------------------
+  window.analyzeWnbaGame = function(gameId) {
+    state.selectedGameId = gameId;
+    const data = state.raw;
+    if (!data) return;
+    const game = (data.games || []).find(g => g.gameId === gameId);
+    const passes = (data.passes || []).filter(p => p.gameId === gameId);
+    const container = document.getElementById('wnbaAnalysisContainer');
+    if (!container || !game) return;
+
+    container.innerHTML = renderWnbaAnalysis(game, passes);
+    container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  function renderWnbaAnalysis(game, passes) {
+    const aw = teamAbbr(game.away);
+    const hm = teamAbbr(game.home);
+    const gameTime = formatGameTime(game.gameTimeET);
+    const awayPasses = passes.filter(p => p.team === aw);
+    const homePasses = passes.filter(p => p.team === hm);
+
+    // Sort each side by finalEdge desc
+    const sortFn = (a, b) => (b.scores?.finalEdge ?? 0) - (a.scores?.finalEdge ?? 0);
+    awayPasses.sort(sortFn);
+    homePasses.sort(sortFn);
+
+    // Top pick across the whole game
+    const allSorted = [...passes].sort(sortFn);
+    const topPick = allSorted[0];
+
+    return `
+      <h2 style="margin-top:24px">${esc(teamName(aw))} at ${esc(teamName(hm))} · Projections <span class="count">${esc(gameTime)} ET</span></h2>
+
+      ${topPick ? renderTopPickBanner(topPick) : ''}
+
+      <div class="context-banner ctx-three-col" style="margin-top:14px">
+        ${renderContextBlock('GAME TOTAL', game.total != null ? game.total : '—', game.total != null ? 'projected pace · O/U' : 'not provided')}
+        ${renderContextBlock('SPREAD', game.spread != null ? (game.spread === 0 ? "PICK'EM" : (game.spread > 0 ? '+' : '') + game.spread) : '—', game.spread != null ? 'home perspective' : 'not provided')}
+        ${renderContextBlock('LINES', game.linesProvided ? 'WIRED' : 'PENDING', game.linesProvided ? 'book lines connected' : 'shadow mode')}
+      </div>
+
+      ${renderSideBlock(aw, hm, awayPasses, 'away')}
+      ${renderSideBlock(hm, aw, homePasses, 'home')}
+    `;
+  }
+
+  function renderTopPickBanner(p) {
+    const tier = edgeTier(p.scores?.finalEdge);
+    const projStr = p.projection != null ? p.projection.toFixed(2) : '—';
+    return `
+      <div class="top-picks-banner single-pick" style="margin-top:14px">
+        <div class="tpb-title">
+          <span>★ TONIGHT'S SIGNAL · STRONGEST PROJECTION THIS GAME</span>
+          <span class="mode-indicator deep" style="background:${tier.bg};color:${tier.color}">${tier.label}</span>
+        </div>
+        <div class="tpb-grid single">
+          <div class="dual-pick deep-pick" style="cursor:default">
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+              <span style="font-size:16px;font-weight:600;color:var(--text-primary)">${esc(p.player)}</span>
+              <span style="font-size:11px;color:var(--text-secondary, var(--dim));letter-spacing:0.04em">${esc(p.team)} vs ${esc(p.opponent)}</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:16px;margin-top:8px;flex-wrap:wrap">
+              <span style="font-size:11px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">${esc(p.market)}</span>
+              <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:500">${p.line}</b></span>
+              <span style="font-size:22px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${projStr}</span>
+              <span style="font-size:11px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums">edge ${p.edge != null ? (p.edge >= 0 ? '+' : '') + p.edge.toFixed(2) : '—'}</span>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   }
 
-  function renderWnbaGameProps(passes) {
-    if (passes.length === 0) {
-      return '<div style="padding:18px;text-align:center;color:var(--dim);font-size:12px">No props match the current filter.</div>';
-    }
-    return `<div style="padding:8px 0">${passes.map(renderWnbaPropRow).join('')}</div>`;
+  function renderContextBlock(label, value, sub) {
+    return `
+      <div style="background:var(--surface-card);border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:var(--radius-md, 8px);padding:14px 16px;text-align:center">
+        <div style="font-size:10px;letter-spacing:0.12em;color:var(--text-secondary, var(--dim));font-weight:500">${esc(label)}</div>
+        <div style="font-size:22px;font-weight:600;color:var(--text-primary);margin-top:4px;font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${esc(value)}</div>
+        <div style="font-size:10px;color:var(--text-secondary, var(--dim));margin-top:2px;font-style:italic">${esc(sub)}</div>
+      </div>
+    `;
+  }
+
+  function renderSideBlock(teamAbbr, oppAbbr, passes, side) {
+    if (passes.length === 0) return '';
+    return `
+      <h3 style="margin-top:28px;font-size:14px;letter-spacing:0.06em;color:var(--text-primary);font-weight:500;text-transform:uppercase">
+        ${esc(teamName(teamAbbr))} <span style="color:var(--text-secondary, var(--dim));font-weight:400;text-transform:none;font-size:12px">vs ${esc(teamName(oppAbbr))}</span>
+      </h3>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+        ${passes.map(renderWnbaPropRow).join('')}
+      </div>
+    `;
   }
 
   function renderWnbaPropRow(p) {
@@ -10178,27 +10372,25 @@ async function autoGradeOnAppOpen() {
     const edgeStr = edge != null && Number.isFinite(edge)
       ? (edge >= 0 ? '+' : '') + edge.toFixed(2)
       : '—';
-    const edgeColor = edge != null && Math.abs(edge) >= 0.5
-      ? (edge > 0 ? '#14532d' : '#7f1d1d')
-      : 'var(--dim)';
-    // hide edge color emphasis when no real lines — keep it muted to avoid theatrics
     const edgeMuted = p.lineSource === 'inferred';
+    const edgeColor = (edge != null && !edgeMuted && Math.abs(edge) >= 0.5)
+      ? (edge > 0 ? '#14532d' : '#7f1d1d')
+      : 'var(--text-secondary, var(--dim))';
 
     return `
-      <div style="padding:12px 18px;border-top:0.5px solid var(--panel-3, #e5e7eb)">
+      <div style="background:var(--surface-card);border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:var(--radius-md, 8px);padding:14px 18px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
-          <span style="background:${tier.bg};color:${tier.color};padding:3px 8px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em;font-family:var(--font-sans)">${tier.label}</span>
-          <span style="font-weight:600;color:var(--text-primary);font-size:14px">${esc(p.player)}</span>
-          <span style="font-size:10px;color:var(--dim);letter-spacing:0.04em">${esc(p.team)} vs ${esc(p.opponent)}</span>
-          <span style="margin-left:auto;display:flex;gap:10px;align-items:baseline">
-            <span style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:0.06em">${esc(p.market)}</span>
-            <span style="font-size:11px;color:var(--dim)">line <b style="color:var(--text-primary);font-weight:500">${p.line}</b></span>
-            <span style="font-size:14px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums">${p.projection != null ? p.projection.toFixed(2) : '—'}</span>
-            <span style="font-size:11px;color:${edgeMuted ? 'var(--dim)' : edgeColor};font-variant-numeric:tabular-nums">${edgeStr}</span>
+          <span style="background:${tier.bg};color:${tier.color};padding:3px 8px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em">${tier.label}</span>
+          <span style="font-weight:600;color:var(--text-primary);font-size:14px;font-family:var(--font-serif, var(--font-sans))">${esc(p.player)}</span>
+          <span style="margin-left:auto;display:flex;gap:12px;align-items:baseline">
+            <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">${esc(p.market)}</span>
+            <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:500">${p.line}</b></span>
+            <span style="font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums">${p.projection != null ? p.projection.toFixed(2) : '—'}</span>
+            <span style="font-size:11px;color:${edgeColor};font-variant-numeric:tabular-nums">${edgeStr}</span>
           </span>
         </div>
-        <div class="stat-row" style="margin-top:4px">
-          ${subScores.map(s => `<span class="stat-chip" title="${s.k} score"><span style="color:var(--dim);font-size:9px">${s.k}</span> <b style="color:${scoreColor(s.v)}">${s.v != null ? Math.round(s.v) : '—'}</b></span>`).join('')}
+        <div class="stat-row" style="margin-top:6px">
+          ${subScores.map(s => `<span class="stat-chip" title="${s.k} score (0-100)"><span style="color:var(--text-secondary, var(--dim));font-size:9px">${s.k}</span> <b style="color:${scoreColor(s.v)}">${s.v != null ? Math.round(s.v) : '—'}</b></span>`).join('')}
           <span class="stat-chip" title="Hit rate vs inferred line">HIT <b>${p.hitRate != null ? p.hitRate + '%' : '—'}</b></span>
           ${p.confidence ? `<span class="stat-chip">${esc(p.confidence)}</span>` : ''}
           ${p.shadowMode ? '<span class="stat-chip" style="opacity:0.6;font-size:9px">shadow</span>' : ''}
@@ -10216,29 +10408,14 @@ async function autoGradeOnAppOpen() {
   }
 
   // -----------------------------------------------------------
-  // CONTROLS
-  // -----------------------------------------------------------
-  window._wnbaToggleGame = function(gameId) {
-    if (state.expanded.has(gameId)) state.expanded.delete(gameId);
-    else state.expanded.add(gameId);
-    renderWnbaSlate();
-  };
-
-  window._wnbaSetMarket = function(market) {
-    state.market = market;
-    renderWnbaSlate();
-  };
-
-  // -----------------------------------------------------------
   // SWITCHTAB HOOK — auto-load on first WNBA activation
   // -----------------------------------------------------------
-  // Wrap the existing switchTab to fire loadWnbaSlate() the first time the user
-  // opens the WNBA tab. Subsequent opens use cached state — refresh is manual.
   const _originalSwitchTab = window.switchTab;
   window.switchTab = function(tabName) {
     _originalSwitchTab(tabName);
-    if (tabName === 'wnba' && !state.loaded) {
-      window.loadWnbaSlate();
+    if (tabName === 'wnba') {
+      updateWnbaDateDisplay();
+      if (!state.loaded) window.loadWnbaSlate();
     }
   };
 })();
