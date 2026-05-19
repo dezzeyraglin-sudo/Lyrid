@@ -449,6 +449,26 @@ export default async function handler(req, res) {
               // PITCHER'S whiff/K rate WITH THIS PITCH — how dominant the pitch is
               pitcherKPct: kp.kPct ? parseFloat(kp.kPct) : null,
               pitcherWhiffPct: kp.whiffPct ? parseFloat(kp.whiffPct) : null,
+              // PITCHER ALLOWED-CONTACT PER PITCH (May 18 fix — replaces silent defaults)
+              // Savant arsenal payload may expose any of these field names depending on
+              // the upstream remap. We probe several plausible names and surface whatever
+              // is present. Engine treats nulls correctly (pitcherDataPoints reflects
+              // what's actually known). Confirmed via diagnostic in audit log.
+              pitcherAllowedHardHit: (() => {
+                const v = kp.hardHitPct ?? kp.hardHit ?? kp.hard_hit_percent ?? kp.allowedHardHit;
+                const n = parseFloat(v);
+                return Number.isFinite(n) ? n : null;
+              })(),
+              pitcherAllowedEv: (() => {
+                const v = kp.avgEv ?? kp.exitVel ?? kp.avg_hit_speed ?? kp.allowedEv;
+                const n = parseFloat(v);
+                return Number.isFinite(n) ? n : null;
+              })(),
+              pitcherAllowedBarrel: (() => {
+                const v = kp.barrelPct ?? kp.barrel ?? kp.barrel_batted_rate ?? kp.allowedBarrel;
+                const n = parseFloat(v);
+                return Number.isFinite(n) ? n : null;
+              })(),
               source: hitterPerf._source,    // 'deep' or 'shallow'
               smallSample: hitterPerf._source === 'deep' && hitterPerf.pa < 10
             });
@@ -2081,6 +2101,13 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
   let _matchedKSum = 0, _matchedKWeight = 0;
   let _matchedWhiffSum = 0, _matchedWhiffWeight = 0;
   let _matchedPitcherKSum = 0, _matchedPitcherKWeight = 0;
+  // PITCHER ALLOWED-CONTACT AGGREGATION (May 18 fix)
+  // Replaces silent defaults that previously zeroed Layer 2 pitcher suppression.
+  // Each pitch's allowed stat is usage-weighted across the pitcher's mix, with
+  // independent weight tracking per stat so partial coverage degrades gracefully.
+  let _allowedHhSum = 0, _allowedHhWeight = 0;
+  let _allowedEvSum = 0, _allowedEvWeight = 0;
+  let _allowedBarSum = 0, _allowedBarWeight = 0;
   for (const mp of matchedPitches) {
     const usage = parseFloat(mp.pitcherUsage || 0) / 100;
     if (usage <= 0) continue;
@@ -2096,12 +2123,27 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
       _matchedPitcherKSum += mp.pitcherKPct * usage;
       _matchedPitcherKWeight += usage;
     }
+    if (mp.pitcherAllowedHardHit != null && Number.isFinite(mp.pitcherAllowedHardHit)) {
+      _allowedHhSum += mp.pitcherAllowedHardHit * usage;
+      _allowedHhWeight += usage;
+    }
+    if (mp.pitcherAllowedEv != null && Number.isFinite(mp.pitcherAllowedEv)) {
+      _allowedEvSum += mp.pitcherAllowedEv * usage;
+      _allowedEvWeight += usage;
+    }
+    if (mp.pitcherAllowedBarrel != null && Number.isFinite(mp.pitcherAllowedBarrel)) {
+      _allowedBarSum += mp.pitcherAllowedBarrel * usage;
+      _allowedBarWeight += usage;
+    }
   }
   // Normalize: divide by weight covered. If pitcher's arsenal only has 70% of pitches
   // with data, normalize against that 70% so the rate reflects the data we have.
   const _matchedHitterK = _matchedKWeight > 0 ? _matchedKSum / _matchedKWeight : null;
   const _matchedHitterWhiff = _matchedWhiffWeight > 0 ? _matchedWhiffSum / _matchedWhiffWeight : null;
   const _matchedPitcherK = _matchedPitcherKWeight > 0 ? _matchedPitcherKSum / _matchedPitcherKWeight : null;
+  const _pitcherAllowedHardHit = _allowedHhWeight > 0 ? _allowedHhSum / _allowedHhWeight : null;
+  const _pitcherAllowedEv = _allowedEvWeight > 0 ? _allowedEvSum / _allowedEvWeight : null;
+  const _pitcherAllowedBarrel = _allowedBarWeight > 0 ? _allowedBarSum / _allowedBarWeight : null;
 
   const _engineInputs = {
     hitter: {
@@ -2126,9 +2168,13 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
       kPct: _matchedPitcherK != null ? _matchedPitcherK : parseFloat(_pitcherInfo.pitcherKPct || _pitcherInfo.kPct || 22.5),
       seasonKPct: parseFloat(_pitcherInfo.pitcherKPct || _pitcherInfo.kPct || 22.5),
       matchedKPct: _matchedPitcherK,
-      allowedHardHit: parseFloat(_pitcherInfo.allowedHardHit || 38),
-      allowedEv: parseFloat(_pitcherInfo.allowedEv || 88.5),
-      allowedBarrel: parseFloat(_pitcherInfo.allowedBarrel || 7.5)
+      // PITCHER ALLOWED-CONTACT (May 18 fix)
+      // Pass null when missing — engine's pitcherDataPoints counter tracks coverage.
+      // DO NOT default to league baselines (38/88.5/7.5): that silently zeroed Layer 2
+      // pitcher suppression because (value - baseline) = 0 for every pitcher.
+      allowedHardHit: _pitcherAllowedHardHit,
+      allowedEv: _pitcherAllowedEv,
+      allowedBarrel: _pitcherAllowedBarrel
     },
     matchedXwoba: parseFloat(maxXwoba || 0) || null,
     parkBoosts: {
@@ -2317,7 +2363,18 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
         seasonHitterK: parseFloat(overall.k_percent?.value || 22.5),
         kRateGapVsSeason: _matchedHitterK != null
           ? Number((_matchedHitterK - parseFloat(overall.k_percent?.value || 22.5)).toFixed(2))
-          : null
+          : null,
+        // PITCHER ALLOWED-CONTACT WIRING (May 18 fix diagnostic)
+        // Non-null means Layer 2 pitcher suppression is computing real deviation;
+        // null means the upstream arsenal payload doesn't expose these field names
+        // and we need to inspect getPitcherArsenal output. Engine's
+        // _pHit.layers.quality.components.pitcherDataPoints will then read > 0.
+        pitcherAllowedHardHit: _pitcherAllowedHardHit,
+        pitcherAllowedEv: _pitcherAllowedEv,
+        pitcherAllowedBarrel: _pitcherAllowedBarrel,
+        pitcherAllowedWired: (_pitcherAllowedHardHit != null
+                              || _pitcherAllowedEv != null
+                              || _pitcherAllowedBarrel != null)
       };
     }
   });
