@@ -1,0 +1,162 @@
+{
+  "_meta": {
+    "capturedAt": "2026-05-19T06:00:00Z",
+    "source": "https://www.espn.com/wnba/injuries",
+    "extractedFrom": "window.__espnfitt__.page.content.injuries",
+    "playerCount": 11,
+    "teamCount": 9,
+    "note": "Extracted from live ESPN HTML 2026-05-19. Used as fixture for injuryFeed.js parser tests."
+  },
+  "injuries": [
+    {
+      "displayName": "Atlanta Dream",
+      "logo": "https://a.espncdn.com/i/teamlogos/wnba/500/atl.png",
+      "items": [
+        {
+          "type": {"id": "6", "name": "INJURY_STATUS_DAYTODAY", "description": "day-to-day", "abbreviation": "DD"},
+          "athlete": {"shortName": "R. Howard", "name": "Rhyne Howard", "href": "https://www.espn.com/wnba/player/_/id/4398674/rhyne-howard", "position": "G"},
+          "status": "injury-6",
+          "description": "",
+          "date": "May 22",
+          "statusDesc": "Day-To-Day"
+        }
+      ]
+    },
+    {
+      "displayName": "Chicago Sky",
+      "logo": "https://a.espncdn.com/i/teamlogos/wnba/500/chi.png",
+      "items": [
+        {
+          "type": {"id": "6", "name": "INJURY_STATUS_DAYTODAY", "description": "day-to-day", "abbreviation": "DD"},
+          "athlete": {"shortName": "S. Diggins", "name": "Skylar Diggins", "href": "https://www.espn.com/wnba/player/_/id/2491205/skylar-diggins", "position": "G"},
+          "status": "injury-6",
+          "description": "",
+          "date": "May 20",
+          "statusDesc": "Day-To-Day"
+        },
+        {
+          "type": {"id": "6", "name": "INJURY_STATUS_DAYTODAY", "description": "day-to-day", "abbreviation": "DD"},
+          "athlete": {"shortName": "R. Jackson", "name": "Rickea Jackson", "href": "https://www.espn.com/wnba/player/_/id/4433630/rickea-jackson", "position": "F"},
+          "status": "injury-6",
+          "description": "May 17: Jackson will undergo an MRI on Monday to determine the extent of her left knee injury, Annie Costabile of The Athletic reports.",
+          "date": "May 20",
+          "statusDesc": "Day-To-Day"
+        }
+      ]
+    },
+    {
+      "displayName": "Dallas Wings",
+      "logo": "https://a.espncdn.com/i/teamlogos/wnba/500/dal.png",
+      "items": [
+        {
+          "type": {"id": "6", "name": "INJURY_STATUS_DAYTODAY", "description": "day-to-day", "abbreviation": "DD"},
+          "athlete": {"shortName": "C. Verona", "name": "Costanza Verona", "href": "https://www.espn.com/wnba/player/_/id/5345473/costanza-verona", "position": "G"},
+          "status": "injury-6",
+          "description": "",
+          "date": "May 20",
+          "statusDesc": "Day-To-Day"
+        },
+        {
+          "type": {"id": "6", "name": "INJURY_STATUS_DAYTODAY", "description": "day-to-day", "abbreviation": "DD"},
+          "athlete": {"shortName": "D. Fankam Mendjiadeu", "name": "Dulcy Fankam Mendjiadeu", "href": "https://www.espn.com/wnba/player/_/id/4594527/dulcy-fankam-mendjiadeu", "position": "F"},
+          "status": "injury-6",
+          "description": "",
+          "date": "May 20",
+          "statusDesc": "Day-To-Day"
+        }
+      ]
+    },
+    {
+      "displayName": "Golden State Valkyries",
+      "logo": "https://a.espncdn.com/i/teamlogos/wnba/500/gs.png",
+      "items": [
+        {
+          "type": {"id": "6", "name": "INJURY_STATUS_DAYTODAY", "description": "day-to-day", "abbreviation": "DD"},
+          "athlete": {"shortName": "V. Burton", "name": "Veronica Burton", "href": "https://www.espn.com/wnba/player/_/id/4398935/veronica-burton", "position": "G"},
+          "status": "injury-6",
+          "description": "May 17: Burton (illness) didn't practice Sunday, Kenzo Fukuda of ClutchPoints.com reports.",
+          "date": "May 21",
+          "statusDesc": "Day-To-Day"
+        }
+      ]
+    },
+    {
+      "displayName": "Indiana Fever",
+      "logo": "https://a.espncdn.com/i/teamlogos/wnba/500/ind.png",
+      "items": [
+        {
+          "type": {"id": "6", "name": "INJURY_STATUS_DAYTODAY", "description": "day-to-day", "abbreviation": "DD"},
+          "athlete": {"shortName": "A. Boston", "name": "Aliyah Boston", "href": "https://www.espn.com/wnba/player/_/id/4432831/aliyah-boston", "position": "C"},
+          "status": "injury-6",
+          "description": "",
+          "date": "May 20",
+          "statusDesc": "Day-To-Day"
+        },
+        {
+          "type": {"id": "6", "name": "INJURY_STATUS_DAYTODAY", "description": "day-to-day", "abbreviation": "DD"},
+          "athlete": {"shortName": "M. Timpson", "name": "Makayla Timpson", "href": "https://www.espn.com/wnba/player/_/id/4433546/makayla-timpson", "position": "F"},
+          "status": "injury-6",
+          "description": "May 17: Timpson exited Sunday's game against the Storm in the fourth quarter due to an apparent facial injury and did not return, Chloe Peterson of The Indianapolis Star reports.",
+          "date": "May 20",
+          "statusDesc": "Day-To-Day"
+        }
+      ]
+    },
+    {
+      "displayName": "New York Liberty",
+      "logo": "https://a.espncdn.com/i/teamlogos/wnba/500/ny.png",
+      "items": [
+        {
+          "type": {"id": "6", "name": "INJURY_STATUS_DAYTODAY", "description": "day-to-day", "abbreviation": "DD"},
+          "athlete": {"shortName": "R. Carrera", "name": "Raquel Carrera", "href": "https://www.espn.com/wnba/player/_/id/4790258/raquel-carrera", "position": "F"},
+          "status": "injury-6",
+          "description": "",
+          "date": "May 21",
+          "statusDesc": "Day-To-Day"
+        }
+      ]
+    },
+    {
+      "displayName": "Seattle Storm",
+      "logo": "https://a.espncdn.com/i/teamlogos/wnba/500/sea.png",
+      "items": [
+        {
+          "type": {"id": "6", "name": "INJURY_STATUS_DAYTODAY", "description": "day-to-day", "abbreviation": "DD"},
+          "athlete": {"shortName": "D. Malonga", "name": "Dominique Malonga", "href": "https://www.espn.com/wnba/player/_/id/5220150/dominique-malonga", "position": "C"},
+          "status": "injury-6",
+          "description": "",
+          "date": "May 20",
+          "statusDesc": "Day-To-Day"
+        }
+      ]
+    },
+    {
+      "displayName": "Toronto Tempo",
+      "logo": "https://a.espncdn.com/i/teamlogos/wnba/500/tor.png",
+      "items": [
+        {
+          "type": {"id": "6", "name": "INJURY_STATUS_DAYTODAY", "description": "day-to-day", "abbreviation": "DD"},
+          "athlete": {"shortName": "N. Sabally", "name": "Nyara Sabally", "href": "https://www.espn.com/wnba/player/_/id/4398768/nyara-sabally", "position": "F"},
+          "status": "injury-6",
+          "description": "May 18: Sabally (neck) is probable for Tuesday's game against Phoenix.",
+          "date": "May 19",
+          "statusDesc": "Day-To-Day"
+        }
+      ]
+    },
+    {
+      "displayName": "Washington Mystics",
+      "logo": "https://a.espncdn.com/i/teamlogos/wnba/500/wsh.png",
+      "items": [
+        {
+          "type": {"id": "6", "name": "INJURY_STATUS_DAYTODAY", "description": "day-to-day", "abbreviation": "DD"},
+          "athlete": {"shortName": "D. Littlepage-Buggs", "name": "Darianna Littlepage-Buggs", "href": "https://www.espn.com/wnba/player/_/id/5106145/darianna-littlepage-buggs", "position": "G"},
+          "status": "injury-6",
+          "description": "",
+          "date": "May 24",
+          "statusDesc": "Day-To-Day"
+        }
+      ]
+    }
+  ]
+}
