@@ -181,7 +181,7 @@ function findBackfillRecipients(roster, outPlayer) {
 function round1(x) { return Math.round(x * 10) / 10; }
 function round3(x) { return Math.round(x * 1000) / 1000; }
 
-module.exports = {
+export {
   redistributeOutMinutes,
   findBackfillRecipients,
   // exported for tuning

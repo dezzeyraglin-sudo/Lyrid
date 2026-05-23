@@ -235,7 +235,7 @@ function computeProjPoints(player, gameContext = {}) {
 function round1(x) { return Math.round(x * 10) / 10; }
 function round3(x) { return Math.round(x * 1000) / 1000; }
 
-module.exports = {
+export {
   computeProjPoints,
   LEAGUE_AVG_PACE,
   LEAGUE_AVG_DEF_RATING,

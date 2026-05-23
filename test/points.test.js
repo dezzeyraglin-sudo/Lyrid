@@ -10,14 +10,14 @@
  * Run with: node test/points.test.js
  */
 
-const path = require('path');
-const fs = require('fs');
-const assert = require('assert');
+import path from 'path';
+import fs from 'fs';
+import assert from 'assert';
 
-const { computeProjPoints, LEAGUE_AVG_PACE, LEAGUE_AVG_DEF_RATING, LEAGUE_AVG_TS_PCT } = require('../api/_lib/basketball/pointsProjection');
-const { computeProjMinutes } = require('../api/_lib/basketball/minutesProjection');
-const { redistributeOutMinutes } = require('../api/_lib/basketball/teammateRedistribution');
-const { parseEspnInjuriesPayload } = require('../api/_lib/basketball/injuryFeed');
+import { computeProjPoints, LEAGUE_AVG_PACE, LEAGUE_AVG_DEF_RATING, LEAGUE_AVG_TS_PCT } from '../api/_lib/basketball/pointsProjection.js';
+import { computeProjMinutes } from '../api/_lib/basketball/minutesProjection.js';
+import { redistributeOutMinutes } from '../api/_lib/basketball/teammateRedistribution.js';
+import { parseEspnInjuriesPayload } from '../api/_lib/basketball/injuryFeed.js';
 
 let passed = 0;
 let failed = 0;

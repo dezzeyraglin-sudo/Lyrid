@@ -9,13 +9,17 @@
  * Run with: node test/basketball.test.js
  */
 
-const path = require('path');
-const fs = require('fs');
-const assert = require('assert');
+import path from 'path';
+import fs from 'fs';
+import assert from 'assert';
+import { fileURLToPath } from 'url';
 
-const { parseEspnInjuriesPayload, extractInjuriesFromHtml, normalizeStatus } = require('../api/_lib/basketball/injuryFeed');
-const { computeProjMinutes } = require('../api/_lib/basketball/minutesProjection');
-const { redistributeOutMinutes, findBackfillRecipients } = require('../api/_lib/basketball/teammateRedistribution');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+import { parseEspnInjuriesPayload, extractInjuriesFromHtml, normalizeStatus } from '../api/_lib/basketball/injuryFeed.js';
+import { computeProjMinutes } from '../api/_lib/basketball/minutesProjection.js';
+import { redistributeOutMinutes, findBackfillRecipients } from '../api/_lib/basketball/teammateRedistribution.js';
 
 let passed = 0;
 let failed = 0;

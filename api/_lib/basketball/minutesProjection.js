@@ -223,7 +223,7 @@ function computeProjMinutes(player, gameContext = {}, injuryRecord = null) {
 function round1(x) { return Math.round(x * 10) / 10; }
 function round3(x) { return Math.round(x * 1000) / 1000; }
 
-module.exports = {
+export {
   computeProjMinutes,
   // exported for tests + tuning
   POSITION_CAP_MINUTES,

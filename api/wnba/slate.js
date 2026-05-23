@@ -1,6 +1,6 @@
 // api/wnba/slate.js
 //
-// WNBA SLATE ENDPOINT (May 16, 2026 — Session 4)
+// WNBA SLATE ENDPOINT (May 22, 2026 — Session 5)
 //
 // POST /api/wnba/slate
 //
@@ -23,6 +23,36 @@
 //   - Each (game, player, market) analysis is independent
 //   - Failed analyses tagged with error, included in summary
 //   - Slate returns even if some sub-fetches fail
+//
+// =============================================================
+// v2 ENGINE INTEGRATION (May 22, 2026 — Session 5)
+// =============================================================
+// This file additively layers the v2 projection engine on top of the existing
+// analyzeBasketballProp pipeline. v2 modules:
+//
+//   - injuryFeed.js              -- pulls ESPN injuries, normalizes statuses
+//   - minutesProjection.js       -- per-player minutes w/ injury awareness
+//   - teammateRedistribution.js  -- reallocates minutes/usage when stars sit
+//   - pointsProjection.js        -- possession-based points (Stage 1)
+//   - reboundsProjection.js      -- per-minute rebounds w/ matchup multiplier (Stage 1)
+//
+// HOW IT'S LAYERED:
+//   - Old engine still produces `projection`, `recommendation`, `edge`, `scores`, etc.
+//     UI reads these fields unchanged.
+//   - New engine produces `_v2Projection` attached to each analysis. UI ignores by default.
+//   - Injuries are fetched ONCE per slate (not per player) for efficiency.
+//   - Backup minutes/usage redistribution runs ONCE per team before per-player
+//     projections, so backups have their boosted role baked in.
+//
+// SHADOW MODE:
+//   - Set WNBA_V2_PROJECTIONS=true (default) to compute and attach v2 projections.
+//   - Set WNBA_V2_PROJECTIONS=false to skip them entirely (zero overhead).
+//
+// VALIDATION PLAN:
+//   - Log both old and v2 projections for 2 weeks
+//   - Compare against actual outcomes; compute MAE for each engine per market
+//   - Promote v2 to primary only if MAE is materially better
+// =============================================================
 
 import { analyzeBasketballProp } from "../_lib/basketball/basketballProps.js";
 import { buildAuditEntry } from "../_lib/basketball/basketballAudit.js";
@@ -30,6 +60,13 @@ import { getGamesForDate, getTodaysGames } from "../_lib/wnba/wnbaSchedule.js";
 import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
 import { aggregateRecentForm } from "../_lib/wnba/wnbaGameLog.js";
 import { getAllTeamStats } from "../_lib/wnba/wnbaTeamData.js";
+
+// v2 engine modules (ESM)
+import { fetchEspnWnbaInjuries } from "../_lib/basketball/injuryFeed.js";
+import { computeProjMinutes } from "../_lib/basketball/minutesProjection.js";
+import { redistributeOutMinutes } from "../_lib/basketball/teammateRedistribution.js";
+import { computeProjPoints } from "../_lib/basketball/pointsProjection.js";
+import { computeProjRebounds } from "../_lib/basketball/reboundsProjection.js";
 
 // =============================================================
 // FEATURE FLAGS
@@ -55,6 +92,13 @@ const WNBA_SHADOW_MODE = (() => {
 
 const WNBA_AUDIT_ENABLED = (() => {
   const v = process.env.WNBA_AUDIT_ENABLED;
+  if (v === 'false' || v === '0' || v === 'no') return false;
+  return true;
+})();
+
+// v2 engine toggle. Default: ON in shadow mode (attached but ignored by UI).
+const WNBA_V2_PROJECTIONS = (() => {
+  const v = process.env.WNBA_V2_PROJECTIONS;
   if (v === 'false' || v === '0' || v === 'no') return false;
   return true;
 })();
@@ -118,6 +162,16 @@ async function generateSlate(opts = {}) {
     return {};
   });
 
+  // STEP 2b: Pre-fetch injury report ONCE for the whole slate (v2 only)
+  // Failure here is non-fatal: v2 just runs with all players AVAILABLE.
+  let injuryReport = null;
+  if (WNBA_V2_PROJECTIONS) {
+    injuryReport = await fetchEspnWnbaInjuries().catch(err => {
+      warnings.push(`v2 injury feed failed: ${err.message} (running v2 with no injury data)`);
+      return null;
+    });
+  }
+
   // STEP 3: For each game, build the list of (player, market) analyses to run
   const analysisPromises = [];
   const gameContexts = {};  // for output organization
@@ -156,14 +210,28 @@ async function generateSlate(opts = {}) {
         return [];
       })
     ]).then(async ([homePlayers, awayPlayers]) => {
+      // v2: build per-team rosters with projected minutes + redistributed usage
+      // before running per-market analyses. This way every (player, market) call
+      // sees the boosted minutes/usage that come from injuries.
+      let v2HomeRoster = null;
+      let v2AwayRoster = null;
+      if (WNBA_V2_PROJECTIONS) {
+        try {
+          v2HomeRoster = buildV2Roster(homePlayers, homeAbbr, injuryReport, { spread: spread, is_b2b: false });
+          v2AwayRoster = buildV2Roster(awayPlayers, awayAbbr, injuryReport, { spread: -spread, is_b2b: false });
+        } catch (err) {
+          warnings.push(`v2 roster build failed for ${homeAbbr}@${awayAbbr}: ${err.message}`);
+        }
+      }
+
       // For each player, for each market, kick off an analysis
       const tasks = [];
       const allPlayers = [
-        ...homePlayers.map(p => ({ player: p, isHome: true, opponent: awayAbbr, team: homeAbbr })),
-        ...awayPlayers.map(p => ({ player: p, isHome: false, opponent: homeAbbr, team: awayAbbr }))
+        ...homePlayers.map(p => ({ player: p, isHome: true, opponent: awayAbbr, team: homeAbbr, v2Roster: v2HomeRoster, v2OpponentRoster: v2AwayRoster })),
+        ...awayPlayers.map(p => ({ player: p, isHome: false, opponent: homeAbbr, team: awayAbbr, v2Roster: v2AwayRoster, v2OpponentRoster: v2HomeRoster }))
       ];
 
-      for (const { player, isHome, opponent, team } of allPlayers) {
+      for (const { player, isHome, opponent, team, v2Roster, v2OpponentRoster } of allPlayers) {
         // Get recent form once per player (cached for subsequent market calls)
         const recentFormPromise = aggregateRecentForm(player.id, 10, 'points', season).catch(() => null);
 
@@ -171,7 +239,8 @@ async function generateSlate(opts = {}) {
           tasks.push(
             buildAndRunAnalysis({
               player, isHome, opponent, team, market, season, game, spread, total,
-              recentFormPromise, allTeamStats, gameLines
+              recentFormPromise, allTeamStats, gameLines,
+              v2Roster, v2OpponentRoster, injuryReport
             })
           );
         }
@@ -202,6 +271,17 @@ async function generateSlate(opts = {}) {
   // Top 10 across the slate
   const bestPlays = successful.slice(0, 10);
 
+  // v2 audit: roll up injury context for the slate-level summary
+  const v2Summary = WNBA_V2_PROJECTIONS && injuryReport ? {
+    injuriesAttached: true,
+    injuredPlayerCount: injuryReport.all?.length || 0,
+    injuredTeamCount: Object.keys(injuryReport.byTeamAbbrev || {}).length,
+    fetchedAt: injuryReport.fetchedAt
+  } : {
+    injuriesAttached: false,
+    note: WNBA_V2_PROJECTIONS ? 'injury feed failed; v2 ran without injury data' : 'v2 disabled (WNBA_V2_PROJECTIONS=false)'
+  };
+
   return {
     date,
     season,
@@ -219,7 +299,8 @@ async function generateSlate(opts = {}) {
       recommendations: successful.length,
       passes: passes.length,
       errors: errors.length,
-      durationMs: Date.now() - startedAt
+      durationMs: Date.now() - startedAt,
+      v2: v2Summary
     }
   };
 }
@@ -230,7 +311,8 @@ async function generateSlate(opts = {}) {
  */
 async function buildAndRunAnalysis({
   player, isHome, opponent, team, market, season, game,
-  spread, total, recentFormPromise, allTeamStats, gameLines
+  spread, total, recentFormPromise, allTeamStats, gameLines,
+  v2Roster, v2OpponentRoster, injuryReport
 }) {
   try {
     // Get opponent team stats from the pre-fetched map
@@ -294,6 +376,22 @@ async function buildAndRunAnalysis({
 
     const result = analyzeBasketballProp(input, 'WNBA');
 
+    // ===== v2 projection (additive) =====
+    // Compute v2 projection if enabled and we have a roster for this team.
+    // v2Projection is attached to the analysis but the existing UI ignores it.
+    let v2Projection = null;
+    if (WNBA_V2_PROJECTIONS && v2Roster) {
+      try {
+        v2Projection = computeV2Projection({
+          player, market, v2Roster, v2OpponentRoster,
+          teamData, opponentTeam, spread, isHome, recentForm
+        });
+      } catch (v2err) {
+        // v2 failures must NEVER break the analysis. Tag and continue.
+        v2Projection = { error: v2err.message || 'v2 projection failed', engineVersion: 'v2.0.0-shadow' };
+      }
+    }
+
     return {
       gameId: game.gameId,
       player: player.name,
@@ -313,7 +411,9 @@ async function buildAndRunAnalysis({
       lineSource: Number.isFinite(Number(explicitLine)) ? 'provided' : 'inferred',
       shadowMode: WNBA_SHADOW_MODE,
       // Diagnostic: data quality
-      _dataQuality: player._dataQuality
+      _dataQuality: player._dataQuality,
+      // v2 projection (shadow): attached for validation, ignored by UI
+      _v2Projection: v2Projection
     };
   } catch (err) {
     return {
@@ -326,6 +426,237 @@ async function buildAndRunAnalysis({
       recommendation: 'ERROR'
     };
   }
+}
+
+// =============================================================
+// v2 PROJECTION HELPERS
+// =============================================================
+
+/**
+ * Build a v2 roster for one team: list of players with projected minutes,
+ * confidence, usage (possibly boosted by injury redistribution), and other
+ * inputs needed by downstream point/rebound modules.
+ *
+ * This runs ONCE per team per slate call. Per-market projections then
+ * pull from this roster to get the right minutes/usage.
+ *
+ * @param {Array} players - raw players from getTopPlayersForTeam
+ * @param {string} teamAbbrev - team abbreviation
+ * @param {Object|null} injuryReport - normalized injury report from injuryFeed
+ * @param {Object} gameContext - { spread, is_b2b }
+ * @returns {Array} v2 roster with injury status, projMinutes, confidence, usage attached
+ */
+function buildV2Roster(players, teamAbbrev, injuryReport, gameContext) {
+  if (!Array.isArray(players) || players.length === 0) return [];
+
+  // Build minimal v2-shaped player objects from the player + _raw data the slate already has.
+  const roster = players.map(p => {
+    const raw = p._raw || {};
+    const gp = Number(raw.GP) || Number(raw.gp) || 10;
+    const gs = Number(raw.GS) || Number(raw.gs) || 0;
+    const mpg = Number(raw.MIN) || Number(raw.MPG) || Number(raw.mpg) || 0;
+    const ppg = Number(raw.PTS) || Number(raw.PPG) || 0;
+    const rpg = Number(raw.REB) || Number(raw.RPG) || 0;
+
+    // Derive per-minute rates (used by points & rebounds engines)
+    const reb_per_min = mpg > 0 ? rpg / mpg : 0;
+
+    // True shooting %: if not provided, derive from FG%/3P%/FT% if available, else fall back.
+    // TS = PTS / (2 * (FGA + 0.44*FTA))
+    let ts_pct = Number(raw.TS_PCT) || Number(raw.ts_pct);
+    if (!Number.isFinite(ts_pct)) {
+      const fga = Number(raw.FGA) || 0;
+      const fta = Number(raw.FTA) || 0;
+      const denom = 2 * (fga + 0.44 * fta);
+      ts_pct = denom > 0 ? ppg / denom : 0.535; // league avg fallback
+    }
+
+    // Usage rate: if not provided, approximate from FGA + TO + 0.44*FTA per game.
+    // Real USG% needs team-level pace data; this is a rough proxy.
+    let usage = Number(raw.USG_PCT) || Number(raw.usage);
+    if (!Number.isFinite(usage)) {
+      const fga = Number(raw.FGA) || 0;
+      const fta = Number(raw.FTA) || 0;
+      const tov = Number(raw.TOV) || Number(raw.TO) || 0;
+      const possessionsUsed = fga + tov + 0.44 * fta;
+      // Crude usage estimate: player's possessions used / team possessions in player's minutes.
+      // Without team pace, fall back to 0.20 (league avg) and let downstream flag it.
+      usage = possessionsUsed > 0 ? Math.min(0.40, possessionsUsed / 16) : 0.20;
+    }
+
+    // Look up injury status
+    const injury = injuryReport?.byPlayerId?.[String(p.id)] || null;
+    const status = injury?.status || 'AVAILABLE';
+
+    return {
+      playerId: String(p.id),
+      playerName: p.name,
+      position: raw.POS || raw.position || p.position || 'F',
+      // Stats for minutes engine
+      season_mpg: mpg,
+      gp,
+      gs,
+      last5_mpg: undefined, // populated from recentForm downstream if needed
+      // Stats for points engine
+      season_ppg: ppg,
+      usage,
+      ts_pct,
+      // Stats for rebounds engine
+      season_reb_per_min: reb_per_min,
+      // Injury status
+      status,
+      _injury: injury,
+    };
+  });
+
+  // STEP A: project minutes for each player (handles GTD/DOUBTFUL/OUT)
+  for (const p of roster) {
+    try {
+      const projection = computeProjMinutes(p, gameContext, p._injury);
+      p.projMinutes = projection.projMinutes;
+      p.confidence = projection.confidence;
+      p._minutesAudit = projection.audit;
+    } catch (err) {
+      // If any single player blows up, default to season MPG and continue
+      p.projMinutes = p.season_mpg;
+      p.confidence = 50;
+      p._minutesAudit = { error: err.message };
+    }
+  }
+
+  // STEP B: redistribute minutes/usage from OUT players to teammates
+  // (modifies the roster in place; OUT players keep projMinutes=0,
+  // backups get boosted projMinutes and usage)
+  try {
+    const { audit: redistAudit } = redistributeOutMinutes(roster);
+    // Attach redistribution audit at roster level (not per-player)
+    roster._redistributionAudit = redistAudit;
+  } catch (err) {
+    roster._redistributionAudit = { error: err.message };
+  }
+
+  return roster;
+}
+
+/**
+ * Compute v2 projection for one (player, market) pair.
+ *
+ * Returns a compact object with the projection, confidence, floor, ceiling, and audit.
+ * Markets not yet supported by v2 (assists, threes, PRA) return null with a note.
+ *
+ * @param {Object} args
+ * @returns {Object|null}
+ */
+function computeV2Projection({ player, market, v2Roster, v2OpponentRoster, teamData, opponentTeam, spread, isHome, recentForm }) {
+  // Look up this player's v2 roster entry (already has projMinutes/confidence/usage)
+  const v2Player = v2Roster.find(p => p.playerId === String(player.id));
+  if (!v2Player) return null;
+
+  // If the player is OUT, every market projects to 0 — short-circuit.
+  if (v2Player.status === 'OUT' || v2Player.projMinutes === 0) {
+    return {
+      projection: 0,
+      confidence: 0,
+      floor: 0,
+      ceiling: 0,
+      market,
+      status: v2Player.status,
+      note: 'player is OUT or has zero projected minutes',
+      engineVersion: 'v2.0.0-shadow',
+    };
+  }
+
+  // Build game context for the projection.
+  // We derive opponent pace/def rating/miss rate from opponentTeam if available;
+  // each module has its own fallbacks for missing fields.
+  const gameContext = {
+    team_pace: Number(teamData.pace) || Number(teamData.PACE) || undefined,
+    opp_pace: Number(opponentTeam.pace) || Number(opponentTeam.PACE) || undefined,
+    opp_def_rating: Number(opponentTeam.def_rating) || Number(opponentTeam.DEF_RTG) || undefined,
+    opp_miss_rate: deriveOppMissRate(opponentTeam),
+    spread: isHome ? spread : -spread,
+    is_b2b: false, // TODO: derive from schedule
+  };
+
+  // Merge recent form data into v2Player for projection
+  // (recentForm.games is a list of recent games; we use it to derive last5 metrics
+  // for whichever market is being projected)
+  if (recentForm?.games && recentForm.games.length > 0) {
+    const last5Games = recentForm.games.slice(0, 5);
+    const m = String(market).toLowerCase();
+    if (m === 'points' || m.includes('point')) {
+      const avg = last5Games.reduce((s, g) => s + (Number(g.points) || 0), 0) / last5Games.length;
+      v2Player.last5_ppg = avg;
+    } else if (m === 'rebounds' || m.includes('rebound') || m === 'reb') {
+      const last5Mins = last5Games.reduce((s, g) => s + (Number(g.minutes) || 0), 0);
+      const last5Rebs = last5Games.reduce((s, g) => s + (Number(g.rebounds) || 0), 0);
+      v2Player.last5_reb_per_min = last5Mins > 0 ? last5Rebs / last5Mins : undefined;
+    }
+  }
+
+  // Route to the right engine
+  const m = String(market).toLowerCase();
+  if (m === 'points' || m.includes('point')) {
+    const result = computeProjPoints(v2Player, gameContext);
+    return {
+      projection: result.projPoints,
+      confidence: result.confidence,
+      floor: result.floor,
+      ceiling: result.ceiling,
+      market,
+      factors: result.factors,
+      audit: result.audit,
+      status: v2Player.status,
+      engineVersion: 'v2.0.0-shadow',
+    };
+  }
+
+  if (m === 'rebounds' || m.includes('rebound') || m === 'reb') {
+    const result = computeProjRebounds(v2Player, gameContext, v2Player._injury);
+    return {
+      projection: result.projRebounds,
+      confidence: result.confidence,
+      floor: result.floor,
+      ceiling: result.ceiling,
+      market,
+      factors: result.factors,
+      audit: result.audit,
+      status: v2Player.status,
+      engineVersion: 'v2.0.0-shadow',
+    };
+  }
+
+  // Markets not yet built: assists, threes, PRA combos.
+  // Return a stub so the field is always present in shadow logs.
+  return {
+    projection: null,
+    market,
+    status: v2Player.status,
+    note: `market '${market}' not yet implemented in v2 engine`,
+    engineVersion: 'v2.0.0-shadow',
+  };
+}
+
+/**
+ * Derive opponent miss rate from team stats. Tries multiple field name variations
+ * since different upstream feeds use different conventions.
+ */
+function deriveOppMissRate(opponentTeam) {
+  if (!opponentTeam) return undefined;
+  // Direct miss rate
+  if (Number.isFinite(Number(opponentTeam.miss_rate))) return Number(opponentTeam.miss_rate);
+  // Derive from FG%
+  const fgPct = Number(opponentTeam.fg_pct) || Number(opponentTeam.FG_PCT) || Number(opponentTeam.fgPct);
+  if (Number.isFinite(fgPct) && fgPct > 0) {
+    return 1 - (fgPct > 1 ? fgPct / 100 : fgPct);
+  }
+  // Derive from FGM/FGA
+  const fgm = Number(opponentTeam.fgm) || Number(opponentTeam.FGM);
+  const fga = Number(opponentTeam.fga) || Number(opponentTeam.FGA);
+  if (Number.isFinite(fgm) && Number.isFinite(fga) && fga > 0) {
+    return 1 - (fgm / fga);
+  }
+  return undefined; // let module fall back to league average
 }
 
 /**
@@ -448,6 +779,7 @@ export default async function handler(req, res) {
         ok: true,
         generatedAt: new Date().toISOString(),
         shadowMode: WNBA_SHADOW_MODE,
+        v2ProjectionsEnabled: WNBA_V2_PROJECTIONS,
         ...slate
       });
     }
@@ -465,6 +797,7 @@ export default async function handler(req, res) {
       ok: true,
       generatedAt: new Date().toISOString(),
       shadowMode: WNBA_SHADOW_MODE,
+      v2ProjectionsEnabled: WNBA_V2_PROJECTIONS,
       ...slate
     });
   } catch (err) {

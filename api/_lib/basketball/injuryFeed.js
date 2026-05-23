@@ -244,7 +244,7 @@ async function fetchEspnWnbaInjuries(opts = {}) {
   return parseEspnInjuriesPayload(payload);
 }
 
-module.exports = {
+export {
   fetchEspnWnbaInjuries,
   parseEspnInjuriesPayload,
   extractInjuriesFromHtml,
