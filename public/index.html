@@ -2442,6 +2442,12 @@
       <button class="lyrid-date-btn" onclick="changeWnbaDate(1)" aria-label="Next day">›</button>
     </div>
     <button class="lyrid-btn primary" id="loadWnbaBtn" onclick="loadWnbaSlate()">Refresh</button>
+    <!-- v2 engine toggle (May 22, 2026 — session 5) -->
+    <!-- Persists in localStorage. URL ?engine=v2 overrides. v1 = original engine; v2 = new injury-aware engine. -->
+    <div id="wnbaEngineToggle" class="lyrid-engine-toggle" role="group" aria-label="Projection engine selector" style="display:inline-flex;align-items:center;gap:0;border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:6px;overflow:hidden;font-size:11px;letter-spacing:0.06em">
+      <button id="wnbaEngineV1Btn" class="lyrid-engine-btn" data-engine="v1" onclick="setWnbaEngine('v1')" style="padding:6px 12px;border:0;background:transparent;color:var(--text-secondary, var(--dim));font-weight:600;cursor:pointer;font-family:inherit">v1</button>
+      <button id="wnbaEngineV2Btn" class="lyrid-engine-btn" data-engine="v2" onclick="setWnbaEngine('v2')" style="padding:6px 12px;border:0;background:transparent;color:var(--text-secondary, var(--dim));font-weight:600;cursor:pointer;font-family:inherit;border-left:0.5px solid var(--border-hairline, var(--brand-primary, #233859))">v2</button>
+    </div>
     <span id="wnbaMeta" style="margin-left:auto;font-size:11px;color:var(--text-secondary, var(--dim));letter-spacing:0.04em"></span>
   </div>
 
@@ -9998,9 +10004,168 @@ async function autoGradeOnAppOpen() {
     date: null,                  // YYYY-MM-DD, null = today (server picks)
     expanded: new Set(),         // gameIds with details open in analysis view
     selectedGameId: null,        // which game is currently being analyzed
-    loaded: false
+    loaded: false,
+    engine: 'v1'                 // 'v1' (original) | 'v2' (new injury-aware engine)
   };
   window._wnbaState = state;     // for debugging
+
+  // -----------------------------------------------------------
+  // ENGINE TOGGLE (May 22, 2026 — session 5)
+  // -----------------------------------------------------------
+  // v1 = original engine (projection / edge / confidence from analyzeBasketballProp)
+  // v2 = new engine (projection from _v2Projection.projection, with injury awareness)
+  //
+  // Persistence: localStorage 'lyrid_wnba_engine'
+  // Override: URL ?engine=v2 takes precedence (useful for sharing links / testing)
+  // Fallback: when v2 returns null for a market (e.g. assists isn't built in v2),
+  //   the per-row renderer silently falls back to v1 and tags it with "v1·fallback".
+  const LS_ENGINE_KEY = 'lyrid_wnba_engine';
+
+  function initWnbaEngine() {
+    try {
+      // URL param wins
+      const url = new URL(window.location.href);
+      const urlEngine = url.searchParams.get('engine');
+      if (urlEngine === 'v1' || urlEngine === 'v2') {
+        state.engine = urlEngine;
+        return;
+      }
+      // Otherwise localStorage
+      const saved = localStorage.getItem(LS_ENGINE_KEY);
+      if (saved === 'v1' || saved === 'v2') {
+        state.engine = saved;
+        return;
+      }
+    } catch (err) {
+      // localStorage might be unavailable in some environments — fall back to default
+      console.warn('[wnba] engine init failed', err);
+    }
+    state.engine = 'v1'; // safe default
+  }
+
+  function persistWnbaEngine(eng) {
+    try { localStorage.setItem(LS_ENGINE_KEY, eng); } catch {}
+  }
+
+  function updateEngineToggleUI() {
+    const v1Btn = document.getElementById('wnbaEngineV1Btn');
+    const v2Btn = document.getElementById('wnbaEngineV2Btn');
+    if (!v1Btn || !v2Btn) return;
+    const active = state.engine;
+    // Active style: dark background, light text, matching the lyrid-btn primary look
+    const activeStyle = { bg: 'var(--brand-primary, #233859)', color: '#fff' };
+    const inactiveStyle = { bg: 'transparent', color: 'var(--text-secondary, var(--dim))' };
+    const aB = active === 'v1' ? activeStyle : inactiveStyle;
+    const iB = active === 'v2' ? activeStyle : inactiveStyle;
+    v1Btn.style.background = aB.bg;
+    v1Btn.style.color = aB.color;
+    v2Btn.style.background = iB.bg;
+    v2Btn.style.color = iB.color;
+    v1Btn.setAttribute('aria-pressed', active === 'v1');
+    v2Btn.setAttribute('aria-pressed', active === 'v2');
+  }
+
+  window.setWnbaEngine = function(eng) {
+    if (eng !== 'v1' && eng !== 'v2') return;
+    if (state.engine === eng) return;
+    state.engine = eng;
+    persistWnbaEngine(eng);
+    updateEngineToggleUI();
+    // Re-render whatever's currently displayed without re-fetching
+    if (state.raw) {
+      renderWnbaSlate();
+      if (state.selectedGameId) {
+        // Re-render analysis view with the same selected game
+        const data = state.raw;
+        const game = (data.games || []).find(g => g.gameId === state.selectedGameId);
+        const passes = (data.passes || []).filter(p => p.gameId === state.selectedGameId);
+        const container = document.getElementById('wnbaAnalysisContainer');
+        if (container && game) container.innerHTML = renderWnbaAnalysis(game, passes);
+      }
+    }
+  };
+
+  /**
+   * Get the projection value for a prop based on the current engine setting.
+   * Returns { projection, confidence, source, floor, ceiling, status, note, fallback }
+   *   - source: 'v1' | 'v2'
+   *   - fallback: true if we requested v2 but had to fall back to v1 (market not in v2)
+   *   - status: injury status badge text (only for v2; null otherwise)
+   *   - note: for OUT players or other v2-specific context
+   */
+  function getProjectionForProp(p) {
+    if (state.engine === 'v2') {
+      const v2 = p._v2Projection;
+      // v2 returned a real projection for this market.
+      // Note: v2.projection === null/undefined means "not built" -> fall back.
+      // v2.projection === 0 means "player is OUT" -> show OUT.
+      // Number.isFinite(Number(null)) is true (coerces to 0), so check for null/undefined explicitly.
+      const v2Proj = v2 && v2.projection;
+      if (v2 && v2Proj != null && Number.isFinite(Number(v2Proj))) {
+        return {
+          projection: Number(v2Proj),
+          confidence: v2.confidence != null ? v2.confidence : null,
+          source: 'v2',
+          floor: v2.floor != null ? Number(v2.floor) : null,
+          ceiling: v2.ceiling != null ? Number(v2.ceiling) : null,
+          status: v2.status || null,
+          note: v2.note || null,
+          fallback: false,
+        };
+      }
+      // v2 said the player is OUT (status explicit even if projection is null)
+      if (v2 && v2.status === 'OUT') {
+        return {
+          projection: 0,
+          confidence: 0,
+          source: 'v2',
+          floor: 0,
+          ceiling: 0,
+          status: 'OUT',
+          note: v2.note || 'player is OUT',
+          fallback: false,
+        };
+      }
+      // v2 didn't produce a projection (market not built, or error) -> fall back to v1
+      return {
+        projection: p.projection,
+        confidence: p.confidence,
+        source: 'v1',
+        floor: null,
+        ceiling: null,
+        status: null,
+        note: v2 && v2.note ? v2.note : (v2 && v2.error ? v2.error : 'v2 not available for this market'),
+        fallback: true,
+      };
+    }
+    // v1 engine selected
+    return {
+      projection: p.projection,
+      confidence: p.confidence,
+      source: 'v1',
+      floor: null,
+      ceiling: null,
+      status: null,
+      note: null,
+      fallback: false,
+    };
+  }
+
+  /**
+   * Render a small status badge (GTD / DOUBTFUL / OUT / PROBABLE) for v2 projections.
+   * Returns HTML string (empty if no badge to show).
+   */
+  function renderV2StatusBadge(status) {
+    if (!status || status === 'AVAILABLE') return '';
+    const colors = {
+      'OUT':      { bg: '#fee2e2', color: '#7f1d1d' },
+      'DOUBTFUL': { bg: '#fed7aa', color: '#9a3412' },
+      'GTD':      { bg: '#fef3c7', color: '#92400e' },
+      'PROBABLE': { bg: '#dbeafe', color: '#1e40af' },
+    };
+    const c = colors[status] || { bg: '#e5e7eb', color: '#374151' };
+    return `<span class="stat-chip" style="background:${c.bg};color:${c.color};font-size:9px;font-weight:600;letter-spacing:0.05em">${esc(status)}</span>`;
+  }
 
   const TEAM_NAMES = {
     ATL:'Atlanta Dream', CHI:'Chicago Sky', CON:'Connecticut Sun', DAL:'Dallas Wings',
@@ -10311,7 +10476,19 @@ async function autoGradeOnAppOpen() {
 
   function renderTopPickBanner(p) {
     const tier = edgeTier(p.scores?.finalEdge);
-    const projStr = p.projection != null ? p.projection.toFixed(2) : '—';
+    const proj = getProjectionForProp(p);
+    const projStr = proj.projection != null && Number.isFinite(Number(proj.projection))
+      ? Number(proj.projection).toFixed(2) : '—';
+    const statusBadge = state.engine === 'v2' ? renderV2StatusBadge(proj.status) : '';
+    const engineTag = state.engine === 'v2'
+      ? (proj.fallback
+          ? '<span style="font-size:9px;color:var(--text-secondary, var(--dim));letter-spacing:0.06em;font-weight:600">v1·fallback</span>'
+          : '<span style="font-size:9px;color:var(--accent, #c9a45e);letter-spacing:0.06em;font-weight:600">v2</span>')
+      : '';
+    // Floor/ceiling band (v2 only, when present and not zero)
+    const bandStr = (state.engine === 'v2' && proj.floor != null && proj.ceiling != null && proj.ceiling > 0)
+      ? `<span style="font-size:10px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums">${proj.floor.toFixed(1)}–${proj.ceiling.toFixed(1)}</span>`
+      : '';
     return `
       <div class="top-picks-banner single-pick" style="margin-top:14px">
         <div class="tpb-title">
@@ -10323,12 +10500,15 @@ async function autoGradeOnAppOpen() {
             <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
               <span style="font-size:16px;font-weight:600;color:var(--text-primary)">${esc(p.player)}</span>
               <span style="font-size:11px;color:var(--text-secondary, var(--dim));letter-spacing:0.04em">${esc(p.team)} vs ${esc(p.opponent)}</span>
+              ${statusBadge}
             </div>
             <div style="display:flex;align-items:baseline;gap:16px;margin-top:8px;flex-wrap:wrap">
               <span style="font-size:11px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">${esc(p.market)}</span>
               <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:500">${p.line}</b></span>
               <span style="font-size:22px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${projStr}</span>
+              ${bandStr}
               <span style="font-size:11px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums">edge ${p.edge != null ? (p.edge >= 0 ? '+' : '') + p.edge.toFixed(2) : '—'}</span>
+              ${engineTag}
             </div>
           </div>
         </div>
@@ -10377,22 +10557,43 @@ async function autoGradeOnAppOpen() {
       ? (edge > 0 ? '#14532d' : '#7f1d1d')
       : 'var(--text-secondary, var(--dim))';
 
+    // Resolve projection per engine setting
+    const proj = getProjectionForProp(p);
+    const projStr = proj.projection != null && Number.isFinite(Number(proj.projection))
+      ? Number(proj.projection).toFixed(2) : '—';
+    const statusBadge = state.engine === 'v2' ? renderV2StatusBadge(proj.status) : '';
+    const engineBadge = state.engine === 'v2'
+      ? (proj.fallback
+          ? '<span class="stat-chip" style="font-size:9px;color:var(--text-secondary, var(--dim));letter-spacing:0.05em" title="v2 not available for this market; showing v1">v1·fallback</span>'
+          : '<span class="stat-chip" style="font-size:9px;background:rgba(201,164,94,0.15);color:var(--accent, #c9a45e);letter-spacing:0.05em" title="v2 engine projection">v2</span>')
+      : '';
+    const bandStr = (state.engine === 'v2' && proj.floor != null && proj.ceiling != null && proj.ceiling > 0)
+      ? `<span style="font-size:10px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums" title="v2 floor–ceiling band">${proj.floor.toFixed(1)}–${proj.ceiling.toFixed(1)}</span>`
+      : '';
+
+    // If player is OUT in v2 view, dim the whole card and show OUT in place of projection
+    const isOut = (state.engine === 'v2' && proj.status === 'OUT');
+    const cardOpacity = isOut ? '0.55' : '1';
+
     return `
-      <div style="background:var(--surface-card);border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:var(--radius-md, 8px);padding:14px 18px">
+      <div style="background:var(--surface-card);border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:var(--radius-md, 8px);padding:14px 18px;opacity:${cardOpacity}">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
           <span style="background:${tier.bg};color:${tier.color};padding:3px 8px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em">${tier.label}</span>
           <span style="font-weight:600;color:var(--text-primary);font-size:14px;font-family:var(--font-serif, var(--font-sans))">${esc(p.player)}</span>
-          <span style="margin-left:auto;display:flex;gap:12px;align-items:baseline">
+          ${statusBadge}
+          <span style="margin-left:auto;display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;justify-content:flex-end">
             <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">${esc(p.market)}</span>
             <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:500">${p.line}</b></span>
-            <span style="font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums">${p.projection != null ? p.projection.toFixed(2) : '—'}</span>
+            <span style="font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums">${isOut ? 'OUT' : projStr}</span>
+            ${bandStr}
             <span style="font-size:11px;color:${edgeColor};font-variant-numeric:tabular-nums">${edgeStr}</span>
           </span>
         </div>
         <div class="stat-row" style="margin-top:6px">
           ${subScores.map(s => `<span class="stat-chip" title="${s.k} score (0-100)"><span style="color:var(--text-secondary, var(--dim));font-size:9px">${s.k}</span> <b style="color:${scoreColor(s.v)}">${s.v != null ? Math.round(s.v) : '—'}</b></span>`).join('')}
           <span class="stat-chip" title="Hit rate vs inferred line">HIT <b>${p.hitRate != null ? p.hitRate + '%' : '—'}</b></span>
-          ${p.confidence ? `<span class="stat-chip">${esc(p.confidence)}</span>` : ''}
+          ${proj.confidence ? `<span class="stat-chip">${esc(proj.confidence)}</span>` : ''}
+          ${engineBadge}
           ${p.shadowMode ? '<span class="stat-chip" style="opacity:0.6;font-size:9px">shadow</span>' : ''}
         </div>
         ${(p.chips && p.chips.length > 0) ? `
@@ -10414,10 +10615,27 @@ async function autoGradeOnAppOpen() {
   window.switchTab = function(tabName) {
     _originalSwitchTab(tabName);
     if (tabName === 'wnba') {
+      // Ensure engine state + toggle UI are synced before first render
+      initWnbaEngine();
+      updateEngineToggleUI();
       updateWnbaDateDisplay();
       if (!state.loaded) window.loadWnbaSlate();
     }
   };
+
+  // Initialize engine state on DOMContentLoaded so URL ?engine=v2 takes effect
+  // even before the user clicks the WNBA tab. The toggle button UI sync still
+  // happens in switchTab when the panel actually mounts.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      initWnbaEngine();
+      // Defer UI update slightly — toggle buttons may not be in DOM yet on slow loads
+      setTimeout(updateEngineToggleUI, 0);
+    });
+  } else {
+    initWnbaEngine();
+    setTimeout(updateEngineToggleUI, 0);
+  }
 })();
 
 </script>
