@@ -2419,6 +2419,17 @@
     <input type="date" class="date-input" id="slateDate" style="display:none">
     <button class="lyrid-btn primary" id="loadSlateBtn" onclick="loadLiveSlate()">Refresh</button>
     <button class="lyrid-btn secondary" id="hrPicksBtn" onclick="toggleHrPicksView()" title="Show all HR-chance hitters across today's slate">HR picks</button>
+    <!--
+      MLB Engine toggle (May 23, 2026)
+      SCORE = legacy heuristic top pick (current production behavior)
+      PROB  = contact engine per-game probability top pick
+      Persists to localStorage. URL ?mlbEngine=prob overrides.
+    -->
+    <div id="mlbEngineToggle" class="lyrid-engine-toggle" role="group" aria-label="MLB top pick engine selector" style="display:inline-flex;align-items:center;gap:0;border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:6px;overflow:hidden;font-size:11px;letter-spacing:0.06em;margin-left:auto" title="Switch which engine selects the top prop pick. SCORE = legacy heuristic. PROB = contact engine per-game probability.">
+      <span style="padding:6px 10px;color:var(--text-secondary, var(--dim));font-size:10px;letter-spacing:0.08em;font-weight:600;border-right:0.5px solid var(--border-hairline, var(--brand-primary, #233859))">ENGINE</span>
+      <button id="mlbEngineScoreBtn" class="lyrid-engine-btn" data-engine="score" onclick="setMlbEngine('score')" style="padding:6px 12px;border:0;background:transparent;color:var(--text-secondary, var(--dim));font-weight:600;cursor:pointer;font-family:inherit">SCORE</button>
+      <button id="mlbEngineProbBtn" class="lyrid-engine-btn" data-engine="prob" onclick="setMlbEngine('prob')" style="padding:6px 12px;border:0;background:transparent;color:var(--text-secondary, var(--dim));font-weight:600;cursor:pointer;font-family:inherit;border-left:0.5px solid var(--border-hairline, var(--brand-primary, #233859))">PROB</button>
+    </div>
   </div>
 
   <div id="hrPicksView" style="display:none"></div>
@@ -2823,7 +2834,13 @@ let state = {
   },
   gameLineBets: {},      // { 'YYYY-MM-DD_gamePk_type': { date, gamePk, pick, tier, type, price, away, home, result, graded } }
   firstInningBets: {},   // { 'YYYY-MM-DD_gamePk': { date, gamePk, pick, tier, units, probability, price, away, home, result, graded } }
-  projectionAudit: {}    // { 'YYYY-MM-DD_gamePk': { date, gamePk, capturedAt, awayTeam, homeTeam, projAwayRuns, projHomeRuns, projTotal, homeWinProb, marketTotal, marketSpread, favoriteML, actualAwayRuns, actualHomeRuns, actualTotal, winner, isFinal, graded } }
+  projectionAudit: {},   // { 'YYYY-MM-DD_gamePk': { date, gamePk, capturedAt, awayTeam, homeTeam, projAwayRuns, projHomeRuns, projTotal, homeWinProb, marketTotal, marketSpread, favoriteML, actualAwayRuns, actualHomeRuns, actualTotal, winner, isFinal, graded } }
+  // MLB selection engine toggle (May 23, 2026)
+  //   'score' = legacy heuristic top pick (current production behavior, safe default)
+  //   'prob'  = contact engine per-game probability top pick (shadow-promoted)
+  // Set via the toggle in the slate header; persisted to localStorage
+  // 'lyrid_mlb_engine'. URL ?mlbEngine=prob overrides for testing.
+  mlbEngine: 'score'
 };
 let slateCache = {};      // {date: {games, fetchedAt}}
 let analysisCache = {};   // {gamePk: analysis}
@@ -2833,6 +2850,129 @@ let currentTrackView = 'today';
 let tagModalContext = null;  // { id, name, role, team, gamePk, opp }
 const analyzedCache = new Map();  // gamePk → response data (for modals)
 const LS_KEY = 'mismatch_finder_v2';
+
+// =============================================================
+// MLB SELECTION ENGINE TOGGLE (May 23, 2026)
+// =============================================================
+// Parallel selection for MLB hitter props:
+//   'score' = legacy heuristic top pick (sorted by p.score desc — current)
+//   'prob'  = contact engine per-game probability top pick (sorted by p.probability desc)
+//
+// Both rankings are computed for every render. The active engine drives the
+// ★ BEST badge and the prop ordering; the other engine's rank is shown as a
+// small secondary chip ("S#1", "P#2", etc.) so we can spot disagreements.
+//
+// Defaults to 'score' (production-safe). URL ?mlbEngine=prob overrides for
+// testing without changing user preference. Setting persists to localStorage.
+//
+// Validation plan: leave on 'score' as default. Manually flip to 'prob' for
+// individual sessions and compare hit rates. Once probability has measurably
+// beaten score across 5+ slates, flip the default.
+
+const LS_MLB_ENGINE_KEY = 'lyrid_mlb_engine';
+
+function initMlbEngine() {
+  try {
+    const url = new URL(window.location.href);
+    const urlEngine = url.searchParams.get('mlbEngine');
+    if (urlEngine === 'score' || urlEngine === 'prob') {
+      state.mlbEngine = urlEngine;
+      return;
+    }
+    const saved = localStorage.getItem(LS_MLB_ENGINE_KEY);
+    if (saved === 'score' || saved === 'prob') {
+      state.mlbEngine = saved;
+      return;
+    }
+  } catch (err) {
+    console.warn('[mlb] engine init failed', err);
+  }
+  state.mlbEngine = 'score';
+}
+
+function persistMlbEngine(eng) {
+  try { localStorage.setItem(LS_MLB_ENGINE_KEY, eng); } catch {}
+}
+
+function updateMlbEngineToggleUI() {
+  const scoreBtn = document.getElementById('mlbEngineScoreBtn');
+  const probBtn = document.getElementById('mlbEngineProbBtn');
+  if (!scoreBtn || !probBtn) return;
+  const active = state.mlbEngine;
+  const activeStyle = { bg: 'var(--brand-primary, #233859)', color: '#fff' };
+  const inactiveStyle = { bg: 'transparent', color: 'var(--text-secondary, var(--dim))' };
+  const aS = active === 'score' ? activeStyle : inactiveStyle;
+  const aP = active === 'prob' ? activeStyle : inactiveStyle;
+  scoreBtn.style.background = aS.bg;
+  scoreBtn.style.color = aS.color;
+  probBtn.style.background = aP.bg;
+  probBtn.style.color = aP.color;
+  scoreBtn.setAttribute('aria-pressed', active === 'score');
+  probBtn.setAttribute('aria-pressed', active === 'prob');
+}
+
+window.setMlbEngine = function(eng) {
+  if (eng !== 'score' && eng !== 'prob') return;
+  if (state.mlbEngine === eng) return;
+  state.mlbEngine = eng;
+  persistMlbEngine(eng);
+  updateMlbEngineToggleUI();
+  // Re-render all currently-analyzed games so the new engine drives the top pick
+  Object.keys(analysisCache).forEach(k => {
+    const c = analysisCache[k];
+    if (c) renderAnalysis(c);
+  });
+};
+
+/**
+ * Apply the active MLB engine to a prop list and return the same array with
+ * `isBest` updated based on the active engine, plus computed `scoreRank` and
+ * `probRank` for badge display.
+ *
+ * Important: this MUTATES the prop objects in place. Caller doesn't need to
+ * reassign. We mutate because the cached analysis data is re-rendered without
+ * deep-cloning, and we want consistent state across re-renders.
+ *
+ * Behavior when one engine has no signal (e.g. prob is null for FS_* props):
+ *   - The prop is included in the score ranking but excluded from prob ranking
+ *   - If the active engine is 'prob' and a prop has no probability, it gets
+ *     a probRank of null and is NOT eligible to be the top pick (falls to next
+ *     prop with a valid probability)
+ *   - This means in 'prob' mode, the top pick is always a prop that the contact
+ *     engine could score (H, R, HR, TB, RBI) — never a fantasy-score prop
+ */
+function applyMlbEngineRanking(propRecs, activeEngine) {
+  if (!Array.isArray(propRecs) || propRecs.length === 0) return propRecs;
+
+  // Compute both rankings
+  const byScore = [...propRecs].sort((a, b) => (b.score || 0) - (a.score || 0));
+  const byProb = [...propRecs]
+    .filter(p => Number.isFinite(p.probability))
+    .sort((a, b) => (b.probability || 0) - (a.probability || 0));
+
+  // Tag each prop with its rank under each engine
+  propRecs.forEach(p => {
+    p.scoreRank = byScore.indexOf(p);                       // 0-based
+    const pIdx = byProb.indexOf(p);
+    p.probRank = pIdx >= 0 ? pIdx : null;                   // null if no probability
+  });
+
+  // Determine the active top pick. In 'prob' mode, fall back to score if no
+  // prop has a probability (shouldn't happen on hitter cards, but defensive).
+  let topPropForEngine;
+  if (activeEngine === 'prob' && byProb.length > 0) {
+    topPropForEngine = byProb[0];
+  } else {
+    topPropForEngine = byScore[0];
+  }
+
+  // Update isBest based on the active engine's #1 pick
+  propRecs.forEach(p => {
+    p.isBest = (p === topPropForEngine);
+  });
+
+  return propRecs;
+}
 
 const HITTER_TAGS = [
   { key: 'fantasy',  label: 'Fantasy Safe',  desc: 'Cover H/R/RBI/TB' },
@@ -3826,18 +3966,46 @@ function renderAnalysis(data) {
             : '';
 
           // Prop recommendations
+          // MLB ENGINE TOGGLE (May 23, 2026): apply active engine's ranking
+          // before rendering. This mutates each prop's isBest, scoreRank,
+          // probRank in place. The active engine drives the ★ BEST badge;
+          // the inactive engine's rank shows as a small secondary chip.
+          if (m.propRecs && m.propRecs.length > 0) {
+            applyMlbEngineRanking(m.propRecs, state.mlbEngine);
+          }
           const propsHtml = (m.propRecs && m.propRecs.length > 0)
             ? `<div class="prop-recs">
-                <div class="prop-rec-label">PROP RECOMMENDATIONS · PP / UD GRADING</div>
+                <div class="prop-rec-label">PROP RECOMMENDATIONS · PP / UD GRADING · <span style="opacity:0.6;font-weight:600">ENGINE: ${state.mlbEngine === 'prob' ? 'PROBABILITY' : 'SCORE'}</span></div>
                 <div class="prop-rec-list">
-                  ${m.propRecs.map(p => `
+                  ${m.propRecs.map(p => {
+                    // Secondary engine's rank — shows the OTHER engine's #
+                    // so we can spot when the two rankings disagree.
+                    // E.g. active=score, this prop is score #2 / prob #1
+                    //   → display "P#1" as a small badge to flag the disagreement.
+                    let secondaryRankChip = '';
+                    if (state.mlbEngine === 'score' && p.probRank != null) {
+                      // Active is score; show probability rank
+                      const isProbBest = p.probRank === 0;
+                      const chipColor = isProbBest ? '#14532d' : '#6b7280';
+                      const chipBg = isProbBest ? '#dcfce7' : '#f3f4f6';
+                      secondaryRankChip = `<span class="pp-altrank" style="background:${chipBg};color:${chipColor};font-size:9px;padding:1px 5px;border-radius:3px;letter-spacing:0.04em;font-weight:600;margin-left:4px" title="Contact engine probability rank for this prop (lower = stronger)">P#${p.probRank + 1}</span>`;
+                    } else if (state.mlbEngine === 'prob' && p.scoreRank != null) {
+                      // Active is prob; show score rank
+                      const isScoreBest = p.scoreRank === 0;
+                      const chipColor = isScoreBest ? '#1e3a8a' : '#6b7280';
+                      const chipBg = isScoreBest ? '#dbeafe' : '#f3f4f6';
+                      secondaryRankChip = `<span class="pp-altrank" style="background:${chipBg};color:${chipColor};font-size:9px;padding:1px 5px;border-radius:3px;letter-spacing:0.04em;font-weight:600;margin-left:4px" title="Legacy heuristic score rank for this prop (lower = stronger)">S#${p.scoreRank + 1}</span>`;
+                    }
+                    return `
                     <div class="prop-pill ${p.isBest ? 'best' : ''}">
                       ${p.platform ? `<span class="pp-platform ${p.platform}">${p.platform}</span>` : ''}
                       <span class="pp-key">${p.label}</span>
-                      ${p.probability != null ? `<span class="pp-prob ${probTier(p.probability, p.probabilityBaseline)}" title="Engine probability: ${(p.probability*100).toFixed(1)}% (baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(1) : '?'}%, edge ${p.probabilityBaseline != null ? ((p.probability - p.probabilityBaseline)*100 >= 0 ? '+' : '') + ((p.probability - p.probabilityBaseline)*100).toFixed(1) + 'pp' : '?'})">${(p.probability*100).toFixed(0)}%</span>` : ''}
+                      ${p.probability != null ? `<span class="pp-prob ${probTier(p.probability, p.probabilityBaseline)}" title="Per-game probability: ${(p.probability*100).toFixed(1)}% (baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(1) : '?'}%${p.probabilityPerPa != null ? ', per-PA rate ' + (p.probabilityPerPa*100).toFixed(1) + '%' : ''}${p.expectedPa != null ? ', expected PA ' + p.expectedPa.toFixed(1) : ''})">${(p.probability*100).toFixed(0)}%</span>` : ''}
+                      ${secondaryRankChip}
                       <span class="pp-reason">${p.reason}</span>
                     </div>
-                  `).join('')}
+                  `;
+                  }).join('')}
                 </div>
               </div>`
             : '';
@@ -10071,10 +10239,14 @@ async function autoGradeOnAppOpen() {
     state.currentDate = today;
     saveState();
   }
+  // MLB engine init (May 23, 2026): pick up persisted toggle or ?mlbEngine URL param
+  initMlbEngine();
   updateDateDisplay();
   renderGames();
   renderPicks();
   renderSettings();
+  // Sync toggle UI after the slate panel mounts (next tick — buttons may not exist yet)
+  setTimeout(updateMlbEngineToggleUI, 0);
 
   // Auto-fetch today's slate immediately on launch — no "Refresh" tap required.
   // Only kick this off if the slate cache is empty or stale (>5 min old).
