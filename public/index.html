@@ -4046,20 +4046,36 @@ function renderAnalysis(data) {
                 const hh = a.pitcherAllowedHardHit;
                 const ev = a.pitcherAllowedEv;
                 const bar = a.pitcherAllowedBarrel;
-                const presentCount = [hh, ev, bar].filter(v => v != null && Number.isFinite(Number(v))).length;
+                // BA/SLG ALLOWED (added May 23, 2026)
+                // The upstream payload exposes ba and slg per pitch but NOT EV
+                // or barrel. Count these alongside HH as practical Layer 2
+                // signals. "WIRED" now means "Layer 2 has full practical signal"
+                // — defined as HH + BA + SLG present (the three the payload
+                // actually ships). EV and BAR remain in the lookup for future
+                // payload upgrades but their absence no longer prevents WIRED.
+                const ba = a.pitcherAllowedBa;
+                const slg = a.pitcherAllowedSlg;
+                const practicalCount = [hh, ba, slg].filter(v => v != null && Number.isFinite(Number(v))).length;
+                const bonusCount = [ev, bar].filter(v => v != null && Number.isFinite(Number(v))).length;
+                const totalCount = practicalCount + bonusCount;
                 let label, chipBg, chipColor, chipTitle;
-                if (presentCount === 3) {
+                if (practicalCount === 3 && bonusCount === 2) {
+                  // All 5 signals — payload upgraded with EV/barrel
+                  label = 'L2: WIRED+';
+                  chipBg = '#dcfce7'; chipColor = '#14532d';
+                  chipTitle = 'Contact engine Layer 2 fully wired with bonus signals — all 5 allowed-contact stats present (HH, EV, BAR, BA, SLG).';
+                } else if (practicalCount === 3) {
                   label = 'L2: WIRED';
                   chipBg = '#dcfce7'; chipColor = '#14532d';
-                  chipTitle = 'Contact engine Layer 2 fully wired — pitcher allowed-contact suppression active on all 3 stats (hard-hit, exit velo, barrel).';
-                } else if (presentCount >= 1) {
-                  label = `L2: PARTIAL (${presentCount}/3)`;
+                  chipTitle = 'Contact engine Layer 2 fully wired — practical signals (HH, BA, SLG) all present. EV/BAR not in upstream payload but not required for full Layer 2 functionality.';
+                } else if (practicalCount >= 1) {
+                  label = `L2: PARTIAL (${practicalCount}/3)`;
                   chipBg = '#fef3c7'; chipColor = '#92400e';
-                  chipTitle = `Contact engine Layer 2 partially wired — ${presentCount} of 3 allowed-contact stats present. Some suppression active, missing stats fall back to baseline.`;
+                  chipTitle = `Contact engine Layer 2 partial — ${practicalCount} of 3 practical signals (HH, BA, SLG) present. Layer 2 still contributing real suppression signal but with reduced confidence.`;
                 } else {
                   label = 'L2: OFF';
                   chipBg = '#fee2e2'; chipColor = '#7f1d1d';
-                  chipTitle = 'Contact engine Layer 2 NOT wired — no pitcher allowed-contact stats in arsenal payload. Layer 2 suppression inactive (silent fallback to hitter-side only). Check getPitcherArsenal output for allowed-contact fields.';
+                  chipTitle = 'Contact engine Layer 2 NOT wired — no pitcher allowed-contact stats in arsenal payload. Layer 2 suppression inactive. Check getPitcherArsenal output.';
                 }
                 const layerQ = a.layers?.quality;
                 // L2 KP KEYS DIAGNOSTIC (May 23, 2026 — TEMPORARY)
@@ -4069,7 +4085,7 @@ function renderAnalysis(data) {
                 // analyze.js (~lines 488-497). Once L2 is confirmed WIRED across
                 // the slate, remove this chip and the audit field.
                 const kpKeys = Array.isArray(a._firstPitchKpKeys) ? a._firstPitchKpKeys : [];
-                const showKpKeys = presentCount < 3 && kpKeys.length > 0;
+                const showKpKeys = practicalCount < 3 && kpKeys.length > 0;
                 // Heuristic: highlight keys that LOOK like they might be the missing stat
                 // so the user can scan and identify which name to add to the lookup.
                 const evCandidates = kpKeys.filter(k => /ev|exit|velo|speed/i.test(k));
@@ -4078,7 +4094,7 @@ function renderAnalysis(data) {
                 if (showKpKeys) {
                   const keyList = kpKeys.join(', ');
                   let hint = '';
-                  if (presentCount < 3 && (evCandidates.length || barCandidates.length)) {
+                  if (evCandidates.length || barCandidates.length) {
                     const hints = [];
                     if (ev == null && evCandidates.length) hints.push(`EV likely: ${evCandidates.join('/')}`);
                     if (bar == null && barCandidates.length) hints.push(`BAR likely: ${barCandidates.join('/')}`);
@@ -4091,8 +4107,10 @@ function renderAnalysis(data) {
                 <div class="stat-row" title="${chipTitle}">
                   <span class="stat-chip" style="background:${chipBg};color:${chipColor};font-weight:600;font-size:10px;letter-spacing:0.04em">${label}</span>
                   <span class="stat-chip" title="Pitcher allowed hard-hit rate (arsenal-weighted)">HH ${hh != null && Number.isFinite(Number(hh)) ? `<b>${Number(hh).toFixed(1)}</b>` : '<b style="color:#9ca3af">—</b>'}</span>
-                  <span class="stat-chip" title="Pitcher allowed exit velocity (arsenal-weighted)">EV ${ev != null && Number.isFinite(Number(ev)) ? `<b>${Number(ev).toFixed(1)}</b>` : '<b style="color:#9ca3af">—</b>'}</span>
-                  <span class="stat-chip" title="Pitcher allowed barrel rate (arsenal-weighted)">BAR ${bar != null && Number.isFinite(Number(bar)) ? `<b>${Number(bar).toFixed(1)}</b>` : '<b style="color:#9ca3af">—</b>'}</span>
+                  <span class="stat-chip" title="Pitcher allowed batting average (arsenal-weighted)">BA ${ba != null && Number.isFinite(Number(ba)) ? `<b>.${Math.round(Number(ba)*1000).toString().padStart(3, '0')}</b>` : '<b style="color:#9ca3af">—</b>'}</span>
+                  <span class="stat-chip" title="Pitcher allowed slugging % (arsenal-weighted)">SLG ${slg != null && Number.isFinite(Number(slg)) ? `<b>.${Math.round(Number(slg)*1000).toString().padStart(3, '0')}</b>` : '<b style="color:#9ca3af">—</b>'}</span>
+                  ${ev != null && Number.isFinite(Number(ev)) ? `<span class="stat-chip" title="Pitcher allowed exit velocity (bonus signal, not always available)">EV <b>${Number(ev).toFixed(1)}</b></span>` : ''}
+                  ${bar != null && Number.isFinite(Number(bar)) ? `<span class="stat-chip" title="Pitcher allowed barrel rate (bonus signal, not always available)">BAR <b>${Number(bar).toFixed(1)}</b></span>` : ''}
                   ${layerQ != null && Number.isFinite(Number(layerQ)) ? `<span class="stat-chip" style="font-variant-numeric:tabular-nums" title="Layer 2 quality deviation from baseline. Non-zero = Layer 2 contributing real signal.">Δq ${Number(layerQ) >= 0 ? '+' : ''}${Number(layerQ).toFixed(3)}</span>` : ''}
                   ${kpKeysChip}
                 </div>

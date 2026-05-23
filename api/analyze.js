@@ -495,6 +495,27 @@ export default async function handler(req, res) {
                 const n = parseFloat(v);
                 return Number.isFinite(n) ? n : null;
               })(),
+              // ALLOWED BA and SLG (added May 23, 2026)
+              //
+              // The upstream pitch-arsenal payload exposes per-pitch-type
+              // allowed batting average (ba) and slugging (slg) but NOT exit
+              // velocity or barrel rate. These two fields fill the EV/BAR gap
+              // for Layer 2's pitcher suppression branch in contactProbability.js.
+              //
+              // Field name probes are intentionally narrow — the payload uses
+              // bare `ba` and `slg` (verified via the L2 _kpKeys diagnostic).
+              // Falling back to broader names (battingAverage, sluggingPct,
+              // etc.) in case the payload schema shifts.
+              pitcherAllowedBa: (() => {
+                const v = kp.ba ?? kp.battingAverage ?? kp.allowedBa;
+                const n = parseFloat(v);
+                return Number.isFinite(n) ? n : null;
+              })(),
+              pitcherAllowedSlg: (() => {
+                const v = kp.slg ?? kp.sluggingPct ?? kp.slugging ?? kp.allowedSlg;
+                const n = parseFloat(v);
+                return Number.isFinite(n) ? n : null;
+              })(),
               // L2 DIAGNOSTIC (May 23, 2026 — TEMPORARY)
               // Capture the raw key names available on this pitch so the UI L2
               // diagnostic chip can show us EXACTLY what fields the upstream
@@ -2302,6 +2323,12 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
   let _allowedHhSum = 0, _allowedHhWeight = 0;
   let _allowedEvSum = 0, _allowedEvWeight = 0;
   let _allowedBarSum = 0, _allowedBarWeight = 0;
+  // ALLOWED BA/SLG (added May 23, 2026)
+  // The upstream pitch-arsenal payload exposes ba and slg per pitch but not
+  // EV/barrel. These two aggregations replace the missing EV/BAR coverage
+  // and feed Layer 2's pitcher suppression branch.
+  let _allowedBaSum = 0, _allowedBaWeight = 0;
+  let _allowedSlgSum = 0, _allowedSlgWeight = 0;
   for (const mp of matchedPitches) {
     const usage = parseFloat(mp.pitcherUsage || 0) / 100;
     if (usage <= 0) continue;
@@ -2329,6 +2356,14 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
       _allowedBarSum += mp.pitcherAllowedBarrel * usage;
       _allowedBarWeight += usage;
     }
+    if (mp.pitcherAllowedBa != null && Number.isFinite(mp.pitcherAllowedBa)) {
+      _allowedBaSum += mp.pitcherAllowedBa * usage;
+      _allowedBaWeight += usage;
+    }
+    if (mp.pitcherAllowedSlg != null && Number.isFinite(mp.pitcherAllowedSlg)) {
+      _allowedSlgSum += mp.pitcherAllowedSlg * usage;
+      _allowedSlgWeight += usage;
+    }
   }
   // Normalize: divide by weight covered. If pitcher's arsenal only has 70% of pitches
   // with data, normalize against that 70% so the rate reflects the data we have.
@@ -2338,6 +2373,8 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
   const _pitcherAllowedHardHit = _allowedHhWeight > 0 ? _allowedHhSum / _allowedHhWeight : null;
   const _pitcherAllowedEv = _allowedEvWeight > 0 ? _allowedEvSum / _allowedEvWeight : null;
   const _pitcherAllowedBarrel = _allowedBarWeight > 0 ? _allowedBarSum / _allowedBarWeight : null;
+  const _pitcherAllowedBa = _allowedBaWeight > 0 ? _allowedBaSum / _allowedBaWeight : null;
+  const _pitcherAllowedSlg = _allowedSlgWeight > 0 ? _allowedSlgSum / _allowedSlgWeight : null;
 
   const _engineInputs = {
     hitter: {
@@ -2368,7 +2405,15 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
       // pitcher suppression because (value - baseline) = 0 for every pitcher.
       allowedHardHit: _pitcherAllowedHardHit,
       allowedEv: _pitcherAllowedEv,
-      allowedBarrel: _pitcherAllowedBarrel
+      allowedBarrel: _pitcherAllowedBarrel,
+      // BA/SLG ALLOWED (added May 23, 2026)
+      // The upstream pitch-arsenal payload exposes ba and slg per pitch but
+      // NOT exit velocity or barrel rate. Layer 2's pitcher suppression branch
+      // reads these as the practical signals — calibrated coefficients in
+      // contactProbability.js produce ~0.009 deviation at typical deltas, in
+      // the same magnitude band as HH/EV/BAR so no signal dominates.
+      allowedBa: _pitcherAllowedBa,
+      allowedSlg: _pitcherAllowedSlg
     },
     matchedXwoba: parseFloat(maxXwoba || 0) || null,
     parkBoosts: {
@@ -2566,9 +2611,14 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
         pitcherAllowedHardHit: _pitcherAllowedHardHit,
         pitcherAllowedEv: _pitcherAllowedEv,
         pitcherAllowedBarrel: _pitcherAllowedBarrel,
+        // BA/SLG ALLOWED (added May 23, 2026) — surfaced for UI L2 chip
+        pitcherAllowedBa: _pitcherAllowedBa,
+        pitcherAllowedSlg: _pitcherAllowedSlg,
         pitcherAllowedWired: (_pitcherAllowedHardHit != null
                               || _pitcherAllowedEv != null
-                              || _pitcherAllowedBarrel != null),
+                              || _pitcherAllowedBarrel != null
+                              || _pitcherAllowedBa != null
+                              || _pitcherAllowedSlg != null),
         // L2 DIAGNOSTIC (May 23, 2026 — TEMPORARY)
         // First matched pitch's raw key names. When L2 is PARTIAL or OFF, the
         // UI chip displays these so we can see what field names the upstream

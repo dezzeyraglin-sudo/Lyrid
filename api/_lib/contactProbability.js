@@ -64,7 +64,12 @@ export const LEAGUE_BASELINES = Object.freeze({
   // Allowed-side averages (used as pitcher baselines)
   pitcherAllowedHardHit: 38.0,  // % HH allowed
   pitcherAllowedEv: 88.5,        // mph
-  pitcherAllowedBarrel: 7.5      // % barrel rate allowed
+  pitcherAllowedBarrel: 7.5,     // % barrel rate allowed
+  // Allowed-side BA/SLG (added May 23, 2026 — used when EV/barrel unavailable)
+  // The upstream pitch-arsenal payload exposes per-pitch-type ba and slg but
+  // NOT exit velocity or barrel rate. These two signals fill that gap.
+  pitcherAllowedBa: 0.243,       // batting average allowed (same as league hit rate)
+  pitcherAllowedSlg: 0.395       // slugging % allowed
 });
 
 // Per-layer deviation caps. Tightest layer is conversion (least signal-to-noise).
@@ -231,7 +236,11 @@ export function computeContactLayer(hitter = {}, pitcher = {}) {
  * composite.
  *
  * @param {Object} hitter  - { barrelPct, hardHitPct, avgEv, xwoba, ... }
- * @param {Object} pitcher - { allowedHardHit?, allowedEv?, allowedBarrel? }
+ * @param {Object} pitcher - { allowedHardHit?, allowedEv?, allowedBarrel?,
+ *                             allowedBa?, allowedSlg? }
+ *                           Added May 23, 2026: allowedBa and allowedSlg are
+ *                           the practical signals when EV/barrel aren't in
+ *                           the upstream payload.
  * @param {number} matchedXwoba - max pitch-arsenal-matched xwOBA, or null
  * @returns {Object}
  */
@@ -290,11 +299,31 @@ export function computeQualityLayer(hitter = {}, pitcher = {}, matchedXwoba = nu
   // === PITCHER SUPPRESSION INDEX ===
   // A pitcher who allows less hard contact than league avg pushes the
   // quality deviation DOWN. Reverse sign from hitter side.
+  //
+  // SIGNAL SOURCES (May 23, 2026):
+  //   The upstream pitch-arsenal payload exposes hardHitPct, ba, and slg
+  //   per pitch type, but NOT exit velocity or barrel rate. Originally Layer 2
+  //   was designed for HH/EV/BAR; in practice it runs on HH + BA + SLG.
+  //
+  //   - Barrel and EV branches remain in place for future payload upgrades.
+  //   - BA-allowed and SLG-allowed are the practical replacements:
+  //       BA  captures contact-to-hit conversion vs this pitcher
+  //       SLG captures damage on contact vs this pitcher
+  //   - These don't double-count matchedXwoba (which is hitter-side max);
+  //     these are pitcher-side allowed rates from the arsenal payload.
+  //
+  // Coefficients calibrated to produce ~0.009 deviation at typical gaps:
+  //   BA: 0.30 per BA unit  → .030 above league = +0.009 deviation
+  //   SLG: 0.15 per SLG unit → .060 above league = +0.009 deviation
+  //   These are in the same magnitude band as the HH/EV/BAR signals so
+  //   no single pitcher signal dominates the suppression aggregate.
   let pitcherDev = 0;
   let pitcherDataPoints = 0;
   const pHh = num(pitcher.allowedHardHit);
   const pEv = num(pitcher.allowedEv);
   const pBar = num(pitcher.allowedBarrel);
+  const pBa = num(pitcher.allowedBa);
+  const pSlg = num(pitcher.allowedSlg);
   if (pBar != null) {
     pitcherDev -= (pBar - LEAGUE_BASELINES.pitcherAllowedBarrel) * 0.003;
     pitcherDataPoints++;
@@ -305,6 +334,16 @@ export function computeQualityLayer(hitter = {}, pitcher = {}, matchedXwoba = nu
   }
   if (pEv != null) {
     pitcherDev -= (pEv - LEAGUE_BASELINES.pitcherAllowedEv) * 0.003;
+    pitcherDataPoints++;
+  }
+  if (pBa != null) {
+    // Pitcher allows higher BA than league → hits harder, deviation up.
+    // Sign convention matches HH/EV/BAR: subtract here, flip at end.
+    pitcherDev -= (pBa - LEAGUE_BASELINES.pitcherAllowedBa) * 0.30;
+    pitcherDataPoints++;
+  }
+  if (pSlg != null) {
+    pitcherDev -= (pSlg - LEAGUE_BASELINES.pitcherAllowedSlg) * 0.15;
     pitcherDataPoints++;
   }
   // Flip sign so that "pitcher allows MORE hard hit" → positive deviation
