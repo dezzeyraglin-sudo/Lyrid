@@ -22,7 +22,7 @@ import { getLineupRispPerformance, applyRispAdjustment, buildLineupConversionTie
 import { fetchPitcherPropsLines, getPitcherLinesByName } from './_lib/pitcherPropsLines.js';
 import { tryAuth, checkAndIncrementQuota, AuthError } from './_lib/auth.js';
 import { computeHitProbability, computeHrProbability, computeXbhProbability } from './_lib/contactProbability.js';
-import { computeAirDensity, adjustPitcherArsenal, getEnvironmentNarrative } from './_lib/altitudeEngine.js';
+import { computeAirDensity, adjustPitcherArsenal, getEnvironmentNarrative } from './_lib/baseball/altitudeEngine.js';
 
 // PITCHER'S DUEL FIX (May 9, 2026)
 // Feature-flagged calibration changes that address the model's failure to
@@ -495,6 +495,15 @@ export default async function handler(req, res) {
                 const n = parseFloat(v);
                 return Number.isFinite(n) ? n : null;
               })(),
+              // L2 DIAGNOSTIC (May 23, 2026 — TEMPORARY)
+              // Capture the raw key names available on this pitch so the UI L2
+              // diagnostic chip can show us EXACTLY what fields the upstream
+              // arsenal payload is exposing. Right now HH wires but EV and BAR
+              // miss — we don't know which field names ARE present for EV/BAR.
+              // Once we see them, we add the matching name to the probe lookup
+              // (~lines 488-497) and L2 goes from PARTIAL (1/3) to WIRED (3/3).
+              // Remove this field when L2 is confirmed WIRED.
+              _kpKeys: Object.keys(kp || {}).filter(k => !k.startsWith('_')),
               source: hitterPerf._source,    // 'deep' or 'shallow'
               smallSample: hitterPerf._source === 'deep' && hitterPerf.pa < 10
             });
@@ -2559,7 +2568,14 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
         pitcherAllowedBarrel: _pitcherAllowedBarrel,
         pitcherAllowedWired: (_pitcherAllowedHardHit != null
                               || _pitcherAllowedEv != null
-                              || _pitcherAllowedBarrel != null)
+                              || _pitcherAllowedBarrel != null),
+        // L2 DIAGNOSTIC (May 23, 2026 — TEMPORARY)
+        // First matched pitch's raw key names. When L2 is PARTIAL or OFF, the
+        // UI chip displays these so we can see what field names the upstream
+        // arsenal payload IS exposing. Add the matching names to the per-pitch
+        // probe lookup in this file (~lines 488-497) to wire L2 to WIRED.
+        // Remove this field when L2 is confirmed WIRED across the slate.
+        _firstPitchKpKeys: (matchedPitches[0] && matchedPitches[0]._kpKeys) || []
       };
     }
   });

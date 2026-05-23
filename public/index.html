@@ -4062,6 +4062,31 @@ function renderAnalysis(data) {
                   chipTitle = 'Contact engine Layer 2 NOT wired — no pitcher allowed-contact stats in arsenal payload. Layer 2 suppression inactive (silent fallback to hitter-side only). Check getPitcherArsenal output for allowed-contact fields.';
                 }
                 const layerQ = a.layers?.quality;
+                // L2 KP KEYS DIAGNOSTIC (May 23, 2026 — TEMPORARY)
+                // When L2 is not WIRED, surface the raw field names available on
+                // the upstream pitch object. This tells us EXACTLY which
+                // alternate field names to add to the probe lookup in
+                // analyze.js (~lines 488-497). Once L2 is confirmed WIRED across
+                // the slate, remove this chip and the audit field.
+                const kpKeys = Array.isArray(a._firstPitchKpKeys) ? a._firstPitchKpKeys : [];
+                const showKpKeys = presentCount < 3 && kpKeys.length > 0;
+                // Heuristic: highlight keys that LOOK like they might be the missing stat
+                // so the user can scan and identify which name to add to the lookup.
+                const evCandidates = kpKeys.filter(k => /ev|exit|velo|speed/i.test(k));
+                const barCandidates = kpKeys.filter(k => /barrel|brl/i.test(k));
+                let kpKeysChip = '';
+                if (showKpKeys) {
+                  const keyList = kpKeys.join(', ');
+                  let hint = '';
+                  if (presentCount < 3 && (evCandidates.length || barCandidates.length)) {
+                    const hints = [];
+                    if (ev == null && evCandidates.length) hints.push(`EV likely: ${evCandidates.join('/')}`);
+                    if (bar == null && barCandidates.length) hints.push(`BAR likely: ${barCandidates.join('/')}`);
+                    hint = hints.length ? ` — ${hints.join(' · ')}` : '';
+                  }
+                  const tooltipText = `Raw field names on upstream pitch object: ${keyList}${hint}. Add the matching names to the probe lookup at api/analyze.js lines 488-497 to wire L2 to WIRED.`;
+                  kpKeysChip = `<span class="stat-chip" style="font-family:ui-monospace,Menlo,monospace;font-size:9px;background:#fef3c7;color:#92400e;cursor:help" title="${tooltipText.replace(/"/g, '&quot;')}">keys: ${kpKeys.slice(0, 6).join(',')}${kpKeys.length > 6 ? '…' : ''}</span>`;
+                }
                 return `
                 <div class="stat-row" title="${chipTitle}">
                   <span class="stat-chip" style="background:${chipBg};color:${chipColor};font-weight:600;font-size:10px;letter-spacing:0.04em">${label}</span>
@@ -4069,6 +4094,7 @@ function renderAnalysis(data) {
                   <span class="stat-chip" title="Pitcher allowed exit velocity (arsenal-weighted)">EV ${ev != null && Number.isFinite(Number(ev)) ? `<b>${Number(ev).toFixed(1)}</b>` : '<b style="color:#9ca3af">—</b>'}</span>
                   <span class="stat-chip" title="Pitcher allowed barrel rate (arsenal-weighted)">BAR ${bar != null && Number.isFinite(Number(bar)) ? `<b>${Number(bar).toFixed(1)}</b>` : '<b style="color:#9ca3af">—</b>'}</span>
                   ${layerQ != null && Number.isFinite(Number(layerQ)) ? `<span class="stat-chip" style="font-variant-numeric:tabular-nums" title="Layer 2 quality deviation from baseline. Non-zero = Layer 2 contributing real signal.">Δq ${Number(layerQ) >= 0 ? '+' : ''}${Number(layerQ).toFixed(3)}</span>` : ''}
+                  ${kpKeysChip}
                 </div>
                 `;
               })()}
