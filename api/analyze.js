@@ -22,7 +22,7 @@ import { getLineupRispPerformance, applyRispAdjustment, buildLineupConversionTie
 import { fetchPitcherPropsLines, getPitcherLinesByName } from './_lib/pitcherPropsLines.js';
 import { tryAuth, checkAndIncrementQuota, AuthError } from './_lib/auth.js';
 import { computeHitProbability, computeHrProbability, computeXbhProbability } from './_lib/contactProbability.js';
-import { computeAirDensity, adjustPitcherArsenal, getEnvironmentNarrative } from './_lib/baseball/altitudeEngine.js';
+import { computeAirDensity, adjustPitcherArsenal, getEnvironmentNarrative } from './_lib/altitudeEngine.js';
 
 // PITCHER'S DUEL FIX (May 9, 2026)
 // Feature-flagged calibration changes that address the model's failure to
