@@ -22,6 +22,7 @@ import { getLineupRispPerformance, applyRispAdjustment, buildLineupConversionTie
 import { fetchPitcherPropsLines, getPitcherLinesByName } from './_lib/pitcherPropsLines.js';
 import { tryAuth, checkAndIncrementQuota, AuthError } from './_lib/auth.js';
 import { computeHitProbability, computeHrProbability, computeXbhProbability } from './_lib/contactProbability.js';
+import { computeAirDensity, adjustPitcherArsenal, getEnvironmentNarrative } from './_lib/baseball/altitudeEngine.js';
 
 // PITCHER'S DUEL FIX (May 9, 2026)
 // Feature-flagged calibration changes that address the model's failure to
@@ -1308,8 +1309,10 @@ export default async function handler(req, res) {
       awayVsHome: results.awayVsHome,  // away hitters vs home pitcher
       homeVsAway: results.homeVsAway,  // home hitters vs away pitcher
       parkFactor,
+      homeTeamAbbr: game.homeTeam?.abbreviation || null,  // for altitude engine park lookup
       umpire: results.umpire,
       weatherImpact: results.weatherImpact,
+      rawWeather: results.weather,      // raw weather for altitude engine (humidity not on weatherImpact)
       envImpact: results.envImpact,    // NEW: composite park×weather with interactions
       conversionRates,                  // NEW: stranded-runner / RISP signal
       odds
@@ -1381,9 +1384,44 @@ export default async function handler(req, res) {
 
 // ===== GAME PROJECTION =====
 // Build expected runs per team, win probability, and compare to market O/U
-function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weatherImpact, envImpact, conversionRates, odds }) {
+function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, homeTeamAbbr, umpire, weatherImpact, rawWeather, envImpact, conversionRates, odds }) {
   // MLB 2024-2025 league avg runs per team per game: ~4.45
   const BASELINE_RUNS = 4.45;
+
+  // ===== AIR DENSITY (May 23, 2026 — altitudeEngine integration) =====
+  //
+  // Compute the air density once at game level. Both sides' pitchers throw
+  // in the same park, so they get the same density adjustment to their
+  // arsenals. The xwOBA shifts will differ per pitcher only because their
+  // arsenals are made up of different pitch types (4-seam-heavy gets hit
+  // harder at Coors than sinker-heavy).
+  //
+  // Field name sources (verified against weather.js):
+  //   - tempF: from weatherImpact (re-exposed by computeWeatherImpact)
+  //   - humidity: from rawWeather (NOT exposed by computeWeatherImpact; comes
+  //     directly from Open-Meteo as percent 0-100, so we convert to fraction)
+  //   - isDome: from weatherImpact (set when dome detected closed)
+  //
+  // If rawWeather is unavailable (e.g. weather fetch failed), we still get
+  // tempF and isDome from weatherImpact and the engine falls back to the
+  // park's typical humidity. Humidity is the smallest of the three effects
+  // so this graceful degradation is acceptable.
+  const wx = weatherImpact || {};
+  const rw = rawWeather || {};
+  const tempF = typeof wx.tempF === 'number' ? wx.tempF
+    : (typeof rw.tempF === 'number' ? rw.tempF : undefined);
+  // Humidity comes from raw weather as percent (0-100); convert to fraction
+  let humidityFraction = undefined;
+  if (typeof rw.humidity === 'number') {
+    humidityFraction = rw.humidity > 1.5 ? rw.humidity / 100 : rw.humidity;
+  }
+  const airDensityResult = computeAirDensity(homeTeamAbbr, {
+    temp_f: tempF,
+    humidity: humidityFraction,
+    isDome: !!wx.isDome,
+  });
+  const airDensity = airDensityResult.density;
+  const airDensityAudit = airDensityResult.audit;
 
   // Map aggregate side data into multipliers
   const sideMult = (side) => {
@@ -1411,11 +1449,23 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
     const lineupMult = 1.0 + ((effectiveXw - 0.320) * 2.4);   // .040 above avg → +9.6%
 
     // Pitcher quality: use starter's season xwOBA-against (from arsenal weighted avg)
+    //
+    // ALTITUDE ADJUSTMENT (May 23, 2026 — altitudeEngine integration):
+    //   Before computing the weighted xwOBA, adjust each pitch in the arsenal
+    //   for the game's air density. A 4-seam-heavy pitcher at Coors gets
+    //   significant inflation (~+0.070 xwOBA on the 4-seam); a sinker-heavy
+    //   command pitcher gets only modest inflation (~+0.021 on the sinker).
+    //   Sea-level parks skip this entirely (no noise).
     let pitcherXwAgainst = null;
+    let altitudeAudit = null;
     if (side.pitcherArsenal && side.pitcherArsenal.length > 0) {
-      const totalPitches = side.pitcherArsenal.reduce((s, p) => s + (p.pitches || 0), 0);
+      // Apply altitude adjustment to the arsenal first
+      const { adjustedArsenal, audit } = adjustPitcherArsenal(side.pitcherArsenal, airDensity);
+      altitudeAudit = audit;
+
+      const totalPitches = adjustedArsenal.reduce((s, p) => s + (p.pitches || 0), 0);
       if (totalPitches > 0) {
-        const weighted = side.pitcherArsenal.reduce((s, p) => {
+        const weighted = adjustedArsenal.reduce((s, p) => {
           const x = parseFloat(p.xwoba || 0);
           return s + (x * (p.pitches || 0));
         }, 0);
@@ -1485,7 +1535,8 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
         inningMult: inningMult.toFixed(3),
         controlTier: isplits?.controlTier || null,
         meltdownInning: isplits?.meltdownInning || null,
-        lineupTierLabel: lt?.label || 'UNKNOWN'
+        lineupTierLabel: lt?.label || 'UNKNOWN',
+        altitudeAudit  // NEW: per-pitch altitude xwOBA shifts (null if near sea level)
       }
     };
   };
@@ -2023,6 +2074,8 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
       awayEnvMult: awayEnvMult.toFixed(3),  // NEW: per-side env after pitcher fade
       homeEnvMult: homeEnvMult.toFixed(3),  // NEW: per-side env after pitcher fade
       envInteractions: envImpact?.interactions?.length || 0,
+      airDensity: airDensity.toFixed(4),       // NEW: altitudeEngine air density
+      airDensityAudit,                          // NEW: how density was computed
       umpRunMult: umpRunMult.toFixed(3),
       awayConvMult: awayConvMult.toFixed(3),
       homeConvMult: homeConvMult.toFixed(3),
