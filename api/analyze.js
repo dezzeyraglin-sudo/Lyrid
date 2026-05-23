@@ -2296,6 +2296,118 @@ function computeLineupTier(analyzedHitters, arsenal) {
 
 // ===== PROP RECOMMENDATIONS =====
 // Ranks prop types by edge quality for this specific matchup
+// =============================================================
+// PER-PA → PER-GAME PROBABILITY CONVERSION
+// =============================================================
+//
+// PURPOSE
+//   The contact engine (computeHitProbability, computeHrProbability,
+//   computeXbhProbability) returns PER-PLATE-APPEARANCE probabilities. But the
+//   prop lines we display these against are PER-GAME "at least N" lines:
+//     HITS 0.5 → P(at least 1 hit in the game)
+//     HR 0.5   → P(at least 1 HR in the game)
+//     TB 1.5   → P(at least 2 total bases in the game)
+//     RBI 0.5  → P(at least 1 RBI)
+//     RUNS 0.5 → P(at least 1 run scored)
+//
+//   Previously the per-PA rate was attached directly to the prop, producing
+//   probabilities that looked too low (e.g. HR 0.5 @ 16% on a 10.5% HR/PA
+//   hitter — should be ~36% over 4 PAs).
+//
+//   This module compounds the per-PA rate across the hitter's expected PAs.
+//
+// EXPECTED PA BY LINEUP SLOT
+//   Slot 1-2:  ~4.4 PA (leadoff gets the most ABs)
+//   Slot 3-4:  ~4.2 PA
+//   Slot 5-6:  ~4.0 PA
+//   Slot 7-9:  ~3.7 PA
+//   Unknown:   4.0 PA (league average)
+//
+// NOTE: These are EXPECTED PAs assuming a 9-inning game. Extra innings,
+//   substitutions, or injury would change this — but the prop lines are set
+//   for typical games, so this matches market behavior.
+//
+// "AT LEAST K" FORMULA
+//   For events where individual PAs are roughly independent (HR, hits, XBH):
+//     P(at least 1 in N PAs) = 1 - (1 - p)^N
+//   For "at least 2" we use binomial: 1 - P(0) - P(1) where
+//     P(j) = C(N,j) × p^j × (1-p)^(N-j)
+//
+// CAVEATS
+//   - RBI and RUNS depend on teammates (RBI needs runners on; RUNS needs to
+//     get on base AND for someone to drive you in). The per-PA "RBI event"
+//     rate from computeXbhProbability is an approximation; compounding is
+//     directionally right but not perfect.
+//   - TB 1.5 means "at least 2 bases" which could be one 2B/3B/HR OR two
+//     singles. We approximate as P(≥1 XBH) since the per-XBH rate dominates
+//     for power hitters.
+
+function expectedPaForLineupSlot(slot) {
+  const s = parseInt(slot) || 0;
+  if (s === 1 || s === 2) return 4.4;
+  if (s === 3 || s === 4) return 4.2;
+  if (s === 5 || s === 6) return 4.0;
+  if (s >= 7 && s <= 9) return 3.7;
+  return 4.0;  // unknown lineup slot
+}
+
+/**
+ * Compound a per-PA probability into a per-game "at least K" probability.
+ *
+ * @param {number} pPerPa  - Per-PA rate (0-1)
+ * @param {number} expectedPa - Expected plate appearances in the game
+ * @param {number} k       - Threshold ("at least k"). 1 for 0.5 lines, 2 for 1.5 lines.
+ * @returns {number} Per-game probability of at least k events.
+ */
+function compoundPerPaToGame(pPerPa, expectedPa, k = 1) {
+  if (!Number.isFinite(pPerPa) || pPerPa <= 0) return 0;
+  if (!Number.isFinite(expectedPa) || expectedPa <= 0) return 0;
+  // Clamp probability to avoid pathological inputs blowing up
+  const p = Math.min(0.85, Math.max(0, pPerPa));
+  const n = Math.max(1, Math.min(8, expectedPa));  // 1-8 PA realistic bounds
+
+  if (k <= 1) {
+    // P(at least 1) = 1 - P(0) = 1 - (1-p)^n
+    return 1 - Math.pow(1 - p, n);
+  }
+  // P(at least k) via binomial — accumulate P(0..k-1) and subtract from 1
+  // For our use cases k is small (≤3), so this is cheap.
+  let cumulativeBelow = 0;
+  for (let j = 0; j < k; j++) {
+    cumulativeBelow += binomialPmf(n, j, p);
+  }
+  return Math.max(0, 1 - cumulativeBelow);
+}
+
+/**
+ * Binomial PMF with non-integer n (using gamma function approximation).
+ * For our case n is between 3.7 and 4.4 — non-integer. We use the standard
+ * trick: compute C(n,k) via the Beta function relationship.
+ * For small k (0, 1, 2, 3) we can just inline the formula.
+ */
+function binomialPmf(n, k, p) {
+  if (k === 0) return Math.pow(1 - p, n);
+  if (k === 1) return n * p * Math.pow(1 - p, n - 1);
+  if (k === 2) return (n * (n - 1) / 2) * p * p * Math.pow(1 - p, n - 2);
+  if (k === 3) return (n * (n - 1) * (n - 2) / 6) * Math.pow(p, 3) * Math.pow(1 - p, n - 3);
+  // For k≥4 we'd need a real gamma function; not needed for current prop lines
+  return 0;
+}
+
+/**
+ * Parse a prop label like "HR 0.5" or "TB 1.5" and return the threshold k.
+ * "0.5" → 1 (at least 1), "1.5" → 2, "2.5" → 3.
+ */
+function thresholdFromLine(label) {
+  if (!label) return 1;
+  const m = String(label).match(/(\d+\.?\d*)/);
+  if (!m) return 1;
+  const lineValue = parseFloat(m[1]);
+  if (!Number.isFinite(lineValue)) return 1;
+  // Line is "over 0.5" → need 1, "over 1.5" → need 2, "over 2.5" → need 3
+  return Math.floor(lineValue) + 1;
+}
+
 function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, parkFactor, adjustments, tier, bullpenMaxXwoba, bullpenTier }) {
   if (!tier || matchedPitches.length === 0) return [];
 
@@ -2570,17 +2682,53 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
     p.rank = i;
     p.isBest = i === 0;
 
-    // SHADOW-MODE PROBABILITY ATTACHMENT
+    // SHADOW-MODE PROBABILITY ATTACHMENT (May 23, 2026 — per-PA → per-game)
+    //
+    // The engine outputs per-PA probabilities. Props are per-game "at least N"
+    // lines. We compound across the hitter's expected PAs (varies by lineup
+    // slot, defaults to 4.0 PA). The per-PA rate is preserved in the audit so
+    // we can see both.
+    //
     // Different prop keys consume different probability outputs:
     //   H, R       → P(Hit) — at least one hit / accumulates from PA hits
     //   HR         → P(HR)
     //   TB, RBI    → P(XBH) — extra-base-hit probability (most predictive)
     //   FS_*, HRR  → composite, leave probability null (no clean 1:1 mapping)
-    if (_pHit && p.key === 'H')        { p.probability = _pHit.probability; p.probabilityBaseline = _pHit.baseline; }
-    else if (_pHit && p.key === 'R')   { p.probability = _pHit.probability; p.probabilityBaseline = _pHit.baseline; }
-    else if (_pHr && p.key === 'HR')   { p.probability = _pHr.probability;  p.probabilityBaseline = _pHr.baseline;  }
-    else if (_pXbh && p.key === 'TB')  { p.probability = _pXbh.probability; p.probabilityBaseline = _pXbh.baseline; }
-    else if (_pXbh && p.key === 'RBI') { p.probability = _pXbh.probability; p.probabilityBaseline = _pXbh.baseline; }
+    //
+    // The threshold (k=1 for 0.5 lines, k=2 for 1.5 lines) comes from the
+    // prop label.
+    const _ePa = expectedPaForLineupSlot(hitter?.battingOrder);
+    const _kThreshold = thresholdFromLine(p.label);
+    if (_pHit && p.key === 'H') {
+      p.probability = compoundPerPaToGame(_pHit.probability, _ePa, _kThreshold);
+      p.probabilityBaseline = _pHit.baseline;
+      p.probabilityPerPa = _pHit.probability;
+      p.expectedPa = _ePa;
+    }
+    else if (_pHit && p.key === 'R') {
+      p.probability = compoundPerPaToGame(_pHit.probability, _ePa, _kThreshold);
+      p.probabilityBaseline = _pHit.baseline;
+      p.probabilityPerPa = _pHit.probability;
+      p.expectedPa = _ePa;
+    }
+    else if (_pHr && p.key === 'HR') {
+      p.probability = compoundPerPaToGame(_pHr.probability, _ePa, _kThreshold);
+      p.probabilityBaseline = _pHr.baseline;
+      p.probabilityPerPa = _pHr.probability;
+      p.expectedPa = _ePa;
+    }
+    else if (_pXbh && p.key === 'TB') {
+      p.probability = compoundPerPaToGame(_pXbh.probability, _ePa, _kThreshold);
+      p.probabilityBaseline = _pXbh.baseline;
+      p.probabilityPerPa = _pXbh.probability;
+      p.expectedPa = _ePa;
+    }
+    else if (_pXbh && p.key === 'RBI') {
+      p.probability = compoundPerPaToGame(_pXbh.probability, _ePa, _kThreshold);
+      p.probabilityBaseline = _pXbh.baseline;
+      p.probabilityPerPa = _pXbh.probability;
+      p.expectedPa = _ePa;
+    }
 
     // Audit fields — always attached when available, regardless of prop key
     if (_pHit || _pHr || _pXbh) {
