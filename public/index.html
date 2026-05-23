@@ -8571,16 +8571,25 @@ function renderHistory() {
       : stats.bias < -0.2 ? `under-projects by ${Math.abs(stats.bias).toFixed(2)} runs on avg`
       : 'very balanced (near zero bias)';
 
-    // MAE quality label
+    // MAE quality label — CALIBRATION ONLY, not a bet grade.
+    //
+    // RATIONALE (May 23, 2026 fix — user feedback):
+    // Previously MAE was color-coded red/green like a pass/fail metric. This was
+    // misleading because the actual "did the bet win" grade for totals is the
+    // OVER/UNDER lean grade (lyridLeanGrade), not how close the projection
+    // landed to the actual total. A projection of 7.5 on a market line of 9.0
+    // is a correct UNDER lean (WIN) even if the game lands at 5 runs (MAE=2.5).
+    //
+    // MAE is now displayed as a neutral informational label so the user reads
+    // it as "calibration signal" not "bet performance." The Lean Performance
+    // section below remains the primary grade for totals.
     const maeLabel = stats.mae == null ? ''
-      : stats.mae <= 1.0 ? 'SHARP'
-      : stats.mae <= 1.75 ? 'COMPETITIVE'
-      : stats.mae <= 2.5 ? 'BASELINE'
-      : 'NEEDS WORK';
-    const maeLabelColor = stats.mae <= 1.0 ? 'var(--accent)'
-      : stats.mae <= 1.75 ? 'var(--cool)'
-      : stats.mae <= 2.5 ? 'var(--warn)'
-      : 'var(--danger)';
+      : stats.mae <= 1.0 ? 'TIGHT'
+      : stats.mae <= 1.75 ? 'NORMAL'
+      : stats.mae <= 2.5 ? 'WIDE'
+      : 'LOOSE';
+    // Use neutral muted colors — NOT pass/fail signaling
+    const maeLabelColor = 'var(--text-secondary, var(--dim))';
 
     // Deep vs fast comparison
     let deepFastVerdict = '';
@@ -8597,6 +8606,10 @@ function renderHistory() {
     const sortedDates = Object.keys(byDate).sort().reverse();
 
     container.innerHTML = subnavHtml + `
+      <div style="background:var(--surface-card);border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:var(--radius-md, 8px);padding:12px 16px;margin-bottom:14px;font-size:11px;color:var(--text-secondary, var(--dim));letter-spacing:0.02em;line-height:1.6">
+        <div style="font-size:10px;letter-spacing:0.12em;color:var(--text-primary);font-weight:600;margin-bottom:4px">◎ HOW TO READ THIS PAGE</div>
+        The numbers below describe how the projection model behaves — NOT whether it won or lost bets. For the actual <b>over/under win/loss grade</b> on totals, scroll down to <b>LYRID'S LEAN PERFORMANCE</b>. MAE and bias are calibration signals only.
+      </div>
       <div class="bestbet-stats">
         <div class="bbs-grid">
           <div class="bbs-cell">
@@ -8631,8 +8644,9 @@ function renderHistory() {
         <div class="calib-insight">
           <div class="calib-insight-label">◎ WHAT THIS MEANS</div>
           <ul class="calib-insight-list">
+            <li><b>This panel is calibration data, not a bet-grade scorecard.</b> The win/loss grade for totals is the OVER/UNDER lean below — MAE/bias just describe how the model behaves on average.</li>
             <li>Model ${biasDirection}</li>
-            ${stats.mae != null ? `<li>Total projections land within ±${stats.mae} runs of final on average (${maeLabel.toLowerCase()})</li>` : ''}
+            ${stats.mae != null ? `<li>Total projections land within ±${stats.mae} runs of final on average (${maeLabel.toLowerCase()} spread — informational, not pass/fail)</li>` : ''}
             ${stats.winnerAccuracy != null ? `<li>Picks the winner ${stats.winnerAccuracy}% of the time — vs 50% coin flip baseline</li>` : ''}
             ${deepFastVerdict ? `<li>${deepFastVerdict}</li>` : ''}
             ${stats.byTotalRange.low.mae != null && stats.byTotalRange.high.mae != null ? `<li>Error by range: <b>${stats.byTotalRange.low.mae}</b> on low-total (<8), <b>${stats.byTotalRange.mid.mae || '—'}</b> mid (8-10), <b>${stats.byTotalRange.high.mae}</b> high (10+)</li>` : ''}

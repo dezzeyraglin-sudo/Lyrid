@@ -166,9 +166,34 @@ const RECENT_FORM_DISPLAY = (() => {
 // another 4% suppression on top of the base linear contribution.
 function pitcherMultFromXwAmplified(xw) {
   if (xw == null) return 1.0;
+  // Base linear suppression: slope 2.0 across the full range.
+  // For xw=.320 (league avg) → mult=1.00. For xw=.280 → -0.08 base.
   const baseDelta = (xw - 0.320) * 2.0;
-  const eliteAmp = xw < 0.290 ? (0.290 - xw) * 4.0 : 0;
-  return Math.max(0.5, 1.0 + baseDelta - eliteAmp);  // floor at 0.5x to prevent runaway
+
+  // ELITE AMPLIFICATION (May 23, 2026 fix — TEX@COL contradiction)
+  //
+  // Old: threshold .290, slope 4.0, floor 0.5 → .280 pitcher = 0.88 mult
+  // New: threshold .300, slope 6.0, floor 0.55 → .280 pitcher = 0.78 mult
+  //
+  // Rationale: a .280 xwOBA-against starter should suppress runs by ~22%,
+  // not 12%. The old amp was too lenient and lost to lineup×park product
+  // even when the SP was clearly the dominant factor in the matchup.
+  //
+  // Calibration:
+  //   .320 = league avg = 1.00
+  //   .310 = above avg = 0.98
+  //   .300 = elite threshold = 0.96
+  //   .290 = strong elite = 0.90
+  //   .280 = elite = 0.78
+  //   .270 = ace = 0.70
+  //   .260 = dominant = 0.62 (floored)
+  //   .250 = generational = 0.55 (floor)
+  //
+  // The amplification kicks in below .300 (was .290) because the practical
+  // top-of-rotation arms (Skubal, Skenes, Crochet, Webb) live in .270-.295
+  // range and the old model treated them like .310 arms.
+  const eliteAmp = xw < 0.300 ? (0.300 - xw) * 6.0 : 0;
+  return Math.max(0.55, 1.0 + baseDelta - eliteAmp);
 }
 
 export default async function handler(req, res) {
@@ -1488,6 +1513,46 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
   // uses the composite when available.
   const envRunMult = envImpact?.runMult ?? (parkRunMult * weatherRunMult);
 
+  // PITCHER-AWARE ENV EXPOSURE (May 23, 2026 fix — TEX@COL contradiction)
+  //
+  // Problem: envRunMult is applied symmetrically to both teams. A +15% Coors
+  // boost gets multiplied into BOTH offenses regardless of who they face.
+  // When one team has an elite SP, the opposing offense still gets the full
+  // park boost despite the SP capping their offensive ceiling.
+  //
+  // Fix: fade the *positive* portion of env exposure based on the quality of
+  // the opposing pitcher. An offense facing a .280-xwOBA-against ace at Coors
+  // shouldn't get the full +15% boost — the elite arm flattens the variance
+  // the park exploits.
+  //
+  // Mechanics:
+  //   - Only fades env BOOSTS (envRunMult > 1.0). Suppressive parks (Petco,
+  //     Tropicana) still apply fully because they reduce baseline output
+  //     regardless of pitcher quality.
+  //   - Fade strength scales with how elite the opposing pitcher is.
+  //     .300 xw-against → no fade (0%). .280 → 50% fade. .260 → 80% fade.
+  //   - Each side gets its own envRunMult based on the OPPOSING pitcher's
+  //     quality. So if TEX has an elite SP, COL's env boost fades; TEX's
+  //     own env boost stays intact (they face the COL SP, which is not elite).
+  //
+  // This is the structural fix for the symmetric-park-multiplier bug.
+  // Surfaces in factors.envPitcherFade per side for diagnostics.
+  const computeSideEnvMult = (opposingPitcherXw) => {
+    if (envRunMult <= 1.0) return envRunMult;  // suppressive park: no fade
+    const xw = parseFloat(opposingPitcherXw || 0.320);
+    if (!xw || xw >= 0.300) return envRunMult;  // non-elite opposing arm: full boost
+    const fadeStrength = Math.min(0.80, (0.300 - xw) * 25); // .280→.50, .260→.80, capped
+    const boostPortion = envRunMult - 1.0;
+    const fadedBoost = boostPortion * (1 - fadeStrength);
+    return 1.0 + fadedBoost;
+  };
+  // For projAwayRuns: away offense faces homePitcher (homeComp's pitcher is the AWAY SP though...)
+  // Naming note: awayComp = away hitters vs home SP. So awayComp.factors.pitcherXwAgainst = HOME SP's xw.
+  // For away offense, the opposing pitcher's xw is awayComp.factors.pitcherXwAgainst.
+  // For home offense, the opposing pitcher's xw is homeComp.factors.pitcherXwAgainst.
+  const awayEnvMult = computeSideEnvMult(awayComp.factors.pitcherXwAgainst);
+  const homeEnvMult = computeSideEnvMult(homeComp.factors.pitcherXwAgainst);
+
   // Blend starter + bullpen influence on opposing offense
   // Traditional SP: 60/40 SP/BP. Opener/bulk/shifted: 25/75 (bullpen carries more innings).
   // Short-starter: 45/55 (still starts but gives way earlier).
@@ -1600,8 +1665,10 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
   const homeConvMult = conversionRates?.home?.conversionMult || 1.0;
 
   // Final projections — now including conversion rate, composite environment, dual-elite, and slugfest
-  const projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * envRunMult * umpRunMult * awayConvMult * dualEliteFactor * slugfestFactor;
-  const projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * envRunMult * umpRunMult * homeConvMult * dualEliteFactor * slugfestFactor;
+  // PITCHER-AWARE ENV EXPOSURE (May 23, 2026): each side uses its own envMult,
+  // which fades the boost portion based on the opposing pitcher's quality.
+  const projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * awayEnvMult * umpRunMult * awayConvMult * dualEliteFactor * slugfestFactor;
+  const projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * homeEnvMult * umpRunMult * homeConvMult * dualEliteFactor * slugfestFactor;
   const projTotal = projAwayRuns + projHomeRuns;
 
   // Win probability via Pythagorean expectation (exp = 1.83 for MLB)
@@ -1658,6 +1725,68 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
   // ==== REASONING NARRATIVE BUILDERS ====
   // Build explanation of what drives our projection
   const projReasoning = [];
+
+  // DOMINANT FACTOR DETECTOR (May 23, 2026 fix — narrative coherence)
+  //
+  // Problem: the projReasoning array lists every factor we considered. When a
+  // game has 8 reasons all bulleted equally, the user sees "elite SP suppresses"
+  // right next to "Coors +15%" and assumes both apply with equal force. They
+  // don't — one is the dominant signal, the others are noise.
+  //
+  // Fix: detect when a single factor is the bottleneck and surface it as the
+  // headline. Currently four bottleneck patterns:
+  //   - ELITE_AWAY_SP / ELITE_HOME_SP: one starter is ≤ .290 xwOBA-against
+  //     AND the other side's offense is being suppressed enough to dominate
+  //   - DUAL_ELITE: both starters ≤ .290 (pitcher's duel)
+  //   - DOME_SUPPRESS: dome game with both SPs decent (stable conditions favor pitchers)
+  //   - HITTER_BOMB: 3+ slugfest signals AND no elite SP on either side
+  //
+  // Surfaces in projection.dominantFactor for the UI to read and render as
+  // a callout instead of mixing with the bullet list.
+  let dominantFactor = null;
+  const awaySpXwNum = awaySpXw || 0;
+  const homeSpXwNum = homeSpXw || 0;
+  const awaySpIsElite = awaySpXwNum > 0 && awaySpXwNum <= 0.290;
+  const homeSpIsElite = homeSpXwNum > 0 && homeSpXwNum <= 0.290;
+  const eitherSpBad = awaySpXwNum >= 0.340 || homeSpXwNum >= 0.340;
+
+  if (awaySpIsElite && homeSpIsElite) {
+    dominantFactor = {
+      type: 'DUAL_ELITE_SP',
+      headline: `Pitcher's duel: both starters elite (away .${Math.round(awaySpXwNum*1000)}, home .${Math.round(homeSpXwNum*1000)} xwOBA-against)`,
+      bias: 'UNDER',
+      strength: 'strong',
+    };
+  } else if (awaySpIsElite && !eitherSpBad) {
+    // Away SP elite, home SP not awful = away SP dominates the projection
+    dominantFactor = {
+      type: 'ELITE_AWAY_SP',
+      headline: `Away SP is the bottleneck (.${Math.round(awaySpXwNum*1000)} xwOBA-against) — home offense suppressed regardless of park/lineup`,
+      bias: 'UNDER',
+      strength: 'strong',
+    };
+  } else if (homeSpIsElite && !eitherSpBad) {
+    dominantFactor = {
+      type: 'ELITE_HOME_SP',
+      headline: `Home SP is the bottleneck (.${Math.round(homeSpXwNum*1000)} xwOBA-against) — away offense suppressed regardless of park/lineup`,
+      bias: 'UNDER',
+      strength: 'strong',
+    };
+  } else if (weatherImpact?.isDome && awaySpXwNum > 0 && awaySpXwNum <= 0.330 && homeSpXwNum > 0 && homeSpXwNum <= 0.330) {
+    dominantFactor = {
+      type: 'DOME_STABLE',
+      headline: `Dome environment + competent SPs both sides — stable conditions favor pitcher repeatability`,
+      bias: 'UNDER',
+      strength: 'moderate',
+    };
+  } else if (slugfestScore >= 3 && !awaySpIsElite && !homeSpIsElite) {
+    dominantFactor = {
+      type: 'SLUGFEST',
+      headline: `Slugfest setup: ${slugfestSignals.slice(0, 3).join(', ')}`,
+      bias: 'OVER',
+      strength: slugfestScore >= 4 ? 'strong' : 'moderate',
+    };
+  }
 
   // Lineup quality reasoning
   const awayTier = awayVsHome?.lineupTier;
@@ -1884,12 +2013,15 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, umpire, weath
     confidenceLabel,
     homeWinProb: (homeWinProb * 100).toFixed(1),
     awayWinProb: ((1 - homeWinProb) * 100).toFixed(1),
+    dominantFactor,  // NEW: bottleneck headline (May 23, 2026 fix)
     factors: {
       away: awayComp.factors,
       home: homeComp.factors,
       parkRunMult: parkRunMult.toFixed(3),
       weatherRunMult: weatherRunMult.toFixed(3),
       envRunMult: envRunMult.toFixed(3),
+      awayEnvMult: awayEnvMult.toFixed(3),  // NEW: per-side env after pitcher fade
+      homeEnvMult: homeEnvMult.toFixed(3),  // NEW: per-side env after pitcher fade
       envInteractions: envImpact?.interactions?.length || 0,
       umpRunMult: umpRunMult.toFixed(3),
       awayConvMult: awayConvMult.toFixed(3),
