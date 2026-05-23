@@ -4016,6 +4016,62 @@ function renderAnalysis(data) {
                 </div>
                 `;
               })()}
+              ${(() => {
+                // ============================================================
+                // CONTACT ENGINE LAYER 2 DIAGNOSTIC (May 23, 2026 — TEMPORARY)
+                // ============================================================
+                // Purpose: surface whether Layer 2 (pitcher allowed-contact
+                // suppression) is firing on tonight's slate.
+                //
+                // Scan tonight's slate for the L2 chip color:
+                //   L2: WIRED   (green)  — all 3 allowed stats present, suppression active
+                //   L2: PARTIAL (amber)  — 1-2 of 3 stats present, degraded
+                //   L2: OFF     (red)    — 0 stats, Layer 2 dead (silent fallback)
+                //
+                // The HH / EV / BAR chips show which specific allowed-contact
+                // stats came through from the arsenal payload. Dashes ("—") mark
+                // missing stats — that's where the upstream payload is short.
+                //
+                // The Δq chip shows the Layer 2 quality deviation from baseline.
+                // Non-zero = Layer 2 is contributing real signal. ~0 = it isn't.
+                //
+                // REMOVAL: delete this whole IIFE block when validation is done.
+                // The block is self-contained and additive — removing it has no
+                // side effects.
+                // ============================================================
+                const firstProp = (m.propRecs || []).find(p => p._engineAudit);
+                if (!firstProp || !firstProp._engineAudit) return '';
+                const a = firstProp._engineAudit;
+                if (!('pitcherAllowedWired' in a)) return '';
+                const hh = a.pitcherAllowedHardHit;
+                const ev = a.pitcherAllowedEv;
+                const bar = a.pitcherAllowedBarrel;
+                const presentCount = [hh, ev, bar].filter(v => v != null && Number.isFinite(Number(v))).length;
+                let label, chipBg, chipColor, chipTitle;
+                if (presentCount === 3) {
+                  label = 'L2: WIRED';
+                  chipBg = '#dcfce7'; chipColor = '#14532d';
+                  chipTitle = 'Contact engine Layer 2 fully wired — pitcher allowed-contact suppression active on all 3 stats (hard-hit, exit velo, barrel).';
+                } else if (presentCount >= 1) {
+                  label = `L2: PARTIAL (${presentCount}/3)`;
+                  chipBg = '#fef3c7'; chipColor = '#92400e';
+                  chipTitle = `Contact engine Layer 2 partially wired — ${presentCount} of 3 allowed-contact stats present. Some suppression active, missing stats fall back to baseline.`;
+                } else {
+                  label = 'L2: OFF';
+                  chipBg = '#fee2e2'; chipColor = '#7f1d1d';
+                  chipTitle = 'Contact engine Layer 2 NOT wired — no pitcher allowed-contact stats in arsenal payload. Layer 2 suppression inactive (silent fallback to hitter-side only). Check getPitcherArsenal output for allowed-contact fields.';
+                }
+                const layerQ = a.layers?.quality;
+                return `
+                <div class="stat-row" title="${chipTitle}">
+                  <span class="stat-chip" style="background:${chipBg};color:${chipColor};font-weight:600;font-size:10px;letter-spacing:0.04em">${label}</span>
+                  <span class="stat-chip" title="Pitcher allowed hard-hit rate (arsenal-weighted)">HH ${hh != null && Number.isFinite(Number(hh)) ? `<b>${Number(hh).toFixed(1)}</b>` : '<b style="color:#9ca3af">—</b>'}</span>
+                  <span class="stat-chip" title="Pitcher allowed exit velocity (arsenal-weighted)">EV ${ev != null && Number.isFinite(Number(ev)) ? `<b>${Number(ev).toFixed(1)}</b>` : '<b style="color:#9ca3af">—</b>'}</span>
+                  <span class="stat-chip" title="Pitcher allowed barrel rate (arsenal-weighted)">BAR ${bar != null && Number.isFinite(Number(bar)) ? `<b>${Number(bar).toFixed(1)}</b>` : '<b style="color:#9ca3af">—</b>'}</span>
+                  ${layerQ != null && Number.isFinite(Number(layerQ)) ? `<span class="stat-chip" style="font-variant-numeric:tabular-nums" title="Layer 2 quality deviation from baseline. Non-zero = Layer 2 contributing real signal.">Δq ${Number(layerQ) >= 0 ? '+' : ''}${Number(layerQ).toFixed(3)}</span>` : ''}
+                </div>
+                `;
+              })()}
               ${(m.seasonStats?.gbPct || m.seasonStats?.fbPct || m.seasonStats?.ldPct) ? `
                 <div class="stat-row" title="Phase 1 damage quality data — diagnostic display verifying batted-ball % flow from Savant">
                   <span class="stat-chip" style="opacity:0.85" title="Diagnostic: damage quality data flowing">DAMAGE</span>
