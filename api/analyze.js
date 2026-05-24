@@ -2673,31 +2673,38 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
     { key: 'UD_FS_7',  label: 'UD FS 7',        platform: 'UD',   score: fs_ud7,     reason: `Projected ~${projFS.toFixed(1)} pts${bpTag}` }
   ];
 
-  // Sort by score, take top 4
-  allProps.sort((a, b) => b.score - a.score);
-  const ranked = allProps.slice(0, 4);
+  // PARALLEL ENGINE SELECTION (May 23, 2026)
+  //
+  // Previously: sort by score, take top 4, attach probabilities to survivors.
+  //   Problem: when the client toggled to PROB mode, the probability engine
+  //   could only re-rank within score's pre-selected top 4. If a prop had
+  //   strong probability but mediocre score (e.g. RUNS 0.5 with 78% per-game
+  //   probability), it never reached the client because score's top 4 didn't
+  //   include it.
+  //
+  // Now: attach probabilities to ALL props first, then take the UNION of:
+  //   - top 4 by score (existing behavior, drives default SCORE engine)
+  //   - top 4 by probability (drives the new PROB engine)
+  //
+  // Union size is typically 4-6 props (high overlap), worst case 8. Each
+  // engine's top 4 is guaranteed available to the client. The client's
+  // applyMlbEngineRanking() in index.html re-orders and picks ★ BEST.
 
-  // Tag the first as best bet, and attach contact-engine probabilities (shadow mode)
-  ranked.forEach((p, i) => {
-    p.rank = i;
-    p.isBest = i === 0;
-
-    // SHADOW-MODE PROBABILITY ATTACHMENT (May 23, 2026 — per-PA → per-game)
-    //
-    // The engine outputs per-PA probabilities. Props are per-game "at least N"
-    // lines. We compound across the hitter's expected PAs (varies by lineup
-    // slot, defaults to 4.0 PA). The per-PA rate is preserved in the audit so
-    // we can see both.
-    //
-    // Different prop keys consume different probability outputs:
-    //   H, R       → P(Hit) — at least one hit / accumulates from PA hits
-    //   HR         → P(HR)
-    //   TB, RBI    → P(XBH) — extra-base-hit probability (most predictive)
-    //   FS_*, HRR  → composite, leave probability null (no clean 1:1 mapping)
-    //
-    // The threshold (k=1 for 0.5 lines, k=2 for 1.5 lines) comes from the
-    // prop label.
-    const _ePa = expectedPaForLineupSlot(hitter?.battingOrder);
+  // Step 1: Attach probabilities to ALL props (not just the top 4).
+  //
+  // The engine outputs per-PA probabilities. Props are per-game "at least N"
+  // lines. We compound across the hitter's expected PAs (varies by lineup
+  // slot, defaults to 4.0 PA). The per-PA rate is preserved in the audit so
+  // we can see both.
+  //
+  // Different prop keys consume different probability outputs:
+  //   H, R       → P(Hit) — at least one hit / accumulates from PA hits
+  //   HR         → P(HR)
+  //   TB, RBI    → P(XBH) — extra-base-hit probability (most predictive)
+  //   FS_*, HRR  → composite, leave probability null (no clean 1:1 mapping;
+  //                modeling joint distribution would require more work)
+  const _ePa = expectedPaForLineupSlot(hitter?.battingOrder);
+  allProps.forEach(p => {
     const _kThreshold = thresholdFromLine(p.label);
     if (_pHit && p.key === 'H') {
       p.probability = compoundPerPaToGame(_pHit.probability, _ePa, _kThreshold);
@@ -2730,7 +2737,9 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
       p.expectedPa = _ePa;
     }
 
-    // Audit fields — always attached when available, regardless of prop key
+    // Audit fields — always attached when contact engine ran successfully,
+    // regardless of whether this specific prop is one of the H/R/HR/TB/RBI
+    // keys that gets a probability.
     if (_pHit || _pHr || _pXbh) {
       p._engineAudit = {
         pHit: _pHit?.probability,
@@ -2776,6 +2785,34 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
         _firstPitchKpKeys: (matchedPitches[0] && matchedPitches[0]._kpKeys) || []
       };
     }
+  });
+
+  // Step 2: Compute both top 4s, build union.
+  //
+  // Score top 4: existing behavior (FS/HRR props eligible since they have scores)
+  // Probability top 4: only props with valid probability values (effectively
+  //   excludes FS_* and HRR — they have no probability assigned)
+  const byScore = [...allProps].sort((a, b) => (b.score || 0) - (a.score || 0));
+  const byProb = [...allProps]
+    .filter(p => Number.isFinite(p.probability))
+    .sort((a, b) => (b.probability || 0) - (a.probability || 0));
+
+  const scoreTop4 = byScore.slice(0, 4);
+  const probTop4 = byProb.slice(0, 4);
+
+  // Union via Set (object identity dedup — we're holding the same prop refs)
+  const unionSet = new Set([...scoreTop4, ...probTop4]);
+  // Re-sort the union by score so the wire format remains stable (clients that
+  // don't apply the toggle will see score order, matching legacy behavior).
+  // The client's applyMlbEngineRanking() will re-order based on the active toggle.
+  const ranked = [...unionSet].sort((a, b) => (b.score || 0) - (a.score || 0));
+
+  // Step 3: Tag rank and isBest. These reflect SCORE engine (default), since
+  // SCORE is the safe default and clients without the toggle code see this.
+  // Client's applyMlbEngineRanking() overrides isBest based on the active toggle.
+  ranked.forEach((p, i) => {
+    p.rank = i;
+    p.isBest = i === 0;
   });
 
   return ranked;
