@@ -3215,6 +3215,13 @@ function probTier(p, baseline) {
 function auditInflatedEdge(matchup) {
   if (!matchup) return { fired: false, reasons: [], offsets: {}, suppressed: false };
 
+  // === TEMPORARY DIAGNOSTIC (May 24, 2026) ===
+  // Logs audit inputs and outcome for every hitter so we can see why the
+  // chip is/isn't appearing on specific players. Remove this block once
+  // calibration is confirmed.
+  const _diag_name = matchup.hitter || matchup.hitterName || '?';
+  const _diag_log = (typeof window !== 'undefined' && window.__lyridAuditDebug);
+
   const reasons = [];
 
   // === DETECT INFLATION SIGNALS ===
@@ -3252,6 +3259,7 @@ function auditInflatedEdge(matchup) {
   }
 
   if (reasons.length === 0) {
+    if (_diag_log) console.log(`[INFLATION AUDIT] ${_diag_name} — no signals fired. adj=${matchup.adjustedMaxXwoba} reg=${matchup.regressedMaxXwoba} gap=${inflationGap.toFixed(3)} ctx=${matchup.contextMultiplier} tier=${matchup.tier}`);
     return { fired: false, reasons: [], offsets: {}, suppressed: false };
   }
 
@@ -3293,6 +3301,14 @@ function auditInflatedEdge(matchup) {
   const offsets = { topHalfLineup, stablePa, lowK, multiplePaths };
   const offsetCount = [topHalfLineup, stablePa, lowK, multiplePaths].filter(Boolean).length;
   const suppressed = offsetCount >= 3;
+
+  if (_diag_log) {
+    console.log(`[INFLATION AUDIT] ${_diag_name} — ${suppressed ? 'SUPPRESSED' : 'FIRED'} (tier=${matchup.tier})`);
+    console.log(`  reasons:`, reasons.map(r => r.type).join(', '));
+    console.log(`  adj=${matchup.adjustedMaxXwoba} reg=${matchup.regressedMaxXwoba} gap=${inflationGap.toFixed(3)} ctx=${matchup.contextMultiplier}`);
+    console.log(`  offsets (${offsetCount}/4): topHalf=${topHalfLineup} stablePa=${stablePa}(${paSample}) lowK=${lowK}(${kPct}) multiPath=${multiplePaths}`);
+    console.log(`  form: applied=${rf?.applied} label=${rf?.scorching?'SCORCHING':rf?.hot?'HOT':rf?.cold?'COLD':'OTHER'}`);
+  }
 
   return {
     fired: true,
