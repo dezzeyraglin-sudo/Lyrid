@@ -959,6 +959,45 @@ export default async function handler(req, res) {
               recentForm: RECENT_FORM_ENABLED ? h.recentForm : null
             });
 
+            // PER-GAME HR TIER (May 23, 2026 — Item 7: structural overhaul)
+            //
+            // Previously the HR tier (ELITE/STRONG/SOLID) came from the per-PA
+            // HR rate. That made the label number misleading — "ELITE 11.5%"
+            // told you the per-PA rate, but the prop you'd bet (HR 0.5 over)
+            // is per-game. P(HR ≥ 1) per game for an 11.5%/PA hitter over 4.2
+            // PA is ~40%, not 11.5%.
+            //
+            // This step layers a per-game probability + per-game tier on top
+            // of the existing audit. We preserve `projectedHrPerPa` for any
+            // downstream code that reads it, but add:
+            //   - audit.projectedHrPerGame  : P(HR ≥ 1) compounded over PAs
+            //   - audit.tierPerGame         : tier from per-game probability
+            //   - audit.tierLabelPerGame    : display label for per-game tier
+            //
+            // The original `audit.tier` (per-PA-derived) is left alone for
+            // backward compatibility. UI prefers `tierPerGame` when present.
+            //
+            // Per-game thresholds (calibrated against archetypal profiles):
+            //   ELITE  if P(HR≥1) >= 35%   (rare — power hitter + good park + soft SP)
+            //   STRONG if P(HR≥1) >= 25%
+            //   SOLID  if P(HR≥1) >= 18%
+            //   below 18% → no tier label
+            if (audit && Number.isFinite(audit.projectedHrPerPa)) {
+              const ePa = expectedPaForLineupSlot(h.battingOrder);
+              const perPa = audit.projectedHrPerPa;
+              const perGame = 1 - Math.pow(1 - perPa, ePa);
+              audit.projectedHrPerGame = perGame;
+              audit.expectedPaForHrTier = ePa;
+
+              let perGameTier = null;
+              let perGameLabel = null;
+              if (perGame >= 0.35) { perGameTier = 'elite';  perGameLabel = 'ELITE';  }
+              else if (perGame >= 0.25) { perGameTier = 'strong'; perGameLabel = 'STRONG'; }
+              else if (perGame >= 0.18) { perGameTier = 'solid';  perGameLabel = 'SOLID';  }
+              audit.tierPerGame = perGameTier;
+              audit.tierLabelPerGame = perGameLabel;
+            }
+
             return {
               hrChance: audit.tier ? audit : null,  // null below SOLID — preserves existing badge gating
               hrAudit: audit  // always populated — used by per-side digest for diagnostic
@@ -2657,18 +2696,38 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
     return x > max ? x : max;
   }, 0);
 
-  // Bullpen boost: full-game props (fantasy score, HRR, TB) benefit most because
-  // they accumulate over 5-6 additional innings of exposure vs relievers
+  // BULLPEN SUPPRESSION (May 23, 2026 — Item 5: continuous replacement)
+  //
+  // Previously a 4-step staircase that produced 7% jumps in boost for tiny
+  // xwOBA differences (0.329 → 1.03x, 0.331 → 1.10x). Replaced with linear
+  // interpolation over the same magnitude range so neighboring bullpens with
+  // similar real performance get similar treatment.
+  //
+  // Range anchors (preserved from staircase):
+  //   bpX = 0.250 (very weak BP) → 0.94x  (slight suppression vs neutral)
+  //   bpX = 0.310 (mid)          → 1.06x  (mild boost)
+  //   bpX = 0.380 (very strong)  → 1.18x  (full boost)
+  //
+  //   bpX = 0 (no data) → 1.0x (neutral fallback)
+  //
+  // Full-game props (HRR, FS, TB, RBI, R) use the larger range (0.94–1.18)
+  // because they accumulate over 5-6 BP innings. Event props (HR, hit) use
+  // a compressed range (0.97–1.10) because one event in the whole game is
+  // enough — late-inning exposure matters less.
   const bpX = bullpenMaxXwoba || 0;
-  const bpFullGameBoost = bpX >= 0.370 ? 1.18 :
-                          bpX >= 0.330 ? 1.10 :
-                          bpX >= 0.290 ? 1.03 :
-                          bpX > 0 ? 0.94 : 1.0;
-  // Single-event props (HR, hit) get a smaller boost since one event in the whole game is enough
-  const bpEventBoost = bpX >= 0.370 ? 1.10 :
-                       bpX >= 0.330 ? 1.05 :
-                       bpX >= 0.290 ? 1.01 :
-                       bpX > 0 ? 0.97 : 1.0;
+  let bpFullGameBoost, bpEventBoost;
+  if (bpX === 0) {
+    // No bullpen data at all — neutral
+    bpFullGameBoost = 1.0;
+    bpEventBoost = 1.0;
+  } else {
+    // Linear interpolation. t ∈ [0,1] over the band [0.250, 0.380]
+    const t = Math.max(0, Math.min(1, (bpX - 0.250) / (0.380 - 0.250)));
+    // Full-game: 0.94 → 1.18 (range 0.24)
+    bpFullGameBoost = 0.94 + t * 0.24;
+    // Event: 0.97 → 1.10 (range 0.13)
+    bpEventBoost = 0.97 + t * 0.13;
+  }
 
   // Park factor helpers
   const hrParkBoost = parkFactor

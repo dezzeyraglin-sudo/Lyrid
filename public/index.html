@@ -4167,7 +4167,37 @@ function renderAnalysis(data) {
               <div class="match-head">
                 <div class="match-hitter">
                   ${m.isTopPick ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}
-                  ${m.hrChance && data.deepMode ? `<span class="hr-badge ${m.hrChance.tier}" title="HR ${m.hrChance.tierLabel || m.hrChance.tier.toUpperCase()} · ${m.hrChance.projectedHrPerPa ? (m.hrChance.projectedHrPerPa * 100).toFixed(1) + '% HR/PA' : 'projected'}${m.hrChance.score ? ' · Score ' + m.hrChance.score : ''}">${m.hrChance.emoji} HR ${(m.hrChance.tierLabel || m.hrChance.tier).toUpperCase()}${m.hrChance.projectedHrPerPa ? ` <span class="hr-rate">${(m.hrChance.projectedHrPerPa * 100).toFixed(1)}%</span>` : ''}${m.hrChance.score ? ` <span class="hr-rate" style="opacity:0.85; font-variant-numeric: tabular-nums; padding-left:2px; border-left:1px solid currentColor; margin-left:4px">${m.hrChance.score}</span>` : ''}</span>` : ''}
+                  ${m.hrChance && data.deepMode ? (function renderHrBadge(hc) {
+                    // PER-GAME TIER DISPLAY (May 23, 2026 — Item 7)
+                    //
+                    // Prefer per-game tier/probability when present (server computes
+                    // these from per-PA × expectedPa). Falls back to per-PA when the
+                    // server hasn't been updated yet (graceful for staged deploys).
+                    //
+                    // What changed visually:
+                    //   - Tier label uses per-game thresholds (35/25/18%)
+                    //   - The big % shown on the badge is per-game P(HR≥1)
+                    //   - Tooltip clarifies which probability you're seeing
+                    const usePerGame = Number.isFinite(hc.projectedHrPerGame);
+                    const tier = usePerGame ? hc.tierPerGame : hc.tier;
+                    const label = usePerGame
+                      ? (hc.tierLabelPerGame || (hc.tierPerGame ? hc.tierPerGame.toUpperCase() : null))
+                      : (hc.tierLabel || (hc.tier ? hc.tier.toUpperCase() : ''));
+                    if (!label || !tier) return '';
+                    const displayProb = usePerGame ? hc.projectedHrPerGame : hc.projectedHrPerPa;
+                    const displayPct = displayProb != null ? (displayProb * 100).toFixed(1) + '%' : null;
+                    const probSource = usePerGame ? 'P(HR≥1) per game' : 'HR/PA';
+                    const perPaNote = usePerGame && hc.projectedHrPerPa != null
+                      ? ` · ${(hc.projectedHrPerPa * 100).toFixed(1)}% per-PA`
+                      : '';
+                    const tooltipBits = [
+                      `HR ${label}`,
+                      displayPct ? `${displayPct} ${probSource}` : 'projected',
+                      hc.expectedPaForHrTier ? `${hc.expectedPaForHrTier.toFixed(1)} expected PA` : null,
+                      hc.score ? `Score ${hc.score}` : null
+                    ].filter(Boolean).join(' · ') + perPaNote;
+                    return `<span class="hr-badge ${tier}" title="${tooltipBits}">${hc.emoji || ''} HR ${label}${displayPct ? ` <span class="hr-rate">${displayPct}</span>` : ''}${hc.score ? ` <span class="hr-rate" style="opacity:0.85; font-variant-numeric: tabular-nums; padding-left:2px; border-left:1px solid currentColor; margin-left:4px">${hc.score}</span>` : ''}</span>`;
+                  })(m.hrChance) : ''}
                   ${m.hitter}<span class="hand">${m.hand || ''}</span>
                   ${hasActionableSituational ? `<button class="deep-dive-btn" onclick='openDeepDive(${deepDiveCtx})' title="Situational splits">◎ DEEP DIVE</button>` : ''}
                 </div>
