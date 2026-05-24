@@ -23,6 +23,7 @@ import { fetchPitcherPropsLines, getPitcherLinesByName } from './_lib/pitcherPro
 import { tryAuth, checkAndIncrementQuota, AuthError } from './_lib/auth.js';
 import { computeHitProbability, computeHrProbability, computeXbhProbability } from './_lib/contactProbability.js';
 import { computeCompoundProbabilities } from './_lib/compoundProbability.js';
+import { getGameEcosystems } from './_lib/teamEcosystem.js';
 import { computeAirDensity, adjustPitcherArsenal, getEnvironmentNarrative } from './_lib/altitudeEngine.js';
 
 // PITCHER'S DUEL FIX (May 9, 2026)
@@ -343,6 +344,26 @@ export default async function handler(req, res) {
     // proceed with projection-only (graceful degradation). Resolved AFTER side processing
     // and applied post-hoc to grade projections against book lines.
     const propsLinesPromise = fetchPitcherPropsLines().catch(() => null);
+
+    // TEAM ECOSYSTEM FETCH (May 23, 2026)
+    //
+    // Fetches season-to-date team OBP, R/G, LOB/G, and OPS for both teams in
+    // the game. Used downstream by the compound engine to:
+    //   - Adjust expectedPa via lineup continuation factor
+    //   - Set rPerOnBase (hitter's actual scoring rate from teammate context)
+    //   - Compute fragility score (dead offenses penalize compound props)
+    //
+    // Cached 12h per team. Falls back to league averages on fetch failure.
+    // Resolves before per-side processing so each side gets its ecosystem.
+    const ecosystemsPromise = getGameEcosystems(
+      game.awayTeam?.id,
+      game.homeTeam?.id,
+      season
+    ).catch(err => {
+      console.warn('[ecosystem] fetch failed, using league fallback:', err?.message);
+      return { away: null, home: null };
+    });
+    const ecosystems = await ecosystemsPromise;
 
     // Process both sides in parallel using helpers directly (no HTTP)
     const sideResults = await Promise.all(sides.map(async s => {
@@ -785,7 +806,16 @@ export default async function handler(req, res) {
           adjustments,
           tier,
           bullpenMaxXwoba,
-          bullpenTier
+          bullpenTier,
+          // TEAM ECOSYSTEM (May 23, 2026)
+          // s.side determines which team is hitting. The hitter belongs to
+          // s.side's team — pass that team's ecosystem (OBP, R/G, LOB/G)
+          // so the compound engine can adjust expectedPa and fragility.
+          teamEcosystem: s.side === 'away' ? ecosystems.away : ecosystems.home,
+          // gameTotal is not yet available at this point (odds resolved later).
+          // The compound engine handles null gracefully — it just skips the
+          // game-total PA adjustment factor and relies on ecosystem + pitcher K%.
+          gameTotal: null
         });
 
         return {
@@ -2409,7 +2439,7 @@ function thresholdFromLine(label) {
   return Math.floor(lineValue) + 1;
 }
 
-function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, parkFactor, adjustments, tier, bullpenMaxXwoba, bullpenTier }) {
+function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, parkFactor, adjustments, tier, bullpenMaxXwoba, bullpenTier, teamEcosystem, gameTotal }) {
   if (!tier || matchedPitches.length === 0) return [];
 
   // === CONTACT PROBABILITY ENGINE (May 18, 2026) — SHADOW MODE ===
@@ -2591,10 +2621,25 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
         hitterHbpPct: parseFloat(overall.hbp_percent?.value || 1.2),
         sprintSpeed: parseFloat(overall.sprint_speed?.value || 27),
         // Game context
-        expectedPa: expectedPaForLineupSlot(hitter?.battingOrder)
-        // Conditional R/PA, RBI/PA, SB/PA fall back to league averages.
-        // Adding hitter-specific rates would require extra Statcast fields;
-        // current engine uses defensible league averages until that's wired.
+        expectedPa: expectedPaForLineupSlot(hitter?.battingOrder),
+        // TEAM ECOSYSTEM (May 23, 2026) — phases out fragile-offense false positives
+        //
+        // teamEcosystem comes from the parent analyzeGame ecosystem fetch.
+        // null is acceptable — engine falls back to league averages but applies
+        // an uncertainty penalty in fragility scoring.
+        //
+        // opposingPitcherKPct uses _matchedPitcherK (arsenal-weighted) when
+        // available — most accurate signal for THIS pitcher vs THIS lineup,
+        // not season average.
+        //
+        // gameTotal is the market line (8.5 = league avg). When unavailable
+        // (typical at prop-build time before odds are awaited), null is
+        // graceful — engine uses pitcher K + ecosystem alone to adjust PA.
+        teamEcosystem,
+        opposingPitcherKPct: _matchedPitcherK != null
+          ? _matchedPitcherK
+          : parseFloat(_pitcherInfo.pitcherKPct || _pitcherInfo.kPct || 22.5),
+        gameTotal
       });
     } catch (err) {
       console.warn('[compoundEngine] computation failed:', err.message);
@@ -2823,6 +2868,25 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
       p.compoundExpected = _pCompound.udFs.expected;
     }
 
+    // FRAGILITY ATTACHMENT (May 23, 2026)
+    //
+    // Attach fragility metadata to EVERY prop when the compound engine ran.
+    // Fragility describes the ecosystem the hitter is embedded in — that
+    // applies equally to compound props (HRR, FS) AND single-stat props
+    // (HITS, R, RBI). A Sheets HITS 0.5 over is fragile for the same reason
+    // a Sheets HRR 1.5 over is fragile: low team OBP suppresses PA count,
+    // which suppresses per-game probability across every prop.
+    //
+    // Client uses `p.fragility.eliminationTier` to refuse the ★ BEST badge
+    // on props with tier='eliminated' regardless of nominal probability.
+    if (_pCompound) {
+      p.fragility = {
+        score: _pCompound.fragility.score,
+        tier: _pCompound.fragility.eliminationTier,
+        pathwayDiversity: _pCompound.pathways.diversity
+      };
+    }
+
     // Audit fields — always attached when contact engine ran successfully,
     // regardless of whether this specific prop is one of the H/R/HR/TB/RBI
     // keys that gets a probability.
@@ -2872,10 +2936,18 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
         // COMPOUND PROBABILITY SUMMARY (May 23, 2026)
         // Full Monte Carlo output for diagnostics. Used by UI to show
         // expected fantasy score / distribution percentiles on prop tooltips.
+        // Extended (May 23, 2026 — structural overhaul):
+        //   pathways  → which pathways cleared the prop (diagnoses fragility)
+        //   fragility → 0-100 score + tier (eligible/caution/eliminated)
+        //   ecosystem → team OBP/R/G used to adjust expectedPa
         compound: _pCompound ? {
           hrr: _pCompound.hrr,
           ppFs: _pCompound.ppFs,
           udFs: _pCompound.udFs,
+          pathways: _pCompound.pathways,
+          fragility: _pCompound.fragility,
+          ecosystem: _pCompound.audit.teamEcosystem,
+          expectedPaAdjustment: _pCompound.audit.expectedPaAdjustment,
           nTrials: _pCompound.audit.nTrials
         } : null
       };

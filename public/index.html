@@ -2957,16 +2957,46 @@ function applyMlbEngineRanking(propRecs, activeEngine) {
     p.probRank = pIdx >= 0 ? pIdx : null;                   // null if no probability
   });
 
-  // Determine the active top pick. In 'prob' mode, fall back to score if no
-  // prop has a probability (shouldn't happen on hitter cards, but defensive).
-  let topPropForEngine;
-  if (activeEngine === 'prob' && byProb.length > 0) {
-    topPropForEngine = byProb[0];
-  } else {
-    topPropForEngine = byScore[0];
+  // FRAGILITY-BASED ELIMINATION RULE (May 23, 2026)
+  //
+  // The compound engine attaches `p.fragility = { score, tier, ... }` to
+  // every prop when ecosystem data is available. Props with tier='eliminated'
+  // (fragility score > 45) are refused the ★ BEST badge regardless of their
+  // nominal probability or score. This is the structural fix that phases out
+  // false-positive plays like Sheets/Langeliers HRR overs that grade high
+  // because of strong individual hitter metrics but fail because the team
+  // ecosystem can't sustain inning extension / runner conversion.
+  //
+  // Caution-tier props (fragility 25-45) are still eligible but get a visual
+  // warning chip — user retains agency, model expresses doubt.
+  //
+  // If ALL props on a card are eliminated, we fall back to the least-fragile
+  // prop (highest probability among those) and accept the BEST badge there,
+  // since refusing to recommend anything breaks the UX flow. The user will
+  // see a fragility warning on that pick.
+  function isEliminated(prop) {
+    return prop?.fragility?.tier === 'eliminated';
+  }
+  function isEligibleForBest(prop) {
+    // A prop is eligible for ★ BEST if fragility is not 'eliminated'.
+    // 'caution' tier is allowed — it gets a visual warning but can be top.
+    return !isEliminated(prop);
   }
 
-  // Update isBest based on the active engine's #1 pick
+  // Determine the active top pick, applying elimination filter.
+  // In 'prob' mode: pick highest-probability prop that's not eliminated.
+  // In 'score' mode: pick highest-scoring prop that's not eliminated.
+  // Fall back to nominal #1 if every prop is eliminated (avoid empty BEST).
+  let topPropForEngine;
+  if (activeEngine === 'prob' && byProb.length > 0) {
+    const probEligible = byProb.filter(isEligibleForBest);
+    topPropForEngine = probEligible.length > 0 ? probEligible[0] : byProb[0];
+  } else {
+    const scoreEligible = byScore.filter(isEligibleForBest);
+    topPropForEngine = scoreEligible.length > 0 ? scoreEligible[0] : byScore[0];
+  }
+
+  // Update isBest based on the active engine's #1 pick (after elimination)
   propRecs.forEach(p => {
     p.isBest = (p === topPropForEngine);
   });
@@ -3996,12 +4026,39 @@ function renderAnalysis(data) {
                       const chipBg = isScoreBest ? '#dbeafe' : '#f3f4f6';
                       secondaryRankChip = `<span class="pp-altrank" style="background:${chipBg};color:${chipColor};font-size:9px;padding:1px 5px;border-radius:3px;letter-spacing:0.04em;font-weight:600;margin-left:4px" title="Legacy heuristic score rank for this prop (lower = stronger)">S#${p.scoreRank + 1}</span>`;
                     }
+
+                    // FRAGILITY CHIP (May 23, 2026)
+                    //
+                    // Surfaces the compound engine's fragility tier for this
+                    // prop. Three tiers:
+                    //   - 'eliminated' (red): refused ★ BEST badge. Dead
+                    //     offense, low PA, HR-dependency cluster — likely fail.
+                    //   - 'caution' (amber): can still be top pick but model
+                    //     expresses doubt. Sheets/Langeliers-class plays.
+                    //   - 'eligible' (omitted): no chip — fragility is low.
+                    //
+                    // Tooltip includes the numeric score (0-100) and pathway
+                    // diversity for diagnostics.
+                    let fragilityChip = '';
+                    if (p.fragility) {
+                      const tier = p.fragility.tier;
+                      const score = p.fragility.score;
+                      const div = p.fragility.pathwayDiversity;
+                      const divPct = div != null ? (div * 100).toFixed(0) + '%' : '?';
+                      const tipBase = `Fragility ${score}/100, pathway diversity ${divPct}`;
+                      if (tier === 'eliminated') {
+                        fragilityChip = `<span class="pp-fragility eliminated" style="background:#fee2e2;color:#991b1b;font-size:9px;padding:1px 5px;border-radius:3px;letter-spacing:0.04em;font-weight:600;margin-left:4px" title="${tipBase} — eliminated from ★ BEST eligibility. Likely fail due to ecosystem/PA constraints.">⚠ FRAGILE</span>`;
+                      } else if (tier === 'caution') {
+                        fragilityChip = `<span class="pp-fragility caution" style="background:#fef3c7;color:#92400e;font-size:9px;padding:1px 5px;border-radius:3px;letter-spacing:0.04em;font-weight:600;margin-left:4px" title="${tipBase} — caution tier. Ecosystem or pathway concerns.">CAUTION</span>`;
+                      }
+                    }
                     return `
                     <div class="prop-pill ${p.isBest ? 'best' : ''}">
                       ${p.platform ? `<span class="pp-platform ${p.platform}">${p.platform}</span>` : ''}
                       <span class="pp-key">${p.label}</span>
                       ${p.probability != null ? `<span class="pp-prob ${probTier(p.probability, p.probabilityBaseline)}" title="Per-game probability: ${(p.probability*100).toFixed(1)}% (baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(1) : '?'}%${p.probabilityPerPa != null ? ', per-PA rate ' + (p.probabilityPerPa*100).toFixed(1) + '%' : ''}${p.expectedPa != null ? ', expected PA ' + p.expectedPa.toFixed(1) : ''})">${(p.probability*100).toFixed(0)}%</span>` : ''}
                       ${secondaryRankChip}
+                      ${fragilityChip}
                       <span class="pp-reason">${p.reason}</span>
                     </div>
                   `;

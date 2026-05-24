@@ -464,6 +464,18 @@ export function computeCompoundProbabilities(input) {
     rPerOnBase, rbiPerHit, rbiPerHr, sbPerPa,
     // Game context
     expectedPa,
+    // TEAM ECOSYSTEM (May 23, 2026) — phases out fragile-offense false positives
+    //
+    // If provided, these adjust:
+    //   - expectedPa (lineupContinuationFactor)
+    //   - rPerOnBase (team's actual scoring conversion rate)
+    //   - fragility score (low-OBP/low-RPG teams penalize compound props)
+    //
+    // Pass null/undefined for backward compatibility — engine falls back to
+    // league averages when ecosystem is missing.
+    teamEcosystem,            // { obp, runsPerGame, lobPerGame, risp, ops, ... }
+    opposingPitcherKPct,      // for PA modeling (high-K pitcher kills lineup turnover)
+    gameTotal,                // market total runs (proxy for overall offensive env)
     // Performance
     nTrials = N_TRIALS_DEFAULT,
     seed = null
@@ -488,20 +500,73 @@ export function computeCompoundProbabilities(input) {
 
   const cumDist = buildCumulativeDist(perPaEvents);
 
+  // Resolve conditional rates. Team ecosystem (if provided) overrides league
+  // fallback on rPerOnBase — the hitter's actual scoring rate after reaching
+  // base depends on his teammates, not the league.
+  const effectiveRPerOnBase = num(rPerOnBase,
+    teamEcosystem ? teamRunConversionFromEcosystem(teamEcosystem) : LEAGUE.rPerOnBase
+  );
+
   const hitterRates = {
-    rPerOnBase: num(rPerOnBase, LEAGUE.rPerOnBase),
+    rPerOnBase: effectiveRPerOnBase,
     rbiPerHit:  num(rbiPerHit, LEAGUE.rbiPerHit),
     rbiPerHr:   num(rbiPerHr, LEAGUE.rbiPerHr),
     sbPerPa:    num(sbPerPa, LEAGUE.pSB)
   };
 
-  const ePa = clamp(num(expectedPa, 4.0), 1, 8);
+  // Dynamic expectedPa: adjust the lineup-slot default based on ecosystem.
+  // A leadoff hitter on a 0.260-OBP team doesn't actually get 4.4 PA — they
+  // get more like 3.7. A leadoff on a 0.350-OBP team gets 4.6-4.8.
+  //
+  // Inputs that modify expectedPa:
+  //   - lineupContinuation (team OBP) — extends/cuts innings
+  //   - opp pitcher K rate — high-K pitcher kills lineup turnover
+  //   - game total — proxy for overall scoring environment
+  let ePaAdjusted = num(expectedPa, 4.0);
+  let paAdjustmentAudit = { base: ePaAdjusted, factors: {} };
+  if (teamEcosystem) {
+    const lineupFactor = lineupContinuationFromEcosystem(teamEcosystem);
+    ePaAdjusted *= lineupFactor;
+    paAdjustmentAudit.factors.lineupContinuation = round3(lineupFactor);
+  }
+  if (Number.isFinite(opposingPitcherKPct)) {
+    // High-K pitcher kills lineup turnover. League avg K rate ~22.5%; a 30%
+    // K pitcher costs ~0.1 PA per game; a 35% K pitcher ~0.2 PA.
+    const kFactor = 1 - Math.max(0, (opposingPitcherKPct - 22.5) / 100) * 0.6;
+    ePaAdjusted *= kFactor;
+    paAdjustmentAudit.factors.pitcherKDrag = round3(kFactor);
+  }
+  if (Number.isFinite(gameTotal)) {
+    // Game total proxy. League avg total ~8.5; 7.5 total games run ~5% shorter
+    // (fewer offensive opportunities), 10+ total games run longer.
+    const totalFactor = Math.pow(gameTotal / 8.5, 0.18);
+    ePaAdjusted *= totalFactor;
+    paAdjustmentAudit.factors.gameTotal = round3(totalFactor);
+  }
+  paAdjustmentAudit.final = round3(ePaAdjusted);
+
+  const ePa = clamp(ePaAdjusted, 1, 8);
   const rng = makeRng(seed != null ? seed : Date.now());
 
-  // Run trials
-  const hrrCounts = [];  // H+R+RBI per trial
+  // Run trials — and track WHICH PATHWAY cleared HRR each trial.
+  // Pathway categories (mutually exclusive — assigned by checking in order):
+  //   HR_PATH       : at least 1 HR in the trial (HR alone produces HRR=3)
+  //   MULTI_HIT_PATH: 2+ hits without a HR (multi-hit drives compound)
+  //   RBI_PATH      : 1 hit + ≥2 RBI (XBH-driven, no HR)
+  //   WALK_RUN_PATH : reached via BB/HBP + scored
+  //   SINGLE_EVENT  : everything else that cleared (fragile — depends on 1 thing)
+  //   DID_NOT_CLEAR : trial didn't hit HRR ≥ 2
+  const hrrCounts = [];
   const ppFsValues = [];
   const udFsValues = [];
+  const pathwayCounts = {
+    HR_PATH: 0,
+    MULTI_HIT_PATH: 0,
+    RBI_PATH: 0,
+    WALK_RUN_PATH: 0,
+    SINGLE_EVENT: 0,
+    DID_NOT_CLEAR: 0
+  };
 
   for (let t = 0; t < nTrials; t++) {
     const stats = simulateOneGame(cumDist, ePa, hitterRates, rng);
@@ -509,6 +574,22 @@ export function computeCompoundProbabilities(input) {
     hrrCounts.push(hrr);
     ppFsValues.push(calcFs(stats, PP_WEIGHTS));
     udFsValues.push(calcFs(stats, UD_WEIGHTS));
+
+    // Classify pathway for THIS trial (against the HRR 1.5 line specifically)
+    if (hrr < 2) {
+      pathwayCounts.DID_NOT_CLEAR++;
+    } else if (stats.HR >= 1) {
+      pathwayCounts.HR_PATH++;
+    } else if (stats.H >= 2) {
+      pathwayCounts.MULTI_HIT_PATH++;
+    } else if (stats.RBI >= 2) {
+      pathwayCounts.RBI_PATH++;
+    } else if ((stats.BB + stats.hbp) >= 1 && stats.R >= 1) {
+      pathwayCounts.WALK_RUN_PATH++;
+    } else {
+      // Cleared via 1 hit + 1 R or 1 hit + 1 RBI (single pathway dependency)
+      pathwayCounts.SINGLE_EVENT++;
+    }
   }
 
   // Extract probabilities
@@ -528,6 +609,107 @@ export function computeCompoundProbabilities(input) {
     return sum / arr.length;
   }
 
+  // PATHWAY DIVERSITY (entropy of clearing pathways)
+  //
+  // Compute Shannon entropy across the 5 clearing pathways (excluding
+  // DID_NOT_CLEAR). Maximum entropy = ln(5) ≈ 1.609. Normalize to [0,1].
+  //
+  // A prop that clears 80% of the time but EVERY clear is the same pathway
+  // (e.g. 100% HR_PATH) has diversity 0. A prop that clears via roughly
+  // equal proportions of HR/multi-hit/RBI/walk-run/single-event has diversity
+  // near 1.0 — much more robust.
+  const clearingPathways = ['HR_PATH', 'MULTI_HIT_PATH', 'RBI_PATH', 'WALK_RUN_PATH', 'SINGLE_EVENT'];
+  const totalCleared = nTrials - pathwayCounts.DID_NOT_CLEAR;
+  let pathwayDiversity = 0;
+  const pathwayShares = {};
+  if (totalCleared > 0) {
+    let entropy = 0;
+    for (const path of clearingPathways) {
+      const share = pathwayCounts[path] / totalCleared;
+      pathwayShares[path] = round3(share);
+      if (share > 0) {
+        entropy -= share * Math.log(share);
+      }
+    }
+    pathwayDiversity = entropy / Math.log(clearingPathways.length);
+  }
+
+  // FRAGILITY SCORE (May 23, 2026)
+  //
+  // 0-100 score. Higher = more fragile = more likely to bust despite a
+  // headline probability that looks fine. Computed from:
+  //
+  //   - Low pathway diversity (depends on one outcome firing)         30 pts
+  //   - Weak team ecosystem (lineup doesn't extend/convert)            25 pts
+  //   - Low expected PA (compounds all probabilities downward)         15 pts
+  //   - HR-pathway-only with low actual HR floor                       10 pts
+  //   - Heavy single-event dependency                                  10 pts
+  //   - High K-cluster risk (matched K% in punch-out territory)        10 pts
+  //
+  // Capped at 100. Elimination rule applied downstream (selection logic
+  // refuses to mark `isBest=true` on props with fragility > 60).
+  let fragility = 0;
+  const fragilityComponents = {};
+
+  // Component 1: pathway diversity
+  const pathwayPenalty = Math.max(0, (1 - pathwayDiversity)) * 30;
+  fragility += pathwayPenalty;
+  fragilityComponents.pathwayDiversity = round2(pathwayPenalty);
+
+  // Component 2: ecosystem weakness
+  //
+  // Calibration target: a Sheets/Langeliers-class dead-offense ecosystem
+  // (OBP ~0.265, RPG ~3.3) should land near the 15-18 pt range here. That,
+  // combined with pathway/PA penalties, lifts the prop into the caution tier.
+  // Coefficient bumped from 50 → 75 to make ecosystem weakness the dominant
+  // fragility predictor, since it's the single strongest signal for false
+  // positives.
+  if (teamEcosystem) {
+    const obpRatio = (teamEcosystem.obp || 0.318) / 0.318;
+    const rpgRatio = (teamEcosystem.runsPerGame || 4.45) / 4.45;
+    const ecosystemHealth = (obpRatio + rpgRatio) / 2;  // 1.0 = league avg
+    const ecosystemPenalty = Math.max(0, (1 - ecosystemHealth)) * 75;
+    fragility += Math.min(25, ecosystemPenalty);
+    fragilityComponents.ecosystemWeakness = round2(Math.min(25, ecosystemPenalty));
+  } else {
+    // No ecosystem data — apply a moderate uncertainty penalty
+    fragility += 8;
+    fragilityComponents.ecosystemWeakness = 8;
+  }
+
+  // Component 3: low expected PA
+  const paShortfall = Math.max(0, 4.0 - ePa);
+  const paPenalty = paShortfall * 10;  // ~3pp PA shortfall = 10 pts
+  fragility += Math.min(15, paPenalty);
+  fragilityComponents.lowExpectedPa = round2(Math.min(15, paPenalty));
+
+  // Component 4: HR-dependency penalty (when the prop clears MOSTLY via HR)
+  const hrPathDominance = totalCleared > 0 ? pathwayCounts.HR_PATH / totalCleared : 0;
+  if (hrPathDominance > 0.5) {
+    // Penalty scales with how dominant the HR path is
+    const hrDepPenalty = (hrPathDominance - 0.5) * 20;
+    fragility += Math.min(10, hrDepPenalty);
+    fragilityComponents.hrDependency = round2(Math.min(10, hrDepPenalty));
+  } else {
+    fragilityComponents.hrDependency = 0;
+  }
+
+  // Component 5: single-event dependency
+  const singleEventShare = totalCleared > 0 ? pathwayCounts.SINGLE_EVENT / totalCleared : 0;
+  const singleEvPenalty = singleEventShare * 25;  // ~40% single-event = 10 pts
+  fragility += Math.min(10, singleEvPenalty);
+  fragilityComponents.singleEventDependency = round2(Math.min(10, singleEvPenalty));
+
+  // Component 6: K-cluster risk (high matched K% punch-out hitters)
+  const matchedK = num(hitterKPct, 22.5);
+  let kPenalty = 0;
+  if (matchedK > 28) kPenalty = Math.min(10, (matchedK - 28) * 1.0);
+  fragility += kPenalty;
+  fragilityComponents.kClusterRisk = round2(kPenalty);
+
+  // Cap at 100
+  fragility = Math.min(100, fragility);
+
   return {
     hrr: {
       p15: round3(pAtLeast(hrrCounts, 2)),    // ≥ 2 (over 1.5)
@@ -537,7 +719,7 @@ export function computeCompoundProbabilities(input) {
       p90: percentile(hrrCounts, 0.9)
     },
     ppFs: {
-      p6: round3(pAtLeast(ppFsValues, 6.5)),  // over 6 → ≥ 6.5 (PP FS lines are integer)
+      p6: round3(pAtLeast(ppFsValues, 6.5)),
       p7: round3(pAtLeast(ppFsValues, 7.5)),
       p8: round3(pAtLeast(ppFsValues, 8.5)),
       expected: round2(mean(ppFsValues)),
@@ -552,16 +734,59 @@ export function computeCompoundProbabilities(input) {
       p50: round2(percentile(udFsValues, 0.5)),
       p90: round2(percentile(udFsValues, 0.9))
     },
+    // NEW: pathway decomposition and fragility (May 23, 2026)
+    pathways: {
+      shares: pathwayShares,
+      diversity: round3(pathwayDiversity),
+      hrPathDominance: round3(hrPathDominance)
+    },
+    fragility: {
+      score: round2(fragility),
+      components: fragilityComponents,
+      // Tier thresholds calibrated against archetypal profiles (May 23, 2026):
+      //   Trout/Marte class (good hitter + elite ecosystem): scores 5-15
+      //   League-avg ecosystem, average hitter: scores 15-25
+      //   Sheets/Langeliers class (dead ecosystem, fragile profile): scores 25-45
+      //   Worst case (dead eco + low PA + high K + HR-dep): scores 45-70+
+      // Thresholds set so Sheets-class lands in caution and worst-case lands
+      // in eliminated, while normal mid-pack hitters stay eligible.
+      eliminationTier: fragility > 45 ? 'eliminated'
+                     : fragility > 25 ? 'caution'
+                     : 'eligible'
+    },
     audit: {
       perPaEvents,
       cumDist: cumDist.map(c => ({ event: c.event, cumProb: round3(c.cumProb) })),
       expectedPa: ePa,
+      expectedPaAdjustment: paAdjustmentAudit,
       hitterRates,
+      teamEcosystem: teamEcosystem ? {
+        obp: teamEcosystem.obp,
+        runsPerGame: teamEcosystem.runsPerGame,
+        rPerOnBaseUsed: effectiveRPerOnBase
+      } : null,
       nTrials,
       // Sanity: sum should be ~1.0
-      distSum: round3(sum)
+      distSum: round3(sum),
+      pathwayCounts
     }
   };
+}
+
+// Helper: derive scoring conversion rate from ecosystem (avoiding circular import)
+function teamRunConversionFromEcosystem(eco) {
+  if (!eco || !Number.isFinite(eco.runsPerGame) || !Number.isFinite(eco.lobPerGame)) {
+    return LEAGUE.rPerOnBase;
+  }
+  const total = eco.runsPerGame + eco.lobPerGame;
+  if (total <= 0) return LEAGUE.rPerOnBase;
+  return Math.max(0.20, Math.min(0.42, eco.runsPerGame / total));
+}
+
+// Helper: derive lineup-continuation factor from ecosystem
+function lineupContinuationFromEcosystem(eco) {
+  if (!eco || !Number.isFinite(eco.obp)) return 1.0;
+  return Math.pow(eco.obp / 0.318, 0.7);
 }
 
 function round2(x) { return Math.round(x * 100) / 100; }
