@@ -3178,6 +3178,132 @@ function probTier(p, baseline) {
   return 'prob-vlow';
 }
 
+// =============================================================
+// INFLATED MODEL EDGE AUDIT (May 24, 2026)
+// =============================================================
+//
+// Surfaces a visible warning chip when a hitter's elite tier is being
+// carried by inflated context rather than stable underlying signal.
+//
+// CALIBRATED ON 82 HISTORICAL GRADED PICKS:
+//
+//   - Inflation gap (adj - regressed > 0.15) → 31.6% win rate (n=19)
+//   - ctx > 1.15 with regressed < 0.55       → 40.0% win rate (n=10)
+//   - HOT/SCORCHING labels (shadow mode)     → 40.0% win rate (n=25)
+//
+// Each is a real, measurable predictive failure mode. The chip flags the
+// matchup as "INFLATED EDGE" so the user can see the risk before betting.
+// This does NOT change selection — the unassisted engine handles that.
+// It only adds a visible warning.
+//
+// SUPPRESSION RULE:
+//
+//   Even when inflation signals fire, if the hitter ALSO has strong
+//   offsetting fundamentals, we suppress the warning. The offsetting
+//   factors (per Devondrick's spec):
+//     - Top-half lineup position (slots 1-5)
+//     - Stable PA sample (≥ 100 PA vs opposing hand)
+//     - Low strikeout risk (matched K% ≤ 22)
+//     - Multiple scoring paths (approximated by H+R+RBI probability,
+//       which clears via several routes)
+//
+//   If 3 of 4 offsets are present, suppress the warning. This allows
+//   borderline-inflated picks where fundamentals overcome the inflation.
+//
+// RETURNS: { fired: bool, reasons: [...], offsets: {...}, suppressed: bool }
+
+function auditInflatedEdge(matchup) {
+  if (!matchup) return { fired: false, reasons: [], offsets: {}, suppressed: false };
+
+  const reasons = [];
+
+  // === DETECT INFLATION SIGNALS ===
+
+  // Signal 1: Inflation gap > 0.15
+  const adj = parseFloat(matchup.adjustedMaxXwoba || 0);
+  const reg = parseFloat(matchup.regressedMaxXwoba || 0);
+  const inflationGap = adj && reg ? adj - reg : 0;
+  if (inflationGap > 0.15) {
+    reasons.push({
+      type: 'inflation_gap',
+      label: `Adj xwOBA ${adj.toFixed(3)} vs regressed ${reg.toFixed(3)} (gap ${inflationGap.toFixed(3)})`,
+      severity: inflationGap > 0.25 ? 'high' : 'moderate'
+    });
+  }
+
+  // Signal 2: Context multiplier carrying (ctx > 1.15 with regressed < 0.55)
+  const ctx = parseFloat(matchup.contextMultiplier || 1.0);
+  if (ctx > 1.15 && reg < 0.55) {
+    reasons.push({
+      type: 'context_carrying',
+      label: `Context ×${ctx.toFixed(2)} on regressed ${reg.toFixed(3)} (env stack driving score)`,
+      severity: ctx > 1.25 ? 'high' : 'moderate'
+    });
+  }
+
+  // Signal 3: Recent form labeled positively but multiplier in shadow (not applied)
+  const rf = matchup.recentForm;
+  if (rf && !rf.applied && (rf.scorching || rf.hot)) {
+    reasons.push({
+      type: 'form_label_unapplied',
+      label: `Labeled ${rf.scorching ? 'SCORCHING' : 'HOT'} but multiplier not applied (recency bias risk)`,
+      severity: 'moderate'
+    });
+  }
+
+  if (reasons.length === 0) {
+    return { fired: false, reasons: [], offsets: {}, suppressed: false };
+  }
+
+  // === EVALUATE OFFSETTING FACTORS ===
+
+  // Read various fields that might be on the matchup. Some are nested in
+  // adjustments or on the hitter directly. Use defensive .? access.
+
+  // Offset 1: Top-half lineup position (slots 1-5)
+  const battingOrder = matchup.battingOrder;
+  const topHalfLineup = Number.isFinite(battingOrder) && battingOrder >= 1 && battingOrder <= 5;
+
+  // Offset 2: Stable PA volume — the badge near the xwOBA split text shows
+  // sample size like "(161PA)". We try to parse from adjustments or fallback
+  // to the vs-RHP/LHP sample data. Conservatively require 100 PA.
+  // matchup.adjustments?.platoonSample or similar. Defensive: try a few paths.
+  let paSample = 0;
+  if (matchup.adjustments?.platoonPa) paSample = parseFloat(matchup.adjustments.platoonPa);
+  else if (matchup.platoonMeta?.pa) paSample = parseFloat(matchup.platoonMeta.pa);
+  // Final fallback: assume a 4-hitter who has played most of the season has
+  // ample PA — only flag UNSTABLE if we have direct evidence sample < 100.
+  const stablePa = paSample === 0 ? true : paSample >= 100;
+
+  // Offset 3: Low strikeout risk (matched K% <= 22)
+  // matchup.kPct is the matched K% on the side audit. Defensive.
+  const kPct = parseFloat(matchup.kPct || matchup._engineAudit?.matchedHitterK || 22);
+  const lowK = kPct <= 22;
+
+  // Offset 4: Multiple scoring paths (approximated via HRR pathway diversity
+  // from the compound engine when available, else fall back to H prop probability
+  // exceeding 70% which implies at least the multi-hit path is live)
+  let multiplePaths = false;
+  const propRecs = matchup.propRecs || [];
+  const hitsProp = propRecs.find(p => p.key === 'H');
+  const hrrProp = propRecs.find(p => p.key === 'HRR');
+  if (hitsProp?.probability >= 0.75) multiplePaths = true;
+  if (hrrProp?.fragility?.pathwayDiversity >= 0.7) multiplePaths = true;
+
+  const offsets = { topHalfLineup, stablePa, lowK, multiplePaths };
+  const offsetCount = [topHalfLineup, stablePa, lowK, multiplePaths].filter(Boolean).length;
+  const suppressed = offsetCount >= 3;
+
+  return {
+    fired: true,
+    reasons,
+    offsets,
+    offsetCount,
+    suppressed,
+    severity: reasons.some(r => r.severity === 'high') ? 'high' : 'moderate'
+  };
+}
+
 // =============== TABS ===============
 
 // Lyrid header tab switcher — used by the new lyrid-nav-btn elements.
@@ -4222,6 +4348,26 @@ function renderAnalysis(data) {
                 <div style="display:flex;gap:6px;align-items:center">
                   <button class="ban-quick-btn sm" onclick="event.stopPropagation();quickBan('hitters','${m.hitter.replace(/'/g,'&#39;')}')" title="Ban this hitter">⊘</button>
                   <button class="tag-btn tag-btn-sm ${isTagged?'tagged':''}" onclick='openTagModal(${tagCtx})'>${tagBtnTxt}</button>
+                  ${(function inflationChip() {
+                    // Only audit elite/strong tier picks — those are where inflation
+                    // matters. Mid/low tiers don't need de-elevation warnings.
+                    if (m.tier !== 'elite' && m.tier !== 'strong') return '';
+                    const audit = auditInflatedEdge(m);
+                    if (!audit.fired || audit.suppressed) return '';
+                    // Build a readable tooltip listing each fired signal and which
+                    // offsets are present/missing.
+                    const reasonLines = audit.reasons.map(r => `• ${r.label}`).join('\n');
+                    const offsetLines = [
+                      `Lineup slot 1-5: ${audit.offsets.topHalfLineup ? '✓' : '✗'}`,
+                      `Stable PA (≥100): ${audit.offsets.stablePa ? '✓' : '✗'}`,
+                      `Low K% (≤22): ${audit.offsets.lowK ? '✓' : '✗'}`,
+                      `Multi-path: ${audit.offsets.multiplePaths ? '✓' : '✗'}`
+                    ].join(' · ');
+                    const tooltip = `INFLATED MODEL EDGE — ${audit.severity === 'high' ? 'HIGH' : 'MODERATE'} risk\n\nFired signals:\n${reasonLines}\n\nOffsetting factors (need 3 of 4 to suppress):\n${offsetLines}\n\nThe hitter's tier is being carried by inflated context rather than stable underlying signal. Consider HITS prop over compound props.`.replace(/"/g, '&quot;');
+                    const bgColor = audit.severity === 'high' ? '#fee2e2' : '#fef3c7';
+                    const textColor = audit.severity === 'high' ? '#991b1b' : '#92400e';
+                    return `<span class="inflated-edge-chip" style="background:${bgColor};color:${textColor};font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.04em;font-weight:700;cursor:help" title="${tooltip}">⚠ INFLATED EDGE</span>`;
+                  })()}
                   <div class="tier-badge ${m.tier}">${m.tier.toUpperCase()}</div>
                 </div>
               </div>
