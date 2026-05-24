@@ -22,6 +22,7 @@ import { getLineupRispPerformance, applyRispAdjustment, buildLineupConversionTie
 import { fetchPitcherPropsLines, getPitcherLinesByName } from './_lib/pitcherPropsLines.js';
 import { tryAuth, checkAndIncrementQuota, AuthError } from './_lib/auth.js';
 import { computeHitProbability, computeHrProbability, computeXbhProbability } from './_lib/contactProbability.js';
+import { computeCompoundProbabilities } from './_lib/compoundProbability.js';
 import { computeAirDensity, adjustPitcherArsenal, getEnvironmentNarrative } from './_lib/altitudeEngine.js';
 
 // PITCHER'S DUEL FIX (May 9, 2026)
@@ -2547,6 +2548,60 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
   }
   // === END CONTACT PROBABILITY ENGINE ===
 
+  // === COMPOUND PROBABILITY ENGINE (May 23, 2026) ===
+  //
+  // Builds per-game probabilities for compound props that depend on multiple
+  // stat categories at once:
+  //   - H+R+RBI ≥ 1.5 and ≥ 2.5
+  //   - PrizePicks Fantasy Score ≥ 6, ≥ 7, ≥ 8
+  //   - Underdog Fantasy Score ≥ 5, ≥ 6, ≥ 7
+  //
+  // Method: Monte Carlo simulation (5000 trials per hitter, ~5-10ms cost).
+  //   - Builds per-PA event distribution from contact engine outputs + Statcast
+  //     walk/HBP rates
+  //   - Simulates expected PAs per game using lineup-slot-based expected PA
+  //   - Tallies H, R, RBI, BB, HR, doubles, triples, K, SB per trial
+  //   - Computes HRR and FS distributions, extracts probabilities at thresholds
+  //
+  // FS scoring weights from confirmed PP/UD scoring tables (May 23, 2026).
+  //
+  // Inputs:
+  //   - pHit, pHr, pXbh from contact engine (per-PA rates)
+  //   - hitterKPct from matched K% (or season fallback)
+  //   - hitterBBPct from Statcast bb_percent
+  //   - hitterHbpPct from Statcast hbp_percent (fallback ~1.2%)
+  //   - sprintSpeed from Statcast sprint_speed
+  //   - expectedPa from lineup slot (computed via helper)
+  //
+  // Gracefully returns null if contact engine outputs are unavailable —
+  // compound props then fall back to score-based selection.
+  let _pCompound = null;
+  if (_pHit || _pHr || _pXbh) {
+    try {
+      _pCompound = computeCompoundProbabilities({
+        // Contact engine outputs (per-PA rates) — null-safe
+        pHit: _pHit?.probability,
+        pHr:  _pHr?.probability,
+        pXbh: _pXbh?.probability,
+        // Hitter season rates from Statcast overall
+        hitterKPct: _matchedHitterK != null
+          ? _matchedHitterK
+          : parseFloat(overall.k_percent?.value || 22.5),
+        hitterBBPct: parseFloat(overall.bb_percent?.value || 8.5),
+        hitterHbpPct: parseFloat(overall.hbp_percent?.value || 1.2),
+        sprintSpeed: parseFloat(overall.sprint_speed?.value || 27),
+        // Game context
+        expectedPa: expectedPaForLineupSlot(hitter?.battingOrder)
+        // Conditional R/PA, RBI/PA, SB/PA fall back to league averages.
+        // Adding hitter-specific rates would require extra Statcast fields;
+        // current engine uses defensible league averages until that's wired.
+      });
+    } catch (err) {
+      console.warn('[compoundEngine] computation failed:', err.message);
+    }
+  }
+  // === END COMPOUND PROBABILITY ENGINE ===
+
   const barrel = parseFloat(overall.barrel_batted_rate?.value || 0);
   const hardHit = parseFloat(overall.hard_hit_percent?.value || 0);
   const ev = parseFloat(overall.avg_exit_velocity?.value || 0);
@@ -2701,8 +2756,9 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
   //   H, R       → P(Hit) — at least one hit / accumulates from PA hits
   //   HR         → P(HR)
   //   TB, RBI    → P(XBH) — extra-base-hit probability (most predictive)
-  //   FS_*, HRR  → composite, leave probability null (no clean 1:1 mapping;
-  //                modeling joint distribution would require more work)
+  //   HRR        → compound engine P(H+R+RBI ≥ 2)  [added May 23, 2026]
+  //   PP_FS_6/8  → compound engine P(PP Fantasy Score ≥ line)
+  //   UD_FS_5/7  → compound engine P(UD Fantasy Score ≥ line)
   const _ePa = expectedPaForLineupSlot(hitter?.battingOrder);
   allProps.forEach(p => {
     const _kThreshold = thresholdFromLine(p.label);
@@ -2735,6 +2791,36 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
       p.probabilityBaseline = _pXbh.baseline;
       p.probabilityPerPa = _pXbh.probability;
       p.expectedPa = _ePa;
+    }
+    // COMPOUND PROPS (May 23, 2026)
+    // Use Monte Carlo simulator's per-game probabilities directly. These are
+    // already per-game (1.5 lines, FS lines), no further compounding needed.
+    else if (_pCompound && p.key === 'HRR') {
+      // H+R+RBI 1.5 → P(H+R+RBI ≥ 2)
+      p.probability = _pCompound.hrr.p15;
+      p.probabilityBaseline = null;  // no clean per-PA baseline for compound
+      p.expectedPa = _ePa;
+      p.compoundExpected = _pCompound.hrr.expected;
+    }
+    else if (_pCompound && p.key === 'PP_FS_6') {
+      p.probability = _pCompound.ppFs.p6;
+      p.expectedPa = _ePa;
+      p.compoundExpected = _pCompound.ppFs.expected;
+    }
+    else if (_pCompound && p.key === 'PP_FS_8') {
+      p.probability = _pCompound.ppFs.p8;
+      p.expectedPa = _ePa;
+      p.compoundExpected = _pCompound.ppFs.expected;
+    }
+    else if (_pCompound && p.key === 'UD_FS_5') {
+      p.probability = _pCompound.udFs.p5;
+      p.expectedPa = _ePa;
+      p.compoundExpected = _pCompound.udFs.expected;
+    }
+    else if (_pCompound && p.key === 'UD_FS_7') {
+      p.probability = _pCompound.udFs.p7;
+      p.expectedPa = _ePa;
+      p.compoundExpected = _pCompound.udFs.expected;
     }
 
     // Audit fields — always attached when contact engine ran successfully,
@@ -2782,16 +2868,27 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
         // arsenal payload IS exposing. Add the matching names to the per-pitch
         // probe lookup in this file (~lines 488-497) to wire L2 to WIRED.
         // Remove this field when L2 is confirmed WIRED across the slate.
-        _firstPitchKpKeys: (matchedPitches[0] && matchedPitches[0]._kpKeys) || []
+        _firstPitchKpKeys: (matchedPitches[0] && matchedPitches[0]._kpKeys) || [],
+        // COMPOUND PROBABILITY SUMMARY (May 23, 2026)
+        // Full Monte Carlo output for diagnostics. Used by UI to show
+        // expected fantasy score / distribution percentiles on prop tooltips.
+        compound: _pCompound ? {
+          hrr: _pCompound.hrr,
+          ppFs: _pCompound.ppFs,
+          udFs: _pCompound.udFs,
+          nTrials: _pCompound.audit.nTrials
+        } : null
       };
     }
   });
 
   // Step 2: Compute both top 4s, build union.
   //
-  // Score top 4: existing behavior (FS/HRR props eligible since they have scores)
-  // Probability top 4: only props with valid probability values (effectively
-  //   excludes FS_* and HRR — they have no probability assigned)
+  // Score top 4: existing behavior — uses heuristic scores
+  // Probability top 4: filters to props with valid probability values.
+  //   With the compound engine (May 23, 2026), HRR / PP_FS_* / UD_FS_* now
+  //   have probabilities, so they're eligible for PROB engine selection.
+  //   The PROB engine can now genuinely pick compound props as top.
   const byScore = [...allProps].sort((a, b) => (b.score || 0) - (a.score || 0));
   const byProb = [...allProps]
     .filter(p => Number.isFinite(p.probability))
