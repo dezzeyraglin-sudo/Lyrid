@@ -24,6 +24,7 @@ import { tryAuth, checkAndIncrementQuota, AuthError } from './_lib/auth.js';
 import { computeHitProbability, computeHrProbability, computeXbhProbability } from './_lib/contactProbability.js';
 import { computeCompoundProbabilities } from './_lib/compoundProbability.js';
 import { getGameEcosystems } from './_lib/teamEcosystem.js';
+import { selectUnassistedTopPick } from './_lib/unassistedEngine.js';
 import { computeAirDensity, adjustPitcherArsenal, getEnvironmentNarrative } from './_lib/altitudeEngine.js';
 
 // PITCHER'S DUEL FIX (May 9, 2026)
@@ -3042,6 +3043,77 @@ function buildPropRecommendations({ hitter, matchedPitches, maxXwoba, overall, p
     p.rank = i;
     p.isBest = i === 0;
   });
+
+  // =========================================================
+  // UNASSISTED ENGINE SELECTION (May 23, 2026 — Request B)
+  //
+  // A third top-pick philosophy, calibrated against 82 graded picks of
+  // historical data. Backtested win rate on "eligible" tier: 63.6% (n=33),
+  // compared to the current engine's 43.9% overall hit rate. The engine
+  // refuses to make a top pick when the hitter has any of:
+  //
+  //   - Inflation gap > 0.15 (small-sample matched xwOBA noise)
+  //   - Matched K% > 30 against this arsenal
+  //   - Recent form sample < 20 PA
+  //   - No main pitch with ≥ 15 PA in arsenal coverage
+  //
+  // For eligible hitters, the engine scores each prop on:
+  //   - P(H ≥ 1) per game (primary signal)
+  //   - Walk-implied OBP
+  //   - P(H ≥ 2) — multi-hit pathway to HRR
+  //   - K-cluster penalty (matched K% above season K%)
+  //   - Regressed xwOBA sweet-spot proximity (0.55 ± 0.10)
+  //
+  // Excludes R/RBI/HR props as ineligible (require teammates / variance).
+  //
+  // The result attaches to each prop:
+  //   p.unassistedRank   : 0 if selected, null otherwise
+  //   p.unassistedScore  : the engine's scoring (only on selected prop)
+  //   p.unassistedTier   : 'eligible' | 'caution' | 'rejected'
+  //
+  // The selection metadata is also attached to the first prop's
+  // _engineAudit.unassisted block for UI display.
+  let unassistedResult = null;
+  try {
+    unassistedResult = selectUnassistedTopPick(ranked, {
+      adjustedMaxXwoba: maxXwoba,
+      regressedMaxXwoba: parseFloat(adjustments?.regressedMaxXwoba || maxXwoba),
+      matchedHitterK: _matchedHitterK,
+      seasonHitterK: parseFloat(overall.k_percent?.value || 22.5),
+      recentFormPaUsed: hitter?.recentForm?.paUsed || 0,
+      matchedPitches,                 // full arsenal — engine reads pitcherUsage and hitterPa
+      pHit: _pHit,
+      expectedPa: expectedPaForLineupSlot(hitter?.battingOrder),
+      hitterBBPct: parseFloat(overall.bb_percent?.value || 8.5)
+    });
+  } catch (err) {
+    console.warn('[unassistedEngine] selection failed:', err.message);
+  }
+
+  if (unassistedResult) {
+    // Tag every prop with unassistedRank (null if not the top pick) and the
+    // overall tier so the UI knows whether to allow ★ BEST in unassisted mode.
+    ranked.forEach(p => {
+      p.unassistedRank = (p === unassistedResult.topPick) ? 0 : null;
+      p.unassistedTier = unassistedResult.eligibility;
+    });
+    if (unassistedResult.topPick) {
+      unassistedResult.topPick.unassistedScore = unassistedResult.score;
+    }
+    // Surface the audit on the first prop for client inspection
+    if (ranked[0]) {
+      ranked[0]._unassistedAudit = {
+        eligibility: unassistedResult.eligibility,
+        topPickKey: unassistedResult.topPick?.key || null,
+        topPickLabel: unassistedResult.topPick?.label || null,
+        score: unassistedResult.score,
+        rejectionReasons: unassistedResult.rejectionReasons,
+        arsenal: unassistedResult.audit?.checks?.arsenal,
+        inflationGap: unassistedResult.audit?.checks?.inflationGap,
+        cautionReasons: unassistedResult.audit?.cautionReasons || []
+      };
+    }
+  }
 
   return ranked;
 }

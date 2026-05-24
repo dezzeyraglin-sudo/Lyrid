@@ -2425,9 +2425,10 @@
       PROB  = contact engine per-game probability top pick
       Persists to localStorage. URL ?mlbEngine=prob overrides.
     -->
-    <div id="mlbEngineToggle" class="lyrid-engine-toggle" role="group" aria-label="MLB top pick engine selector" style="display:inline-flex;align-items:center;gap:0;border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:6px;overflow:hidden;font-size:11px;letter-spacing:0.06em;margin-left:auto" title="Switch which engine selects the top prop pick. SCORE = legacy heuristic. PROB = contact engine per-game probability.">
+    <div id="mlbEngineToggle" class="lyrid-engine-toggle" role="group" aria-label="MLB top pick engine selector" style="display:inline-flex;align-items:center;gap:0;border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:6px;overflow:hidden;font-size:11px;letter-spacing:0.06em;margin-left:auto" title="Switch which engine selects the top prop pick. UNASSISTED = data-grounded contact engine (default, backtested 63.6%). SCORE = legacy heuristic. PROB = contact engine per-game probability.">
       <span style="padding:6px 10px;color:var(--text-secondary, var(--dim));font-size:10px;letter-spacing:0.08em;font-weight:600;border-right:0.5px solid var(--border-hairline, var(--brand-primary, #233859))">ENGINE</span>
-      <button id="mlbEngineScoreBtn" class="lyrid-engine-btn" data-engine="score" onclick="setMlbEngine('score')" style="padding:6px 12px;border:0;background:transparent;color:var(--text-secondary, var(--dim));font-weight:600;cursor:pointer;font-family:inherit">SCORE</button>
+      <button id="mlbEngineUnassistedBtn" class="lyrid-engine-btn" data-engine="unassisted" onclick="setMlbEngine('unassisted')" style="padding:6px 12px;border:0;background:transparent;color:var(--text-secondary, var(--dim));font-weight:600;cursor:pointer;font-family:inherit">UNASSISTED</button>
+      <button id="mlbEngineScoreBtn" class="lyrid-engine-btn" data-engine="score" onclick="setMlbEngine('score')" style="padding:6px 12px;border:0;background:transparent;color:var(--text-secondary, var(--dim));font-weight:600;cursor:pointer;font-family:inherit;border-left:0.5px solid var(--border-hairline, var(--brand-primary, #233859))">SCORE</button>
       <button id="mlbEngineProbBtn" class="lyrid-engine-btn" data-engine="prob" onclick="setMlbEngine('prob')" style="padding:6px 12px;border:0;background:transparent;color:var(--text-secondary, var(--dim));font-weight:600;cursor:pointer;font-family:inherit;border-left:0.5px solid var(--border-hairline, var(--brand-primary, #233859))">PROB</button>
     </div>
   </div>
@@ -2836,11 +2837,16 @@ let state = {
   firstInningBets: {},   // { 'YYYY-MM-DD_gamePk': { date, gamePk, pick, tier, units, probability, price, away, home, result, graded } }
   projectionAudit: {},   // { 'YYYY-MM-DD_gamePk': { date, gamePk, capturedAt, awayTeam, homeTeam, projAwayRuns, projHomeRuns, projTotal, homeWinProb, marketTotal, marketSpread, favoriteML, actualAwayRuns, actualHomeRuns, actualTotal, winner, isFinal, graded } }
   // MLB selection engine toggle (May 23, 2026)
-  //   'score' = legacy heuristic top pick (current production behavior, safe default)
-  //   'prob'  = contact engine per-game probability top pick (shadow-promoted)
+  //   'unassisted' = NEW data-grounded engine — biased toward hitters with the
+  //                  best chance to put the ball in play and get on base
+  //                  unassisted. Backtested 63.6% win rate on eligible tier
+  //                  (n=33) vs. 43.9% on the legacy engine. DEFAULT.
+  //   'score'      = legacy heuristic top pick (kept as alternate for testing)
+  //   'prob'       = contact engine per-game probability top pick
+  //
   // Set via the toggle in the slate header; persisted to localStorage
-  // 'lyrid_mlb_engine'. URL ?mlbEngine=prob overrides for testing.
-  mlbEngine: 'score'
+  // 'lyrid_mlb_engine'. URL ?mlbEngine=score|prob|unassisted overrides.
+  mlbEngine: 'unassisted'
 };
 let slateCache = {};      // {date: {games, fetchedAt}}
 let analysisCache = {};   // {gamePk: analysis}
@@ -2875,19 +2881,20 @@ function initMlbEngine() {
   try {
     const url = new URL(window.location.href);
     const urlEngine = url.searchParams.get('mlbEngine');
-    if (urlEngine === 'score' || urlEngine === 'prob') {
+    if (urlEngine === 'score' || urlEngine === 'prob' || urlEngine === 'unassisted') {
       state.mlbEngine = urlEngine;
       return;
     }
     const saved = localStorage.getItem(LS_MLB_ENGINE_KEY);
-    if (saved === 'score' || saved === 'prob') {
+    if (saved === 'score' || saved === 'prob' || saved === 'unassisted') {
       state.mlbEngine = saved;
       return;
     }
   } catch (err) {
     console.warn('[mlb] engine init failed', err);
   }
-  state.mlbEngine = 'score';
+  // Default to unassisted (May 23, 2026 — backtested 63.6% on eligible tier)
+  state.mlbEngine = 'unassisted';
 }
 
 function persistMlbEngine(eng) {
@@ -2897,22 +2904,29 @@ function persistMlbEngine(eng) {
 function updateMlbEngineToggleUI() {
   const scoreBtn = document.getElementById('mlbEngineScoreBtn');
   const probBtn = document.getElementById('mlbEngineProbBtn');
+  const unassistedBtn = document.getElementById('mlbEngineUnassistedBtn');
   if (!scoreBtn || !probBtn) return;
   const active = state.mlbEngine;
   const activeStyle = { bg: 'var(--brand-primary, #233859)', color: '#fff' };
   const inactiveStyle = { bg: 'transparent', color: 'var(--text-secondary, var(--dim))' };
   const aS = active === 'score' ? activeStyle : inactiveStyle;
   const aP = active === 'prob' ? activeStyle : inactiveStyle;
+  const aU = active === 'unassisted' ? activeStyle : inactiveStyle;
   scoreBtn.style.background = aS.bg;
   scoreBtn.style.color = aS.color;
   probBtn.style.background = aP.bg;
   probBtn.style.color = aP.color;
   scoreBtn.setAttribute('aria-pressed', active === 'score');
   probBtn.setAttribute('aria-pressed', active === 'prob');
+  if (unassistedBtn) {
+    unassistedBtn.style.background = aU.bg;
+    unassistedBtn.style.color = aU.color;
+    unassistedBtn.setAttribute('aria-pressed', active === 'unassisted');
+  }
 }
 
 window.setMlbEngine = function(eng) {
-  if (eng !== 'score' && eng !== 'prob') return;
+  if (eng !== 'score' && eng !== 'prob' && eng !== 'unassisted') return;
   if (state.mlbEngine === eng) return;
   state.mlbEngine = eng;
   persistMlbEngine(eng);
@@ -2957,38 +2971,42 @@ function applyMlbEngineRanking(propRecs, activeEngine) {
     p.probRank = pIdx >= 0 ? pIdx : null;                   // null if no probability
   });
 
-  // FRAGILITY-BASED ELIMINATION RULE (May 23, 2026)
+  // UNASSISTED ENGINE INTEGRATION (May 23, 2026 — Request B)
   //
-  // The compound engine attaches `p.fragility = { score, tier, ... }` to
-  // every prop when ecosystem data is available. Props with tier='eliminated'
-  // (fragility score > 45) are refused the ★ BEST badge regardless of their
-  // nominal probability or score. This is the structural fix that phases out
-  // false-positive plays like Sheets/Langeliers HRR overs that grade high
-  // because of strong individual hitter metrics but fail because the team
-  // ecosystem can't sustain inning extension / runner conversion.
+  // The unassisted engine runs server-side and tags one prop with
+  // `unassistedRank = 0` (and others with null). When the active engine is
+  // 'unassisted', that prop becomes ★ BEST — UNLESS the entire hitter is
+  // tagged `unassistedTier === 'rejected'`, in which case no prop earns BEST
+  // for this hitter under unassisted mode.
   //
-  // Caution-tier props (fragility 25-45) are still eligible but get a visual
-  // warning chip — user retains agency, model expresses doubt.
-  //
-  // If ALL props on a card are eliminated, we fall back to the least-fragile
-  // prop (highest probability among those) and accept the BEST badge there,
-  // since refusing to recommend anything breaks the UX flow. The user will
-  // see a fragility warning on that pick.
+  // unassistedTier semantics (read from server):
+  //   - 'eligible'   : engine fully approves; BEST allowed
+  //   - 'caution'    : approves but with soft flags; BEST allowed
+  //   - 'rejected'   : engine refuses this hitter; NO ★ BEST in unassisted mode
+  const unassistedPick = propRecs.find(p => p.unassistedRank === 0);
+  const unassistedTier = propRecs[0]?.unassistedTier;
+
+  // FRAGILITY-BASED ELIMINATION RULE (May 23, 2026 — items 1-4)
   function isEliminated(prop) {
     return prop?.fragility?.tier === 'eliminated';
   }
   function isEligibleForBest(prop) {
-    // A prop is eligible for ★ BEST if fragility is not 'eliminated'.
-    // 'caution' tier is allowed — it gets a visual warning but can be top.
     return !isEliminated(prop);
   }
 
-  // Determine the active top pick, applying elimination filter.
-  // In 'prob' mode: pick highest-probability prop that's not eliminated.
-  // In 'score' mode: pick highest-scoring prop that's not eliminated.
-  // Fall back to nominal #1 if every prop is eliminated (avoid empty BEST).
+  // Determine the active top pick.
+  // In 'unassisted' mode: use the unassisted engine's pick if available AND
+  //   the hitter isn't rejected. If rejected, NO prop earns BEST.
+  // In 'prob' mode: pick highest-probability prop that's not fragility-eliminated.
+  // In 'score' mode: pick highest-scoring prop that's not fragility-eliminated.
   let topPropForEngine;
-  if (activeEngine === 'prob' && byProb.length > 0) {
+  if (activeEngine === 'unassisted') {
+    if (unassistedTier === 'rejected' || !unassistedPick) {
+      topPropForEngine = null;  // unassisted engine refused this hitter — no BEST
+    } else {
+      topPropForEngine = unassistedPick;
+    }
+  } else if (activeEngine === 'prob' && byProb.length > 0) {
     const probEligible = byProb.filter(isEligibleForBest);
     topPropForEngine = probEligible.length > 0 ? probEligible[0] : byProb[0];
   } else {
@@ -2996,9 +3014,9 @@ function applyMlbEngineRanking(propRecs, activeEngine) {
     topPropForEngine = scoreEligible.length > 0 ? scoreEligible[0] : byScore[0];
   }
 
-  // Update isBest based on the active engine's #1 pick (after elimination)
+  // Update isBest based on the active engine's #1 pick
   propRecs.forEach(p => {
-    p.isBest = (p === topPropForEngine);
+    p.isBest = (topPropForEngine != null && p === topPropForEngine);
   });
 
   return propRecs;
@@ -4005,7 +4023,7 @@ function renderAnalysis(data) {
           }
           const propsHtml = (m.propRecs && m.propRecs.length > 0)
             ? `<div class="prop-recs">
-                <div class="prop-rec-label">PROP RECOMMENDATIONS · PP / UD GRADING · <span style="opacity:0.6;font-weight:600">ENGINE: ${state.mlbEngine === 'prob' ? 'PROBABILITY' : 'SCORE'}</span></div>
+                <div class="prop-rec-label">PROP RECOMMENDATIONS · PP / UD GRADING · <span style="opacity:0.6;font-weight:600">ENGINE: ${state.mlbEngine === 'unassisted' ? 'UNASSISTED' : state.mlbEngine === 'prob' ? 'PROBABILITY' : 'SCORE'}</span></div>
                 <div class="prop-rec-list">
                   ${m.propRecs.map(p => {
                     // Secondary engine's rank — shows the OTHER engine's #
