@@ -56,9 +56,13 @@ function computeBatterKRate(batter, pitcherArsenal, batterOverallKRate) {
   }
 
   // Build a lookup map for fast access: pitch code -> batter's K rate vs that pitch
+  // Defensive: deepPitches entries may use `.typeCode`, `.code`, or `.type` as the
+  // key field depending on the upstream fetcher. Index under all variants so any
+  // matches.
   const batterByPitch = {};
   for (const dp of deepPitches) {
-    batterByPitch[dp.typeCode] = dp;
+    const code = dp.typeCode || dp.code || dp.type;
+    if (code) batterByPitch[code] = dp;
   }
 
   // Walk the pitcher's arsenal and weight by usage
@@ -68,11 +72,26 @@ function computeBatterKRate(batter, pitcherArsenal, batterOverallKRate) {
   const byPitch = [];
 
   for (const arrow of pitcherArsenal) {
-    const usage = parseFloat(arrow.pitcherUsage) || 0;
+    // FIELD NAME DEFENSE (May 25, 2026):
+    //   The raw getPitcherArsenal() returns entries with `.usage` (singular).
+    //   The per-hitter matchedPitches array (built in analyze.js around line
+    //   511) RENAMES `kp.usage` → `pitcherUsage`. This function was originally
+    //   written expecting the per-hitter shape but is called from
+    //   buildPitcherProps with the raw arsenal entries.
+    //
+    //   Result of the mismatch: parseFloat(undefined) = NaN, NaN || 0 = 0,
+    //   every iteration of this loop hit `continue` on the usage <= 0 check,
+    //   weightedKRate stayed 0, every batter showed 0% K rate on the Sharp K
+    //   Projection panel even though the panel itself rendered.
+    //
+    //   Same issue affects the typeCode lookup below — raw arsenal may use
+    //   `.code` or `.type` rather than `.typeCode`. Reading all three is safe.
+    const usage = parseFloat(arrow.pitcherUsage ?? arrow.usage) || 0;
     if (usage <= 0) continue;
     const usageWeight = usage / 100;
 
-    const batterStat = batterByPitch[arrow.typeCode];
+    const arrowCode = arrow.typeCode || arrow.code || arrow.type;
+    const batterStat = batterByPitch[arrowCode];
 
     let kRateForThisPitch;
     let source;
@@ -98,8 +117,8 @@ function computeBatterKRate(batter, pitcherArsenal, batterOverallKRate) {
     totalUsage += usageWeight;
 
     byPitch.push({
-      pitchType: arrow.type,
-      typeCode: arrow.typeCode,
+      pitchType: arrow.type || arrow.pitchType || arrowCode,
+      typeCode: arrowCode,
       pitcherUsage: usage,
       batterKRate: kRateForThisPitch,
       sampleSize: batterStat?.pa || 0,
