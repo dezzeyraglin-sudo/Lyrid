@@ -19,14 +19,20 @@ const LEAGUE_HOME_SCORES_FIRST = 0.305;
  *
  * @param {Object} awaySide    awayVsHome side data (away hitters vs home SP)
  * @param {Object} homeSide    homeVsAway side data (home hitters vs away SP)
- * @param {Object} context     { parkFactor, weatherImpact, umpire }
+ * @param {Object} context     { parkFactor, weatherImpact, umpire,
+ *                               awayLineupSignal?, homeLineupSignal? }
+ *   awayLineupSignal/homeLineupSignal (NEW May 25, 2026): outputs from
+ *   computeYrfiTopOfOrderBoost — when present, applied as multipliers to
+ *   each side's scoring prob. Built from per-hitter unassisted engine
+ *   outputs aggregated by lineupSignalAggregator.
  * @returns {Object} {
  *   yrfiProb,              // Prob at least one team scores
  *   nrfiProb,              // 1 - yrfiProb
  *   awayScoresProb,        // Prob the away team scores in top 1st
  *   homeScoresProb,        // Prob the home team scores in bottom 1st
  *   recommendation,        // { side: YRFI|NRFI|PASS, tier, units, probability }
- *   reasoning: string[]
+ *   reasoning: string[],
+ *   lineupSignalAudit      // NEW: shadow audit of lineup signal contributions
  * }
  */
 export function computeFirstInningProbability(awaySide, homeSide, context = {}) {
@@ -143,6 +149,45 @@ export function computeFirstInningProbability(awaySide, homeSide, context = {}) 
     reasoning.push(`Away SP limited MLB sample (${awaySpNovelty.careerPa} career PA) — modest suppress`);
   }
 
+  // ========================================================
+  // LINEUP SIGNAL OVERLAY (May 25, 2026 — Connection 2)
+  //
+  // Apply top-of-order strength multipliers from the per-hitter aggregator.
+  // awaySide hits home pitcher → awayLineupSignal affects awayScoresProb.
+  // homeSide hits away pitcher → homeLineupSignal affects homeScoresProb.
+  //
+  // The signal multipliers are pre-clamped to [0.85, 1.20] in the aggregator
+  // (see computeYrfiTopOfOrderBoost). They're applied AFTER all the legacy
+  // signals so the multipliers stack on a complete baseline projection.
+  //
+  // When the aggregator is disabled or top-of-order data is unavailable, the
+  // multiplier is 1.0 (no effect) and the behavior matches the legacy engine
+  // exactly.
+  // ========================================================
+  const lineupSignalAudit = { away: null, home: null };
+  if (context.awayLineupSignal && Number.isFinite(context.awayLineupSignal.multiplier)) {
+    const m = context.awayLineupSignal.multiplier;
+    awayScoresProb *= m;
+    lineupSignalAudit.away = {
+      multiplier: m,
+      rawMultiplier: context.awayLineupSignal.rawMultiplier,
+      reasoning: context.awayLineupSignal.reasoning || []
+    };
+    if (m >= 1.05) reasoning.push(`Away top-of-order strong (×${m.toFixed(3)})`);
+    else if (m <= 0.95) reasoning.push(`Away top-of-order weak (×${m.toFixed(3)})`);
+  }
+  if (context.homeLineupSignal && Number.isFinite(context.homeLineupSignal.multiplier)) {
+    const m = context.homeLineupSignal.multiplier;
+    homeScoresProb *= m;
+    lineupSignalAudit.home = {
+      multiplier: m,
+      rawMultiplier: context.homeLineupSignal.rawMultiplier,
+      reasoning: context.homeLineupSignal.reasoning || []
+    };
+    if (m >= 1.05) reasoning.push(`Home top-of-order strong (×${m.toFixed(3)})`);
+    else if (m <= 0.95) reasoning.push(`Home top-of-order weak (×${m.toFixed(3)})`);
+  }
+
   // Clamp individual probs
   awayScoresProb = Math.max(0.05, Math.min(0.75, awayScoresProb));
   homeScoresProb = Math.max(0.05, Math.min(0.75, homeScoresProb));
@@ -185,7 +230,8 @@ export function computeFirstInningProbability(awaySide, homeSide, context = {}) 
     awayScoresProb: +awayScoresProb.toFixed(3),
     homeScoresProb: +homeScoresProb.toFixed(3),
     recommendation,
-    reasoning
+    reasoning,
+    lineupSignalAudit  // NEW (May 25, 2026): per-side lineup signal contribution
   };
 }
 

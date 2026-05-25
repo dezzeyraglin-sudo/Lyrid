@@ -25,6 +25,13 @@ import { computeHitProbability, computeHrProbability, computeXbhProbability } fr
 import { computeCompoundProbabilities } from './_lib/compoundProbability.js';
 import { getGameEcosystems } from './_lib/teamEcosystem.js';
 import { selectUnassistedTopPick } from './_lib/unassistedEngine.js';
+import {
+  aggregateLineupSignals,
+  computeYrfiTopOfOrderBoost,
+  computeGameTotalLineupAdjustment,
+  computeArsenalVulnerability,
+  LINEUP_SIGNAL_AGGREGATION_ENABLED
+} from './_lib/lineupSignalAggregator.js';
 import { computeAirDensity, adjustPitcherArsenal, getEnvironmentNarrative } from './_lib/altitudeEngine.js';
 
 // PITCHER'S DUEL FIX (May 9, 2026)
@@ -198,6 +205,22 @@ function pitcherMultFromXwAmplified(xw) {
   // range and the old model treated them like .310 arms.
   const eliteAmp = xw < 0.300 ? (0.300 - xw) * 6.0 : 0;
   return Math.max(0.55, 1.0 + baseDelta - eliteAmp);
+}
+
+// Helper for lineup signal aggregator: infer the weighted xwOBA-against of
+// the pitcher on the OPPOSING side. Returns null if arsenal data is missing.
+// Used by computeArsenalVulnerability to decide whether to halve a boost
+// against an elite pitcher.
+function inferPitcherWeightedXw(sideData) {
+  const arsenal = sideData?.pitcherArsenal;
+  if (!Array.isArray(arsenal) || arsenal.length === 0) return null;
+  const totalPitches = arsenal.reduce((s, p) => s + (p.pitches || 0), 0);
+  if (totalPitches <= 0) return null;
+  const weighted = arsenal.reduce((s, p) => {
+    const x = parseFloat(p.xwoba || 0);
+    return s + (x * (p.pitches || 0));
+  }, 0);
+  return weighted / totalPitches;
 }
 
 export default async function handler(req, res) {
@@ -1379,12 +1402,93 @@ export default async function handler(req, res) {
       }
     }
 
+    // ========================================================
+    // LINEUP SIGNAL AGGREGATION (May 25, 2026 — Connections 1-3)
+    //
+    // Reads the per-hitter unassisted tier, fragility, and inflation data
+    // from each side's mismatches list, aggregates into top-of-order and
+    // full-lineup signals, then derives multipliers for:
+    //
+    //   - YRFI scoring probability   (top-of-order strength)
+    //   - Game total                  (full-lineup robustness/fragility)
+    //   - Arsenal vulnerability       (concentrated regressed advantage)
+    //
+    // Default ON per LINEUP_SIGNAL_AGGREGATION_ENABLED. When false, every
+    // computed multiplier returns 1.0 and behavior reverts to legacy. All
+    // multipliers are conservatively bounded (YRFI [0.85,1.20], game total
+    // [0.90,1.10], arsenal [0.92,1.10]).
+    //
+    // The audit data is surfaced on results.lineupSignalAudit for both
+    // network-tab inspection and (via the client) console diagnostics.
+    // ========================================================
+    let lineupSignalAudit = null;
+    let awayYrfiSignal = null, homeYrfiSignal = null;
+    let awayGameTotalSignal = null, homeGameTotalSignal = null;
+    let awayArsenalSignal = null, homeArsenalSignal = null;
+
+    if (LINEUP_SIGNAL_AGGREGATION_ENABLED) {
+      try {
+        const awayAggregated = aggregateLineupSignals(results.awayVsHome?.mismatches || []);
+        const homeAggregated = aggregateLineupSignals(results.homeVsAway?.mismatches || []);
+
+        // YRFI signals: away top-of-order vs home pitcher → applies to awayScoresProb
+        awayYrfiSignal = computeYrfiTopOfOrderBoost(awayAggregated);
+        homeYrfiSignal = computeYrfiTopOfOrderBoost(homeAggregated);
+
+        // Game total signals: full lineup adjustments
+        awayGameTotalSignal = computeGameTotalLineupAdjustment(awayAggregated);
+        homeGameTotalSignal = computeGameTotalLineupAdjustment(homeAggregated);
+
+        // Arsenal vulnerability: pass weighted pitcher xwOBA when available
+        // (the side facing the pitcher is what we score)
+        const homePitcherXw = inferPitcherWeightedXw(results.awayVsHome);
+        const awayPitcherXw = inferPitcherWeightedXw(results.homeVsAway);
+        awayArsenalSignal = computeArsenalVulnerability(
+          results.awayVsHome?.mismatches || [],
+          homePitcherXw
+        );
+        homeArsenalSignal = computeArsenalVulnerability(
+          results.homeVsAway?.mismatches || [],
+          awayPitcherXw
+        );
+
+        lineupSignalAudit = {
+          enabled: true,
+          away: {
+            aggregated: awayAggregated.audit,
+            yrfi: awayYrfiSignal,
+            gameTotal: awayGameTotalSignal,
+            arsenal: awayArsenalSignal
+          },
+          home: {
+            aggregated: homeAggregated.audit,
+            yrfi: homeYrfiSignal,
+            gameTotal: homeGameTotalSignal,
+            arsenal: homeArsenalSignal
+          }
+        };
+      } catch (err) {
+        console.warn('[lineupSignalAggregator] failed:', err.message);
+        lineupSignalAudit = { enabled: true, error: err.message };
+      }
+    } else {
+      lineupSignalAudit = { enabled: false };
+    }
+    results.lineupSignalAudit = lineupSignalAudit;
+
     // ===== FIRST-INNING SCORING PROJECTION =====
-    // YRFI/NRFI uses 1st-inning xwOBA-against from inning splits + lineup tier + park/weather/ump context
+    // YRFI/NRFI uses 1st-inning xwOBA-against from inning splits + lineup tier + park/weather/ump context.
+    // PLUS (May 25, 2026): top-of-order strength signals from lineupSignalAggregator.
     results.firstInning = computeFirstInningProbability(
       results.awayVsHome,
       results.homeVsAway,
-      { parkFactor, weatherImpact: results.weatherImpact, umpire: results.umpire }
+      {
+        parkFactor,
+        weatherImpact: results.weatherImpact,
+        umpire: results.umpire,
+        awayLineupSignal: awayYrfiSignal,
+        homeLineupSignal: homeYrfiSignal
+      }
     );
 
     // ===== GAME-LEVEL PROJECTION =====
@@ -1416,7 +1520,14 @@ export default async function handler(req, res) {
       rawWeather: results.weather,      // raw weather for altitude engine (humidity not on weatherImpact)
       envImpact: results.envImpact,    // NEW: composite park×weather with interactions
       conversionRates,                  // NEW: stranded-runner / RISP signal
-      odds
+      odds,
+      // NEW (May 25, 2026): lineup-aggregator multipliers
+      // awayGameTotalSignal/awayArsenalSignal apply to the AWAY side's run
+      // production. homeGameTotalSignal/homeArsenalSignal apply to home.
+      awayGameTotalSignal,
+      homeGameTotalSignal,
+      awayArsenalSignal,
+      homeArsenalSignal
     });
     results.projection = projection;
     results.odds = odds;
@@ -1485,7 +1596,7 @@ export default async function handler(req, res) {
 
 // ===== GAME PROJECTION =====
 // Build expected runs per team, win probability, and compare to market O/U
-function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, homeTeamAbbr, umpire, weatherImpact, rawWeather, envImpact, conversionRates, odds }) {
+function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, homeTeamAbbr, umpire, weatherImpact, rawWeather, envImpact, conversionRates, odds, awayGameTotalSignal, homeGameTotalSignal, awayArsenalSignal, homeArsenalSignal }) {
   // MLB 2024-2025 league avg runs per team per game: ~4.45
   const BASELINE_RUNS = 4.45;
 
@@ -1816,11 +1927,31 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, homeTeamAbbr,
   const awayConvMult = conversionRates?.away?.conversionMult || 1.0;
   const homeConvMult = conversionRates?.home?.conversionMult || 1.0;
 
-  // Final projections — now including conversion rate, composite environment, dual-elite, and slugfest
+  // ========================================================
+  // LINEUP SIGNAL MULTIPLIERS (May 25, 2026 — Connections 1 & 3)
+  //
+  // Hitter-aggregator multipliers that nudge each side's run projection
+  // based on per-hitter intelligence the legacy lineup tier missed.
+  //
+  //   awayGameTotalMult: scales awayRuns by lineup fragility/eligibility
+  //   awayArsenalMult:   scales awayRuns by lineup concentration of regressed
+  //                      advantages vs the pitcher's specific arsenal
+  //
+  // Both are conservatively bounded in the aggregator module ([0.90,1.10]
+  // and [0.92,1.10] respectively). Falls back to 1.0 if signals are absent
+  // (legacy callers without aggregator integration still work).
+  // ========================================================
+  const awayLineupSignalMult = (awayGameTotalSignal?.multiplier || 1.0)
+                              * (awayArsenalSignal?.multiplier || 1.0);
+  const homeLineupSignalMult = (homeGameTotalSignal?.multiplier || 1.0)
+                              * (homeArsenalSignal?.multiplier || 1.0);
+
+  // Final projections — now including lineup-aggregator signals, conversion
+  // rate, composite environment, dual-elite, and slugfest.
   // PITCHER-AWARE ENV EXPOSURE (May 23, 2026): each side uses its own envMult,
   // which fades the boost portion based on the opposing pitcher's quality.
-  const projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * awayEnvMult * umpRunMult * awayConvMult * dualEliteFactor * slugfestFactor;
-  const projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * homeEnvMult * umpRunMult * homeConvMult * dualEliteFactor * slugfestFactor;
+  const projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * awayEnvMult * umpRunMult * awayConvMult * dualEliteFactor * slugfestFactor * awayLineupSignalMult;
+  const projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * homeEnvMult * umpRunMult * homeConvMult * dualEliteFactor * slugfestFactor * homeLineupSignalMult;
   const projTotal = projAwayRuns + projHomeRuns;
 
   // Win probability via Pythagorean expectation (exp = 1.83 for MLB)
@@ -2185,7 +2316,14 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, homeTeamAbbr,
       slugfestScore: slugfestScore.toFixed(1),
       slugfestFactor: slugfestFactor.toFixed(3),
       slugfestSignals,
-      slugfestFixEnabled: SLUGFEST_FIX_ENABLED
+      slugfestFixEnabled: SLUGFEST_FIX_ENABLED,
+      // NEW (May 25, 2026): lineup-aggregator multipliers applied to each side
+      awayLineupSignalMult: awayLineupSignalMult.toFixed(3),
+      homeLineupSignalMult: homeLineupSignalMult.toFixed(3),
+      awayGameTotalSignal: awayGameTotalSignal || null,
+      homeGameTotalSignal: homeGameTotalSignal || null,
+      awayArsenalSignal: awayArsenalSignal || null,
+      homeArsenalSignal: homeArsenalSignal || null
     },
     conversionRates: conversionRates || { away: null, home: null },
     marketComparison,
