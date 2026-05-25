@@ -4266,6 +4266,41 @@ function renderAnalysis(data) {
           if (m.propRecs && m.propRecs.length > 0) {
             applyMlbEngineRanking(m.propRecs, state.mlbEngine);
           }
+
+          // =========================================================
+          // HIGH FADE OVERRIDE (May 25, 2026 — Coby Mayo bug)
+          //
+          // If the fade audit fires HIGH RISK, the engine refuses to
+          // recommend this hitter at all. We strip:
+          //   - m.isTopPick (removes ★ TOP PICK badge at top of card)
+          //   - p.isBest on every prop (removes ★ BEST tag)
+          //
+          // Rationale: showing a fade chip alongside a TOP PICK badge is
+          // self-contradicting. If the tool projects underperformance, it
+          // shouldn't simultaneously recommend the over. The user is left
+          // with full information (all props still display, all stats still
+          // show) but the engine's positive endorsement is withdrawn.
+          //
+          // Caution-level fade does NOT trigger this override — only HIGH.
+          // Caution is informational ("size down or watch out"); HIGH is
+          // the engine actively predicting failure.
+          //
+          // We compute fade locally (not surfaced server-side) so this
+          // suppression is purely a render-time decision.
+          // =========================================================
+          const fadeAtRender = (m.tier === 'elite' || m.tier === 'strong')
+            ? computeFadeRisk(m)
+            : { tier: 'normal' };
+          if (fadeAtRender.tier === 'high_fade') {
+            m.isTopPick = false;
+            if (m.propRecs) m.propRecs.forEach(p => { p.isBest = false; });
+            // Tag the matchup so downstream renders know suppression fired.
+            // This lets us optionally show an "ENGINE REFUSED" indicator and
+            // helps audit later when reviewing why a high-prob prop wasn't
+            // starred.
+            m._fadeOverrideApplied = true;
+          }
+
           const propsHtml = (m.propRecs && m.propRecs.length > 0)
             ? `<div class="prop-recs">
                 <div class="prop-rec-label">PROP RECOMMENDATIONS · PP / UD GRADING · <span style="opacity:0.6;font-weight:600">ENGINE: ${state.mlbEngine === 'unassisted' ? 'UNASSISTED' : state.mlbEngine === 'prob' ? 'PROBABILITY' : 'SCORE'}</span></div>
@@ -4430,6 +4465,7 @@ function renderAnalysis(data) {
               <div class="match-head">
                 <div class="match-hitter">
                   ${m.isTopPick ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}
+                  ${m._fadeOverrideApplied ? '<span class="engine-refused-tag" style="background:#fee2e2;color:#991b1b;font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.04em;font-weight:700" title="Engine declined to recommend this hitter as a TOP PICK because the fade audit fired HIGH RISK. Underlying signals suggest underperformance is more likely than the tier label implies. All stats still display; no prop earns the ★ BEST badge.">ENGINE REFUSED</span>' : ''}
                   ${m.hrChance && data.deepMode ? (function renderHrBadge(hc) {
                     // PER-GAME TIER DISPLAY (May 23, 2026 — Item 7)
                     //
@@ -5966,6 +6002,38 @@ function renderAnalysis(data) {
   const otherAwayTop = otherModeData?.awayVsHome?.topPick;
   const otherHomeTop = otherModeData?.homeVsAway?.topPick;
 
+  // =========================================================
+  // FADE OVERRIDE FOR TOP-PICKS BANNER (May 25, 2026)
+  //
+  // The banner shows server-computed top picks. If a top pick fails the
+  // fade audit (HIGH RISK), we hide it from the banner just as we suppress
+  // its ★ TOP PICK badge on its own card. Consistency: if the engine
+  // refuses a hitter, the banner shouldn't recommend them either.
+  //
+  // The banner's topPick object only carries a subset of fields, so we
+  // look up the full matchup from the mismatches list to run fade. If
+  // the matchup isn't found (shouldn't happen), we let the pick through.
+  // =========================================================
+  function findMatchup(sideData, hitterId) {
+    if (!sideData?.mismatches || !hitterId) return null;
+    return sideData.mismatches.find(m => m.hitterId === hitterId) || null;
+  }
+
+  function fadeRejectsTopPick(topPick, sideData) {
+    if (!topPick) return false;
+    if (topPick.tier !== 'elite' && topPick.tier !== 'strong') return false;
+    const full = findMatchup(sideData, topPick.hitterId);
+    if (!full) return false;
+    const fade = computeFadeRisk(full);
+    return fade.tier === 'high_fade';
+  }
+
+  // Apply override: if a top pick is rejected by fade, treat as no pick.
+  const awayPickValid = !fadeRejectsTopPick(currentAwayTop, data.awayVsHome);
+  const homePickValid = !fadeRejectsTopPick(currentHomeTop, data.homeVsAway);
+  const effectiveAwayTop = awayPickValid ? currentAwayTop : null;
+  const effectiveHomeTop = homePickValid ? currentHomeTop : null;
+
   // Resolve what to display per side based on modes available
   function resolveSidePick(teamLabel, currentTp, otherTp) {
     // Current is deep mode
@@ -5991,8 +6059,8 @@ function renderAnalysis(data) {
     return { display: 'unverified', label: teamLabel, fast: currentTp };
   }
 
-  const awaySide = resolveSidePick(awayLabel, currentAwayTop, otherAwayTop);
-  const homeSide = resolveSidePick(homeLabel, currentHomeTop, otherHomeTop);
+  const awaySide = resolveSidePick(awayLabel, effectiveAwayTop, otherAwayTop);
+  const homeSide = resolveSidePick(homeLabel, effectiveHomeTop, otherHomeTop);
 
   function renderPickBody(tp, badge) {
     const bp = tp.bestProp;
