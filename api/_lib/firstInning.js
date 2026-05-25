@@ -20,11 +20,25 @@ const LEAGUE_HOME_SCORES_FIRST = 0.305;
  * @param {Object} awaySide    awayVsHome side data (away hitters vs home SP)
  * @param {Object} homeSide    homeVsAway side data (home hitters vs away SP)
  * @param {Object} context     { parkFactor, weatherImpact, umpire,
- *                               awayLineupSignal?, homeLineupSignal? }
+ *                               awayLineupSignal?, homeLineupSignal?,
+ *                               awayArsenalSignal?, homeArsenalSignal? }
  *   awayLineupSignal/homeLineupSignal (NEW May 25, 2026): outputs from
  *   computeYrfiTopOfOrderBoost — when present, applied as multipliers to
  *   each side's scoring prob. Built from per-hitter unassisted engine
  *   outputs aggregated by lineupSignalAggregator.
+ *
+ *   awayArsenalSignal/homeArsenalSignal (NEW May 25, 2026 — same patch):
+ *   outputs from computeArsenalVulnerability — measure the concentration
+ *   of hitters with regressed-xwOBA advantage against the opposing
+ *   pitcher's specific arsenal. Closes a pitcher-analysis asymmetry:
+ *   without this, YRFI evaluated lineups deeply (top-of-order eligibility)
+ *   but treated pitchers as a single aggregate xwOBA-against number,
+ *   missing cases where a specific arsenal is broadly vulnerable to this
+ *   particular lineup.
+ *
+ *   Apply direction: awayArsenalSignal → awayScoresProb (away lineup
+ *   exploiting home pitcher's arsenal). Multipliers pre-bounded to
+ *   [0.92, 1.10] in the aggregator.
  * @returns {Object} {
  *   yrfiProb,              // Prob at least one team scores
  *   nrfiProb,              // 1 - yrfiProb
@@ -163,29 +177,75 @@ export function computeFirstInningProbability(awaySide, homeSide, context = {}) 
   // When the aggregator is disabled or top-of-order data is unavailable, the
   // multiplier is 1.0 (no effect) and the behavior matches the legacy engine
   // exactly.
+  //
+  // ARSENAL VULNERABILITY (May 25, 2026 — same patch, follow-up question):
+  //
+  //   The arsenal signal asks "how many hitters in this lineup have genuine
+  //   (regressed-xwOBA-validated) advantage against THIS pitcher's specific
+  //   arsenal?" — which is a different question than the lineup tier label.
+  //
+  //   Closes an asymmetry: pre-patch, YRFI used per-hitter intelligence for
+  //   the lineup but treated the pitcher as a single aggregate xwOBA number.
+  //   Now both sides benefit from per-hitter analysis.
+  //
+  //   Multipliers pre-clamped to [0.92, 1.10] in the aggregator. Stack on top
+  //   of the lineup signal multipliers.
   // ========================================================
   const lineupSignalAudit = { away: null, home: null };
-  if (context.awayLineupSignal && Number.isFinite(context.awayLineupSignal.multiplier)) {
-    const m = context.awayLineupSignal.multiplier;
-    awayScoresProb *= m;
+
+  // Combined per-side multiplier: lineup top-of-order × arsenal vulnerability.
+  // We multiply them so both signals contribute proportionally. The aggregator
+  // already bounded each, so the combined max is ~1.32 / 0.78 — but in practice
+  // they rarely both swing in the same direction simultaneously.
+  const awayLineupMult = Number.isFinite(context.awayLineupSignal?.multiplier)
+    ? context.awayLineupSignal.multiplier : 1.0;
+  const awayArsenalMult = Number.isFinite(context.awayArsenalSignal?.multiplier)
+    ? context.awayArsenalSignal.multiplier : 1.0;
+  const homeLineupMult = Number.isFinite(context.homeLineupSignal?.multiplier)
+    ? context.homeLineupSignal.multiplier : 1.0;
+  const homeArsenalMult = Number.isFinite(context.homeArsenalSignal?.multiplier)
+    ? context.homeArsenalSignal.multiplier : 1.0;
+
+  // Apply away side (away lineup vs home pitcher)
+  if (awayLineupMult !== 1.0 || awayArsenalMult !== 1.0) {
+    const combinedAway = awayLineupMult * awayArsenalMult;
+    awayScoresProb *= combinedAway;
     lineupSignalAudit.away = {
-      multiplier: m,
-      rawMultiplier: context.awayLineupSignal.rawMultiplier,
-      reasoning: context.awayLineupSignal.reasoning || []
+      lineupMultiplier: awayLineupMult,
+      arsenalMultiplier: awayArsenalMult,
+      combinedMultiplier: combinedAway,
+      lineupReasoning: context.awayLineupSignal?.reasoning || [],
+      arsenalReasoning: context.awayArsenalSignal?.reasoning || []
     };
-    if (m >= 1.05) reasoning.push(`Away top-of-order strong (×${m.toFixed(3)})`);
-    else if (m <= 0.95) reasoning.push(`Away top-of-order weak (×${m.toFixed(3)})`);
+    if (combinedAway >= 1.05) {
+      const tag = awayArsenalMult > 1.02 && awayLineupMult > 1.02
+        ? 'top-of-order + arsenal'
+        : awayArsenalMult > 1.02 ? 'arsenal vulnerable' : 'top-of-order strong';
+      reasoning.push(`Away offense edge: ${tag} (×${combinedAway.toFixed(3)})`);
+    } else if (combinedAway <= 0.95) {
+      reasoning.push(`Away offense suppressed by hitter aggregator (×${combinedAway.toFixed(3)})`);
+    }
   }
-  if (context.homeLineupSignal && Number.isFinite(context.homeLineupSignal.multiplier)) {
-    const m = context.homeLineupSignal.multiplier;
-    homeScoresProb *= m;
+
+  // Apply home side (home lineup vs away pitcher)
+  if (homeLineupMult !== 1.0 || homeArsenalMult !== 1.0) {
+    const combinedHome = homeLineupMult * homeArsenalMult;
+    homeScoresProb *= combinedHome;
     lineupSignalAudit.home = {
-      multiplier: m,
-      rawMultiplier: context.homeLineupSignal.rawMultiplier,
-      reasoning: context.homeLineupSignal.reasoning || []
+      lineupMultiplier: homeLineupMult,
+      arsenalMultiplier: homeArsenalMult,
+      combinedMultiplier: combinedHome,
+      lineupReasoning: context.homeLineupSignal?.reasoning || [],
+      arsenalReasoning: context.homeArsenalSignal?.reasoning || []
     };
-    if (m >= 1.05) reasoning.push(`Home top-of-order strong (×${m.toFixed(3)})`);
-    else if (m <= 0.95) reasoning.push(`Home top-of-order weak (×${m.toFixed(3)})`);
+    if (combinedHome >= 1.05) {
+      const tag = homeArsenalMult > 1.02 && homeLineupMult > 1.02
+        ? 'top-of-order + arsenal'
+        : homeArsenalMult > 1.02 ? 'arsenal vulnerable' : 'top-of-order strong';
+      reasoning.push(`Home offense edge: ${tag} (×${combinedHome.toFixed(3)})`);
+    } else if (combinedHome <= 0.95) {
+      reasoning.push(`Home offense suppressed by hitter aggregator (×${combinedHome.toFixed(3)})`);
+    }
   }
 
   // Clamp individual probs

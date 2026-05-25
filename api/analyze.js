@@ -1478,7 +1478,10 @@ export default async function handler(req, res) {
 
     // ===== FIRST-INNING SCORING PROJECTION =====
     // YRFI/NRFI uses 1st-inning xwOBA-against from inning splits + lineup tier + park/weather/ump context.
-    // PLUS (May 25, 2026): top-of-order strength signals from lineupSignalAggregator.
+    // PLUS (May 25, 2026): top-of-order strength signals AND arsenal vulnerability
+    // signals from lineupSignalAggregator. The arsenal signal closes a pitcher-
+    // analysis asymmetry — previously YRFI had per-hitter lineup intelligence but
+    // treated the opposing pitcher as a single aggregate xwOBA-against number.
     results.firstInning = computeFirstInningProbability(
       results.awayVsHome,
       results.homeVsAway,
@@ -1487,7 +1490,9 @@ export default async function handler(req, res) {
         weatherImpact: results.weatherImpact,
         umpire: results.umpire,
         awayLineupSignal: awayYrfiSignal,
-        homeLineupSignal: homeYrfiSignal
+        homeLineupSignal: homeYrfiSignal,
+        awayArsenalSignal,
+        homeArsenalSignal
       }
     );
 
