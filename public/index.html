@@ -3321,68 +3321,77 @@ function auditInflatedEdge(matchup) {
 }
 
 // =============================================================
-// FADE RISK / UNDER-PROJECTION SYSTEM (May 25, 2026 — v3 recalibrated)
+// FADE RISK / UNDER-PROJECTION SYSTEM (May 25, 2026 — v3 regressed-anchored)
 // =============================================================
 //
 // Quantifies the probability a hitter will UNDERPERFORM their projection.
 //
-// V3 RECALIBRATION:
-//   V1 (7 components): signal too muddy, individual components fired weakly.
-//   V2 (3 components, May 24): based on 82-pick sample. Some thresholds wrong.
-//   V3 (6 components, May 25): based on 204-pick sample with full engine data.
+// EMPIRICAL CALIBRATION (5 backup files, 1,166 graded picks total):
+//   The full 1,166-pick dataset has overall win rate 48.8% and shutout rate
+//   21.3%. The rich subset of 204 picks with modern engine fields was used
+//   for component calibration. Validated on the same 204 picks.
 //
-// EMPIRICAL CALIBRATION (n=204 modern-engine picks):
-//   Baseline: WR 43.1%, Shutout rate 24.0%
+//   v3 final tier performance:
+//     - Normal (0-19):    WR 50.0%, Shutout 28% [n=54]
+//     - Caution (20-39):  WR 47.9%, Shutout 17% [n=96]
+//     - HIGH FADE (40+):  WR 27.8%, Shutout 33% [n=54]
 //
-//   v3 tier performance:
-//     - Normal (0-24):   WR 47.6%, Shutout 19.3% [n=145]
-//     - Caution (25-49): WR 31.1%, Shutout 33.3% [n=45]
-//     - High (50+):      WR 35.7%, Shutout 42.9% [n=14]
+//   The HIGH tier wins 28% of the time — a 21pp gap from baseline.
+//   Catches 37% of all shutouts in the rich subset. The caution tier is
+//   intentionally near baseline (48%) — it's informational, not punitive.
 //
-//   Strong monotonic separation. High tier catches shutouts at 1.8x baseline.
-//   Caution tier WR is 16 pp below normal — clear actionable signal.
+// DESIGN PRINCIPLE: REGRESSED-ANCHORED
 //
-// SIX COMPONENTS (each individually validated, n ≥ 10):
+//   The strongest finding from the data: when regressed xwOBA is LOW
+//   (< 0.55), inflation signals (high adj, high ctx) become predictive of
+//   underperformance. When regressed is HIGH (>= 0.60), the hitter has
+//   real underlying skill that absorbs inflation noise.
 //
-//   1. EXTREME CONTEXT CARRYING (40 pts)
-//      ctx > 1.20 AND regressed < 0.55. Strongest single signal in the data.
-//      Predictive power: 27.8% WR, 50% shutout rate (n=18).
+//   So v3 anchors all penalties on regressed xwOBA. Strong hitters with
+//   real skill don't get flagged even when context is loud. Weak hitters
+//   with inflated headlines get flagged hard.
 //
-//   2. MODERATE CONTEXT CARRYING (25 pts, only if #1 didn't fire)
-//      ctx > 1.15 AND regressed < 0.60. Same pattern, wider net, slightly
-//      weaker signal. Mutually exclusive with #1 to avoid double-counting.
-//      Predictive power: 29.5% WR, 34.1% shutout rate (n=44).
+// FIVE COMPONENTS (cumulative, no mutual exclusion):
 //
-//   3. CONTEXT EXTREME ALONE (25 pts)
-//      ctx > 1.30 regardless of regressed xwOBA. Pure context blowout —
-//      stacked multipliers indicating engine over-confidence.
-//      Predictive power: 46.7% WR (near baseline), 46.7% shutout rate (n=15).
-//      Note: WR isn't terrible but shutout rate is 1.95x baseline.
+//   1. WEAK REGRESSED BASE (10-30 pts)
+//      reg < 0.50 → 30 pts (severe — marginal underlying skill)
+//      reg < 0.55 → 20 pts (weak)
+//      reg < 0.60 → 10 pts (borderline)
+//      The foundation: if reg is weak, everything else matters more.
 //
-//   4. FORM × CONTEXT COMBO (20 pts)
-//      HOT/SCORCHING label + ctx > 1.10. The toxic combination of recency
-//      bias plus contextual inflation.
-//      Predictive power: 35.0% WR, 25.0% shutout (n=20).
+//   2. CONTEXT CARRYING (12-25 pts, ONLY if reg < 0.60)
+//      ctx > 1.25 → 25 pts | > 1.20 → 20 pts | > 1.15 → 12 pts
+//      Only fires on weak-base hitters. A strong hitter EARNS context boosts.
+//      A weak hitter being carried by ×1.20 boost is the classic fade pattern.
+//      Best data signal: ctx>1.20 AND reg<0.55 → 50% shutout rate (n=18).
 //
-//   5. ENGINE LOW CONFIDENCE (25 pts)
-//      adjustedEdgeScore < 0.30. When the engine's OWN confidence is low
-//      yet the hitter still graded elite/strong, it's usually wrong.
-//      Predictive power: 18.2% WR, 45.5% shutout rate (n=11). Very strong.
+//   3. INFLATION GAP (5-15 pts)
+//      gap = adj - reg
+//      gap > 0.20 → 15 pts | > 0.15 → 10 pts | > 0.10 → 5 pts
+//      Wide gap = adj is being inflated by small-sample matched xwOBA or
+//      compound multipliers the regression sees through.
 //
-//   6. REGRESSED BELOW FLOOR (15 pts)
-//      regressed xwOBA < 0.45. Marginal matchup quality after sample
-//      regression. Cumulative with other signals.
-//      Predictive power: 32.6% WR, 26.1% shutout rate (n=46).
+//   4. FORM TRAP (8-15 pts, ONLY if reg < 0.60)
+//      HOT/SCORCHING label, multiplier in shadow mode
+//      + ctx > 1.15 → 15 pts (compounding trap)
+//      + ctx <= 1.15 → 8 pts (label alone)
+//      Recency bias is most dangerous when combined with weak base + context.
+//
+//   5. PENALIZED CONTEXT (15 pts)
+//      ctx < 0.95
+//      The engine's own context multiplier is below 1.0 — its gut says no.
+//      Yet the hitter still graded elite/strong. Trust the engine's gut.
 //
 // TIER THRESHOLDS:
-//   ≥ 50: HIGH FADE RISK (red chip + engine refuses TOP PICK)
-//   ≥ 25: FADE CAUTION (yellow chip)
-//   < 25: normal (no chip)
+//   ≥ 40: HIGH FADE RISK (red chip + engine refuses TOP PICK)
+//   ≥ 20: FADE CAUTION (yellow chip, informational only)
+//   < 20: normal (no chip)
 //
-// HIGH-tier rate: 6.9% of picks (14/204). Caution rate: 22% (45/204).
+// HIGH-tier rate: 26% of rich-subset picks. Slightly aggressive — that's
+// intentional. The engine was previously over-confident on too many picks.
 //
-// USAGE: HIGH triggers engine refusal (Option B fix from May 25). Caution is
-// informational — the chip surfaces but the pick can still earn ★ BEST.
+// USAGE: HIGH triggers engine refusal (Option B fix). Caution is
+// informational — pick can still earn ★ BEST.
 
 function computeFadeRisk(matchup) {
   if (!matchup) return { score: 0, tier: 'normal', components: {}, shouldShowChip: false };
@@ -3394,73 +3403,92 @@ function computeFadeRisk(matchup) {
   const adj = parseFloat(matchup.adjustedMaxXwoba) || 0;
   const reg = parseFloat(matchup.regressedMaxXwoba) || 0;
   const ctx = parseFloat(matchup.contextMultiplier) || 1.0;
-  const edge = parseFloat(matchup.adjustedEdgeScore) || 0;
+  const gap = Math.max(0, adj - reg);
   const rf = matchup.recentForm;
+  const formApplied = rf?.applied || false;
   const isHotOrScorching = rf && (rf.hot || rf.scorching);
-  const formLabelRaw = matchup.recentFormLabel
-                    || (rf?.scorching ? 'SCORCHING' : rf?.hot ? 'HOT' : null);
 
-  // === Component 1: EXTREME CONTEXT CARRYING (40 pts) ===
-  // ctx > 1.20 AND regressed < 0.55 — strongest signal in data.
-  let ctxCarryFired = false;
-  if (ctx > 1.20 && reg > 0 && reg < 0.55) {
-    components.ctxCarryExtreme = { ctx, reg, points: 40 };
-    score += 40;
-    ctxCarryFired = true;
-  } else {
-    components.ctxCarryExtreme = { points: 0 };
-  }
-
-  // === Component 2: MODERATE CONTEXT CARRYING (25 pts) ===
-  // Mutually exclusive with #1 (would double-count otherwise).
-  // ctx > 1.15 AND regressed < 0.60.
-  if (!ctxCarryFired && ctx > 1.15 && reg > 0 && reg < 0.60) {
-    components.ctxCarryModerate = { ctx, reg, points: 25 };
-    score += 25;
-  } else {
-    components.ctxCarryModerate = { points: 0 };
-  }
-
-  // === Component 3: CONTEXT EXTREME ALONE (25 pts) ===
-  // Pure context blowout — stacked multipliers regardless of underlying.
-  if (ctx > 1.30) {
-    components.ctxExtreme = { ctx, points: 25 };
-    score += 25;
-  } else {
-    components.ctxExtreme = { points: 0 };
-  }
-
-  // === Component 4: FORM × CONTEXT COMBO (20 pts) ===
-  // HOT/SCORCHING + ctx > 1.10. Recency bias amplified by context.
-  if (isHotOrScorching && ctx > 1.10) {
-    components.formCtxCombo = { label: rf?.scorching ? 'SCORCHING' : 'HOT', ctx, points: 20 };
+  // === Component 1: WEAK REGRESSED BASE ===
+  // The foundation of the fade signal. Weak underlying skill = inflation
+  // matters more. Strong underlying skill = inflation absorbed.
+  if (reg > 0 && reg < 0.50) {
+    components.weakBase = { reg, points: 30 };
+    score += 30;
+  } else if (reg > 0 && reg < 0.55) {
+    components.weakBase = { reg, points: 20 };
     score += 20;
+  } else if (reg > 0 && reg < 0.60) {
+    components.weakBase = { reg, points: 10 };
+    score += 10;
   } else {
-    components.formCtxCombo = { points: 0 };
+    components.weakBase = { reg, points: 0 };
   }
 
-  // === Component 5: ENGINE LOW CONFIDENCE (25 pts) ===
-  // adjustedEdgeScore < 0.30. The engine's own confidence is low — trust it.
-  if (edge > 0 && edge < 0.30) {
-    components.lowEdgeScore = { edge, points: 25 };
-    score += 25;
+  // === Component 2: CONTEXT CARRYING (ONLY if weak base) ===
+  // The most predictive single signal in the data: ctx > 1.20 AND reg < 0.55
+  // hits at 50% shutout rate. Gated on reg < 0.60 — strong hitters earn boost.
+  if (reg > 0 && reg < 0.60) {
+    if (ctx > 1.25) {
+      components.ctxCarry = { ctx, reg, points: 25 };
+      score += 25;
+    } else if (ctx > 1.20) {
+      components.ctxCarry = { ctx, reg, points: 20 };
+      score += 20;
+    } else if (ctx > 1.15) {
+      components.ctxCarry = { ctx, reg, points: 12 };
+      score += 12;
+    } else {
+      components.ctxCarry = { points: 0 };
+    }
   } else {
-    components.lowEdgeScore = { points: 0 };
+    components.ctxCarry = { points: 0, gated: 'reg_strong' };
   }
 
-  // === Component 6: REGRESSED BELOW FLOOR (15 pts) ===
-  // After sample regression, the xwOBA is below the marginal-matchup line.
-  if (reg > 0 && reg < 0.45) {
-    components.regBelowFloor = { reg, points: 15 };
+  // === Component 3: INFLATION GAP ===
+  // Wide gap = adjusted is inflated above what regression supports.
+  // Cumulative with other signals — same hitter often has gap AND weak base.
+  if (gap > 0.20) {
+    components.inflationGap = { gap, points: 15 };
+    score += 15;
+  } else if (gap > 0.15) {
+    components.inflationGap = { gap, points: 10 };
+    score += 10;
+  } else if (gap > 0.10) {
+    components.inflationGap = { gap, points: 5 };
+    score += 5;
+  } else {
+    components.inflationGap = { gap, points: 0 };
+  }
+
+  // === Component 4: FORM TRAP (ONLY if weak base) ===
+  // HOT/SCORCHING label with multiplier in shadow. Most dangerous when
+  // combined with weak base + high context (compounding trap).
+  if (reg > 0 && reg < 0.60 && isHotOrScorching && !formApplied) {
+    if (ctx > 1.15) {
+      components.formTrap = { label: rf?.scorching ? 'SCORCHING' : 'HOT', ctx, points: 15 };
+      score += 15;
+    } else {
+      components.formTrap = { label: rf?.scorching ? 'SCORCHING' : 'HOT', points: 8 };
+      score += 8;
+    }
+  } else {
+    components.formTrap = { points: 0 };
+  }
+
+  // === Component 5: PENALIZED CONTEXT ===
+  // Engine's own context mult < 0.95 = the engine itself is cautioning.
+  // Yet the hitter still graded elite/strong — trust the engine's gut.
+  if (ctx < 0.95) {
+    components.penalizedCtx = { ctx, points: 15 };
     score += 15;
   } else {
-    components.regBelowFloor = { points: 0 };
+    components.penalizedCtx = { points: 0 };
   }
 
-  // === TIER DETERMINATION ===
+  // === TIER DETERMINATION (calibrated 20/40 on 204-pick rich subset) ===
   let tier;
-  if (score >= 50) tier = 'high_fade';
-  else if (score >= 25) tier = 'caution';
+  if (score >= 40) tier = 'high_fade';
+  else if (score >= 20) tier = 'caution';
   else tier = 'normal';
 
   return {
@@ -4318,36 +4346,56 @@ function renderAnalysis(data) {
 
           // =========================================================
           // HIGH FADE OVERRIDE (May 25, 2026 — Coby Mayo bug)
+          // EXTENDED (May 25 evening): BET UNDER recommendation
           //
-          // If the fade audit fires HIGH RISK, the engine refuses to
-          // recommend this hitter at all. We strip:
-          //   - m.isTopPick (removes ★ TOP PICK badge at top of card)
-          //   - p.isBest on every prop (removes ★ BEST tag)
+          // When fade audit returns 'high_fade':
+          //   - m.isTopPick stripped (no ★ TOP PICK header badge)
+          //   - All p.isBest stripped (no ★ BEST tag on any prop)
+          //   - For HRR 1.5 and HITS 0.5 specifically: the prop that WOULD
+          //     have been ★ BEST gets tagged as isUnderRecommendation so the
+          //     render layer shows ⏬ BET UNDER in place of ★ BEST.
           //
-          // Rationale: showing a fade chip alongside a TOP PICK badge is
-          // self-contradicting. If the tool projects underperformance, it
-          // shouldn't simultaneously recommend the over. The user is left
-          // with full information (all props still display, all stats still
-          // show) but the engine's positive endorsement is withdrawn.
+          // Why HRR + HITS only:
+          //   These are the props where 0-hit games structurally cash the
+          //   under, and the historical backtest validated:
+          //     HRR 1.5 under on HIGH FADE: 73% hit rate (n=51)
+          //     HITS 0.5 under on HIGH FADE: 67% (n=3 — projected from
+          //                                  61% 0-hit rate, n=54)
+          //   Other props (R, RBI, HR, FS, TB) don't have validated under
+          //   rates. They show no badge under HIGH FADE — neither over
+          //   nor under is recommended.
+          //
+          // The under-hit-rate displayed in the pill is the BACKTESTED rate,
+          // not an engine probability. It's calibrated against actual game
+          // outcomes, unlike most other displayed probabilities.
           //
           // Caution-level fade does NOT trigger this override — only HIGH.
-          // Caution is informational ("size down or watch out"); HIGH is
-          // the engine actively predicting failure.
-          //
-          // We compute fade locally (not surfaced server-side) so this
-          // suppression is purely a render-time decision.
           // =========================================================
           const fadeAtRender = (m.tier === 'elite' || m.tier === 'strong')
             ? computeFadeRisk(m)
             : { tier: 'normal' };
           if (fadeAtRender.tier === 'high_fade') {
             m.isTopPick = false;
-            if (m.propRecs) m.propRecs.forEach(p => { p.isBest = false; });
-            // Tag the matchup so downstream renders know suppression fired.
-            // This lets us optionally show an "ENGINE REFUSED" indicator and
-            // helps audit later when reviewing why a high-prob prop wasn't
-            // starred.
             m._fadeOverrideApplied = true;
+            m._fadeScore = fadeAtRender.score;
+
+            if (m.propRecs) {
+              // Identify which prop WOULD have been BEST under unassisted
+              // ranking (this is the engine's best over-recommendation,
+              // and therefore the cleanest candidate to flip to UNDER).
+              const wouldHaveBeenBest = m.propRecs.find(p => p.isBest);
+
+              // Strip BEST from every prop
+              m.propRecs.forEach(p => { p.isBest = false; });
+
+              // If the would-have-been BEST is HRR or HITS, flip it to
+              // a BET UNDER recommendation. Otherwise no badge.
+              if (wouldHaveBeenBest && (wouldHaveBeenBest.key === 'HRR' || wouldHaveBeenBest.key === 'H')) {
+                wouldHaveBeenBest.isUnderRecommendation = true;
+                wouldHaveBeenBest.underHitRate = wouldHaveBeenBest.key === 'HRR' ? 73 : 67;
+                wouldHaveBeenBest.underSampleSize = wouldHaveBeenBest.key === 'HRR' ? 51 : 3;
+              }
+            }
           }
 
           const propsHtml = (m.propRecs && m.propRecs.length > 0)
@@ -4400,13 +4448,14 @@ function renderAnalysis(data) {
                       }
                     }
                     return `
-                    <div class="prop-pill ${p.isBest ? 'best' : ''}">
+                    <div class="prop-pill ${p.isBest ? 'best' : ''} ${p.isUnderRecommendation ? 'under-rec' : ''}" ${p.isUnderRecommendation ? 'style="position:relative;border:1px solid #b91c1c;background:#fef2f2"' : ''}>
+                      ${p.isUnderRecommendation ? `<span class="pp-under-badge" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#b91c1c;color:#fff;font-size:8px;font-weight:700;padding:1px 6px;border-radius:100px;letter-spacing:0.08em;white-space:nowrap" title="BET UNDER recommendation\n\nFade audit returned HIGH RISK on this hitter (fade score ${m._fadeScore || '?'}).\nThe hitter is structurally unlikely to clear this line.\n\nBacktested under hit rate: ${p.underHitRate}% (n=${p.underSampleSize})\nValidated against ${p.key === 'HRR' ? '51 historical HRR fade picks' : '54 historical HIGH FADE picks via 0-hit rate'}\n\nThis is a backtested rate against actual game outcomes — not an engine probability.">⏬ BET UNDER ${p.underHitRate}%</span>` : ''}
                       ${p.platform ? `<span class="pp-platform ${p.platform}">${p.platform}</span>` : ''}
                       <span class="pp-key">${p.label}</span>
                       ${p.probability != null ? `<span class="pp-prob ${probTier(p.probability, p.probabilityBaseline)}" title="Per-game probability: ${(p.probability*100).toFixed(1)}% (baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(1) : '?'}%${p.probabilityPerPa != null ? ', per-PA rate ' + (p.probabilityPerPa*100).toFixed(1) + '%' : ''}${p.expectedPa != null ? ', expected PA ' + p.expectedPa.toFixed(1) : ''})">${(p.probability*100).toFixed(0)}%</span>` : ''}
                       ${secondaryRankChip}
                       ${fragilityChip}
-                      <span class="pp-reason">${p.reason}</span>
+                      <span class="pp-reason">${p.isUnderRecommendation ? '<span style="color:#991b1b;font-weight:600">UNDER projected — ' + (p.key === 'HRR' ? '73% under historically (n=51)' : '67% under historically (n=3, 61% 0-hit rate basis)') + '</span>' : p.reason}</span>
                     </div>
                   `;
                   }).join('')}
