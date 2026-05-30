@@ -5439,7 +5439,16 @@ function renderAnalysis(data) {
         `;
       };
 
-      const sideKey = s.key;  // 'awayVsHome' or 'homeVsAway'
+      const sideKey = key;  // (May 30, 2026 K-line bug fix) Use parameter `key`
+                            // from outer sideHtml(key, label) instead of s.key.
+                            // s.key is undefined — the analyze.js response writes
+                            // data.awayVsHome / data.homeVsAway but the inner data
+                            // block doesn't carry a .key field (only the outer
+                            // sideResults map does). This made all manual line
+                            // entry input IDs collapse to the same value
+                            // 'pp-manual-undefined-strikeouts-{gamePk}', causing
+                            // the second pitcher's input to write to the first
+                            // pitcher's DOM element via getElementById.
       const rows = pp.recommendations.map(r => {
         if (r.isBoolean) {
           return `
@@ -5578,7 +5587,7 @@ function renderAnalysis(data) {
       // Home/road split callout — only surface when meaningful gap (>30-pt OPS-against differential)
       let hrSplitHtml = '';
       const hrSplits = s.pitcherHomeRoadSplits;
-      const isHomePitcher = (s.key === 'homeVsAway');  // away hitters vs home pitcher means pitcher is home
+      const isHomePitcher = (key === 'homeVsAway');  // (May 30 bug fix) was s.key, undefined — see sideKey comment above
       if (hrSplits && hrSplits.home && hrSplits.road) {
         const homeOps = parseFloat(hrSplits.home.opsAgainst);
         const roadOps = parseFloat(hrSplits.road.opsAgainst);
@@ -5606,9 +5615,9 @@ function renderAnalysis(data) {
       // projections (we don't predict them) so they're surfaced as track-only
       // markets behind a "+ MORE MARKETS" toggle. The user picks YES/NO + odds
       // + units and we log + grade the same as the core 5 prop types.
-      const bonusMarketsId = `pp-bonus-${s.key}-${data.gamePk}`;
+      const bonusMarketsId = `pp-bonus-${key}-${data.gamePk}`;  // (May 30 bug fix) was s.key
       const buildBonusForm = (propType, label) => {
-        const formId = `pp-bonus-form-${propType}-${s.key}-${data.gamePk}`;
+        const formId = `pp-bonus-form-${propType}-${key}-${data.gamePk}`;  // (May 30 bug fix) was s.key
         const ctxJson = JSON.stringify({
           formId,
           gamePk: data.gamePk,
