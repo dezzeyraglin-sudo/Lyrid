@@ -143,10 +143,22 @@ export function buildPitcherProps(pitcher, opts = {}) {
     kRate = inningSplits.prior.kPct;
   } else if (arsenal.length > 0) {
     // Weight pitch-level K rates by usage
+    // (Drop #4 K-line bug fix — May 30, 2026)
+    // SAME BUG as pitcherKProjection.js had before its May 25 fix.
+    // Raw getPitcherArsenal() returns entries with .usage (singular).
+    // Per-hitter matchedPitches in analyze.js renames to .pitcherUsage,
+    // but THIS call site receives the RAW arsenal shape directly from
+    // analyze.js line 1257 (arsenal: arsenal), not the renamed shape.
+    // Reading .pitcherUsage produced NaN/0, totalUsage stayed 0, and
+    // kRate fell through to the 0.23 league-avg default. This broke
+    // the K line for any pitcher whose inningSplits.kPct was missing.
+    //
+    // Defensive read: try both shapes. Same pattern as pitcherKProjection.js.
     let weighted = 0, totalUsage = 0;
     for (const p of arsenal) {
-      const k = parseFloat(p.pitcherK);
-      const usage = parseFloat(p.pitcherUsage) || 0;
+      // Try multiple field name variants for K rate (matches pitcherKProjection.js fix)
+      const k = parseFloat(p.pitcherK ?? p.k);
+      const usage = parseFloat(p.pitcherUsage ?? p.usage) || 0;
       if (!isNaN(k) && usage > 0) {
         weighted += (k / 100) * usage;
         totalUsage += usage;
