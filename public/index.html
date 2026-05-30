@@ -542,6 +542,40 @@
   .tier-badge.elite{background:var(--heat);color:#0a0d0a}
   .tier-badge.strong{background:var(--accent);color:#0a0d0a}
   .tier-badge.solid{background:var(--cool);color:#0a0d0a}
+  /* === PRIME TIER (Phase 2 — May 29, 2026) === */
+  /* Gold gradient distinct from cream/navy. PRIME picks are the
+     top 5/slate cohort validated at 70% WR on similar criteria. */
+  .tier-badge.prime{
+    background:linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+    color:#1c1917;
+    border:1px solid #b45309;
+    box-shadow:0 0 0 1px rgba(251,191,36,0.3), 0 1px 2px rgba(0,0,0,0.1);
+  }
+  .prime-pick-pill{
+    display:inline-block;
+    background:linear-gradient(135deg, #fbbf24, #d97706);
+    color:#1c1917;
+    font-size:9px;
+    font-weight:700;
+    letter-spacing:0.12em;
+    padding:2px 8px;
+    border-radius:3px;
+    margin-left:6px;
+    cursor:help;
+  }
+  /* Lineup-support adjustment chip on prop pills */
+  .lineup-chip{
+    display:inline-block;
+    font-size:9px;
+    padding:1px 5px;
+    border-radius:3px;
+    letter-spacing:0.04em;
+    font-weight:600;
+    margin-left:4px;
+    cursor:help;
+  }
+  .lineup-chip.up{background:#dcfce7;color:#166534}
+  .lineup-chip.down{background:#fee2e2;color:#991b1b}
   .match-pitches{font-size:11px;color:var(--dim);line-height:1.6}
   .match-pitches b{color:var(--accent)}
   .stat-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
@@ -3445,17 +3479,18 @@ function computeFadeRisk(matchup) {
   }
 
   // === Component 3: INFLATION GAP ===
-  // Wide gap = adjusted is inflated above what regression supports.
-  // Cumulative with other signals — same hitter often has gap AND weak base.
-  if (gap > 0.20) {
+  // (Phase 1 retune May 29, 2026) Live data showed gap 0.10-0.15 cohort
+  // hits at 33% (worst bucket). The 5pt weight under-priced it. Bumped
+  // all tiers; threshold moved 0.10→0.08 to start fading earlier.
+  if (gap > 0.18) {
+    components.inflationGap = { gap, points: 20 };
+    score += 20;
+  } else if (gap > 0.13) {
     components.inflationGap = { gap, points: 15 };
     score += 15;
-  } else if (gap > 0.15) {
+  } else if (gap > 0.08) {
     components.inflationGap = { gap, points: 10 };
     score += 10;
-  } else if (gap > 0.10) {
-    components.inflationGap = { gap, points: 5 };
-    score += 5;
   } else {
     components.inflationGap = { gap, points: 0 };
   }
@@ -3485,10 +3520,26 @@ function computeFadeRisk(matchup) {
     components.penalizedCtx = { points: 0 };
   }
 
-  // === TIER DETERMINATION (calibrated 20/40 on 204-pick rich subset) ===
+  // === Component 6: MULTIPLIER RUNAWAY (Phase 1 — May 29, 2026) ===
+  // The pre-cap adjusted xwoba exceeded the 0.80 sanity ceiling. Almost
+  // always means context multipliers stacked on top of an already-hot
+  // regressed base. Live data: picks with adjXw > 0.70 hit 38%, > 0.80
+  // hit 35%. The capped flag is a clean trip-wire for these.
+  if (matchup.adjustedXwobaCapped) {
+    components.multiplierRunaway = { points: 15 };
+    score += 15;
+  } else {
+    components.multiplierRunaway = { points: 0 };
+  }
+
+  // === TIER DETERMINATION (Phase 1 retune May 29, 2026) ===
+  // Live data on n=169 picks showed score>=35 cohort hits 33% and
+  // score>=40 hits 31% — effectively the same floor, with 24 more
+  // weak picks caught. Lowering thresholds catches more without
+  // hurting the existing high-fade cohort's hit rate.
   let tier;
-  if (score >= 40) tier = 'high_fade';
-  else if (score >= 20) tier = 'caution';
+  if (score >= 35) tier = 'high_fade';
+  else if (score >= 18) tier = 'caution';
   else tier = 'normal';
 
   return {
@@ -4268,11 +4319,116 @@ function jumpToHrCandidate(gamePk, name) {
   }, 100);
 }
 
+// =========================================================
+// FADE OVERRIDE PASS (Phase 1 — May 29, 2026)
+//
+// CRITICAL BUG FIX: this MUST run BEFORE logBestBets(). The
+// override was previously embedded inline in the render loop
+// AFTER logBestBets, meaning HIGH_FADE picks were logged to
+// historical data as TOP PICKS even though the UI showed
+// ENGINE REFUSED. May 29 audit replay on n=169 found 48 picks
+// (28%) that should have been blocked.
+//
+// Walks every analyzed mismatch on both sides, runs the fade
+// engine, and zeroes out isTopPick + isBest on HIGH_FADE picks
+// so logBestBets correctly excludes them.
+// =========================================================
+function applyFadeOverrides(data) {
+  if (!data) return;
+  const sides = ['awayVsHome', 'homeVsAway'];
+  for (const sideKey of sides) {
+    const side = data[sideKey];
+    if (!side?.mismatches) continue;
+
+    for (const m of side.mismatches) {
+      if (!m.isTopPick) continue;
+      if (m.tier !== 'elite' && m.tier !== 'strong') continue;
+
+      const fade = computeFadeRisk(m);
+
+      // Stash for render path (no recompute needed)
+      m._fadeResult = fade;
+      m._fadeScore = fade.score;
+      m._fadeTier = fade.tier;
+
+      if (fade.tier === 'high_fade') {
+        m.isTopPick = false;
+        m._fadeOverrideApplied = true;
+
+        if (m.propRecs) {
+          const wouldHaveBeenBest = m.propRecs.find(p => p.isBest);
+          m.propRecs.forEach(p => { p.isBest = false; });
+
+          if (wouldHaveBeenBest && (wouldHaveBeenBest.key === 'HRR' || wouldHaveBeenBest.key === 'H')) {
+            wouldHaveBeenBest.isUnderRecommendation = true;
+            wouldHaveBeenBest.underHitRate = wouldHaveBeenBest.key === 'HRR' ? 73 : 67;
+            wouldHaveBeenBest.underSampleSize = wouldHaveBeenBest.key === 'HRR' ? 51 : 3;
+          }
+        }
+      }
+    }
+  }
+}
+
+// =========================================================
+// PRIME SLATE CAP (Phase 2 — May 29, 2026)
+//
+// Enforces the global per-slate PRIME cap. Even after per-game
+// classification limits to 2 per game (in analyze.js), the
+// total PRIME count must not exceed MAX_PRIME_PER_SLATE. We
+// demote lowest-scoring PRIMEs to plain ELITE if over cap.
+//
+// Per-slate cap is here (not in analyze.js) because each
+// game's analysis is independent on the server — the global
+// count is a render-time concern.
+// =========================================================
+const MAX_PRIME_PER_SLATE = 5;
+
+function enforcePrimeSlateCap(data) {
+  if (!data) return;
+  const allPrimes = [];
+
+  for (const sideKey of ['awayVsHome', 'homeVsAway']) {
+    const side = data[sideKey];
+    if (!side?.mismatches) continue;
+    for (const m of side.mismatches) {
+      // Promote eligible candidates that survived fade override
+      if (m.isPrimeEligible && m.isTopPick && !m._fadeOverrideApplied) {
+        m.isPrime = true;
+        allPrimes.push(m);
+      }
+    }
+  }
+
+  if (allPrimes.length > MAX_PRIME_PER_SLATE) {
+    allPrimes.sort((a, b) => (b.primeScore || 0) - (a.primeScore || 0));
+    for (let i = MAX_PRIME_PER_SLATE; i < allPrimes.length; i++) {
+      allPrimes[i].isPrime = false;
+      allPrimes[i]._primeDemotedToCap = true;
+    }
+  }
+
+  // Assign primeRank for display (1-indexed)
+  const finalPrimes = allPrimes.filter(m => m.isPrime)
+    .sort((a, b) => (b.primeScore || 0) - (a.primeScore || 0));
+  finalPrimes.forEach((m, i) => { m._primeRank = i + 1; });
+}
+
 function renderAnalysis(data) {
   const container = document.getElementById('analysisContainer');
 
   // Cache analyzed data so modals can look up situational splits, etc.
   if (data.gamePk) analyzedCache.set(data.gamePk, data);
+
+  // (Phase 1 — May 29, 2026) CRITICAL ORDER: fade override MUST run before
+  // logBestBets. Previously the override ran inline in the per-mismatch
+  // render loop, AFTER logBestBets had already written HIGH_FADE picks to
+  // historical data. See applyFadeOverrides comment for details.
+  applyFadeOverrides(data);
+
+  // (Phase 2 — May 29, 2026) Per-slate PRIME cap. Promotes eligible
+  // candidates that survived fade override and demotes excess to ELITE.
+  enforcePrimeSlateCap(data);
 
   // Auto-log every "BEST BET" recommendation from this analysis
   logBestBets(data);
@@ -4371,32 +4527,12 @@ function renderAnalysis(data) {
           //
           // Caution-level fade does NOT trigger this override — only HIGH.
           // =========================================================
-          const fadeAtRender = (m.tier === 'elite' || m.tier === 'strong')
-            ? computeFadeRisk(m)
-            : { tier: 'normal' };
-          if (fadeAtRender.tier === 'high_fade') {
-            m.isTopPick = false;
-            m._fadeOverrideApplied = true;
-            m._fadeScore = fadeAtRender.score;
-
-            if (m.propRecs) {
-              // Identify which prop WOULD have been BEST under unassisted
-              // ranking (this is the engine's best over-recommendation,
-              // and therefore the cleanest candidate to flip to UNDER).
-              const wouldHaveBeenBest = m.propRecs.find(p => p.isBest);
-
-              // Strip BEST from every prop
-              m.propRecs.forEach(p => { p.isBest = false; });
-
-              // If the would-have-been BEST is HRR or HITS, flip it to
-              // a BET UNDER recommendation. Otherwise no badge.
-              if (wouldHaveBeenBest && (wouldHaveBeenBest.key === 'HRR' || wouldHaveBeenBest.key === 'H')) {
-                wouldHaveBeenBest.isUnderRecommendation = true;
-                wouldHaveBeenBest.underHitRate = wouldHaveBeenBest.key === 'HRR' ? 73 : 67;
-                wouldHaveBeenBest.underSampleSize = wouldHaveBeenBest.key === 'HRR' ? 51 : 3;
-              }
-            }
-          }
+          // (Phase 1 — May 29, 2026) Fade override already ran in
+          // applyFadeOverrides() at the start of renderAnalysis. The
+          // result was stashed at m._fadeResult / m._fadeOverrideApplied.
+          // This block previously did the work inline AFTER logBestBets,
+          // causing HIGH_FADE picks to be logged as TOP PICKS. Bug fixed.
+          const fadeAtRender = m._fadeResult || { tier: 'normal', score: 0, components: {} };
 
           const propsHtml = (m.propRecs && m.propRecs.length > 0)
             ? `<div class="prop-recs">
@@ -4455,6 +4591,7 @@ function renderAnalysis(data) {
                       ${p.probability != null ? `<span class="pp-prob ${probTier(p.probability, p.probabilityBaseline)}" title="Per-game probability: ${(p.probability*100).toFixed(1)}% (baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(1) : '?'}%${p.probabilityPerPa != null ? ', per-PA rate ' + (p.probabilityPerPa*100).toFixed(1) + '%' : ''}${p.expectedPa != null ? ', expected PA ' + p.expectedPa.toFixed(1) : ''})">${(p.probability*100).toFixed(0)}%</span>` : ''}
                       ${secondaryRankChip}
                       ${fragilityChip}
+                      ${p.lineupSupportAdjustment && Math.abs(p.lineupSupportAdjustment) >= 0.03 ? `<span class="lineup-chip ${p.lineupSupportAdjustment > 0 ? 'up' : 'down'}" title="Lineup support adjustment: ${p.lineupSupportAdjustment > 0 ? '+' : ''}${(p.lineupSupportAdjustment * 100).toFixed(0)}%&#10;&#10;Slot: ${m.lineupSupport?.components?.slot || '?'}&#10;Team R/G: ${m.lineupSupport?.audit?.teamRpg?.toFixed(1) || '?'}&#10;OBP ahead factor: ${m.lineupSupport?.components?.obpAheadFactor?.toFixed(2) || '1.00'}&#10;OBP behind factor: ${m.lineupSupport?.components?.obpBehindFactor?.toFixed(2) || '1.00'}&#10;&#10;Closes the HRR orphan-hit failure mode — hitter does his job, lineup converts (or doesn't).">${p.lineupSupportAdjustment > 0 ? '↑' : '↓'} LU ${p.lineupSupportAdjustment > 0 ? '+' : ''}${(p.lineupSupportAdjustment * 100).toFixed(0)}%</span>` : ''}
                       <span class="pp-reason">${p.isUnderRecommendation ? '<span style="color:#991b1b;font-weight:600">UNDER projected — ' + (p.key === 'HRR' ? '73% under historically (n=51)' : '67% under historically (n=3, 61% 0-hit rate basis)') + '</span>' : p.reason}</span>
                     </div>
                   `;
@@ -4641,7 +4778,7 @@ function renderAnalysis(data) {
                     const label = isHigh ? '⏬ HIGH FADE RISK' : '⏬ FADE CAUTION';
                     return `<span class="fade-risk-chip" style="background:${bgFade};color:${txtFade};font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.04em;font-weight:700;cursor:help" title="${tooltipText}">${label}</span>`;
                   })()}
-                  <div class="tier-badge ${m.tier}">${m.tier.toUpperCase()}</div>
+                  <div class="tier-badge ${m.isPrime ? 'prime' : m.tier}" ${m.isPrime ? `title="PRIME tier — top ${MAX_PRIME_PER_SLATE} picks of the day.&#10;Validated 70% WR on similar criteria (n=27, May 19-28 audit).&#10;&#10;Regressed xwoba: ${m.regressedMaxXwoba}&#10;Context mult: ${m.contextMultiplier}&#10;Inflation gap: ${(parseFloat(m.adjustedMaxXwoba) - parseFloat(m.regressedMaxXwoba || 0)).toFixed(3)}&#10;PRIME score: ${m.primeScore}&#10;Fragility: ${m.fragility?.level || 'solid'}"` : ''}>${m.isPrime ? `PRIME #${m._primeRank || ''}` : m.tier.toUpperCase()}</div>
                 </div>
               </div>
               ${m.hrChance && m.hrChance.drivers && m.hrChance.drivers.length > 0 ? `
@@ -7545,6 +7682,29 @@ function logBestBets(data) {
         tier: m.tier,
         isTopPick: true,
         isDeepVerified: true,   // flag so we know this is premium
+        // (Phase 1 — May 29, 2026) Fade tier + score for validation tracking
+        fadeTier: m._fadeTier || 'normal',
+        fadeScore: m._fadeScore || 0,
+        // (Phase 1 — May 29, 2026) Capped flag — was the multiplier
+        // stack about to produce a nonsense value?
+        adjustedXwobaCapped: m.adjustedXwobaCapped || false,
+        rawAdjustedMaxXwoba: m.rawAdjustedMaxXwoba || null,
+        // (Phase 2 — May 29, 2026) PRIME tier classification fields
+        isPrime: m.isPrime || false,
+        isPrimeEligible: m.isPrimeEligible || false,
+        primeScore: m.primeScore || null,
+        primeRejectReason: m.primeRejectReason || null,
+        // (Phase 2) Fragility classification
+        fragilityLevel: m.fragility?.level || null,
+        fragilityScore: m.fragility?.score || 0,
+        fragilityIssues: m.fragility?.issues || [],
+        // (Phase 2) Lineup support adjustment
+        lineupSupportFactor: m.lineupSupport?.factor || null,
+        lineupSupportComponents: m.lineupSupport?.components || null,
+        lineupSupportAdjustment: bestBet.lineupSupportAdjustment || 0,
+        rawProbability: bestBet.rawProbability || null,
+        // (Phase 2) HITS-over-HRR preference flag
+        hitsPreferenceApplied: bestBet._hitsPreferenceApplied || false,
         propKey: bestBet.key,
         propLabel: bestBet.label,
         platform: bestBet.platform,

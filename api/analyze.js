@@ -25,6 +25,8 @@ import { computeHitProbability, computeHrProbability, computeXbhProbability } fr
 import { computeCompoundProbabilities } from './_lib/compoundProbability.js';
 import { getGameEcosystems } from './_lib/teamEcosystem.js';
 import { selectUnassistedTopPick } from './_lib/unassistedEngine.js';
+// (Phase 2 — May 29, 2026) Per-hitter lineup support factor for HRR conversion math
+import { computeLineupSupportFactor, applyLineupSupportToProb } from './_lib/lineupSupport.js';
 import {
   aggregateLineupSignals,
   computeYrfiTopOfOrderBoost,
@@ -746,7 +748,17 @@ export default async function handler(req, res) {
         // had already priced in. Cap preserves all context signal up to a
         // reasonable ceiling.
         const cappedContextMultiplier = Math.min(1.40, contextMultiplier);
-        const adjustedMaxXwoba = maxXwoba * cappedContextMultiplier;
+        // (Phase 1 — May 29, 2026) Cap the final adjustedMaxXwoba at 0.80.
+        // Live data on n=169 produced values up to 1.434 (Yelich) and 1.293
+        // (Cruz) — physically nonsense pre-PA projections. These were
+        // displayed to users as confident TOP PICK ELITE recommendations
+        // and lost. The cap preserves all signal up to a sane ceiling
+        // (0.80 = "Bonds peak season" — beyond that is multiplier runaway).
+        // The capped flag is consumed by the fade engine (Component 6).
+        const ADJUSTED_XWOBA_CEILING = 0.80;
+        const rawAdjustedMaxXwoba = maxXwoba * cappedContextMultiplier;
+        const adjustedMaxXwoba = Math.min(rawAdjustedMaxXwoba, ADJUSTED_XWOBA_CEILING);
+        const adjustedXwobaCapped = rawAdjustedMaxXwoba > ADJUSTED_XWOBA_CEILING;
         const adjustedEdge = edgeScore * cappedContextMultiplier;
 
         // HITTER TIER REGRESSION (flag-gated, default OFF)
@@ -851,6 +863,10 @@ export default async function handler(req, res) {
           matchedPitches,
           maxXwoba: maxXwoba.toFixed(3),
           adjustedMaxXwoba: adjustedMaxXwoba.toFixed(3),
+          // (Phase 1 — May 29, 2026) Capped-flag for fade engine Component 6
+          // and PRIME tier rejection. Raw value also exposed for debug.
+          adjustedXwobaCapped,
+          rawAdjustedMaxXwoba: rawAdjustedMaxXwoba.toFixed(3),
           edgeScore: edgeScore.toFixed(3),
           adjustedEdgeScore: adjustedEdge.toFixed(3),
           // HITTER TIER REGRESSION diagnostic — always populated, used to
@@ -866,6 +882,15 @@ export default async function handler(req, res) {
           propRecs,
           platoonMeta,
           hasDeepData,
+          // (Phase 2 — May 29, 2026) PRIME tier classification + lineup support.
+          // Default values; populated downstream by classifyPrimeTier()
+          // and the lineup-support pass after all hitters are analyzed.
+          isPrime: false,
+          isPrimeEligible: false,
+          primeScore: null,
+          primeRejectReason: null,
+          lineupSupport: null,
+          fragility: null,
           // Bullpen cross-reference
           bullpenMatches,
           bullpenMaxXwoba: bullpenMaxXwoba.toFixed(3),
@@ -1073,11 +1098,27 @@ export default async function handler(req, res) {
         const candidateQualifyingXw = HITTER_TIER_REGRESSION_ENABLED
           ? parseFloat(candidate.regressedMaxXwoba || candidate.adjustedMaxXwoba)
           : parseFloat(candidate.adjustedMaxXwoba);
+        // (Phase 1 — May 29, 2026) Removed bullpenTier from qualifier path.
+        // Live data on n=169 showed bullpenTier='strong' at 35% WR and NULL
+        // at 55% WR — inverted/noisy signal. Solid-tier no longer qualifies
+        // via bullpen alone. Until the bullpen tier assignment logic is
+        // rebuilt, only the primary xwoba-based tier drives qualification.
         const candidateQualifies = candidate.tier === 'elite' ||
-                                   (candidate.tier === 'strong' && candidateQualifyingXw >= 0.380) ||
-                                   (candidate.tier === 'solid' && candidate.bullpenTier);
+                                   (candidate.tier === 'strong' && candidateQualifyingXw >= 0.380);
         if (candidateQualifies) {
           candidate.isTopPick = true;
+
+          // (Phase 2 — May 29, 2026) Classify for PRIME tier eligibility.
+          // The fade engine result is stashed on the candidate by the
+          // render-time applyFadeOverrides() pass; until that runs we
+          // pass null and rely on classifyPrimeTier's defensive default.
+          const primeResult = classifyPrimeTier(candidate, candidate._fadeResult);
+          candidate.isPrimeEligible = primeResult.isPrime;
+          candidate.primeScore = primeResult.score;
+          candidate.primeRejectReason = primeResult.rejectReason;
+          // isPrime stays false here; final per-game and per-slate cap
+          // is applied later (per-game in this analyze.js, per-slate at render).
+
           const baseReasons = buildTopPickReasons(candidate);
           // Inning-based reasoning layer (only if inningSplits loaded)
           const abTiming = inningSplits ? estimateAtBatTiming(candidate.battingOrder, inningSplits) : null;
@@ -1092,11 +1133,14 @@ export default async function handler(req, res) {
             baseReasons.push(`Pitcher has ${inningSplits.controlTier} control — walk props viable`);
           }
 
-          // Prop unit sizing based on composite score and tier
-          // ELITE + FULL GAME edge: 2u · ELITE or STRONG + FG: 1u · SOLID or single-edge: 0.5u
+          // (Phase 1 — May 29, 2026) Removed FULL_GAME comparison. The
+          // bullpenTier assignment block only produces 'elite' / 'strong' /
+          // 'solid' / null — 'FULL_GAME' was never assigned, so the prior
+          // unit-sizing logic was dead and always fell through to 0.5u.
+          // Units now driven by primary tier only.
           let propUnits = 0.5;
-          if (candidate.tier === 'elite' && candidate.bullpenTier === 'FULL_GAME') propUnits = 2;
-          else if (candidate.tier === 'elite' || (candidate.tier === 'strong' && candidate.bullpenTier === 'FULL_GAME')) propUnits = 1;
+          if (candidate.tier === 'elite') propUnits = 2;
+          else if (candidate.tier === 'strong') propUnits = 1;
           else propUnits = 0.5;
 
           topPick = {
@@ -1316,6 +1360,66 @@ export default async function handler(req, res) {
     }));
 
     sideResults.forEach(r => { if (r) results[r.key] = r.data; });
+
+    // =========================================================
+    // LINEUP SUPPORT FACTOR + HITS PREFERENCE (Phase 2 — May 29, 2026)
+    //
+    // Per-hitter lineup support: closes the HRR orphan-hit gap by
+    // factoring in batting-order slot, team R/G, OBP of hitters
+    // ahead, and quality of hitters behind. All inputs already
+    // loaded — this is pure wiring, no new fetches.
+    //
+    // HITS-over-HRR preference: when the unassisted engine selects
+    // HRR and HITS is within 10 prob points, prefer HITS. May 29
+    // audit showed same hitter pool went 58% HITS vs 42% HRR.
+    //
+    // Both passes mutate the mismatch objects in place. Run BEFORE
+    // the lineupSignalAggregator (line ~1475) which reads matchups
+    // — but the aggregator only reads xwoba/tier fields, not props,
+    // so order is safe.
+    // =========================================================
+    try {
+      const sides = [
+        { key: 'awayVsHome', ecoSide: 'away' },
+        { key: 'homeVsAway', ecoSide: 'home' }
+      ];
+      for (const sideSpec of sides) {
+        const sideData = results[sideSpec.key];
+        if (!sideData?.mismatches) continue;
+        const eco = ecosystems?.[sideSpec.ecoSide];
+        const allHitters = sideData.mismatches;
+
+        for (const m of allHitters) {
+          // Compute support factor
+          const support = computeLineupSupportFactor(m, {
+            teamEcosystem: eco,
+            allHitters
+          });
+          m.lineupSupport = support;
+
+          // Apply to compound prop probabilities (per-PA contact stays raw).
+          // The factor is applied differently per prop type — see
+          // applyLineupSupportToProb in lineupSupport.js.
+          if (m.propRecs) {
+            for (const prop of m.propRecs) {
+              if (prop.probability && prop.key) {
+                const rawProb = prop.probability;
+                const adjustedProb = applyLineupSupportToProb(rawProb, support, prop.key);
+                prop.rawProbability = rawProb;
+                prop.probability = +adjustedProb.toFixed(3);
+                prop.lineupSupportAdjustment = +(adjustedProb - rawProb).toFixed(3);
+              }
+            }
+
+            // HITS-over-HRR preference: if unassisted picked HRR, check HITS.
+            applyHitsOverHrrPreference(m.propRecs);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[analyze] lineup support / HITS preference pass failed:', err.message);
+      // Non-fatal — continue without these adjustments
+    }
 
     // ===== PITCHER PROP LINES (DraftKings via The Odds API) =====
     // Resolve the lines fetch and grade each side's pitcher projection against the line.
@@ -2555,6 +2659,192 @@ function computeLineupTier(analyzedHitters, arsenal) {
 //   - TB 1.5 means "at least 2 bases" which could be one 2B/3B/HR OR two
 //     singles. We approximate as P(≥1 XBH) since the per-XBH rate dominates
 //     for power hitters.
+
+// =============================================================
+// PRIME TIER CLASSIFIER (Phase 2 — May 29, 2026)
+//
+// PRIME is the marketing-grade tier. Picks here are the cohort validated
+// at 70% WR on n=27 in the May 29 audit. Criteria require ALL of:
+//
+//   1. Regressed xwoba in 0.45–0.55 sweet spot
+//   2. Context multiplier 1.05–1.15 (boosted but not runaway)
+//   3. Inflation gap < 0.10
+//   4. NOT capped (multiplier didn't hit the 0.80 ceiling)
+//   5. NOT a form trap (SCORCHING + ctx > 1.10)
+//   6. PASSED fade engine (high_fade auto-disqualifies)
+//   7. NOT fragile (per computeFragility — small samples, weak arsenal, etc)
+//
+// Hard cap: max 2 PRIME per game in analyze.js, max 5 per slate at render.
+// =============================================================
+const PRIME_CRITERIA = Object.freeze({
+  REG_MIN: 0.45,
+  REG_MAX: 0.55,
+  CTX_MIN: 1.05,
+  CTX_MAX: 1.15,
+  MAX_INFLATION_GAP: 0.10,
+  MAX_PER_GAME: 2,
+});
+
+function classifyPrimeTier(matchup, fadeResult) {
+  const reasons = [];
+
+  const reg = parseFloat(matchup.regressedMaxXwoba);
+  const adj = parseFloat(matchup.adjustedMaxXwoba);
+  const ctx = parseFloat(matchup.contextMultiplier);
+  const capped = matchup.adjustedXwobaCapped;
+  // Pull form label from either nested .recentForm.label or flat field
+  const formLabel = matchup.recentForm?.label || matchup.recentFormLabel || null;
+  const gap = (Number.isFinite(adj) && Number.isFinite(reg)) ? (adj - reg) : 0;
+
+  if (!Number.isFinite(reg) || !Number.isFinite(adj) || !Number.isFinite(ctx)) {
+    return { isPrime: false, rejectReason: 'missing_calibration_fields', score: null };
+  }
+
+  // === Criterion 1: regressed sweet spot ===
+  if (reg < PRIME_CRITERIA.REG_MIN || reg >= PRIME_CRITERIA.REG_MAX) {
+    reasons.push(`regressed_${reg.toFixed(3)}_outside_${PRIME_CRITERIA.REG_MIN}-${PRIME_CRITERIA.REG_MAX}`);
+  }
+
+  // === Criterion 2: context multiplier sweet spot ===
+  if (ctx < PRIME_CRITERIA.CTX_MIN || ctx >= PRIME_CRITERIA.CTX_MAX) {
+    reasons.push(`ctx_${ctx.toFixed(3)}_outside_${PRIME_CRITERIA.CTX_MIN}-${PRIME_CRITERIA.CTX_MAX}`);
+  }
+
+  // === Criterion 3: honest inflation gap ===
+  if (gap >= PRIME_CRITERIA.MAX_INFLATION_GAP) {
+    reasons.push(`inflation_gap_${gap.toFixed(3)}_too_wide`);
+  }
+
+  // === Criterion 4: not capped ===
+  if (capped) {
+    reasons.push('multiplier_capped');
+  }
+
+  // === Criterion 5: not a form trap ===
+  if (formLabel === 'SCORCHING' && ctx > 1.10) {
+    reasons.push('form_trap_scorching_inflated');
+  }
+
+  // === Criterion 6: fade engine passed ===
+  // Note: fadeResult may not be available at qualification time
+  // (it's computed at render). Defensive check — if absent, defer to render.
+  if (fadeResult && fadeResult.tier === 'high_fade') {
+    reasons.push('fade_engine_rejection');
+  }
+
+  // === Criterion 7: not fragile ===
+  const frag = computeFragility(matchup);
+  matchup.fragility = frag;  // surface for UI
+  if (frag.level === 'moderate' || frag.level === 'fragile') {
+    reasons.push(`fragility_${frag.level}`);
+  }
+
+  if (reasons.length > 0) {
+    return { isPrime: false, rejectReason: reasons.join(';'), score: null };
+  }
+
+  // PRIME-eligible. Score for ranking when capping.
+  const ctxProximity = 1 - Math.abs(ctx - 1.10) / 0.05;     // 1.0 at center, 0 at edges
+  const regProximity = 1 - Math.abs(reg - 0.50) / 0.05;
+  const gapCleanness = 1 - (gap / PRIME_CRITERIA.MAX_INFLATION_GAP);
+  const score = (ctxProximity * 0.40) + (regProximity * 0.40) + (gapCleanness * 0.20);
+
+  return { isPrime: true, rejectReason: null, score: Number(score.toFixed(3)) };
+}
+
+// =============================================================
+// FRAGILITY CHECK (Phase 2 — May 29, 2026)
+//
+// Even within PRIME criteria, some picks are statistically fragile:
+// small recent-form samples, near-cliff regressed values, weak arsenal
+// coverage, near-caution K%. This function returns a fragility report;
+// PRIME candidates with level=moderate or worse drop back to ELITE.
+//
+// Output: { score, level: 'solid'|'minor'|'moderate'|'fragile', issues }
+// =============================================================
+function computeFragility(matchup) {
+  const issues = [];
+  let score = 0;
+
+  // Small recent form sample
+  const rfPa = parseInt(matchup.recentForm?.paUsed) || parseInt(matchup.recentFormPaUsed) || 0;
+  if (rfPa > 0 && rfPa < 20) {
+    issues.push(`recent_form_pa_${rfPa}`);
+    score += 1;
+  }
+
+  // Edge of context bucket — too close to the danger zone
+  const ctx = parseFloat(matchup.contextMultiplier) || 1.0;
+  if (ctx > 1.13) {
+    issues.push(`ctx_near_inflation_${ctx.toFixed(3)}`);
+    score += 1;
+  }
+
+  // Weak arsenal coverage (insufficient PA vs main pitches)
+  const matched = matchup.matchedPitches || [];
+  const mainPitchPaTotal = matched
+    .filter(p => parseFloat(p.pitcherUsage) >= 15)
+    .reduce((sum, p) => sum + (parseInt(p.hitterPa) || 0), 0);
+  if (mainPitchPaTotal > 0 && mainPitchPaTotal < 30) {
+    issues.push(`arsenal_pa_${mainPitchPaTotal}`);
+    score += 1;
+  }
+
+  // Bottom of the PRIME regressed range — closer to the cliff
+  const reg = parseFloat(matchup.regressedMaxXwoba) || 0;
+  if (reg > 0 && reg < 0.47) {
+    issues.push(`reg_near_bottom_${reg.toFixed(3)}`);
+    score += 1;
+  }
+
+  // Matched K% near caution threshold
+  const matchedK = parseFloat(matchup.matchedHitterK);
+  if (Number.isFinite(matchedK) && matchedK > 25) {
+    issues.push(`matched_k_${matchedK.toFixed(1)}`);
+    score += 1;
+  }
+
+  let level;
+  if (score === 0) level = 'solid';
+  else if (score === 1) level = 'minor';
+  else if (score === 2) level = 'moderate';
+  else level = 'fragile';
+
+  return { score, level, issues };
+}
+
+// =============================================================
+// HITS-OVER-HRR PREFERENCE (Phase 2 — May 29, 2026)
+//
+// May 29 audit: same hitter pool went 58% on HITS vs 42% on HRR
+// (n=26 / n=143). The 16pt gap reflects the "lineup conversion"
+// failure mode for HRR that HITS doesn't have.
+//
+// Until the lineupSupport factor proves it closed the HRR gap,
+// when both H and HRR are eligible and within 10 probability
+// points, prefer H. Respects the model when HRR is dramatically
+// stronger (>10pt gap = model signaling something concrete).
+// =============================================================
+function applyHitsOverHrrPreference(propRecs) {
+  if (!propRecs || propRecs.length < 2) return;
+
+  const currentBest = propRecs.find(p => p.isBest);
+  if (!currentBest || currentBest.key !== 'HRR') return;
+
+  const hitsAlt = propRecs.find(p => p.key === 'H');
+  if (!hitsAlt || !hitsAlt.probability) return;
+
+  const hrrProb = currentBest.probability || 0;
+  const hitsProb = hitsAlt.probability || 0;
+
+  // Only flip if HITS is reasonable (>= 0.45) AND within 10pts of HRR
+  if (hitsProb >= 0.45 && (hrrProb - hitsProb) < 0.10) {
+    currentBest.isBest = false;
+    hitsAlt.isBest = true;
+    hitsAlt._hitsPreferenceApplied = true;
+    hitsAlt._hitsPreferenceReason = `HRR_prob_${hrrProb.toFixed(2)}_HITS_prob_${hitsProb.toFixed(2)}_within_10pts`;
+  }
+}
 
 function expectedPaForLineupSlot(slot) {
   const s = parseInt(slot) || 0;

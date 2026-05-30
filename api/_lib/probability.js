@@ -72,10 +72,12 @@ export function estimatePropProbability(hitter, propKey, ctx = {}) {
   }
 
   // === Bullpen ===
-  // Full-game edge boosts all props slightly, since the lineup faces good matchups even late.
-  if (hitter.bullpenTier === 'FULL_GAME') {
-    modifiers.push({ name: 'FULL GAME edge', factor: 1.08 });
-  }
+  // (Phase 1 — May 29, 2026) REMOVED: the 'FULL_GAME edge' modifier was dead
+  // code. The bullpenTier assignment in analyze.js only produces 'elite' /
+  // 'strong' / 'solid' / null — never 'FULL_GAME' — so this block never
+  // fired. Additionally, live data on n=169 showed bullpenTier='strong' at
+  // 35% WR and NULL at 55% WR (inverted/noisy signal). Disabling the entire
+  // bullpen modifier path until the tier assignment logic is rebuilt.
 
   // === Park factor (prop-specific) ===
   const park = ctx.parkFactor;

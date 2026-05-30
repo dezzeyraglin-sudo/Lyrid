@@ -51,7 +51,11 @@
 
 export const UNASSISTED_THRESHOLDS = Object.freeze({
   // Hard filters
-  MAX_INFLATION_GAP: 0.15,           // adjustedMaxXwoba - regressedMaxXwoba
+  // (Phase 1 — May 29, 2026) Tightened MAX_INFLATION_GAP from 0.15 → 0.12 to
+  // match the new fade engine Component 3 calibration. Live data on n=169
+  // showed the 0.10-0.15 gap bucket hits at 33% (the worst bucket); the engine
+  // should reject earlier.
+  MAX_INFLATION_GAP: 0.12,           // adjustedMaxXwoba - regressedMaxXwoba
   MIN_RECENT_FORM_PA: 20,            // shadow recent-form sample size
   MAX_MATCHED_K_PCT: 30,             // hitter K% against this arsenal
   MIN_PA_AGAINST_MAIN_PITCH: 15,     // minimum PA against at least one of top 3 pitches
@@ -62,14 +66,20 @@ export const UNASSISTED_THRESHOLDS = Object.freeze({
   W_WALK_OBP: 0.5,                   // walks contribute to on-base unassisted
   W_MULTI_HIT: 0.3,                  // P(H ≥ 2) — drives HRR via contact path
   W_K_CLUSTER_PENALTY: 0.4,          // matched K% above season K%
-  W_REGRESSED_SWEETNESS: 0.2,        // proximity to 0.55 sweet spot
+  W_REGRESSED_SWEETNESS: 0.2,        // proximity to sweet spot center
 
   // Sweet spot for regressed xwOBA
-  SWEET_SPOT_CENTER: 0.55,
-  SWEET_SPOT_WIDTH: 0.10,            // half-width — full band is 0.45 to 0.65
+  // (Phase 2 — May 29, 2026) Retuned from center=0.55 width=0.10 (band 0.45-0.65)
+  // to center=0.50 width=0.05 (band 0.45-0.55). The May 29 audit on n=27 picks
+  // in this tighter band showed 70% WR vs ~45% in the wider band. The wider
+  // 0.55-0.65 cohort was the over-confident over-boosted picks that drag WR.
+  SWEET_SPOT_CENTER: 0.50,
+  SWEET_SPOT_WIDTH: 0.05,            // half-width — full band is 0.45 to 0.55
 
   // Caution tier
-  CAUTION_INFLATION_GAP: 0.10,       // 0.10-0.15 is caution, > 0.15 is rejection
+  // (Phase 1 — May 29, 2026) Tightened CAUTION_INFLATION_GAP from 0.10 → 0.08
+  // to match new fade Component 3 weighting.
+  CAUTION_INFLATION_GAP: 0.08,       // 0.08-0.12 is caution, > 0.12 is rejection
   CAUTION_MATCHED_K_PCT: 27,         // 27-30 is caution
 });
 

@@ -14,6 +14,58 @@ const LEAGUE_YRFI = 0.57;
 const LEAGUE_AWAY_SCORES_FIRST = 0.325;
 const LEAGUE_HOME_SCORES_FIRST = 0.305;
 
+// =============================================================
+// EMPIRICAL CALIBRATION (Phase 1 — May 29, 2026)
+//
+// Live tracking on 87 graded FI picks (May 19-28, 2026) showed the
+// displayed probability was systematically overconfident above 0.55:
+//
+//   Bucket        Model says   Actually hits
+//   0.45-0.50     ~0.475       52.6%  (close)
+//   0.50-0.55     ~0.525       44.4%
+//   0.55-0.60     ~0.575       33.3%
+//   0.60-0.65     ~0.625       45.5%
+//   0.65-0.70     ~0.675       50.0%
+//   0.70-0.80     ~0.750       42.9%
+//
+// This isotonic-style remap pulls displayed values toward observed hit
+// rates so the UI is honest. The raw model probability is preserved on
+// the recommendation object as rawProbability for debugging.
+//
+// IMPORTANT: this only affects the DISPLAYED probability. The pick
+// SELECTION still uses the raw probability — the model's relative
+// ranking of which side has the edge is still correct, even if the
+// absolute magnitude was overstated.
+//
+// Refit when 50+ more graded FI picks accumulate.
+// =============================================================
+const FI_CALIBRATION_POINTS = [
+  [0.30, 0.32],   // anchor low (extrapolated, no live data below 0.45)
+  [0.45, 0.47],
+  [0.50, 0.48],
+  [0.55, 0.45],
+  [0.60, 0.47],
+  [0.65, 0.50],
+  [0.70, 0.46],
+  [0.75, 0.45],
+  [0.80, 0.50],   // ceiling — small sample, hold near coin-flip honesty
+];
+
+function calibrateFiProbability(rawProb) {
+  if (rawProb == null || !Number.isFinite(rawProb)) return rawProb;
+  const p = Math.max(0.01, Math.min(0.99, rawProb));
+  for (let i = 0; i < FI_CALIBRATION_POINTS.length - 1; i++) {
+    const [x1, y1] = FI_CALIBRATION_POINTS[i];
+    const [x2, y2] = FI_CALIBRATION_POINTS[i + 1];
+    if (p >= x1 && p <= x2) {
+      const t = (p - x1) / (x2 - x1);
+      return y1 + t * (y2 - y1);
+    }
+  }
+  if (p < FI_CALIBRATION_POINTS[0][0]) return FI_CALIBRATION_POINTS[0][1];
+  return FI_CALIBRATION_POINTS[FI_CALIBRATION_POINTS.length - 1][1];
+}
+
 /**
  * Compute first-inning scoring probabilities.
  *
@@ -275,11 +327,19 @@ export function computeFirstInningProbability(awaySide, homeSide, context = {}) 
   else if (absDelta >= 0.03) { tier = 'SLIGHT'; units = 0.5; }
   if (tier !== 'PASS') side = deltaFromBase > 0 ? 'YRFI' : 'NRFI';
 
+  // (Phase 1 — May 29, 2026) Calibrate the displayed probability against
+  // live hit rates. Selection logic above used raw probabilities — only
+  // the user-facing displayed number is adjusted. Raw kept on recommendation
+  // as rawProbability for debug and future recalibration.
+  const rawSideProb = side === 'YRFI' ? yrfiProb : side === 'NRFI' ? nrfiProb : yrfiProb;
+  const calibratedSideProb = calibrateFiProbability(rawSideProb);
+
   const recommendation = {
     side,
     tier,
     units,
-    probability: side === 'YRFI' ? +yrfiProb.toFixed(3) : side === 'NRFI' ? +nrfiProb.toFixed(3) : +yrfiProb.toFixed(3),
+    probability: +calibratedSideProb.toFixed(3),
+    rawProbability: +rawSideProb.toFixed(3),
     pick: side ? `${side}` : null,
     deltaFromBaseline: +deltaFromBase.toFixed(3)
   };
