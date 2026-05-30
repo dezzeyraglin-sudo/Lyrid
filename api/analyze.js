@@ -869,6 +869,14 @@ export default async function handler(req, res) {
           rawAdjustedMaxXwoba: rawAdjustedMaxXwoba.toFixed(3),
           edgeScore: edgeScore.toFixed(3),
           adjustedEdgeScore: adjustedEdge.toFixed(3),
+          // (Drop #3 Fix #5 — May 30, 2026) Gap-penalized edge score.
+          // May 30 audit (n=177) showed inflation_gap is the strongest
+          // single predictor of W/L (Cohen's d = -0.28, NEGATIVE) while
+          // adjustedMaxXwoba is mildly INVERTED (d = -0.14).
+          // This composite penalizes edge for gap, giving us a metric
+          // that's positively correlated with outcomes.
+          // Used by render layer + future tier ranking work.
+          gapPenalizedEdge: (adjustedEdge - 2 * Math.max(0, (adjustedMaxXwoba - regressedMaxXwoba))).toFixed(3),
           // HITTER TIER REGRESSION diagnostic — always populated, used to
           // compare classifier behavior with/without the flag enabled.
           regressedMaxXwoba: regressedMaxXwoba.toFixed(3),
@@ -1105,7 +1113,26 @@ export default async function handler(req, res) {
         // rebuilt, only the primary xwoba-based tier drives qualification.
         const candidateQualifies = candidate.tier === 'elite' ||
                                    (candidate.tier === 'strong' && candidateQualifyingXw >= 0.380);
-        if (candidateQualifies) {
+
+        // (Drop #3 Fix #2 — May 30, 2026) HARD GAP REJECT.
+        // May 30 data on n=177 showed a sharp cliff at gap = 0.10:
+        //   gap 0.05-0.10: 55% WR (n=62) — above breakeven
+        //   gap 0.10-0.13: 26% WR (n=34) — catastrophic 29pt drop
+        //   gap 0.10+ overall: 27% WR (n=95)
+        // The fade engine awards points for gap but still lets these
+        // through if the candidate is otherwise elite. The data says
+        // gap >= 0.10 should HARD REJECT — disqualify entirely, not
+        // just shade. Independent of fade engine scoring.
+        const candidateAdj = parseFloat(candidate.adjustedMaxXwoba);
+        const candidateReg = parseFloat(candidate.regressedMaxXwoba);
+        const candidateGap = (Number.isFinite(candidateAdj) && Number.isFinite(candidateReg))
+          ? (candidateAdj - candidateReg) : 0;
+        const failedGapReject = candidateGap >= 0.10;
+        if (failedGapReject) {
+          candidate._gapRejected = true;
+          candidate._gapRejectValue = candidateGap;
+        }
+        if (candidateQualifies && !failedGapReject) {
           candidate.isTopPick = true;
 
           // (Phase 2 — May 29, 2026) Classify for PRIME tier eligibility.
@@ -1412,7 +1439,14 @@ export default async function handler(req, res) {
             }
 
             // HITS-over-HRR preference: if unassisted picked HRR, check HITS.
-            applyHitsOverHrrPreference(m.propRecs);
+            // (Drop #3 — May 30, 2026) HITS-over-HRR preference DISABLED.
+            // User constraint: HRR must remain a primary prop because not all
+            // betting platforms offer standalone HITS. May 30 data analysis
+            // showed L-HRR's 36% WR was NOT a prop-type problem — it was a
+            // gap/ctx/regressed-xwoba bucketing problem. With the new hard
+            // gap reject (Drop #3 Fix #2) and tightened PRIME range (Fix #1),
+            // HRR + good buckets hits 68% (SWEET, n=19) — same level as HITS.
+            // applyHitsOverHrrPreference(m.propRecs);
           }
         }
       }
@@ -2692,8 +2726,12 @@ function computeLineupTier(analyzedHitters, arsenal) {
 // Hard cap: max 2 PRIME per game in analyze.js, max 5 per slate at render.
 // =============================================================
 const PRIME_CRITERIA = Object.freeze({
-  REG_MIN: 0.45,
-  REG_MAX: 0.55,
+  // (Drop #3 — May 30, 2026) Tightened from 0.45-0.55 to 0.48-0.54.
+  // May 30 data analysis showed 73% WR on reg 0.51-0.54 (n=15) and
+  // 65% WR on reg 0.48-0.54 (n=42) vs only 47% on the broader 0.45-0.55
+  // band. Narrowing PRIME to the validated peak.
+  REG_MIN: 0.48,
+  REG_MAX: 0.54,
   CTX_MIN: 1.05,
   CTX_MAX: 1.15,
   MAX_INFLATION_GAP: 0.10,

@@ -7689,6 +7689,12 @@ function logBestBets(data) {
         // stack about to produce a nonsense value?
         adjustedXwobaCapped: m.adjustedXwobaCapped || false,
         rawAdjustedMaxXwoba: m.rawAdjustedMaxXwoba || null,
+        // (Drop #3 — May 30, 2026) Gap rejection tracking + new
+        // gap-penalized edge metric. The gap field is the strongest
+        // single predictor in May 30 data (Cohen's d -0.28).
+        gapRejected: m._gapRejected || false,
+        gapRejectValue: m._gapRejectValue || null,
+        gapPenalizedEdge: m.gapPenalizedEdge || null,
         // (Phase 2 — May 29, 2026) PRIME tier classification fields
         isPrime: m.isPrime || false,
         isPrimeEligible: m.isPrimeEligible || false,
