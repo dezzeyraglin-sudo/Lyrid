@@ -54,16 +54,29 @@ const FI_CALIBRATION_POINTS = [
 function calibrateFiProbability(rawProb) {
   if (rawProb == null || !Number.isFinite(rawProb)) return rawProb;
   const p = Math.max(0.01, Math.min(0.99, rawProb));
+  let calibrated;
   for (let i = 0; i < FI_CALIBRATION_POINTS.length - 1; i++) {
     const [x1, y1] = FI_CALIBRATION_POINTS[i];
     const [x2, y2] = FI_CALIBRATION_POINTS[i + 1];
     if (p >= x1 && p <= x2) {
       const t = (p - x1) / (x2 - x1);
-      return y1 + t * (y2 - y1);
+      calibrated = y1 + t * (y2 - y1);
+      break;
     }
   }
-  if (p < FI_CALIBRATION_POINTS[0][0]) return FI_CALIBRATION_POINTS[0][1];
-  return FI_CALIBRATION_POINTS[FI_CALIBRATION_POINTS.length - 1][1];
+  if (calibrated == null) {
+    if (p < FI_CALIBRATION_POINTS[0][0]) calibrated = FI_CALIBRATION_POINTS[0][1];
+    else calibrated = FI_CALIBRATION_POINTS[FI_CALIBRATION_POINTS.length - 1][1];
+  }
+
+  // (Inning Audit Fix #1 — May 30, 2026)
+  // Hard ceiling at 0.55. May 29 audit (n=87) showed all displayed
+  // values above 0.55 hit at 33-50% (miss of -17 to -32 pts). Until
+  // the underlying YRFI math is recalibrated, refuse to display above
+  // 0.55 for credibility. This is a UI-honesty cap — selection logic
+  // upstream still uses raw probability for ranking.
+  const HARD_CEILING = 0.55;
+  return Math.min(calibrated, HARD_CEILING);
 }
 
 /**
@@ -322,9 +335,15 @@ export function computeFirstInningProbability(awaySide, homeSide, context = {}) 
   const deltaFromBase = yrfiProb - LEAGUE_YRFI;
   const absDelta = Math.abs(deltaFromBase);
   let side = null, tier = 'PASS', units = 0;
-  if (absDelta >= 0.08) { tier = 'STRONG'; units = 2; }
-  else if (absDelta >= 0.05) { tier = 'MODERATE'; units = 1; }
-  else if (absDelta >= 0.03) { tier = 'SLIGHT'; units = 0.5; }
+  // (Inning Audit Fix #2 — May 30, 2026)
+  // Live data on n=87 FI bets showed STRONG was the WORST tier
+  // (43% WR), worse than MODERATE (50%) and SLIGHT (48%). The
+  // 0.08-0.12 delta band is where overconfidence lives.
+  // Raise STRONG to 0.12, drop STRONG units 2 → 1.5, slide other
+  // tiers up accordingly so MODERATE becomes the workhorse.
+  if (absDelta >= 0.12) { tier = 'STRONG'; units = 1.5; }
+  else if (absDelta >= 0.07) { tier = 'MODERATE'; units = 1; }
+  else if (absDelta >= 0.04) { tier = 'SLIGHT'; units = 0.5; }
   if (tier !== 'PASS') side = deltaFromBase > 0 ? 'YRFI' : 'NRFI';
 
   // (Phase 1 — May 29, 2026) Calibrate the displayed probability against

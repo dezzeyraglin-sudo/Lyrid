@@ -2059,8 +2059,23 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, homeTeamAbbr,
   // rate, composite environment, dual-elite, and slugfest.
   // PITCHER-AWARE ENV EXPOSURE (May 23, 2026): each side uses its own envMult,
   // which fades the boost portion based on the opposing pitcher's quality.
-  const projAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * awayEnvMult * umpRunMult * awayConvMult * dualEliteFactor * slugfestFactor * awayLineupSignalMult;
-  const projHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * homeEnvMult * umpRunMult * homeConvMult * dualEliteFactor * slugfestFactor * homeLineupSignalMult;
+  const rawProjAwayRuns = BASELINE_RUNS * awayComp.lineupMult * awayPitcherBlend * awayEnvMult * umpRunMult * awayConvMult * dualEliteFactor * slugfestFactor * awayLineupSignalMult;
+  const rawProjHomeRuns = BASELINE_RUNS * homeComp.lineupMult * homePitcherBlend * homeEnvMult * umpRunMult * homeConvMult * dualEliteFactor * slugfestFactor * homeLineupSignalMult;
+
+  // (Inning Audit Fix #3 — May 30, 2026)
+  // Calibration scalar to address the +0.77 run mean over-projection
+  // observed across 131 audited games (69% scored UNDER projection).
+  // Applied symmetrically to away and home so the YRFI/NRFI split
+  // logic downstream is unaffected — only the magnitude is honest.
+  //
+  // (Inning Audit Fix #4 — May 30, 2026)
+  // Asymmetric calibration: away projections were +0.07 (accurate)
+  // while home projections were -0.84 (over-projected). Apply a
+  // separate, stronger pull to the home side only.
+  const PROJECTION_SCALE_AWAY = 0.98;   // away was nearly accurate
+  const PROJECTION_SCALE_HOME = 0.86;   // home over-projected by ~0.84 runs
+  const projAwayRuns = rawProjAwayRuns * PROJECTION_SCALE_AWAY;
+  const projHomeRuns = rawProjHomeRuns * PROJECTION_SCALE_HOME;
   const projTotal = projAwayRuns + projHomeRuns;
 
   // Win probability via Pythagorean expectation (exp = 1.83 for MLB)
