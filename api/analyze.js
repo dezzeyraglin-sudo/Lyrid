@@ -1381,6 +1381,19 @@ export default async function handler(req, res) {
           topPick,
           lineupTier,
           lineupConversionTier,
+          // (Drop #4 — May 30, 2026) Lineup confirmation status.
+          // Surfaces in UI as confirmation chip ("✓ LINEUPS CONFIRMED" green
+          // when team has posted official batting order, "⚠ LINEUP PROJECTED"
+          // yellow when we fell back to active roster, no official lineup yet).
+          // Solves the Murakami-class failure at the user-decision layer:
+          // user sees the chip and knows whether to manually verify before
+          // locking entries.
+          lineupMeta: (lineup && lineup._lineupMeta) ? {
+            source: lineup._lineupMeta.source,
+            fetchedAt: lineup._lineupMeta.fetchedAt,
+            gameTime: game.gameTime || null,
+            gameStatus: game.status || null
+          } : null,
           hrAuditTop  // top 3 HR audit projections, regardless of tier
         }
       };

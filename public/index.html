@@ -595,6 +595,41 @@
   .lineup-tier.spot{border-left:3px solid var(--cool);background:rgba(102,217,232,0.04)}
   .lineup-tier.tough{border-left:3px solid var(--dim)}
   .lineup-tier.unknown{border-left:3px solid var(--warn)}
+
+  /* === LINEUP CONFIRMATION CHIP (Drop #4 — May 30, 2026) === */
+  /* Shows whether lineup data is OFFICIAL (team posted batting order) or
+     PROJECTED (we fell back to active roster). Addresses the Murakami
+     class of failure — user sees the chip and knows whether to manually
+     verify lineups before locking entries. */
+  .lineup-confirm{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:3px 8px;
+    border-radius:4px;
+    font-size:10px;
+    font-weight:700;
+    letter-spacing:0.08em;
+    margin-bottom:8px;
+    cursor:help;
+  }
+  .lineup-confirm.official{
+    background:rgba(34,197,94,0.12);
+    color:#16a34a;
+    border:1px solid rgba(34,197,94,0.3);
+  }
+  .lineup-confirm.projected{
+    background:rgba(234,179,8,0.12);
+    color:#a16207;
+    border:1px solid rgba(234,179,8,0.4);
+  }
+  .lineup-confirm.unknown{
+    background:rgba(156,163,175,0.12);
+    color:#6b7280;
+    border:1px solid rgba(156,163,175,0.3);
+  }
+  .lineup-confirm-icon{font-size:11px}
+  .lineup-confirm-detail{font-size:9px;opacity:0.85;font-weight:600;letter-spacing:0.04em}
   .lt-left{flex:1;min-width:200px}
   .lt-label{font-family:'Archivo Black',sans-serif;font-size:11px;letter-spacing:0.12em;margin-bottom:3px}
   .lineup-tier.exploitable .lt-label{color:var(--heat)}
@@ -4363,6 +4398,18 @@ function applyFadeOverrides(data) {
             wouldHaveBeenBest.isUnderRecommendation = true;
             wouldHaveBeenBest.underHitRate = wouldHaveBeenBest.key === 'HRR' ? 73 : 67;
             wouldHaveBeenBest.underSampleSize = wouldHaveBeenBest.key === 'HRR' ? 51 : 3;
+          } else if (wouldHaveBeenBest) {
+            // (Drop #4 — May 30, 2026) For non-HRR/HITS props (HR, TB, RBI, R, FS),
+            // the historical under hit rates are not validated. Don't recommend
+            // betting UNDER. Instead, mark the pick as SKIP — explicitly tells
+            // the user the engine considered and rejected it, without implying
+            // any inverse-bet edge.
+            //
+            // Disambiguates the prior ENGINE REFUSED behavior which was unclear:
+            // is this a "bet UNDER" play or a "don't bet" play? Now it's
+            // explicit: SKIP means skip, no further action.
+            wouldHaveBeenBest.isSkipRecommendation = true;
+            wouldHaveBeenBest.skipReason = `Engine fade tier high_fade (score ${fade.score}). Under bet not validated for ${wouldHaveBeenBest.key} props — recommend skipping entirely.`;
           }
         }
       }
@@ -4584,15 +4631,16 @@ function renderAnalysis(data) {
                       }
                     }
                     return `
-                    <div class="prop-pill ${p.isBest ? 'best' : ''} ${p.isUnderRecommendation ? 'under-rec' : ''}" ${p.isUnderRecommendation ? 'style="position:relative;border:1px solid #b91c1c;background:#fef2f2"' : ''}>
+                    <div class="prop-pill ${p.isBest ? 'best' : ''} ${p.isUnderRecommendation ? 'under-rec' : ''} ${p.isSkipRecommendation ? 'skip-rec' : ''}" ${p.isUnderRecommendation ? 'style="position:relative;border:1px solid #b91c1c;background:#fef2f2"' : p.isSkipRecommendation ? 'style="position:relative;border:1px dashed #6b7280;background:#f9fafb;opacity:0.78"' : ''}>
                       ${p.isUnderRecommendation ? `<span class="pp-under-badge" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#b91c1c;color:#fff;font-size:8px;font-weight:700;padding:1px 6px;border-radius:100px;letter-spacing:0.08em;white-space:nowrap" title="BET UNDER recommendation\n\nFade audit returned HIGH RISK on this hitter (fade score ${m._fadeScore || '?'}).\nThe hitter is structurally unlikely to clear this line.\n\nBacktested under hit rate: ${p.underHitRate}% (n=${p.underSampleSize})\nValidated against ${p.key === 'HRR' ? '51 historical HRR fade picks' : '54 historical HIGH FADE picks via 0-hit rate'}\n\nThis is a backtested rate against actual game outcomes — not an engine probability.">⏬ BET UNDER ${p.underHitRate}%</span>` : ''}
+                      ${p.isSkipRecommendation ? `<span class="pp-skip-badge" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#6b7280;color:#fff;font-size:8px;font-weight:700;padding:1px 6px;border-radius:100px;letter-spacing:0.08em;white-space:nowrap" title="SKIP recommendation\n\nFade audit returned HIGH RISK on this pick (fade score ${m._fadeScore || '?'}).\nUnlike HRR/HITS props where backtested under hit rates are validated (73% / 67%), the under hit rate for ${p.key} props has NOT been validated — recommending an UNDER bet would be guessing.\n\nThe engine considered and rejected this pick. Recommendation: SKIP entirely, do not bet either direction.\n\nReason: ${p.skipReason}">⊘ SKIP</span>` : ''}
                       ${p.platform ? `<span class="pp-platform ${p.platform}">${p.platform}</span>` : ''}
                       <span class="pp-key">${p.label}</span>
                       ${p.probability != null ? `<span class="pp-prob ${probTier(p.probability, p.probabilityBaseline)}" title="Per-game probability: ${(p.probability*100).toFixed(1)}% (baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(1) : '?'}%${p.probabilityPerPa != null ? ', per-PA rate ' + (p.probabilityPerPa*100).toFixed(1) + '%' : ''}${p.expectedPa != null ? ', expected PA ' + p.expectedPa.toFixed(1) : ''})">${(p.probability*100).toFixed(0)}%</span>` : ''}
                       ${secondaryRankChip}
                       ${fragilityChip}
                       ${p.lineupSupportAdjustment && Math.abs(p.lineupSupportAdjustment) >= 0.03 ? `<span class="lineup-chip ${p.lineupSupportAdjustment > 0 ? 'up' : 'down'}" title="Lineup support adjustment: ${p.lineupSupportAdjustment > 0 ? '+' : ''}${(p.lineupSupportAdjustment * 100).toFixed(0)}%&#10;&#10;Slot: ${m.lineupSupport?.components?.slot || '?'}&#10;Team R/G: ${m.lineupSupport?.audit?.teamRpg?.toFixed(1) || '?'}&#10;OBP ahead factor: ${m.lineupSupport?.components?.obpAheadFactor?.toFixed(2) || '1.00'}&#10;OBP behind factor: ${m.lineupSupport?.components?.obpBehindFactor?.toFixed(2) || '1.00'}&#10;&#10;Closes the HRR orphan-hit failure mode — hitter does his job, lineup converts (or doesn't).">${p.lineupSupportAdjustment > 0 ? '↑' : '↓'} LU ${p.lineupSupportAdjustment > 0 ? '+' : ''}${(p.lineupSupportAdjustment * 100).toFixed(0)}%</span>` : ''}
-                      <span class="pp-reason">${p.isUnderRecommendation ? '<span style="color:#991b1b;font-weight:600">UNDER projected — ' + (p.key === 'HRR' ? '73% under historically (n=51)' : '67% under historically (n=3, 61% 0-hit rate basis)') + '</span>' : p.reason}</span>
+                      <span class="pp-reason">${p.isUnderRecommendation ? '<span style="color:#991b1b;font-weight:600">UNDER projected — ' + (p.key === 'HRR' ? '73% under historically (n=51)' : '67% under historically (n=3, 61% 0-hit rate basis)') + '</span>' : p.isSkipRecommendation ? '<span style="color:#374151;font-weight:600">Engine refused — under bet not validated for ' + p.key + ' props. Skip entirely.</span>' : p.reason}</span>
                     </div>
                   `;
                   }).join('')}
@@ -4997,6 +5045,36 @@ function renderAnalysis(data) {
             </div>
           `;
         }).join('');
+
+    // (Drop #4 — May 30, 2026) Lineup confirmation chip.
+    // 'official' = team posted batting order (lineup locked or near-locked)
+    // 'projected' = no official lineup yet, using active roster as fallback
+    // The chip tells users when they need to manually verify lineups before
+    // locking entries — addresses the Murakami injury blind-spot at the
+    // user-decision layer (we can't prevent injuries, but we can flag that
+    // the recommendation is based on a projected lineup, not a confirmed one).
+    const lm = s.lineupMeta;
+    const lineupConfirmHtml = (() => {
+      if (!lm) return '';
+      const minutesAgo = Math.floor((Date.now() - (lm.fetchedAt || Date.now())) / 60000);
+      if (lm.source === 'official') {
+        return `<div class="lineup-confirm official" title="Team has posted the official batting order. This recommendation reflects the actual lineup that will play.${lm.gameStatus ? '&#10;&#10;Game status: ' + lm.gameStatus : ''}">
+          <span class="lineup-confirm-icon">✓</span>
+          <span>LINEUP CONFIRMED</span>
+        </div>`;
+      }
+      if (lm.source === 'projected') {
+        return `<div class="lineup-confirm projected" title="No official lineup posted yet — using the team's active roster. Verify the actual batting order ~30 minutes before first pitch.&#10;&#10;Risk: injured players (Murakami-type hamstring scratches), platoon swaps, late changes are not reflected here.${lm.gameStatus ? '&#10;&#10;Game status: ' + lm.gameStatus : ''}">
+          <span class="lineup-confirm-icon">⚠</span>
+          <span>LINEUP PROJECTED</span>
+          <span class="lineup-confirm-detail">verify before locking</span>
+        </div>`;
+      }
+      return `<div class="lineup-confirm unknown" title="Lineup data status unknown.">
+        <span class="lineup-confirm-icon">?</span>
+        <span>LINEUP UNVERIFIED</span>
+      </div>`;
+    })();
 
     // Lineup tier banner
     const lt = s.lineupTier;
@@ -5648,6 +5726,7 @@ function renderAnalysis(data) {
           ${inningHtml}
           ${pitcherPropsHtml}
         </div>
+        ${lineupConfirmHtml}
         ${lineupTierHtml}
         ${lineupConversionHtml}
         ${hrAuditHtml}
@@ -7695,6 +7774,12 @@ function logBestBets(data) {
         gapRejected: m._gapRejected || false,
         gapRejectValue: m._gapRejectValue || null,
         gapPenalizedEdge: m.gapPenalizedEdge || null,
+        // (Drop #4 — May 30, 2026) Lineup confirmation status at log time.
+        // Lets the validation report bucket WR by official vs projected
+        // lineups. Hypothesis: projected-lineup picks should have measurably
+        // worse WR because of unaccounted scratches/swaps. If that's true,
+        // it's another argument for the ESPN injury feed integration.
+        lineupSource: sideData.lineupMeta?.source || 'unknown',
         // (Phase 2 — May 29, 2026) PRIME tier classification fields
         isPrime: m.isPrime || false,
         isPrimeEligible: m.isPrimeEligible || false,

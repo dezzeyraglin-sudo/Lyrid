@@ -235,6 +235,13 @@ export async function getBullpenProfile(teamAbbr, season, excludePitcherId) {
 // Get team lineup (posted or active-roster fallback)
 export async function getLineup(teamId, gamePk, side) {
   let hitters = [];
+  // (Drop #4 — May 30, 2026) Lineup confirmation tracking.
+  // 'official' = battingOrder populated from MLB boxscore (lineup posted by team)
+  // 'projected' = fell through to roster fallback (lineup not yet posted)
+  // 'unknown' = no data, edge case
+  // Surfaces in UI as confirmation chip so user knows when to manually verify.
+  let lineupSource = 'unknown';
+  const fetchedAt = Date.now();
 
   if (gamePk) {
     try {
@@ -245,6 +252,9 @@ export async function getLineup(teamId, gamePk, side) {
         const teamBox = box.teams?.[teamSide];
         const battingOrder = teamBox?.battingOrder || [];
         if (battingOrder.length > 0) {
+          // The team has POSTED an official batting order — this is the
+          // signal that the lineup is locked in (or near-locked).
+          lineupSource = 'official';
           for (const batterId of battingOrder) {
             const p = teamBox.players?.[`ID${batterId}`];
             if (p) {
@@ -280,7 +290,14 @@ export async function getLineup(teamId, gamePk, side) {
         battingOrder: '',
         hand: p.person.batSide?.code || 'R'
       }));
-    // Roster path already has hand, no extra fetch needed
+    // (Drop #4) Roster fallback — lineup is projected, not confirmed
+    lineupSource = 'projected';
+    // Attach metadata as non-enumerable property so existing iteration works unchanged
+    Object.defineProperty(hitters, '_lineupMeta', {
+      value: { source: lineupSource, fetchedAt },
+      enumerable: false,
+      writable: true
+    });
     return hitters;
   }
 
@@ -298,6 +315,12 @@ export async function getLineup(teamId, gamePk, side) {
     } catch (_) {}
   }
 
+  // (Drop #4) Attach metadata as non-enumerable property
+  Object.defineProperty(hitters, '_lineupMeta', {
+    value: { source: lineupSource, fetchedAt },
+    enumerable: false,
+    writable: true
+  });
   return hitters;
 }
 
