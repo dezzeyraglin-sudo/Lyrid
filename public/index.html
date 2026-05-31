@@ -183,6 +183,21 @@
     }
     /* Active tab indicator sits flush with header bottom edge */
     .lyrid-nav-btn.active::after{bottom:-9px}
+
+    /* Smart header: nav collapses when scrolling down */
+    .lyrid-header-nav{
+      transition:max-height 220ms var(--easing-standard, ease), opacity 200ms ease, padding-top 220ms ease, margin-top 220ms ease, border-top-color 220ms ease;
+      max-height:60px;
+      opacity:1;
+      overflow:hidden;
+    }
+    .lyrid-header-nav.is-collapsed{
+      max-height:0;
+      opacity:0;
+      padding-top:0;
+      margin-top:0;
+      border-top-color:transparent;
+    }
   }
   .lyrid-auth{
     display:flex;
@@ -3314,6 +3329,87 @@
     isReady: function() { return authReady; },
     refresh: refreshAuthState
   };
+})();
+</script>
+
+<!-- SMART HEADER (May 31, 2026) — hides nav on scroll-down (mobile only) -->
+<script>
+(function() {
+  'use strict';
+
+  // Only activate on mobile-sized viewports. Re-evaluated on resize.
+  const MOBILE_BREAKPOINT = 640;
+  const SCROLL_HIDE_THRESHOLD = 80;   // pixels scrolled down before hiding
+  const SCROLL_DELTA_MIN = 4;          // ignore tiny scroll jitter
+
+  let lastY = 0;
+  let ticking = false;
+  let collapsed = false;
+
+  function isMobile() {
+    return window.innerWidth <= MOBILE_BREAKPOINT;
+  }
+
+  function setCollapsed(shouldCollapse) {
+    if (collapsed === shouldCollapse) return;
+    const nav = document.querySelector('.lyrid-header-nav');
+    if (!nav) return;
+    if (shouldCollapse) {
+      nav.classList.add('is-collapsed');
+    } else {
+      nav.classList.remove('is-collapsed');
+    }
+    collapsed = shouldCollapse;
+  }
+
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function() {
+      try {
+        const y = window.pageYOffset || document.documentElement.scrollTop || 0;
+
+        // Desktop: always show nav, never collapse
+        if (!isMobile()) {
+          if (collapsed) setCollapsed(false);
+          lastY = y;
+          ticking = false;
+          return;
+        }
+
+        const delta = y - lastY;
+
+        // Above threshold: always show nav
+        if (y <= SCROLL_HIDE_THRESHOLD) {
+          setCollapsed(false);
+        }
+        // Scrolling down past threshold: hide nav
+        else if (delta > SCROLL_DELTA_MIN) {
+          setCollapsed(true);
+        }
+        // Scrolling up at all: show nav
+        else if (delta < -SCROLL_DELTA_MIN) {
+          setCollapsed(false);
+        }
+
+        lastY = y;
+      } catch (err) {
+        // Fail-safe: any error → ensure nav is visible
+        try { setCollapsed(false); } catch (e2) {}
+      }
+      ticking = false;
+    });
+  }
+
+  // Reset on window resize (e.g. rotation, breakpoint change)
+  function onResize() {
+    if (!isMobile()) {
+      setCollapsed(false);
+    }
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onResize, { passive: true });
 })();
 </script>
 
