@@ -68,6 +68,11 @@ import { redistributeOutMinutes } from "../_lib/basketball/teammateRedistributio
 import { computeProjPoints } from "../_lib/basketball/pointsProjection.js";
 import { computeProjRebounds } from "../_lib/basketball/reboundsProjection.js";
 
+// Auth (May 31, 2026) — auth-aware but no enforcement during pre-monetization.
+// When MONETIZATION_LAUNCHED is set, this resolves real user identity; otherwise
+// returns the canned PRE_MONETIZATION_USER (Pro tier, zero latency).
+import { tryAuth } from "../_lib/auth.js";
+
 // =============================================================
 // FEATURE FLAGS
 // =============================================================
@@ -768,6 +773,15 @@ export default async function handler(req, res) {
   if (!WNBA_SLATE_ENABLED) {
     return res.status(503).json({ ok: false, error: "WNBA slate endpoint disabled (WNBA_SLATE_ENABLED=false)" });
   }
+
+  // ============ AUTH (May 31, 2026) ============
+  // Resolve user identity if signed in. In pre-monetization mode this returns
+  // a canned Pro user — no DB call, no latency. When monetization launches,
+  // this will resolve real users from the Authorization header.
+  // No enforcement yet: WNBA is in shadow mode (no real lines/recs to gate).
+  // Add checkAndIncrementQuota() here later when WNBA exits shadow mode.
+  const user = await tryAuth(req, res);
+  if (res.headersSent) return;
 
   try {
     const body = await readBody(req);
