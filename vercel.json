@@ -5,6 +5,12 @@
   "functions": {
     "api/*.js": {
       "maxDuration": 30
+    },
+    "api/webhooks/*.js": {
+      "maxDuration": 30
+    },
+    "api/auth/*.js": {
+      "maxDuration": 30
     }
   },
   "rewrites": [
