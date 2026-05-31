@@ -163,6 +163,164 @@
     .lyrid-nav-btn{font-size:13px}
   }
 
+  /* ============ AUTH UI (May 31, 2026) ============ */
+  .lyrid-auth{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex:0 0 auto;
+    position:relative;
+    min-width:90px;
+    justify-content:flex-end;
+  }
+  .lyrid-auth-loading{display:none}
+  .lyrid-auth[data-state="loading"] .lyrid-auth-loading{display:block}
+  .lyrid-auth[data-state="loading"] .lyrid-auth-signin,
+  .lyrid-auth[data-state="loading"] .lyrid-auth-user{display:none}
+  .lyrid-auth[data-state="signed-out"] .lyrid-auth-signin{display:inline-flex}
+  .lyrid-auth[data-state="signed-out"] .lyrid-auth-user{display:none}
+  .lyrid-auth[data-state="signed-in"] .lyrid-auth-signin{display:none}
+  .lyrid-auth[data-state="signed-in"] .lyrid-auth-user{display:inline-flex}
+
+  .lyrid-auth-dot{
+    display:inline-block;
+    width:8px;
+    height:8px;
+    border-radius:50%;
+    background:var(--text-muted);
+    opacity:0.4;
+    animation:lyrid-auth-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes lyrid-auth-pulse{
+    0%,100%{opacity:0.3;transform:scale(0.85)}
+    50%{opacity:0.7;transform:scale(1)}
+  }
+
+  .lyrid-auth-signin{
+    display:none;
+    align-items:center;
+    gap:6px;
+    background:transparent;
+    border:0.5px solid var(--border-hairline);
+    color:var(--text-primary);
+    font-family:var(--font-sans);
+    font-size:13px;
+    font-weight:500;
+    padding:7px 12px;
+    border-radius:var(--radius-sm, 6px);
+    cursor:pointer;
+    transition:border-color var(--duration-fast, 0.15s) var(--easing-standard, ease), color var(--duration-fast, 0.15s) var(--easing-standard, ease);
+    letter-spacing:0.01em;
+  }
+  .lyrid-auth-signin:hover{
+    border-color:var(--brand-primary);
+    color:var(--brand-primary);
+  }
+  .lyrid-auth-discord-icon{opacity:0.85}
+
+  .lyrid-auth-user{
+    display:none;
+    align-items:center;
+    gap:8px;
+    position:relative;
+  }
+  .lyrid-auth-tier{
+    font-size:10px;
+    font-weight:600;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    padding:3px 8px;
+    border-radius:var(--radius-sm, 6px);
+    border:0.5px solid var(--border-hairline);
+    background:transparent;
+    color:var(--text-secondary);
+    line-height:1.4;
+  }
+  .lyrid-auth-tier[data-tier="pro"]{
+    color:var(--brand-primary);
+    border-color:var(--brand-primary);
+  }
+  .lyrid-auth-tier[data-tier="sharp"]{
+    color:#c0a043;
+    border-color:#c0a043;
+  }
+  .lyrid-auth-user-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    background:transparent;
+    border:none;
+    color:var(--text-primary);
+    font-family:var(--font-sans);
+    font-size:13px;
+    font-weight:500;
+    padding:4px 6px;
+    border-radius:var(--radius-sm, 6px);
+    cursor:pointer;
+    transition:background var(--duration-fast, 0.15s) var(--easing-standard, ease);
+  }
+  .lyrid-auth-user-btn:hover{background:var(--surface-card, rgba(255,255,255,0.03))}
+  .lyrid-auth-avatar{
+    width:24px;
+    height:24px;
+    border-radius:50%;
+    object-fit:cover;
+    background:var(--surface-card);
+    border:0.5px solid var(--border-hairline);
+  }
+  .lyrid-auth-username{
+    max-width:120px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  @media (max-width: 640px){
+    .lyrid-auth-username{display:none}
+    .lyrid-auth-tier{display:none}
+  }
+
+  .lyrid-auth-menu{
+    position:absolute;
+    top:calc(100% + 8px);
+    right:0;
+    min-width:220px;
+    background:var(--surface-card);
+    border:0.5px solid var(--border-hairline);
+    border-radius:var(--radius-md, 8px);
+    box-shadow:var(--elevation-modal, 0 8px 24px rgba(0,0,0,0.3));
+    padding:6px;
+    display:none;
+    flex-direction:column;
+    z-index:200;
+  }
+  .lyrid-auth-menu.is-open{display:flex}
+  .lyrid-auth-menu-meta{
+    padding:8px 12px;
+    font-size:11px;
+    color:var(--text-muted);
+    border-bottom:0.5px solid var(--border-hairline);
+    margin-bottom:4px;
+    word-break:break-all;
+  }
+  .lyrid-auth-menu-item{
+    display:block;
+    width:100%;
+    text-align:left;
+    background:transparent;
+    border:none;
+    color:var(--text-primary);
+    font-family:var(--font-sans);
+    font-size:13px;
+    padding:8px 12px;
+    border-radius:var(--radius-sm, 4px);
+    cursor:pointer;
+    text-decoration:none;
+    transition:background var(--duration-fast, 0.15s) var(--easing-standard, ease);
+  }
+  .lyrid-auth-menu-item:hover{background:var(--surface-page, rgba(255,255,255,0.04))}
+  .lyrid-auth-menu-signout{color:var(--text-secondary)}
+  /* ============ END AUTH UI ============ */
+
   /* ===========================================================
      PAGE WRAPPER — content area below header
      =========================================================== */
@@ -2455,6 +2613,50 @@
     <button class="lyrid-nav-btn" data-tab="history" onclick="switchTab('history')">History</button>
     <button class="lyrid-nav-btn" data-tab="settings" onclick="switchTab('settings')">Settings</button>
   </nav>
+  <!-- AUTH UI (May 31, 2026) -->
+  <div class="lyrid-auth" id="lyridAuth" data-state="loading">
+    <div class="lyrid-auth-loading" aria-hidden="true">
+      <span class="lyrid-auth-dot"></span>
+    </div>
+    <button
+      type="button"
+      class="lyrid-auth-signin"
+      id="lyridSignInBtn"
+      onclick="lyridAuth.signIn()"
+      aria-label="Sign in with Discord">
+      <svg class="lyrid-auth-discord-icon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+        <path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
+      </svg>
+      Sign in
+    </button>
+    <div class="lyrid-auth-user" id="lyridAuthUser">
+      <span class="lyrid-auth-tier" id="lyridAuthTier" data-tier="free">Free</span>
+      <button
+        type="button"
+        class="lyrid-auth-user-btn"
+        id="lyridAuthUserBtn"
+        onclick="lyridAuth.toggleMenu()"
+        aria-haspopup="true"
+        aria-expanded="false">
+        <img
+          src=""
+          alt=""
+          class="lyrid-auth-avatar"
+          id="lyridAuthAvatar"
+          referrerpolicy="no-referrer"
+          onerror="this.style.display='none'">
+        <span class="lyrid-auth-username" id="lyridAuthUsername"></span>
+        <svg viewBox="0 0 10 6" width="10" height="6" aria-hidden="true" style="opacity:0.6">
+          <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <div class="lyrid-auth-menu" id="lyridAuthMenu" role="menu">
+        <div class="lyrid-auth-menu-meta" id="lyridAuthMenuMeta"></div>
+        <a href="https://whop.com/lyrid-analytics" target="_blank" rel="noopener" class="lyrid-auth-menu-item" role="menuitem">Manage subscription &#8599;</a>
+        <button type="button" class="lyrid-auth-menu-item lyrid-auth-menu-signout" onclick="lyridAuth.signOut()" role="menuitem">Sign out</button>
+      </div>
+    </div>
+  </div>
 </header>
 
 <div class="lyrid-wrap">
@@ -2814,6 +3016,286 @@
 <div class="toast" id="toast"></div>
 
 </div>
+
+<!-- AUTH MODULE (May 31, 2026) — must load before main script -->
+<script>
+(function() {
+  'use strict';
+
+  // ============ CONFIG ============
+  // PUBLIC values safe to expose in browser. Anon key permissions are limited
+  // by Supabase RLS policies. NEVER put service_role / secret keys here.
+  const LYRID_CONFIG = window.LYRID_CONFIG = window.LYRID_CONFIG || {};
+  LYRID_CONFIG.SUPABASE_URL = LYRID_CONFIG.SUPABASE_URL || 'https://xtldczxlibdkwqvgmnob.supabase.co';
+  LYRID_CONFIG.SUPABASE_ANON_KEY = LYRID_CONFIG.SUPABASE_ANON_KEY || 'sb_publishable_lE-Ecih1FA7oe-SShsD0fg_tFkH_mlD';
+
+  // ============ STATE ============
+  let supabaseClient = null;
+  let currentSession = null;
+  let currentMe = null;
+  let authReady = false;
+
+  function $(id) { return document.getElementById(id); }
+  function setAuthState(state) {
+    const el = $('lyridAuth');
+    if (el) el.setAttribute('data-state', state);
+  }
+
+  async function loadSupabase() {
+    if (supabaseClient) return supabaseClient;
+    if (!LYRID_CONFIG.SUPABASE_URL || LYRID_CONFIG.SUPABASE_URL.startsWith('REPLACE_')) {
+      console.warn('[lyrid-auth] Supabase config missing; auth disabled');
+      return null;
+    }
+    try {
+      const mod = await import('https://esm.sh/@supabase/supabase-js@2.45.0');
+      supabaseClient = mod.createClient(
+        LYRID_CONFIG.SUPABASE_URL,
+        LYRID_CONFIG.SUPABASE_ANON_KEY,
+        {
+          auth: {
+            autoRefreshToken: true,
+            persistSession: true,
+            detectSessionInUrl: true,
+            flowType: 'implicit'
+          }
+        }
+      );
+      return supabaseClient;
+    } catch (err) {
+      console.warn('[lyrid-auth] Failed to load Supabase SDK:', err.message);
+      return null;
+    }
+  }
+
+  async function refreshAuthState() {
+    const sb = await loadSupabase();
+    if (!sb) {
+      setAuthState('signed-out');
+      authReady = true;
+      return;
+    }
+
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      currentSession = session;
+
+      if (!session) {
+        currentMe = null;
+        setAuthState('signed-out');
+        authReady = true;
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/me', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          currentMe = data.user || null;
+        } else if (res.status === 401) {
+          await sb.auth.signOut();
+          currentSession = null;
+          currentMe = null;
+          setAuthState('signed-out');
+          authReady = true;
+          return;
+        } else {
+          currentMe = null;
+        }
+      } catch (err) {
+        console.warn('[lyrid-auth] /api/auth/me failed:', err.message);
+        currentMe = null;
+      }
+
+      renderSignedIn(session, currentMe);
+      authReady = true;
+    } catch (err) {
+      console.warn('[lyrid-auth] refreshAuthState failed:', err.message);
+      setAuthState('signed-out');
+      authReady = true;
+    }
+  }
+
+  function renderSignedIn(session, me) {
+    setAuthState('signed-in');
+    const user = session.user || {};
+    const meta = user.user_metadata || {};
+    const username = meta.full_name || meta.name || meta.user_name || meta.preferred_username || user.email || 'Signed in';
+    const avatar = meta.avatar_url || meta.picture || '';
+
+    const usernameEl = $('lyridAuthUsername');
+    if (usernameEl) usernameEl.textContent = username;
+
+    const avatarEl = $('lyridAuthAvatar');
+    if (avatarEl) {
+      if (avatar) {
+        avatarEl.src = avatar;
+        avatarEl.style.display = '';
+      } else {
+        avatarEl.style.display = 'none';
+      }
+    }
+
+    const tier = (me && me.tier) ? me.tier : 'free';
+    const tierEl = $('lyridAuthTier');
+    if (tierEl) {
+      tierEl.textContent = tier.charAt(0).toUpperCase() + tier.slice(1);
+      tierEl.setAttribute('data-tier', tier);
+    }
+
+    const metaEl = $('lyridAuthMenuMeta');
+    if (metaEl) {
+      const email = user.email || '';
+      metaEl.textContent = email ? 'Signed in as ' + email : 'Signed in';
+    }
+  }
+
+  async function signIn() {
+    const sb = await loadSupabase();
+    if (!sb) {
+      alert('Sign in is temporarily unavailable. Please try again in a moment.');
+      return;
+    }
+    try {
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: 'discord',
+        options: { redirectTo: window.location.origin }
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error('[lyrid-auth] signIn error:', err);
+      alert('Could not start sign in: ' + (err.message || 'unknown error'));
+    }
+  }
+
+  async function signOut() {
+    const sb = await loadSupabase();
+    if (!sb) return;
+    try {
+      await sb.auth.signOut();
+    } catch (err) {
+      console.warn('[lyrid-auth] signOut error:', err.message);
+    }
+    currentSession = null;
+    currentMe = null;
+    setAuthState('signed-out');
+    closeMenu();
+  }
+
+  function toggleMenu() {
+    const menu = $('lyridAuthMenu');
+    const btn = $('lyridAuthUserBtn');
+    if (!menu || !btn) return;
+    const isOpen = menu.classList.toggle('is-open');
+    btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  }
+
+  function closeMenu() {
+    const menu = $('lyridAuthMenu');
+    const btn = $('lyridAuthUserBtn');
+    if (menu) menu.classList.remove('is-open');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+
+  document.addEventListener('click', function(e) {
+    const wrap = $('lyridAuth');
+    if (wrap && !wrap.contains(e.target)) closeMenu();
+  });
+
+  function getToken() {
+    if (!currentSession) return null;
+    return currentSession.access_token || null;
+  }
+
+  // ============ FETCH WRAPPER ============
+  // Adds Authorization header to same-origin /api/* requests.
+  // Fail-OPEN: any error → original fetch unmodified.
+  // Kill switch: window.LYRID_DISABLE_AUTH_WRAPPER = true
+  (function installFetchWrapper() {
+    const originalFetch = window.fetch.bind(window);
+
+    function shouldIntercept(input) {
+      try {
+        if (window.LYRID_DISABLE_AUTH_WRAPPER) return false;
+        let urlStr;
+        if (typeof input === 'string') {
+          urlStr = input;
+        } else if (input && typeof input.url === 'string') {
+          urlStr = input.url;
+        } else if (input instanceof URL) {
+          urlStr = input.href;
+        } else {
+          return false;
+        }
+        if (urlStr.startsWith('/api/')) return true;
+        if (urlStr.startsWith(window.location.origin + '/api/')) return true;
+        return false;
+      } catch (err) {
+        return false;
+      }
+    }
+
+    window.fetch = async function lyridAuthFetch(input, init) {
+      try {
+        if (!shouldIntercept(input)) {
+          return originalFetch(input, init);
+        }
+        const token = getToken();
+        if (!token) {
+          return originalFetch(input, init);
+        }
+        const newInit = Object.assign({}, init || {});
+        const newHeaders = new Headers((init && init.headers) || {});
+        if (!newHeaders.has('Authorization')) {
+          newHeaders.set('Authorization', 'Bearer ' + token);
+        }
+        newInit.headers = newHeaders;
+        return originalFetch(input, newInit);
+      } catch (err) {
+        console.warn('[lyrid-auth] fetch wrapper error, falling through:', err.message);
+        try {
+          return originalFetch(input, init);
+        } catch (fallbackErr) {
+          throw fallbackErr;
+        }
+      }
+    };
+  })();
+
+  function init() {
+    refreshAuthState().then(async () => {
+      const sb = await loadSupabase();
+      if (!sb) return;
+      sb.auth.onAuthStateChange((event, session) => {
+        currentSession = session || null;
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          refreshAuthState();
+        } else if (event === 'SIGNED_OUT') {
+          currentMe = null;
+          setAuthState('signed-out');
+        }
+      });
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  window.lyridAuth = {
+    signIn: signIn,
+    signOut: signOut,
+    toggleMenu: toggleMenu,
+    getToken: getToken,
+    getSession: function() { return currentSession; },
+    getMe: function() { return currentMe; },
+    isReady: function() { return authReady; },
+    refresh: refreshAuthState
+  };
+})();
+</script>
 
 <script>
 // =============== PWA / SERVICE WORKER ===============
