@@ -499,6 +499,30 @@ test('unhandled event type returns reason', async () => {
   assert.strictEqual(result.reason, 'unhandled_event_type');
 });
 
+test('membership.activated (dot format) is accepted same as underscore format', async () => {
+  const mock = makeSupabaseMock();
+  const result = await applyEventToProfile(mock, {
+    user: { id: 'uuid-dot' },
+    eventType: 'membership.activated',  // Whop's actual format
+    productId: 'prod_lmpUuEximUX8d',
+    membershipId: 'mem_dot',
+  });
+  assert.strictEqual(result.applied, true);
+  assert.strictEqual(result.tier, 'pro');
+});
+
+test('membership.deactivated (dot format) is accepted same as underscore format', async () => {
+  const mock = makeSupabaseMock();
+  const result = await applyEventToProfile(mock, {
+    user: { id: 'uuid-dot' },
+    eventType: 'membership.deactivated',
+    productId: 'prod_lmpUuEximUX8d',
+  });
+  assert.strictEqual(result.applied, true);
+  const { updateCalls } = mock._peek();
+  assert.strictEqual(updateCalls[0].values.subscription_status, 'canceled');
+});
+
 // =============================================================
 // LOG EVENT
 // =============================================================

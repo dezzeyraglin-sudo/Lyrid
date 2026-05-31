@@ -255,7 +255,12 @@ export async function applyEventToProfile(supabase, { user, eventType, productId
     return { applied: false, reason: 'no_user_match' };
   }
 
-  if (eventType === 'membership_activated') {
+  // Accept both `membership.activated` (Whop's actual format) and
+  // `membership_activated` (legacy format used in tests and some integrations)
+  const isActivation = eventType === 'membership.activated' || eventType === 'membership_activated';
+  const isDeactivation = eventType === 'membership.deactivated' || eventType === 'membership_deactivated';
+
+  if (isActivation) {
     const tier = tierForProduct(productId);
     if (tier === null) {
       console.warn(`[whop-webhook] Unknown product ${productId}; skipping profile update`);
@@ -281,7 +286,7 @@ export async function applyEventToProfile(supabase, { user, eventType, productId
     return { applied: true, tier };
   }
 
-  if (eventType === 'membership_deactivated') {
+  if (isDeactivation) {
     // Mark canceled but keep tier + period_end so user retains access
     // until subscription_period_end (grace period built into entitlements view)
     const { error } = await supabase
@@ -432,8 +437,15 @@ export default async function handler(req, res) {
   }
 
   // We only handle two event types; ack everything else with 200 so Whop
-  // doesn't retry indefinitely
-  if (event.type !== 'membership_activated' && event.type !== 'membership_deactivated') {
+  // doesn't retry indefinitely.
+  //
+  // Whop sends event types as `membership.activated` and `membership.deactivated`
+  // (with dots, Standard Webhooks convention). We accept both formats for
+  // backwards compatibility with any older webhook sources.
+  const isActivation = event.type === 'membership.activated' || event.type === 'membership_activated';
+  const isDeactivation = event.type === 'membership.deactivated' || event.type === 'membership_deactivated';
+
+  if (!isActivation && !isDeactivation) {
     // Still log to subscription_events for audit
     if (isSupabaseConfigured()) {
       try {
