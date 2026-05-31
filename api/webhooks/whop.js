@@ -313,6 +313,34 @@ export default async function handler(req, res) {
     req.headers['x-whop-webhook-signature'] ||
     '';
 
+  // ====== DIAGNOSTIC LOGGING (temporary, remove after debugging) ======
+  // Whop signature verification is failing in production. Log enough to
+  // figure out why without leaking secrets.
+  try {
+    const headerKeys = Object.keys(req.headers || {}).filter(k => k.toLowerCase().includes('whop') || k.toLowerCase().includes('signature'));
+    const computedSig = process.env.WHOP_WEBHOOK_SECRET && rawBody
+      ? crypto.createHmac('sha256', process.env.WHOP_WEBHOOK_SECRET).update(rawBody).digest('hex')
+      : '';
+    console.log('[whop-webhook-debug]', JSON.stringify({
+      method: req.method,
+      contentType: req.headers['content-type'],
+      whopHeaderKeys: headerKeys,
+      sigHeaderValue: signature ? `${signature.slice(0, 8)}...${signature.slice(-8)} (len=${signature.length})` : '(missing)',
+      rawBodyType: typeof rawBody,
+      rawBodyLength: rawBody ? rawBody.length : 0,
+      rawBodyPreview: rawBody ? rawBody.slice(0, 120) : '',
+      reqReadable: req.readable,
+      reqBodyType: typeof req.body,
+      reqBodyKeys: req.body && typeof req.body === 'object' ? Object.keys(req.body).slice(0, 8) : [],
+      computedSigPreview: computedSig ? `${computedSig.slice(0, 8)}...${computedSig.slice(-8)}` : '(empty)',
+      secretConfigured: Boolean(process.env.WHOP_WEBHOOK_SECRET),
+      secretLength: (process.env.WHOP_WEBHOOK_SECRET || '').length,
+    }));
+  } catch (err) {
+    console.log('[whop-webhook-debug] Logging failed:', err.message);
+  }
+  // ====== END DIAGNOSTICS ======
+
   // Signature verification — skip in dev when no secret configured
   if (process.env.WHOP_WEBHOOK_SECRET) {
     if (!verifySignature(rawBody, signature)) {
