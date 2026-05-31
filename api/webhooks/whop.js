@@ -264,8 +264,39 @@ export function parseEvent(payload) {
 }
 
 /**
- * Main webhook handler. Vercel serverless function entrypoint.
+ * Read the raw request body as a string. Vercel does NOT provide req.rawBody
+ * by default — we have to read the stream ourselves.
+ *
+ * Vercel auto-parses JSON bodies and assigns to req.body BEFORE the handler
+ * runs. But req is still readable as a stream until consumed. The trick: if
+ * Vercel hasn't parsed yet (req.readable), read it. If it HAS parsed already,
+ * fall back to stringifying req.body — imperfect but the best we can do.
+ *
+ * For 100% reliable signature verification, the long-term fix is to set
+ * `bodyParser: false` in this function's config block. As of Vercel's current
+ * runtime, that's done via the request export below, not vercel.json.
  */
+async function readRawBody(req) {
+  // Test-only path: tests pass rawBody directly
+  if (req.rawBody) return req.rawBody;
+
+  // If req is still a readable stream (body not yet parsed), drain it
+  if (req.readable) {
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  }
+
+  // Fallback: body already parsed by Vercel. Re-stringify deterministically.
+  // This may not produce byte-identical output to what Whop signed; if
+  // signature verification fails repeatedly in production, we need to disable
+  // Vercel's body parser for this route.
+  if (typeof req.body === 'string') return req.body;
+  if (req.body && typeof req.body === 'object') return JSON.stringify(req.body);
+  return '';
+}
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
 
@@ -273,19 +304,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Whop signs the RAW request body. Vercel auto-parses JSON, so we need
-  // to re-stringify with stable key order — which doesn't work reliably.
-  // For accurate signature verification, we should read req.rawBody if
-  // available, falling back to req.body.
-  //
-  // TODO: add a vercel.json config to disable bodyParser for this route
-  // so we can read the raw body directly. Until then, we accept that
-  // signature verification may fail for production traffic and rely on
-  // network-level trust (Whop's IPs).
-
-  const rawBody =
-    req.rawBody ||
-    (typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}));
+  // Read the raw body for signature verification BEFORE accessing req.body
+  // (reading req.body would consume the stream)
+  const rawBody = await readRawBody(req);
 
   const signature =
     req.headers['x-whop-signature'] ||
@@ -300,10 +321,10 @@ export default async function handler(req, res) {
     }
   }
 
-  // Parse body
+  // Parse body from the raw string we read
   let payload;
   try {
-    payload = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    payload = rawBody ? JSON.parse(rawBody) : (req.body || {});
   } catch (err) {
     return res.status(400).json({ error: 'Invalid JSON' });
   }
@@ -364,3 +385,18 @@ export default async function handler(req, res) {
 
 // Export internals for testing
 export const _internals = { WHOP_API_BASE };
+
+/**
+ * Vercel function config: disable automatic body parsing so we can read
+ * the raw request body for HMAC signature verification.
+ *
+ * Without this, Vercel parses JSON before our handler runs, consuming the
+ * stream. We can re-stringify req.body but that may not produce byte-identical
+ * output to what Whop signed (different key order, whitespace), causing
+ * signature verification to fail.
+ */
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
