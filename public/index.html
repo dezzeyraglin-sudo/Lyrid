@@ -164,6 +164,26 @@
   }
 
   /* ============ AUTH UI (May 31, 2026) ============ */
+  /* Mobile: stack header — brand+auth on top row, nav on second row */
+  @media (max-width: 640px){
+    .lyrid-header{
+      flex-wrap:wrap;
+      row-gap:10px;
+      padding-bottom:0;
+    }
+    .lyrid-header-brand{order:1}
+    .lyrid-auth{order:2}
+    .lyrid-header-nav{
+      order:3;
+      flex-basis:100%;
+      justify-content:flex-start;
+      padding-top:8px;
+      margin-top:4px;
+      border-top:0.5px solid var(--border-hairline);
+    }
+    /* Active tab indicator sits flush with header bottom edge */
+    .lyrid-nav-btn.active::after{bottom:-9px}
+  }
   .lyrid-auth{
     display:flex;
     align-items:center;
