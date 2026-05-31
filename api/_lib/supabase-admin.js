@@ -9,6 +9,15 @@
 
 let _adminClient = null;
 let _createClient = null;
+let _injectedAdmin = null;
+
+/**
+ * For testing only: replace the admin client with a mock. Production code
+ * never calls this. Pass null to clear the injection.
+ */
+export function _setAdminClientForTesting(client) {
+  _injectedAdmin = client;
+}
 
 async function loadCreateClient() {
   if (_createClient) return _createClient;
@@ -33,6 +42,9 @@ export function isSupabaseConfigured() {
 }
 
 export async function getSupabaseAdmin() {
+  // Test injection takes precedence over the real client. Production paths
+  // never set _injectedAdmin so this is a no-op cost outside of tests.
+  if (_injectedAdmin) return _injectedAdmin;
   if (_adminClient) return _adminClient;
 
   const url = process.env.SUPABASE_URL;
