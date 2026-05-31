@@ -15,6 +15,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test_service_role_key';
 
 const {
   verifySignature,
+  verifyStandardWebhookSignature,
   tierForProduct,
   findUserByDiscordId,
   logEvent,
@@ -83,6 +84,120 @@ test('tampered body produces wrong signature', () => {
   const sig = crypto.createHmac('sha256', 'whsec_test_secret_value').update(original).digest('hex');
   const tampered = '{"type":"membership_deactivated"}';
   assert.strictEqual(verifySignature(tampered, sig), false);
+});
+
+// ===========================================================
+// STANDARD WEBHOOKS SIGNATURE (Whop's actual format)
+// ===========================================================
+
+suite('verifyStandardWebhookSignature (Whop production format)');
+
+// Helper to compute a valid Standard Webhooks signature for testing.
+// secretWithPrefix is the full secret like "whsec_abc123..."
+function signStandardWebhook(id, timestamp, body, secretWithPrefix) {
+  const keyB64 = secretWithPrefix.startsWith('whsec_')
+    ? secretWithPrefix.slice('whsec_'.length)
+    : secretWithPrefix;
+  const keyBytes = Buffer.from(keyB64, 'base64');
+  const signedPayload = `${id}.${timestamp}.${body}`;
+  const sig = crypto.createHmac('sha256', keyBytes).update(signedPayload).digest('base64');
+  return `v1,${sig}`;
+}
+
+test('valid Standard Webhooks signature returns true', () => {
+  // Use a properly base64-encoded test secret so the whsec_ decode works
+  const testKey = Buffer.from('test-secret-key-bytes').toString('base64');
+  const testSecret = `whsec_${testKey}`;
+  process.env.WHOP_WEBHOOK_SECRET = testSecret;
+
+  const id = 'msg_abc123';
+  const timestamp = '1717024646';
+  const body = '{"type":"membership_activated","data":{}}';
+  const sig = signStandardWebhook(id, timestamp, body, testSecret);
+
+  const result = verifyStandardWebhookSignature(body, {
+    'webhook-id': id,
+    'webhook-timestamp': timestamp,
+    'webhook-signature': sig,
+  });
+  assert.strictEqual(result, true);
+
+  // Restore for other tests
+  process.env.WHOP_WEBHOOK_SECRET = 'whsec_test_secret_value';
+});
+
+test('wrong signature returns false', () => {
+  const testKey = Buffer.from('test-secret-key-bytes').toString('base64');
+  process.env.WHOP_WEBHOOK_SECRET = `whsec_${testKey}`;
+
+  const result = verifyStandardWebhookSignature('{"x":1}', {
+    'webhook-id': 'msg_x',
+    'webhook-timestamp': '12345',
+    'webhook-signature': 'v1,wrongbase64sig==',
+  });
+  assert.strictEqual(result, false);
+  process.env.WHOP_WEBHOOK_SECRET = 'whsec_test_secret_value';
+});
+
+test('missing webhook-id returns false', () => {
+  const result = verifyStandardWebhookSignature('{"x":1}', {
+    'webhook-timestamp': '12345',
+    'webhook-signature': 'v1,abc',
+  });
+  assert.strictEqual(result, false);
+});
+
+test('missing webhook-timestamp returns false', () => {
+  const result = verifyStandardWebhookSignature('{"x":1}', {
+    'webhook-id': 'msg_x',
+    'webhook-signature': 'v1,abc',
+  });
+  assert.strictEqual(result, false);
+});
+
+test('missing webhook-signature returns false', () => {
+  const result = verifyStandardWebhookSignature('{"x":1}', {
+    'webhook-id': 'msg_x',
+    'webhook-timestamp': '12345',
+  });
+  assert.strictEqual(result, false);
+});
+
+test('tampered body fails verification', () => {
+  const testKey = Buffer.from('test-secret-key-bytes').toString('base64');
+  const testSecret = `whsec_${testKey}`;
+  process.env.WHOP_WEBHOOK_SECRET = testSecret;
+
+  const original = '{"type":"membership_activated"}';
+  const tampered = '{"type":"membership_deactivated"}';
+  const sig = signStandardWebhook('msg_x', '12345', original, testSecret);
+
+  const result = verifyStandardWebhookSignature(tampered, {
+    'webhook-id': 'msg_x',
+    'webhook-timestamp': '12345',
+    'webhook-signature': sig,
+  });
+  assert.strictEqual(result, false);
+  process.env.WHOP_WEBHOOK_SECRET = 'whsec_test_secret_value';
+});
+
+test('handles multiple signatures separated by spaces', () => {
+  const testKey = Buffer.from('test-secret-key-bytes').toString('base64');
+  const testSecret = `whsec_${testKey}`;
+  process.env.WHOP_WEBHOOK_SECRET = testSecret;
+
+  const body = '{"x":1}';
+  const sig = signStandardWebhook('msg_x', '12345', body, testSecret);
+  // Format: first one is fake/old, second is valid
+  const headerValue = `v1,fakeoldsig== ${sig}`;
+
+  const result = verifyStandardWebhookSignature(body, {
+    'webhook-id': 'msg_x',
+    'webhook-timestamp': '12345',
+    'webhook-signature': headerValue,
+  });
+  assert.strictEqual(result, true);
+  process.env.WHOP_WEBHOOK_SECRET = 'whsec_test_secret_value';
 });
 
 // =============================================================

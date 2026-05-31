@@ -70,8 +70,90 @@ import { getSupabaseAdmin, isSupabaseConfigured } from '../_lib/supabase-admin.j
 const WHOP_API_BASE = 'https://api.whop.com/api/v5';
 
 /**
- * Verify Whop webhook signature using HMAC-SHA256.
- * Returns true if signature matches, false otherwise.
+ * Verify Whop webhook signature using the Standard Webhooks spec.
+ *
+ * Whop uses the Standard Webhooks signature format:
+ *   - Header `webhook-id` — message ID
+ *   - Header `webhook-timestamp` — Unix timestamp
+ *   - Header `webhook-signature` — one or more signatures in `v1,base64sig` format
+ *
+ * The signed payload is constructed as:
+ *   `${webhook-id}.${webhook-timestamp}.${body}`
+ *
+ * The signature is HMAC-SHA256, base64-encoded.
+ *
+ * The signing secret has format `whsec_<base64_secret>`. We strip the prefix
+ * and base64-decode to get the actual HMAC key bytes.
+ *
+ * Reference: https://www.standardwebhooks.com/verifying
+ *
+ * @param {string} rawBody - raw request body as string
+ * @param {Object} headers - request headers (lowercased keys)
+ * @returns {boolean} true if any signature matches
+ */
+export function verifyStandardWebhookSignature(rawBody, headers) {
+  const secret = process.env.WHOP_WEBHOOK_SECRET;
+  if (!secret || !rawBody || !headers) return false;
+
+  const id = headers['webhook-id'];
+  const timestamp = headers['webhook-timestamp'];
+  const signatureHeader = headers['webhook-signature'];
+
+  if (!id || !timestamp || !signatureHeader) return false;
+
+  // Build the signed payload
+  const signedPayload = `${id}.${timestamp}.${rawBody}`;
+
+  // Derive the HMAC key from the secret. Standard Webhooks format is
+  // `whsec_<base64-encoded-key>`. We strip the prefix and base64-decode.
+  let keyBytes;
+  if (secret.startsWith('whsec_')) {
+    try {
+      keyBytes = Buffer.from(secret.slice('whsec_'.length), 'base64');
+    } catch {
+      return false;
+    }
+  } else {
+    // If the secret doesn't have the prefix, treat as raw bytes
+    keyBytes = Buffer.from(secret, 'utf8');
+  }
+
+  // Compute the expected signature (base64-encoded HMAC-SHA256)
+  const expectedSig = crypto
+    .createHmac('sha256', keyBytes)
+    .update(signedPayload)
+    .digest('base64');
+
+  // The webhook-signature header may contain multiple space-separated
+  // signatures in the format `v1,<base64sig>`. Match against any of them.
+  const signatures = signatureHeader.split(' ');
+  for (const sig of signatures) {
+    const parts = sig.split(',');
+    if (parts.length !== 2) continue;
+    const [version, providedSig] = parts;
+    if (version !== 'v1') continue;
+
+    // Constant-time comparison
+    try {
+      const expected = Buffer.from(expectedSig, 'base64');
+      const provided = Buffer.from(providedSig, 'base64');
+      if (expected.length !== provided.length) continue;
+      if (crypto.timingSafeEqual(expected, provided)) {
+        return true;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Legacy signature verification using a simple hex HMAC. Kept for backwards
+ * compatibility with the original tests and any non-Standard-Webhooks payloads.
+ *
+ * @deprecated Use verifyStandardWebhookSignature for Whop production traffic.
  */
 export function verifySignature(rawBody, signature) {
   const secret = process.env.WHOP_WEBHOOK_SECRET;
@@ -308,42 +390,29 @@ export default async function handler(req, res) {
   // (reading req.body would consume the stream)
   const rawBody = await readRawBody(req);
 
-  const signature =
-    req.headers['x-whop-signature'] ||
-    req.headers['x-whop-webhook-signature'] ||
-    '';
-
-  // ====== DIAGNOSTIC LOGGING (temporary, remove after debugging) ======
-  // Whop signature verification is failing in production. Log enough to
-  // figure out why without leaking secrets.
-  try {
-    const headerKeys = Object.keys(req.headers || {}).filter(k => k.toLowerCase().includes('whop') || k.toLowerCase().includes('signature'));
-    const computedSig = process.env.WHOP_WEBHOOK_SECRET && rawBody
-      ? crypto.createHmac('sha256', process.env.WHOP_WEBHOOK_SECRET).update(rawBody).digest('hex')
-      : '';
-    console.log('[whop-webhook-debug]', JSON.stringify({
-      method: req.method,
-      contentType: req.headers['content-type'],
-      whopHeaderKeys: headerKeys,
-      sigHeaderValue: signature ? `${signature.slice(0, 8)}...${signature.slice(-8)} (len=${signature.length})` : '(missing)',
-      rawBodyType: typeof rawBody,
-      rawBodyLength: rawBody ? rawBody.length : 0,
-      rawBodyPreview: rawBody ? rawBody.slice(0, 120) : '',
-      reqReadable: req.readable,
-      reqBodyType: typeof req.body,
-      reqBodyKeys: req.body && typeof req.body === 'object' ? Object.keys(req.body).slice(0, 8) : [],
-      computedSigPreview: computedSig ? `${computedSig.slice(0, 8)}...${computedSig.slice(-8)}` : '(empty)',
-      secretConfigured: Boolean(process.env.WHOP_WEBHOOK_SECRET),
-      secretLength: (process.env.WHOP_WEBHOOK_SECRET || '').length,
-    }));
-  } catch (err) {
-    console.log('[whop-webhook-debug] Logging failed:', err.message);
+  // Normalize headers to lowercase keys
+  const headers = {};
+  for (const [k, v] of Object.entries(req.headers || {})) {
+    headers[k.toLowerCase()] = v;
   }
-  // ====== END DIAGNOSTICS ======
 
-  // Signature verification — skip in dev when no secret configured
+  // Signature verification using Standard Webhooks spec (Whop's format).
+  // Falls back to legacy hex HMAC if the new format isn't detected (for
+  // backwards compatibility with custom webhook sources).
   if (process.env.WHOP_WEBHOOK_SECRET) {
-    if (!verifySignature(rawBody, signature)) {
+    const hasStandardWebhooksHeaders =
+      headers['webhook-id'] && headers['webhook-timestamp'] && headers['webhook-signature'];
+
+    let valid = false;
+    if (hasStandardWebhooksHeaders) {
+      valid = verifyStandardWebhookSignature(rawBody, headers);
+    } else {
+      // Legacy fallback: simple hex HMAC in x-whop-signature header
+      const legacySig = headers['x-whop-signature'] || headers['x-whop-webhook-signature'] || '';
+      valid = verifySignature(rawBody, legacySig);
+    }
+
+    if (!valid) {
       console.warn('[whop-webhook] Invalid signature; rejecting');
       return res.status(401).json({ error: 'Invalid signature' });
     }
