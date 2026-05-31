@@ -877,6 +877,22 @@ export default async function handler(req, res) {
           // that's positively correlated with outcomes.
           // Used by render layer + future tier ranking work.
           gapPenalizedEdge: (adjustedEdge - 2 * Math.max(0, (adjustedMaxXwoba - regressedMaxXwoba))).toFixed(3),
+          // (Drop #5 Fix #5 — May 31, 2026) Pitcher BB% exposed for fade engine.
+          // May 31 audit (n=181) showed losers averaged 0.47 BB vs winners 0.36
+          // — losing hitters get pitched around. Walks don't count for HRR.
+          // Pitchers with BB% > 11% are a structural HRR fade signal.
+          _pitcherBbPct: (() => {
+            if (!inningSplits?.perInning) return null;
+            const innings = Object.values(inningSplits.perInning);
+            let bbSum = 0, paSum = 0;
+            for (const i of innings) {
+              if (i.bbPct != null && i.pa) {
+                bbSum += i.bbPct * i.pa;
+                paSum += i.pa;
+              }
+            }
+            return paSum > 0 ? bbSum / paSum : null;  // already decimal (0.10 = 10%)
+          })(),
           // HITTER TIER REGRESSION diagnostic — always populated, used to
           // compare classifier behavior with/without the flag enabled.
           regressedMaxXwoba: regressedMaxXwoba.toFixed(3),
@@ -1132,6 +1148,29 @@ export default async function handler(req, res) {
           candidate._gapRejected = true;
           candidate._gapRejectValue = candidateGap;
         }
+
+        // (Drop #5 Fix #4 — May 31, 2026) PA-floor fade signal.
+        //
+        // May 31 audit (n=181) showed winners averaged 4.25 PA vs losers
+        // 3.83 PA — an 11% gap. Hitters with projected PA < 4.0 are
+        // structurally disadvantaged on HRR/HITS because they get fewer
+        // shots at the line. Lineup support factor weights slot but the
+        // PA-opportunity downside isn't aggressive enough.
+        //
+        // Two rules:
+        //   1. PA < 4.0 → flag candidate as PA-disadvantaged. Doesn't
+        //      block qualification but downgrades PRIME eligibility.
+        //   2. Slot 7+ → never PRIME-eligible regardless of other criteria.
+        //      Bottom-of-order hitters might be "elite-tier" by xwoba but
+        //      they can't carry PRIME marketing claims when they hit 3.7
+        //      PA on average and miss the cycle entirely in tight games.
+        const candidateSlot = parseInt(candidate.battingOrder) || 0;
+        const candidateExpectedPa = (candidateSlot >= 1 && candidateSlot <= 9)
+          ? expectedPaForLineupSlot(candidateSlot)
+          : 4.0;
+        candidate._expectedPa = candidateExpectedPa;
+        candidate._paDisadvantaged = candidateExpectedPa < 4.0;
+        candidate._bottomOfOrder = candidateSlot >= 7;
         if (candidateQualifies && !failedGapReject) {
           candidate.isTopPick = true;
 
@@ -1689,6 +1728,52 @@ export default async function handler(req, res) {
     results.odds = odds;
     results.conversionRates = conversionRates;
 
+    // (Drop #5 Fix #2 — May 31, 2026) NRFI tier post-projection downgrade.
+    //
+    // May 31 audit (n=115 FI bets) showed NRFI STRONG was the worst-performing
+    // FI segment at 36% WR (10-18 on n=28) while NRFI MODERATE went 11-9 (55%)
+    // and NRFI SLIGHT went 7-7 (50%). The model's "most confident" NRFI calls
+    // are statistically the worst — same inverted-confidence signature as
+    // adjustedMaxXwoba had before its earlier cap.
+    //
+    // Also: 65% of NRFI losses were SINGLE-run innings. The model isn't getting
+    // beat by crooked numbers — it's getting beat by one solo HR, one RBI single,
+    // one productive groundout. That's a low-probability outcome the model isn't
+    // capturing in its YRFI/NRFI math.
+    //
+    // Two structural conditions that elevate single-run risk:
+    //   1. Low projected game total (≤7.0) — tight game, every PA matters more
+    //   2. Either SP is a contact-pitcher (K%<21) — no strikeout insurance against
+    //      productive contact
+    //
+    // When NRFI fires with either condition present, downgrade tier one step:
+    // STRONG → MODERATE → SLIGHT → PASS. Don't disable the pick — calibrate
+    // the confidence honestly.
+    if (results.firstInning?.recommendation?.side === 'NRFI' && projection) {
+      const fi = results.firstInning.recommendation;
+      const projTotal = projection.projTotal || 0;
+      const awayPitcherK = parseFloat(results.homeVsAway?.inningSplits?.season_stats?.kPct) || null;
+      const homePitcherK = parseFloat(results.awayVsHome?.inningSplits?.season_stats?.kPct) || null;
+      const lowSpKPct = (awayPitcherK !== null && awayPitcherK < 21) ||
+                       (homePitcherK !== null && homePitcherK < 21);
+      const lowProjTotal = projTotal > 0 && projTotal <= 7.0;
+      if (lowProjTotal || lowSpKPct) {
+        const reasons = [];
+        if (lowProjTotal) reasons.push(`low projected total (${projTotal.toFixed(1)})`);
+        if (lowSpKPct) reasons.push('contact-pitcher SP (K%<21)');
+        const tierLadder = { STRONG: 'MODERATE', MODERATE: 'SLIGHT', SLIGHT: 'PASS' };
+        const unitLadder = { STRONG: 1, MODERATE: 0.5, SLIGHT: 0 };
+        const newTier = tierLadder[fi.tier] || 'PASS';
+        const newUnits = unitLadder[fi.tier] ?? 0;
+        if (fi.tier !== 'PASS' && newTier !== fi.tier) {
+          fi._originalTier = fi.tier;
+          fi._downgradeReason = `NRFI tier downgraded ${fi.tier}→${newTier}: ${reasons.join(', ')}. May 31 audit showed NRFI STRONG hits 36% (n=28) and 65% of NRFI losses are single-run innings.`;
+          fi.tier = newTier;
+          fi.units = newUnits;
+        }
+      }
+    }
+
     // Game-line bet recommendations (ML/Spread/Total) — runs after projection + odds are ready
     results.gameLineBets = buildGameLineRecommendations({
       projection,
@@ -2119,8 +2204,16 @@ function buildGameProjection({ awayVsHome, homeVsAway, parkFactor, homeTeamAbbr,
   // Asymmetric calibration: away projections were +0.07 (accurate)
   // while home projections were -0.84 (over-projected). Apply a
   // separate, stronger pull to the home side only.
+  //
+  // (Drop #5 Fix #3 — May 31, 2026)
+  // May 31 audit (n=159 games) showed home projections were still
+  // over-projecting by -0.42 runs while away was +0.15. The 0.86
+  // home scalar was a partial fix — tighten to 0.82 to close more
+  // of the remaining gap. Don't go below 0.80; if -0.42 persists
+  // at 0.82 there's a structural upstream bias that needs an audit,
+  // not a scalar.
   const PROJECTION_SCALE_AWAY = 0.98;   // away was nearly accurate
-  const PROJECTION_SCALE_HOME = 0.86;   // home over-projected by ~0.84 runs
+  const PROJECTION_SCALE_HOME = 0.82;   // was 0.86, tightened to close residual -0.42 bias
   const projAwayRuns = rawProjAwayRuns * PROJECTION_SCALE_AWAY;
   const projHomeRuns = rawProjHomeRuns * PROJECTION_SCALE_HOME;
   const projTotal = projAwayRuns + projHomeRuns;
@@ -2803,6 +2896,18 @@ function classifyPrimeTier(matchup, fadeResult) {
   matchup.fragility = frag;  // surface for UI
   if (frag.level === 'moderate' || frag.level === 'fragile') {
     reasons.push(`fragility_${frag.level}`);
+  }
+
+  // === Criterion 8: PA opportunity floor (Drop #5 Fix #4 — May 31, 2026) ===
+  // May 31 audit (n=181) showed winners avg 4.25 PA, losers 3.83 PA.
+  // Bottom-of-order hitters (slot 7+) get 3.7 PA on average and miss
+  // the cycle entirely in tight games — disqualify from PRIME regardless
+  // of xwoba. Picks with projected PA < 4.0 are PA-disadvantaged.
+  if (matchup._bottomOfOrder) {
+    reasons.push(`bottom_of_order_slot_${matchup.battingOrder || '?'}`);
+  }
+  if (matchup._paDisadvantaged) {
+    reasons.push(`pa_disadvantaged_proj_${(matchup._expectedPa || 0).toFixed(1)}`);
   }
 
   if (reasons.length > 0) {

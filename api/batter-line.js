@@ -83,6 +83,15 @@ export default async function handler(req, res) {
       HBP: batting.hitByPitch || 0,
       doubles: batting.doubles || 0,
       triples: batting.triples || 0,
+      // (Drop #6 — May 31, 2026) Pathway-relevant additions.
+      // CS (caught stealing) flags over-aggressive baserunners.
+      // SF (sacrifice fly) is partial RBI without an AB — captured for completeness.
+      // SH (sacrifice bunt) is small-ball context, mostly NL/American League pitchers' spots.
+      // All three were silently missing from the line object. Section 12 of the
+      // validation report now uses these for full pathway decomposition.
+      CS: batting.caughtStealing || 0,
+      SF: batting.sacFlies || 0,
+      SH: batting.sacBunts || 0,
       summary: batting.summary || ''
     };
 

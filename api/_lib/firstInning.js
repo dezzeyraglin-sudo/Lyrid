@@ -335,24 +335,15 @@ export function computeFirstInningProbability(awaySide, homeSide, context = {}) 
   const deltaFromBase = yrfiProb - LEAGUE_YRFI;
   const absDelta = Math.abs(deltaFromBase);
   let side = null, tier = 'PASS', units = 0;
-  // (Inning Audit Fix #2 — May 29, 2026)
+  // (Inning Audit Fix #2 — May 30, 2026)
   // Live data on n=87 FI bets showed STRONG was the WORST tier
   // (43% WR), worse than MODERATE (50%) and SLIGHT (48%). The
   // 0.08-0.12 delta band is where overconfidence lives.
   // Raise STRONG to 0.12, drop STRONG units 2 → 1.5, slide other
   // tiers up accordingly so MODERATE becomes the workhorse.
-  //
-  // (Drop #3 Fix #4 — May 30, 2026) Further refinement on n=96 FI bets.
-  // Data inverts confidence: SLIGHT tier outperforms STRONG by 14-22 pts.
-  //   NRFI SLIGHT: 60% WR (n=10)  vs  NRFI STRONG: 38% WR (n=26)
-  //   YRFI SLIGHT: 47% WR (n=15)  vs  YRFI STRONG: 45% WR (n=20)
-  // Going further: STRONG drops to 1.0u (was 1.5u), SLIGHT promoted to
-  // 1.0u (was 0.5u). MODERATE stays at workhorse 1.0u. Now all tiers
-  // are equal-weighted reflecting the actual outcome data — we don't
-  // know enough to call ANY tier worthy of >1u staking.
-  if (absDelta >= 0.12) { tier = 'STRONG'; units = 1; }
+  if (absDelta >= 0.12) { tier = 'STRONG'; units = 1.5; }
   else if (absDelta >= 0.07) { tier = 'MODERATE'; units = 1; }
-  else if (absDelta >= 0.04) { tier = 'SLIGHT'; units = 1; }
+  else if (absDelta >= 0.04) { tier = 'SLIGHT'; units = 0.5; }
   if (tier !== 'PASS') side = deltaFromBase > 0 ? 'YRFI' : 'NRFI';
 
   // (Phase 1 — May 29, 2026) Calibrate the displayed probability against
