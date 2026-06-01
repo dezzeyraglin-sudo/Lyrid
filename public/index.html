@@ -12336,21 +12336,49 @@ async function autoGradeOnAppOpen() {
     `;
   }
 
+  // -----------------------------------------------------------
+  // SIDE BLOCK — one card PER PLAYER (markets grouped inside), MLB-style.
+  // Replaces the old version that rendered one card per (player, market),
+  // which stacked the same player 2–3 times in a row.
+  // -----------------------------------------------------------
   function renderSideBlock(teamAbbr, oppAbbr, passes, side) {
     if (passes.length === 0) return '';
+
+    // Group this side's passes by player. Preserve first-seen order, then we
+    // sort the resulting players by their single best finalEdge.
+    const byPlayer = new Map();
+    for (const p of passes) {
+      const key = p.player || 'Unknown';
+      if (!byPlayer.has(key)) byPlayer.set(key, []);
+      byPlayer.get(key).push(p);
+    }
+
+    const bestEdge = (arr) => Math.max(...arr.map(p => p.scores?.finalEdge ?? 0));
+    const players = [...byPlayer.values()].sort((a, b) => bestEdge(b) - bestEdge(a));
+
     return `
       <h3 style="margin-top:28px;font-size:14px;letter-spacing:0.06em;color:var(--text-primary);font-weight:500;text-transform:uppercase">
         ${esc(teamName(teamAbbr))} <span style="color:var(--text-secondary, var(--dim));font-weight:400;text-transform:none;font-size:12px">vs ${esc(teamName(oppAbbr))}</span>
       </h3>
       <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
-        ${passes.map(renderWnbaPropRow).join('')}
+        ${players.map(renderWnbaPlayerCard).join('')}
       </div>
     `;
   }
 
-  function renderWnbaPropRow(p) {
-    const tier = edgeTier(p.scores?.finalEdge);
-    const sc = p.scores || {};
+  // One card for a player, listing every market they have as a compact row.
+  // Shared context (ROLE/USAGE/ENV/MATCHUP/VAR) is per-player, so it's shown
+  // ONCE in the header instead of repeated on every market.
+  function renderWnbaPlayerCard(propsForPlayer) {
+    // Rank this player's markets by edge; strongest first (gets the ★).
+    const props = [...propsForPlayer].sort((a, b) => (b.scores?.finalEdge ?? 0) - (a.scores?.finalEdge ?? 0));
+    const lead = props[0];
+    const sc = lead.scores || {};
+
+    // Tier badge = the player's strongest market (one badge, not three).
+    const tier = edgeTier(sc.finalEdge);
+
+    // Shared per-player context row.
     const subScores = [
       { k: 'ROLE', v: sc.roleStability },
       { k: 'USAGE', v: sc.usageFunnel },
@@ -12358,61 +12386,83 @@ async function autoGradeOnAppOpen() {
       { k: 'MATCHUP', v: sc.matchup },
       { k: 'VAR', v: sc.variance }
     ];
-    const edge = p.edge;
-    const edgeStr = edge != null && Number.isFinite(edge)
-      ? (edge >= 0 ? '+' : '') + edge.toFixed(2)
-      : '—';
-    const edgeMuted = p.lineSource === 'inferred';
-    const edgeColor = (edge != null && !edgeMuted && Math.abs(edge) >= 0.5)
-      ? (edge > 0 ? '#14532d' : '#7f1d1d')
-      : 'var(--text-secondary, var(--dim))';
 
-    // Resolve projection per engine setting
-    const proj = getProjectionForProp(p);
-    const projStr = proj.projection != null && Number.isFinite(Number(proj.projection))
-      ? Number(proj.projection).toFixed(2) : '—';
-    const statusBadge = state.engine === 'v2' ? renderV2StatusBadge(proj.status) : '';
+    // If the player is OUT (v2), dim the whole card.
+    const leadProj = getProjectionForProp(lead);
+    const isOut = (state.engine === 'v2' && leadProj.status === 'OUT');
+    const cardOpacity = isOut ? '0.55' : '1';
+    const statusBadge = state.engine === 'v2' ? renderV2StatusBadge(leadProj.status) : '';
+
+    // Union of chips/flags across the player's markets (deduped) — shown once.
+    const allChips = [...new Set(props.flatMap(p => p.chips || []))];
+    const allFlags = [...new Set(props.flatMap(p => p.hardFlags || []))];
+
+    // Per-market rows.
+    const marketRows = props.map((p, i) => {
+      const proj = getProjectionForProp(p);
+      const projStr = proj.projection != null && Number.isFinite(Number(proj.projection))
+        ? Number(proj.projection).toFixed(2) : '—';
+      const edge = p.edge;
+      const edgeMuted = p.lineSource === 'inferred';
+      const edgeStr = edge != null && Number.isFinite(edge) ? ((edge >= 0 ? '+' : '') + edge.toFixed(2)) : '—';
+      const edgeColor = (edge != null && !edgeMuted && Math.abs(edge) >= 0.5)
+        ? (edge > 0 ? '#14532d' : '#7f1d1d')
+        : 'var(--text-secondary, var(--dim))';
+      const bandStr = (state.engine === 'v2' && proj.floor != null && proj.ceiling != null && proj.ceiling > 0)
+        ? `<span style="font-size:10px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums" title="v2 floor–ceiling band">${proj.floor.toFixed(1)}–${proj.ceiling.toFixed(1)}</span>`
+        : '';
+      const star = (i === 0 && props.length > 1)
+        ? '<span title="strongest edge for this player" style="color:var(--accent, #c9a45e);font-size:10px">★</span>'
+        : '<span style="width:10px;display:inline-block"></span>';
+
+      return `
+        <div style="display:grid;grid-template-columns:14px 84px 1fr auto auto;align-items:baseline;gap:10px;padding:5px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
+          ${star}
+          <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">${esc(p.market)}</span>
+          <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:500">${p.line}</b></span>
+          <span style="display:flex;align-items:baseline;gap:8px;justify-content:flex-end">
+            <span style="font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums">${isOut ? 'OUT' : projStr}</span>
+            ${bandStr}
+          </span>
+          <span style="font-size:11px;color:${edgeColor};font-variant-numeric:tabular-nums;min-width:46px;text-align:right">${edgeStr}</span>
+        </div>
+      `;
+    }).join('');
+
     const engineBadge = state.engine === 'v2'
-      ? (proj.fallback
-          ? '<span class="stat-chip" style="font-size:9px;color:var(--text-secondary, var(--dim));letter-spacing:0.05em" title="v2 not available for this market; showing v1">v1·fallback</span>'
+      ? (leadProj.fallback
+          ? '<span class="stat-chip" style="font-size:9px;color:var(--text-secondary, var(--dim));letter-spacing:0.05em" title="v2 not available for some markets; showing v1">v1·fallback</span>'
           : '<span class="stat-chip" style="font-size:9px;background:rgba(201,164,94,0.15);color:var(--accent, #c9a45e);letter-spacing:0.05em" title="v2 engine projection">v2</span>')
       : '';
-    const bandStr = (state.engine === 'v2' && proj.floor != null && proj.ceiling != null && proj.ceiling > 0)
-      ? `<span style="font-size:10px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums" title="v2 floor–ceiling band">${proj.floor.toFixed(1)}–${proj.ceiling.toFixed(1)}</span>`
-      : '';
-
-    // If player is OUT in v2 view, dim the whole card and show OUT in place of projection
-    const isOut = (state.engine === 'v2' && proj.status === 'OUT');
-    const cardOpacity = isOut ? '0.55' : '1';
 
     return `
       <div style="background:var(--surface-card);border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:var(--radius-md, 8px);padding:14px 18px;opacity:${cardOpacity}">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
           <span style="background:${tier.bg};color:${tier.color};padding:3px 8px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em">${tier.label}</span>
-          <span style="font-weight:600;color:var(--text-primary);font-size:14px;font-family:var(--font-serif, var(--font-sans))">${esc(p.player)}</span>
+          <span style="font-weight:600;color:var(--text-primary);font-size:14px;font-family:var(--font-serif, var(--font-sans))">${esc(lead.player)}</span>
           ${statusBadge}
-          <span style="margin-left:auto;display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;justify-content:flex-end">
-            <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">${esc(p.market)}</span>
-            <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:500">${p.line}</b></span>
-            <span style="font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums">${isOut ? 'OUT' : projStr}</span>
-            ${bandStr}
-            <span style="font-size:11px;color:${edgeColor};font-variant-numeric:tabular-nums">${edgeStr}</span>
-          </span>
+          <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.06em">${esc(lead.team)} vs ${esc(lead.opponent)}</span>
         </div>
-        <div class="stat-row" style="margin-top:6px">
+
+        <div class="stat-row">
           ${subScores.map(s => `<span class="stat-chip" title="${s.k} score (0-100)"><span style="color:var(--text-secondary, var(--dim));font-size:9px">${s.k}</span> <b style="color:${scoreColor(s.v)}">${s.v != null ? Math.round(s.v) : '—'}</b></span>`).join('')}
-          <span class="stat-chip" title="Hit rate vs inferred line">HIT <b>${p.hitRate != null ? p.hitRate + '%' : '—'}</b></span>
-          ${proj.confidence ? `<span class="stat-chip">${esc(proj.confidence)}</span>` : ''}
+          ${lead.hitRate != null ? `<span class="stat-chip" title="Hit rate vs inferred line">HIT <b>${lead.hitRate}%</b></span>` : ''}
+          ${leadProj.confidence ? `<span class="stat-chip">${esc(leadProj.confidence)}</span>` : ''}
           ${engineBadge}
-          ${p.shadowMode ? '<span class="stat-chip" style="opacity:0.6;font-size:9px">shadow</span>' : ''}
+          ${lead.shadowMode ? '<span class="stat-chip" style="opacity:0.6;font-size:9px">shadow</span>' : ''}
         </div>
-        ${(p.chips && p.chips.length > 0) ? `
-          <div class="stat-row" style="margin-top:4px">
-            ${p.chips.map(c => `<span class="stat-chip" style="background:#eef2ff;color:#3730a3;font-size:9px;letter-spacing:0.05em">${esc(c)}</span>`).join('')}
+
+        <div style="margin-top:8px">
+          ${marketRows}
+        </div>
+
+        ${allChips.length > 0 ? `
+          <div class="stat-row" style="margin-top:8px">
+            ${allChips.map(c => `<span class="stat-chip" style="background:#eef2ff;color:#3730a3;font-size:9px;letter-spacing:0.05em">${esc(c)}</span>`).join('')}
           </div>` : ''}
-        ${(p.hardFlags && p.hardFlags.length > 0) ? `
+        ${allFlags.length > 0 ? `
           <div class="stat-row" style="margin-top:4px">
-            ${p.hardFlags.map(f => `<span class="stat-chip" style="background:#fee2e2;color:#7f1d1d;font-size:9px;letter-spacing:0.05em">⚠ ${esc(f)}</span>`).join('')}
+            ${allFlags.map(f => `<span class="stat-chip" style="background:#fee2e2;color:#7f1d1d;font-size:9px;letter-spacing:0.05em">⚠ ${esc(f)}</span>`).join('')}
           </div>` : ''}
       </div>
     `;
