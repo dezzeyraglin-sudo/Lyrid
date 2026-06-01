@@ -60,6 +60,7 @@ import { getGamesForDate, getTodaysGames } from "../_lib/wnba/wnbaSchedule.js";
 import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
 import { aggregateRecentForm } from "../_lib/wnba/wnbaGameLog.js";
 import { getAllTeamStats } from "../_lib/wnba/wnbaTeamData.js";
+import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
 
 // v2 engine modules (ESM)
 import { fetchEspnWnbaInjuries } from "../_lib/basketball/injuryFeed.js";
@@ -177,6 +178,20 @@ async function generateSlate(opts = {}) {
     });
   }
 
+  // STEP 2c: Pre-fetch real game lines ONCE for the whole slate (The Odds API).
+  // Free tier: game total + spread per game. Non-fatal — if ODDS_API_KEY is
+  // unset or the API returns nothing, gameLineFeed.byTeam is empty and we fall
+  // back to inferred lines exactly as before.
+  let gameLineFeed = { byTeam: {}, _audit: { gamesReturned: 0 } };
+  try {
+    gameLineFeed = await fetchWnbaGameLines();
+    if (gameLineFeed._audit?.warnings?.length) {
+      warnings.push(...gameLineFeed._audit.warnings.map(w => `Odds API: ${w}`));
+    }
+  } catch (err) {
+    warnings.push(`Odds API lines fetch failed: ${err.message}`);
+  }
+
   // STEP 3: For each game, build the list of (player, market) analyses to run
   const analysisPromises = [];
   const gameContexts = {};  // for output organization
@@ -190,8 +205,13 @@ async function generateSlate(opts = {}) {
     }
 
     const gameLines = lines[game.gameId] || {};
-    const spread = Number(gameLines.spread ?? DEFAULT_SPREAD);
-    const total = Number(gameLines.total ?? DEFAULT_TOTAL);
+    // Real lines from The Odds API, looked up by either team's tricode.
+    const feedLine = gameLineFeed.byTeam[homeAbbr] || gameLineFeed.byTeam[awayAbbr] || null;
+    // Precedence: explicit caller line > Odds API feed > default fallback.
+    const spread = Number(gameLines.spread ?? feedLine?.spread ?? DEFAULT_SPREAD);
+    const total = Number(gameLines.total ?? feedLine?.total ?? DEFAULT_TOTAL);
+    const lineSource = Number.isFinite(Number(gameLines.spread)) ? 'caller'
+      : (feedLine?.spread != null ? `odds_api:${feedLine.bookUsed}` : 'default');
 
     gameContexts[game.gameId] = {
       gameId: game.gameId,
@@ -201,7 +221,8 @@ async function generateSlate(opts = {}) {
       status: game.status,
       spread,
       total,
-      linesProvided: !!lines[game.gameId]
+      linesProvided: !!lines[game.gameId],
+      lineSource
     };
 
     // Get top players for both teams in parallel
