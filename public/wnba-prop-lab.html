@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lyrid · Prop Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!--
+  On deploy, you can replace the inlined :root block below with:
+      <link rel="stylesheet" href="/lyrid-tokens.css">
+  The tokens are inlined here so the page renders identically in preview and standalone.
+-->
+<style>
+:root{
+  --surface-page:#FAFAF7; --surface-card:#FFFFFF; --surface-muted:#F4F4F0; --surface-inverse:#0F0F0E;
+  --text-primary:#0F0F0E; --text-secondary:#5C5C57; --text-muted:#9A9A93; --text-on-primary:#FFFFFF;
+  --brand-primary:#1B3A5B; --brand-primary-hover:#244A70; --brand-primary-active:#152F4B;
+  --brand-secondary:#E8C547; --brand-tint:#EAF0F7; --brand-tint-hover:#D6E3F0;
+  --border-hairline:#EAEAE5; --border-strong:#D4D4CD; --border-focus:rgba(27,58,91,0.30);
+  --data-positive:#2D7A3E; --data-positive-surface:#EAF3EE; --data-negative:#A33B2A; --data-negative-surface:#F7EAE7;
+  --data-warning:#A87532; --data-warning-surface:#F5EFE3; --data-live:#1A5490; --data-live-surface:#E5EEF7;
+  --tier-elite-fill:#E5EEF7; --tier-elite-text:#1A5490; --tier-strong-fill:#EAF3EE; --tier-strong-text:#2D7A3E;
+  --tier-solid-fill:#F5EFE3; --tier-solid-text:#A87532;
+  --font-serif:'Source Serif Pro',Georgia,serif; --font-sans:'Inter',system-ui,sans-serif; --font-mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;
+  --radius-sm:6px;--radius-md:10px;--radius-lg:14px;--radius-pill:999px;
+  --duration-fast:200ms;--easing-standard:cubic-bezier(0.4,0,0.2,1);
+  --elevation-focus:0 0 0 3px rgba(27,58,91,0.15);
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:var(--font-sans);font-size:15px;line-height:1.6;color:var(--text-primary);
+  background:var(--surface-page);-webkit-font-smoothing:antialiased;
+  padding:0 0 64px;
+}
+.num,[data-num]{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+h1,h2,h3{font-family:var(--font-serif);letter-spacing:-0.02em;margin:0}
+.eyebrow{font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-weight:500;color:var(--text-secondary)}
+
+/* header */
+header.bar{
+  position:sticky;top:0;z-index:50;background:var(--surface-card);
+  border-bottom:0.5px solid var(--border-hairline);padding:14px 20px;
+  display:flex;align-items:baseline;gap:14px;
+  backdrop-filter:saturate(180%) blur(8px);-webkit-backdrop-filter:saturate(180%) blur(8px);
+}
+.wordmark{font-family:var(--font-serif);font-size:22px;font-weight:600;color:var(--brand-primary);line-height:1}
+.tagline{font-family:var(--font-serif);font-style:italic;font-size:13px;color:var(--text-muted)}
+
+main{max-width:1040px;margin:0 auto;padding:24px 20px}
+.section{margin-bottom:28px}
+.card{background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:20px}
+
+/* form */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+label.fld{display:flex;flex-direction:column;gap:5px;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-secondary);font-weight:500}
+input,select{
+  font-family:var(--font-sans);font-size:14px;color:var(--text-primary);background:var(--surface-card);
+  border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:8px 10px;height:36px;width:100%;
+  transition:border-color var(--duration-fast) var(--easing-standard);
+}
+input[type=number]{font-family:var(--font-mono)}
+input:focus,select:focus{outline:none;border-color:var(--brand-primary);box-shadow:var(--elevation-focus)}
+.row-inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+label.fld.chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);text-transform:none;letter-spacing:0}
+.chk input{width:auto;height:auto}
+
+details.adv{margin-top:14px;border-top:0.5px solid var(--border-hairline);padding-top:12px}
+details.adv summary{cursor:pointer;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-secondary);font-weight:500;list-style:none}
+details.adv summary::-webkit-details-marker{display:none}
+details.adv summary::before{content:'▸ ';color:var(--text-muted)}
+details.adv[open] summary::before{content:'▾ '}
+
+/* buttons */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:var(--font-sans);
+  font-size:13px;font-weight:500;height:36px;padding:0 16px;border-radius:var(--radius-sm);cursor:pointer;
+  border:1px solid var(--brand-primary);background:var(--brand-primary);color:var(--text-on-primary);
+  transition:background var(--duration-fast) var(--easing-standard);white-space:nowrap;
+}
+.btn:hover{background:var(--brand-primary-hover);border-color:var(--brand-primary-hover)}
+.btn.secondary{background:var(--surface-card);color:var(--brand-primary)}
+.btn.secondary:hover{background:var(--brand-tint)}
+.btn.ghost{background:transparent;color:var(--text-secondary);border-color:var(--border-strong)}
+.btn.ghost:hover{background:var(--surface-muted);color:var(--text-primary)}
+.btn.sm{height:30px;padding:0 11px;font-size:12px}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+
+/* warnings strip */
+.warn{
+  background:var(--data-warning-surface);border:0.5px solid var(--data-warning);color:var(--data-warning);
+  border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;margin-top:10px;line-height:1.45;
+}
+
+/* table */
+.tbl-wrap{overflow-x:auto;border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);background:var(--surface-card)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:9px 12px;text-align:left;border-bottom:0.5px solid var(--border-hairline);white-space:nowrap}
+th{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary);font-weight:500;background:var(--surface-muted)}
+td.n{font-family:var(--font-mono);font-variant-numeric:tabular-nums;text-align:right}
+tr:last-child td{border-bottom:none}
+tr.passrow{opacity:0.62}
+td input.actual{height:30px;width:74px;text-align:right;font-family:var(--font-mono);padding:4px 8px}
+
+.pill{display:inline-block;padding:2px 9px;border-radius:var(--radius-pill);font-size:11px;font-weight:500;letter-spacing:0.02em}
+.pill.over{background:var(--tier-strong-fill);color:var(--tier-strong-text)}
+.pill.under{background:var(--data-negative-surface);color:var(--data-negative)}
+.pill.pass{background:var(--surface-muted);color:var(--text-muted)}
+.pill.hit{background:var(--data-positive-surface);color:var(--data-positive)}
+.pill.miss{background:var(--data-negative-surface);color:var(--data-negative)}
+
+.foot{display:flex;flex-wrap:wrap;gap:20px;padding:14px 16px;border-top:0.5px solid var(--border-hairline);background:var(--surface-muted)}
+.stat{display:flex;flex-direction:column;gap:2px}
+.stat .k{font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-secondary)}
+.stat .v{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:500;color:var(--text-primary)}
+
+.empty{padding:32px;text-align:center;color:var(--text-muted);font-style:italic;font-family:var(--font-serif)}
+.muted{color:var(--text-muted)}
+.scores{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip{font-size:10px;font-family:var(--font-mono);background:var(--surface-muted);border:0.5px solid var(--border-hairline);border-radius:var(--radius-sm);padding:2px 7px;color:var(--text-secondary)}
+.chip.flag{background:var(--data-negative-surface);border-color:var(--data-negative);color:var(--data-negative)}
+.hint{font-size:12px;color:var(--text-secondary);margin-top:4px;line-height:1.5}
+</style>
+</head>
+<body>
+<header class="bar">
+  <span class="wordmark">Lyrid</span>
+  <span class="tagline">Prop Lab</span>
+</header>
+
+<main>
+  <!-- SETTINGS -->
+  <div class="section">
+    <div class="eyebrow" style="margin-bottom:10px">Endpoint</div>
+    <div class="card">
+      <div class="grid">
+        <label class="fld">API base
+          <input id="apiBase" type="text" placeholder="(same origin)" />
+        </label>
+        <label class="fld">Path
+          <input id="apiPath" type="text" value="/api/wnba/analyze" />
+        </label>
+        <label class="fld">Season
+          <input id="season" type="number" value="2026" />
+        </label>
+        <label class="fld">Slate path
+          <input id="slatePath" type="text" value="/api/wnba/slate" />
+        </label>
+        <label class="fld">Date
+          <input id="slateDate" type="date" />
+        </label>
+        <label class="fld chk" style="align-self:end;height:36px">
+          <input id="useLookup" type="checkbox" checked /> Auto-fetch stats (bbref lookup)
+        </label>
+      </div>
+      <div class="row-inline" style="margin-top:14px">
+        <button class="btn secondary" id="loadSlateBtn">Load posted games for date</button>
+        <span id="slateStatus" class="muted" style="font-size:12px;margin-left:4px"></span>
+      </div>
+      <div class="hint">Leave API base blank when this page is served from your Lyrid domain (same-origin call). If you open it from another host you'll hit CORS unless the API sends CORS headers. <b>Load posted games</b> pulls the day's slate (games + players + projections) from your slate endpoint and pre-fills the board — lines marked <span class="muted">inf</span> are inferred from season average; overwrite them with the real PrizePicks/Underdog number in the Actual-adjacent flow or re-add the prop with the true line to get a meaningful edge.</div>
+    </div>
+  </div>
+
+  <!-- ADD PROP -->
+  <div class="section">
+    <div class="eyebrow" style="margin-bottom:10px">Add a prop line</div>
+    <div class="card">
+      <div class="grid">
+        <label class="fld">Player
+          <input id="f_player" type="text" placeholder="A'ja Wilson" />
+        </label>
+        <label class="fld">Team
+          <input id="f_team" type="text" placeholder="LVA" />
+        </label>
+        <label class="fld">Opponent
+          <input id="f_opp" type="text" placeholder="NYL" />
+        </label>
+        <label class="fld">Market
+          <select id="f_market">
+            <option value="points">Points</option>
+            <option value="rebounds">Rebounds</option>
+            <option value="assists">Assists</option>
+            <option value="pra">PRA</option>
+            <option value="pr">P+R</option>
+            <option value="pa">P+A</option>
+            <option value="threes">Threes</option>
+          </select>
+        </label>
+        <label class="fld">Prop line
+          <input id="f_line" type="number" step="0.5" placeholder="24.5" />
+        </label>
+      </div>
+
+      <details class="adv">
+        <summary>Game context &amp; manual overrides (optional)</summary>
+        <div class="grid" style="margin-top:12px">
+          <label class="fld">Spread (home -)
+            <input id="f_spread" type="number" step="0.5" placeholder="-3.5" />
+          </label>
+          <label class="fld">Game total
+            <input id="f_total" type="number" step="0.5" placeholder="166.5" />
+          </label>
+          <label class="fld chk" style="align-self:end;height:36px">
+            <input id="f_b2b" type="checkbox" /> Back-to-back
+          </label>
+          <label class="fld chk" style="align-self:end;height:36px">
+            <input id="f_home" type="checkbox" checked /> Home game
+          </label>
+          <label class="fld">Season avg
+            <input id="f_seasonAvg" type="number" step="0.1" placeholder="auto" />
+          </label>
+          <label class="fld">Minutes avg
+            <input id="f_minutes" type="number" step="0.1" placeholder="auto" />
+          </label>
+          <label class="fld">Expected min
+            <input id="f_expMin" type="number" step="0.1" placeholder="auto" />
+          </label>
+          <label class="fld">Usage %
+            <input id="f_usage" type="number" step="0.1" placeholder="auto" />
+          </label>
+          <label class="fld">Team pace
+            <input id="f_teamPace" type="number" step="0.1" placeholder="auto" />
+          </label>
+          <label class="fld">Opp pace
+            <input id="f_oppPace" type="number" step="0.1" placeholder="auto" />
+          </label>
+          <label class="fld">Opp def rating
+            <input id="f_defRating" type="number" step="0.1" placeholder="auto" />
+          </label>
+        </div>
+        <div class="hint">Overrides win over fetched data — use them for last-minute news (a confirmed start, a sit) or to drive the engine when the team/recent feeds are down. "auto" fields are left to the lookup.</div>
+      </details>
+
+      <div class="row-inline" style="margin-top:16px">
+        <button class="btn" id="addBtn">Add &amp; analyze</button>
+        <button class="btn secondary" id="addOnlyBtn">Add to queue</button>
+        <button class="btn ghost sm" id="analyzeAllBtn">Analyze queue</button>
+        <span id="status" class="muted" style="font-size:12px;margin-left:6px"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOARD -->
+  <div class="section">
+    <div class="eyebrow" style="margin-bottom:10px">Board &amp; accuracy</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Player</th><th>Mkt</th><th style="text-align:right">Line</th>
+            <th style="text-align:right">Proj</th><th style="text-align:right">Edge</th>
+            <th>Call</th><th>Conf</th>
+            <th style="text-align:right">Actual</th><th>Result</th>
+            <th style="text-align:right">|Err|</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="foot" id="foot"></div>
+    </div>
+    <div id="detail"></div>
+  </div>
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---- in-memory session state (no browser storage) ----
+  const state = { props: [], seq: 1 };
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const numOrNull = v => { const n = Number(v); return (v === '' || v == null || !Number.isFinite(n)) ? null : n; };
+
+  function readForm(){
+    return {
+      player: $('f_player').value.trim(),
+      team: $('f_team').value.trim().toUpperCase(),
+      opponent: $('f_opp').value.trim().toUpperCase(),
+      market: $('f_market').value,
+      line: numOrNull($('f_line').value),
+      ctx: {
+        spread: numOrNull($('f_spread').value),
+        total: numOrNull($('f_total').value),
+        backToBack: $('f_b2b').checked,
+        home: $('f_home').checked,
+        seasonAvg: numOrNull($('f_seasonAvg').value),
+        minutesAvg: numOrNull($('f_minutes').value),
+        expectedMinutes: numOrNull($('f_expMin').value),
+        usageRate: numOrNull($('f_usage').value),
+        teamPace: numOrNull($('f_teamPace').value),
+        oppPace: numOrNull($('f_oppPace').value),
+        defRating: numOrNull($('f_defRating').value),
+      }
+    };
+  }
+
+  function buildRequestBody(p, useLookup, season){
+    const player = { name: p.player };
+    if (p.ctx.seasonAvg != null) player.seasonAvg = p.ctx.seasonAvg;
+    if (p.ctx.minutesAvg != null) player.minutesAvg = p.ctx.minutesAvg;
+    if (p.ctx.expectedMinutes != null) player.expectedMinutes = p.ctx.expectedMinutes;
+    if (p.ctx.usageRate != null) { player.usageRate = p.ctx.usageRate; player.seasonUsage = p.ctx.usageRate; }
+
+    const body = {
+      market: p.market,
+      line: p.line,
+      player,
+      team: { abbr: p.team, pace: p.ctx.teamPace ?? undefined },
+      opponent: { abbr: p.opponent, pace: p.ctx.oppPace ?? undefined, defRating: p.ctx.defRating ?? undefined },
+      game: { spread: p.ctx.spread ?? undefined, total: p.ctx.total ?? undefined, backToBack: p.ctx.backToBack, home: p.ctx.home }
+    };
+    if (useLookup) body.lookup = { playerName: p.player, opponent: p.opponent, team: p.team, season };
+    return body;
+  }
+
+  async function analyze(p){
+    const base = $('apiBase').value.trim();
+    const path = $('apiPath').value.trim() || '/api/wnba/analyze';
+    const url = (base ? base.replace(/\/$/, '') : '') + path;
+    const useLookup = $('useLookup').checked;
+    const season = numOrNull($('season').value) || 2026;
+
+    p.error = null;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildRequestBody(p, useLookup, season))
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        p.error = data.error || ('HTTP ' + res.status);
+        p.result = null;
+      } else {
+        p.result = data;
+      }
+    } catch (err) {
+      p.error = err.message + ' — if this page is not on your Lyrid domain, it is likely CORS or an unreachable endpoint.';
+      p.result = null;
+    }
+  }
+
+  // ---- grading ----
+  function grade(p){
+    const actual = numOrNull(p.actual);
+    if (actual == null || !p.result) return { graded:false };
+    const line = p.result.line ?? p.line;
+    const rec = p.result.recommendation;
+    const proj = p.result.projection;
+    const err = (proj != null && Number.isFinite(proj)) ? Math.abs(proj - actual) : null;
+    let hit = null;
+    if (rec === 'OVER') hit = actual > line;
+    else if (rec === 'UNDER') hit = actual < line;
+    // PASS stays null (informational), still tracked for error
+    return { graded:true, hit, err, actual, line };
+  }
+
+  // ---- rendering ----
+  function confLabel(r){
+    if (!r) return '—';
+    const c = r.confidence || '';      // e.g. "3★"
+    const lbl = r.label && r.label !== 'Pass' ? ' ' + r.label : '';
+    return (c + lbl).trim() || '—';
+  }
+
+  function renderTable(){
+    const tb = $('tbody');
+    if (state.props.length === 0){
+      tb.innerHTML = '<tr><td colspan="11"><div class="empty">No props yet. Add a line above to start measuring.</div></td></tr>';
+      $('foot').innerHTML = '';
+      $('detail').innerHTML = '';
+      return;
+    }
+
+    tb.innerHTML = state.props.map(p => {
+      const r = p.result;
+      const g = grade(p);
+      const rec = r ? r.recommendation : null;
+      const recPill = rec
+        ? `<span class="pill ${rec === 'OVER' ? 'over' : rec === 'UNDER' ? 'under' : 'pass'}">${esc(rec)}</span>`
+        : (p.error ? '<span class="pill miss">error</span>' : '<span class="muted">—</span>');
+      const proj = r && r.projection != null ? Number(r.projection).toFixed(1) : '—';
+      const edge = r && r.edge != null ? (r.edge >= 0 ? '+' : '') + Number(r.edge).toFixed(1) : '—';
+      const resultPill = g.graded
+        ? (g.hit === null ? '<span class="muted">info</span>'
+            : g.hit ? '<span class="pill hit">HIT</span>' : '<span class="pill miss">MISS</span>')
+        : '<span class="muted">—</span>';
+      const errStr = (g.graded && g.err != null) ? g.err.toFixed(1) : '—';
+
+      return `<tr class="${rec === 'PASS' ? 'passrow' : ''}">
+        <td>${esc(p.player)}<div class="muted" style="font-size:11px">${esc(p.team)} vs ${esc(p.opponent)}</div></td>
+        <td style="text-transform:uppercase;font-size:11px;letter-spacing:0.05em">${esc(p.market)}</td>
+        <td class="n">${p.line != null ? p.line : '—'}${p.lineInferred ? '<span class="muted" style="font-size:9px"> inf</span>' : ''}</td>
+        <td class="n">${proj}</td>
+        <td class="n">${edge}</td>
+        <td>${recPill}</td>
+        <td style="font-size:12px">${esc(confLabel(r))}</td>
+        <td class="n"><input class="actual" type="number" step="0.5" value="${p.actual ?? ''}" data-id="${p.id}" placeholder="—"></td>
+        <td>${resultPill}</td>
+        <td class="n">${errStr}</td>
+        <td><button class="btn ghost sm" data-detail="${p.id}">view</button></td>
+      </tr>`;
+    }).join('');
+
+    // footer accuracy
+    const graded = state.props.map(grade).filter(g => g.graded && g.hit !== null);
+    const errs = state.props.map(grade).filter(g => g.graded && g.err != null).map(g => g.err);
+    const hits = graded.filter(g => g.hit).length;
+    const losses = graded.filter(g => g.hit === false).length;
+    const hitRate = graded.length ? (hits / graded.length * 100).toFixed(1) + '%' : '—';
+    const mae = errs.length ? (errs.reduce((a,b)=>a+b,0) / errs.length).toFixed(2) : '—';
+    $('foot').innerHTML = `
+      <div class="stat"><span class="k">Analyzed</span><span class="v">${state.props.filter(p=>p.result).length}</span></div>
+      <div class="stat"><span class="k">Graded</span><span class="v">${graded.length}</span></div>
+      <div class="stat"><span class="k">Record</span><span class="v">${hits}-${losses}</span></div>
+      <div class="stat"><span class="k">Hit rate</span><span class="v">${hitRate}</span></div>
+      <div class="stat"><span class="k">Proj MAE</span><span class="v">${mae}</span></div>
+    `;
+
+    tb.querySelectorAll('input.actual').forEach(inp => {
+      inp.addEventListener('change', e => {
+        const p = state.props.find(x => x.id == e.target.dataset.id);
+        if (p){ p.actual = e.target.value; renderTable(); }
+      });
+    });
+    tb.querySelectorAll('[data-detail]').forEach(b => {
+      b.addEventListener('click', e => renderDetail(e.target.dataset.detail));
+    });
+  }
+
+  function renderDetail(id){
+    const p = state.props.find(x => x.id == id);
+    const d = $('detail');
+    if (!p){ d.innerHTML = ''; return; }
+    if (p.error){
+      d.innerHTML = `<div class="card" style="margin-top:14px"><div class="eyebrow">${esc(p.player)} · ${esc(p.market)}</div><div class="warn" style="margin-top:10px">${esc(p.error)}</div></div>`;
+      return;
+    }
+    const r = p.result;
+    if (!r){ d.innerHTML = `<div class="card" style="margin-top:14px"><span class="muted">Not analyzed yet.</span></div>`; return; }
+    const sc = r.scores || {};
+    const scoreChips = Object.keys(sc).map(k => `<span class="chip">${esc(k)} <b>${Math.round(sc[k])}</b></span>`).join('');
+    const chips = (r.chips || []).map(c => `<span class="chip">${esc(c)}</span>`).join('');
+    const flags = ((r.details && r.details.hardFlags) || r.hardFlags || []).map(f => `<span class="chip flag">⚠ ${esc(f)}</span>`).join('');
+    const warns = (r.dataLayerWarnings || []).map(w => esc(w)).join('<br>');
+    const prob = r.details && r.details.probability ? r.details.probability : null;
+
+    d.innerHTML = `
+      <div class="card" style="margin-top:14px">
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+          <h3 style="font-size:18px">${esc(p.player)}</h3>
+          <span class="muted" style="font-size:12px">${esc(p.team)} vs ${esc(p.opponent)} · ${esc(r.market)} ${p.line}</span>
+          ${r.shadowMode ? '<span class="chip">shadow</span>' : ''}
+          ${r.dataLayerUsed ? '<span class="chip">data layer</span>' : '<span class="chip">manual</span>'}
+        </div>
+        <div class="grid" style="margin-top:14px">
+          <div class="stat"><span class="k">Projection</span><span class="v">${r.projection != null ? Number(r.projection).toFixed(1) : '—'}</span></div>
+          <div class="stat"><span class="k">Edge vs line</span><span class="v">${r.edge != null ? (r.edge>=0?'+':'')+Number(r.edge).toFixed(1) : '—'}</span></div>
+          ${prob ? `<div class="stat"><span class="k">Over / Under</span><span class="v">${prob.over}/${prob.under}</span></div>` : ''}
+          <div class="stat"><span class="k">Call</span><span class="v" style="font-size:15px">${esc(r.recommendation || '—')} ${esc(confLabel(r))}</span></div>
+        </div>
+        ${scoreChips ? `<div class="scores">${scoreChips}</div>` : ''}
+        ${chips ? `<div class="scores">${chips}</div>` : ''}
+        ${flags ? `<div class="scores">${flags}</div>` : ''}
+        ${warns ? `<div class="warn">Data-layer warnings (degraded inputs):<br>${warns}</div>` : ''}
+      </div>`;
+    d.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  }
+
+  // ---- actions ----
+  function validate(p){
+    if (!p.player) return 'Player name required';
+    if (p.line == null) return 'Prop line required';
+    return null;
+  }
+
+  async function addProp(analyzeNow){
+    const f = readForm();
+    const err = validate(f);
+    if (err){ $('status').textContent = err; return; }
+    const p = { id: state.seq++, ...f, result:null, actual:'', error:null };
+    state.props.push(p);
+    $('status').textContent = '';
+    $('f_player').value=''; $('f_line').value='';   // keep team/opp/market for fast repeat entry
+    renderTable();
+    if (analyzeNow){
+      $('status').textContent = 'Analyzing…';
+      await analyze(p);
+      $('status').textContent = p.error ? 'Error — see row detail' : 'Done';
+      renderTable();
+    }
+  }
+
+  async function analyzeAll(){
+    const pending = state.props.filter(p => !p.result && !p.error);
+    if (!pending.length){ $('status').textContent = 'Nothing queued'; return; }
+    $('status').textContent = `Analyzing ${pending.length}…`;
+    for (const p of pending){ await analyze(p); renderTable(); }
+    $('status').textContent = 'Done';
+  }
+
+  function collectSlateAnalyses(data){
+    if (Array.isArray(data.analyses)) return data.analyses;
+    const out = [];
+    if (Array.isArray(data.bestPlays)) out.push(...data.bestPlays);
+    if (Array.isArray(data.passes)) out.push(...data.passes);
+    return out;
+  }
+
+  async function loadSlate(){
+    const base = $('apiBase').value.trim();
+    const path = $('slatePath').value.trim() || '/api/wnba/slate';
+    const url = (base ? base.replace(/\/$/, '') : '') + path;
+    const date = $('slateDate').value || new Date().toISOString().split('T')[0];
+    const season = numOrNull($('season').value) || 2026;
+    $('slateStatus').textContent = 'Loading…';
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, season })
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false){ $('slateStatus').textContent = 'Error: ' + (data.error || res.status); return; }
+      const rows = collectSlateAnalyses(data);
+      if (!rows.length){
+        $('slateStatus').textContent = (data.warnings && data.warnings.length)
+          ? 'No props — ' + data.warnings[0] : 'No props returned for that date.';
+        return;
+      }
+      let added = 0;
+      for (const a of rows){
+        const player = a.player || a.playerName;
+        if (!player) continue;
+        state.props.push({
+          id: state.seq++,
+          player,
+          team: a.team || '',
+          opponent: a.opponent || '',
+          market: a.market || 'points',
+          line: a.line != null ? Number(a.line) : null,
+          ctx: { spread:null, total:null, backToBack:false, home:true, seasonAvg:null, minutesAvg:null, expectedMinutes:null, usageRate:null, teamPace:null, oppPace:null, defRating:null },
+          result: a,                       // slate has already analyzed each prop
+          actual: '', error: null,
+          lineInferred: a.lineSource === 'inferred'
+        });
+        added++;
+      }
+      $('slateStatus').textContent = `Loaded ${added} props for ${date}.`
+        + (data.warnings && data.warnings.length ? ` (${data.warnings.length} warning — see a row's detail)` : '');
+      renderTable();
+    } catch (err) {
+      $('slateStatus').textContent = 'Error: ' + err.message + ' — likely CORS or unreachable if not on your Lyrid domain.';
+    }
+  }
+
+  $('loadSlateBtn').addEventListener('click', loadSlate);
+  $('addBtn').addEventListener('click', () => addProp(true));
+  $('addOnlyBtn').addEventListener('click', () => addProp(false));
+  $('analyzeAllBtn').addEventListener('click', analyzeAll);
+  $('f_line').addEventListener('keydown', e => { if (e.key === 'Enter') addProp(true); });
+
+  $('slateDate').value = new Date().toISOString().split('T')[0];
+  renderTable();
+})();
+</script>
+</body>
+</html>
