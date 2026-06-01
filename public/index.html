@@ -12299,6 +12299,14 @@ async function autoGradeOnAppOpen() {
     const bandStr = (state.engine === 'v2' && proj.floor != null && proj.ceiling != null && proj.ceiling > 0)
       ? `<span style="font-size:10px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums">${proj.floor.toFixed(1)}–${proj.ceiling.toFixed(1)}</span>`
       : '';
+    // Edge consistent with the projection shown (recompute under genuine v2).
+    const _usingV2 = state.engine === 'v2' && !proj.fallback
+      && proj.projection != null && Number.isFinite(Number(proj.projection));
+    const _edgeVal = (_usingV2 && p.line != null && Number.isFinite(Number(p.line)))
+      ? Number(proj.projection) - Number(p.line)
+      : p.edge;
+    const _edgeStr = (_edgeVal != null && Number.isFinite(Number(_edgeVal)))
+      ? ((_edgeVal >= 0 ? '+' : '') + Number(_edgeVal).toFixed(2)) : '—';
     return `
       <div class="top-picks-banner single-pick" style="margin-top:14px">
         <div class="tpb-title">
@@ -12317,7 +12325,7 @@ async function autoGradeOnAppOpen() {
               <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:500">${p.line}</b></span>
               <span style="font-size:22px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${projStr}</span>
               ${bandStr}
-              <span style="font-size:11px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums">edge ${p.edge != null ? (p.edge >= 0 ? '+' : '') + p.edge.toFixed(2) : '—'}</span>
+              <span style="font-size:11px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums">edge ${_edgeStr}</span>
               ${engineTag}
             </div>
           </div>
@@ -12402,7 +12410,14 @@ async function autoGradeOnAppOpen() {
       const proj = getProjectionForProp(p);
       const projStr = proj.projection != null && Number.isFinite(Number(proj.projection))
         ? Number(proj.projection).toFixed(2) : '—';
-      const edge = p.edge;
+      // Edge must match the projection being shown. When v2 is active and gives
+      // a genuine (non-fallback) number, recompute edge = v2proj - line instead
+      // of showing the v1 edge against a different projection.
+      const usingV2 = state.engine === 'v2' && !proj.fallback
+        && proj.projection != null && Number.isFinite(Number(proj.projection));
+      const edge = (usingV2 && p.line != null && Number.isFinite(Number(p.line)))
+        ? Number(proj.projection) - Number(p.line)
+        : p.edge;
       const edgeMuted = p.lineSource === 'inferred';
       const edgeStr = edge != null && Number.isFinite(edge) ? ((edge >= 0 ? '+' : '') + edge.toFixed(2)) : '—';
       const edgeColor = (edge != null && !edgeMuted && Math.abs(edge) >= 0.5)

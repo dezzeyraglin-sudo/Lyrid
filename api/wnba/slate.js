@@ -500,6 +500,11 @@ function buildV2Roster(players, teamAbbrev, injuryReport, gameContext) {
     // Usage rate: if not provided, approximate from FGA + TO + 0.44*FTA per game.
     // Real USG% needs team-level pace data; this is a rough proxy.
     let usage = Number(raw.USG_PCT) || Number(raw.usage);
+    // UNITS FIX (June 1, 2026): wnbaPlayerData surfaces USG_PCT in PERCENTAGE
+    // form (e.g. 28.4), but pointsProjection.js expects a DECIMAL fraction
+    // (LEAGUE_AVG_USAGE = 0.20). Without this, points blew up ~100x and railed
+    // at the 2x-season ceiling (e.g. a 16-ppg player projecting 32.00).
+    if (Number.isFinite(usage) && usage > 1) usage = usage / 100;
     if (!Number.isFinite(usage)) {
       const fga = Number(raw.FGA) || 0;
       const fta = Number(raw.FTA) || 0;
