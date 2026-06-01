@@ -325,7 +325,13 @@ function normalizeBaseRow(row) {
     FG_PCT: toNum(row.fg_pct),
     FG3_PCT: toNum(row.fg3_pct),
     FT_PCT: toNum(row.ft_pct),
-    EFG_PCT: toNum(row.efg_pct)
+    EFG_PCT: toNum(row.efg_pct),
+    // ADDED June 1: surface FT volume for the whistle layer + a position if
+    // bbref includes one on the per-game row (data-stat="pos").
+    FT: toNum(row.ft_per_g),
+    FTA: toNum(row.fta_per_g),
+    FGA: toNum(row.fga_per_g),
+    POS: row.pos ? String(row.pos).toUpperCase() : null
   };
 }
 
@@ -438,7 +444,10 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
     id: base.PLAYER_ID,
     name: base.PLAYER_NAME,
     team: base.TEAM_ABBREVIATION,
-    position: null,
+    // ADDED June 1: real position when bbref provides one (per-game `pos`
+    // column), else null. teammateRedistribution's backfill chain needs this;
+    // it falls back to 'F' only when null.
+    position: base.POS || null,
     gamesPlayed: Number(base.GP),
 
     // Stat we're projecting (market-specific)
@@ -462,6 +471,14 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
     foulRate: Number(foulRate.toFixed(2)),
     minutesCv: 0,
 
+    // ADDED June 1: real shooting efficiency + FT volume. Previously TS_PCT was
+    // parsed but dropped, so pointsProjection fell back to league-average 0.535
+    // for everyone; and FTA was never surfaced so the whistle layer stayed dark.
+    tsPct: Number(advanced?.TS_PCT ?? 0) || null,
+    fta: Number(base.FTA ?? 0),
+    ftm: Number(base.FT ?? 0),
+    ftPct: Number(base.FT_PCT ?? 0),
+
     // Diagnostic
     _dataQuality: {
       starterSource,
@@ -482,6 +499,14 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
       GP: Number(base.GP),
       GS: Number(base.GS) || (bio ? Number(bio.GS) : null),
       PF: pfPerGame,
+      // ADDED June 1: TS%, FT volume, FGA, POS — consumed by buildV2Roster in
+      // slate.js (it already checks raw.TS_PCT / raw.FTA / raw.POS and falls
+      // back when absent; these make the real values available).
+      TS_PCT: Number(advanced?.TS_PCT ?? 0) || null,
+      FTA: Number(base.FTA ?? 0),
+      FT: Number(base.FT ?? 0),
+      FGA: Number(base.FGA ?? 0),
+      POS: base.POS || null,
       HEIGHT_IN: bio ? Number(bio.PLAYER_HEIGHT_INCHES) : null,
       TOUCHES: touchData ? Number(touchData.TOUCHES) : null
     }

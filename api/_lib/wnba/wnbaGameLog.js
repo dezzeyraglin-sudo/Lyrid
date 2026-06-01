@@ -1,121 +1,149 @@
 // api/_lib/wnba/wnbaGameLog.js
 //
-// WNBA PLAYER GAME LOG MODULE (May 16, 2026 — Session 2)
+// WNBA PLAYER GAME LOG MODULE (June 1, 2026 — basketball-reference migration)
 //
-// Provides last N games of stats for a player. Parallel to MLB Wave 4's
-// recentForm.js data fetching.
+// HISTORY:
+//   Session 2 (May 16) — built against stats.wnba.com /playergamelog
+//   June 1 — migrated to basketball-reference after stats.wnba.com confirmed
+//     unreachable from Vercel. This was the recent-form feed that silently
+//     returned null on every call and (because of timeout+retry) was a major
+//     source of slate latency.
 //
-// Used downstream by basketballRecentForm.js (Session 3) to compute hot/cold
-// classifications using the same architecture as MLB recent-form weighting.
+// CONTRACT (UNCHANGED): exports fetchPlayerGameLog / getRecentGames /
+//   aggregateRecentForm with the same signatures and the same normalized game
+//   shape, so slate.js and basketballProps.js need no changes.
+//
+// SOURCE (verified live June 1):
+//   /wnba/players/{first-letter}/{slug}/gamelog/{season}
+//   table id="wnba_pgl_basic" — one row per game.
+//   bbref game-log columns (data-stat): date_game, team_id, opp_id,
+//     game_location ('@' = away, '' = home), game_result, mp ("MM:SS"),
+//     pts, trb, ast, stl, blk, tov, fg, fga, fg3, ft, fta, plus_minus.
+//   NOTE: mp is a "MM:SS" STRING here (unlike stats.wnba.com's decimal) —
+//   parseMinutes() converts it.
 
-import { fetchWnbaStats, parseResultSet, _testing as apiTesting } from './wnbaStatsApi.js';
+import { fetchBbrefPage, unwrapCommentedTables, extractTableHtml, parseTableRows } from './bbrefClient.js';
+
+const GAMELOG_TABLE_IDS = ['wnba_pgl_basic', 'pgl_basic'];
 
 /**
- * Get game-by-game stats for a player in a season.
+ * Build the bbref game-log path for a player slug.
+ * Slug "wilsoa01w" → /wnba/players/w/wilsoa01w/gamelog/2026
+ */
+function gameLogPath(slug, season) {
+  const s = String(slug).trim();
+  const first = s.charAt(0).toLowerCase();
+  return `/wnba/players/${first}/${s}/gamelog/${season}`;
+}
+
+/** Convert bbref "MM:SS" minutes to decimal. "34:12" → 34.2. Numbers pass through. */
+function parseMinutes(v) {
+  if (v == null || v === '') return 0;
+  const str = String(v);
+  if (str.includes(':')) {
+    const [m, sec] = str.split(':').map(Number);
+    if (Number.isFinite(m)) return Number((m + (Number(sec) || 0) / 60).toFixed(2));
+  }
+  const n = Number(str);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function toNum(v) {
+  if (v == null || v === '') return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Fetch game-by-game stats for a player. Most recent last on bbref, so we
+ * sort descending (most recent first) to match the previous contract.
  *
- * Endpoint: /stats/playergamelog
- * Returns: one row per game played, with full box score stats.
- *
- * @param {number} playerId - WNBA player ID
- * @param {number} season - e.g. 2026
- * @returns {Promise<Array<Object>>} array of game objects, most recent first
+ * @param {string} playerId - bbref slug (e.g. "wilsoa01w")
+ * @param {number} season
+ * @returns {Promise<Array<Object>>}
  */
 export async function fetchPlayerGameLog(playerId, season = 2026) {
   if (!playerId) return [];
 
-  const response = await fetchWnbaStats('/playergamelog', {
-    LeagueID: '10',
-    PlayerID: String(playerId),
-    Season: String(season),
-    SeasonType: 'Regular Season'
-  }, { ttlMs: apiTesting.TTL.gameLog });
+  const html = await fetchBbrefPage(gameLogPath(playerId, season), { ttlMs: 30 * 60 * 1000 });
+  if (!html) return [];
 
-  if (!response) return [];
+  const unwrapped = unwrapCommentedTables(html);
+  let tableHtml = null;
+  for (const id of GAMELOG_TABLE_IDS) {
+    tableHtml = extractTableHtml(unwrapped, id);
+    if (tableHtml) break;
+  }
+  if (!tableHtml) {
+    console.warn(`[wnbaGameLog] no game-log table for ${playerId} (${season})`);
+    return [];
+  }
 
-  const rows = parseResultSet(response, 'PlayerGameLog');
+  const rows = parseTableRows(tableHtml);
 
-  // Normalize to a clean shape with the fields the engine needs.
-  // stats.wnba.com returns game date as 'GAME_DATE' in format "MMM DD, YYYY".
-  return rows.map(r => ({
-    date: parseGameDate(r.GAME_DATE),
-    rawDate: r.GAME_DATE,
-    gameId: r.GAME_ID,
-    matchup: r.MATCHUP,        // e.g. "LVA vs. NYL" or "LVA @ NYL"
-    win: r.WL === 'W',
-    minutes: Number(r.MIN),
-    points: Number(r.PTS),
-    rebounds: Number(r.REB),
-    assists: Number(r.AST),
-    steals: Number(r.STL),
-    blocks: Number(r.BLK),
-    turnovers: Number(r.TOV),
-    threes: Number(r.FG3M),
-    fga: Number(r.FGA),
-    fgm: Number(r.FGM),
-    fta: Number(r.FTA),
-    ftm: Number(r.FTM),
-    plusMinus: Number(r.PLUS_MINUS),
-    // Combo lines computed for convenience
-    pra: Number(r.PTS) + Number(r.REB) + Number(r.AST),
-    pa: Number(r.PTS) + Number(r.AST),
-    pr: Number(r.PTS) + Number(r.REB),
-    ra: Number(r.REB) + Number(r.AST)
-  }));
+  const games = rows.map(r => {
+    // Skip non-game rows (month separators, DNPs with no minutes/date).
+    if (!r.date_game && !r.date) return null;
+    const minutes = parseMinutes(r.mp);
+    const isAway = (r.game_location || r.game_location_x || '') === '@';
+    const team = r.team_id || r.team_name_abbr || '';
+    const opp = r.opp_id || r.opp_name_abbr || '';
+
+    const points = toNum(r.pts);
+    const rebounds = toNum(r.trb);
+    const assists = toNum(r.ast);
+
+    return {
+      date: parseGameDate(r.date_game || r.date),
+      rawDate: r.date_game || r.date,
+      gameId: r.game_id || null,
+      matchup: team && opp ? `${team} ${isAway ? '@' : 'vs.'} ${opp}` : (r.matchup || ''),
+      win: String(r.game_result || '').startsWith('W'),
+      minutes,
+      points,
+      rebounds,
+      assists,
+      steals: toNum(r.stl),
+      blocks: toNum(r.blk),
+      turnovers: toNum(r.tov),
+      threes: toNum(r.fg3),
+      fga: toNum(r.fga),
+      fgm: toNum(r.fg),
+      fta: toNum(r.fta),
+      ftm: toNum(r.ft),
+      plusMinus: toNum(r.plus_minus),
+      pra: points + rebounds + assists,
+      pa: points + assists,
+      pr: points + rebounds,
+      ra: rebounds + assists
+    };
+  }).filter(Boolean);
+
+  // bbref lists oldest→newest; sort to most-recent-first (defensive).
+  games.sort((a, b) => {
+    const ad = a.date ? new Date(a.date).getTime() : 0;
+    const bd = b.date ? new Date(b.date).getTime() : 0;
+    return bd - ad;
+  });
+
+  return games;
 }
 
-/**
- * Get last N played games for a player.
- *
- * @param {number} playerId
- * @param {number} n - number of recent games to return
- * @param {number} season
- * @returns {Promise<Array<Object>>}
- */
 export async function getRecentGames(playerId, n = 10, season = 2026) {
   const all = await fetchPlayerGameLog(playerId, season);
   if (all.length === 0) return [];
-
-  // stats.wnba.com returns games in DESCENDING order (most recent first).
-  // We want the most recent N. Defensive sort in case ordering changes.
-  const sorted = all.sort((a, b) => {
-    const ad = a.date ? new Date(a.date).getTime() : 0;
-    const bd = b.date ? new Date(b.date).getTime() : 0;
-    return bd - ad;  // most recent first
-  });
-
-  return sorted.slice(0, n);
+  return all.slice(0, n);
 }
 
 /**
- * Get aggregated recent stats over last N games, in a shape compatible
- * with the engine's recent-form computation.
- *
- * Used by basketballProps.js when building the "recent vs season" delta
- * for projection adjustments.
- *
- * @param {number} playerId
- * @param {number} n - number of games to aggregate
- * @param {string} market - which stat to highlight as primary
- * @param {number} season
- * @returns {Promise<Object|null>} { gamesUsed, paUsed (or equiv), recent: {...} }
+ * Aggregate recent form. Same return shape as before.
  */
 export async function aggregateRecentForm(playerId, n = 10, market = 'points', season = 2026) {
   const games = await getRecentGames(playerId, n, season);
   if (games.length === 0) return null;
 
-  const totals = {
-    games: games.length,
-    minutes: 0,
-    points: 0,
-    rebounds: 0,
-    assists: 0,
-    threes: 0,
-    fgm: 0,
-    fga: 0,
-    ftm: 0,
-    fta: 0,
-    turnovers: 0
-  };
+  const totals = { games: games.length, minutes: 0, points: 0, rebounds: 0, assists: 0,
+    threes: 0, fgm: 0, fga: 0, ftm: 0, fta: 0, turnovers: 0 };
 
   for (const g of games) {
     totals.minutes += g.minutes || 0;
@@ -130,16 +158,11 @@ export async function aggregateRecentForm(playerId, n = 10, market = 'points', s
     totals.turnovers += g.turnovers || 0;
   }
 
-  // Compute per-game averages and minutes coefficient of variation.
-  // CV is the volatility signal — high CV means inconsistent minutes,
-  // which feeds into roleStability's variance assessment.
   const minutesArr = games.map(g => g.minutes || 0);
   const minutesMean = totals.minutes / games.length;
   const minutesVar = minutesArr.reduce((s, m) => s + (m - minutesMean) ** 2, 0) / games.length;
-  const minutesStdDev = Math.sqrt(minutesVar);
-  const minutesCv = minutesMean > 0 ? minutesStdDev / minutesMean : 0;
+  const minutesCv = minutesMean > 0 ? Math.sqrt(minutesVar) / minutesMean : 0;
 
-  // Market-specific recent avg
   const marketKey = String(market).toLowerCase();
   let recentAvg;
   if (marketKey.includes('rebound')) recentAvg = totals.rebounds / games.length;
@@ -158,15 +181,13 @@ export async function aggregateRecentForm(playerId, n = 10, market = 'points', s
     last5Avg: gamesAvg(games.slice(0, 5), marketKey),
     last10Avg: gamesAvg(games.slice(0, 10), marketKey),
     minutesLast5: gamesAvg(games.slice(0, 5), 'minutes'),
-    // Pass-through of raw totals for transparency
     totals,
-    games   // include the raw game array for downstream inspection
+    games
   };
 }
 
 function gamesAvg(games, key) {
   if (games.length === 0) return 0;
-
   let total = 0;
   for (const g of games) {
     if (key === 'minutes') total += g.minutes || 0;
@@ -181,16 +202,11 @@ function gamesAvg(games, key) {
   return Number((total / games.length).toFixed(2));
 }
 
-// =============================================================
-// HELPER: parse game date
-// =============================================================
-// stats.wnba.com returns dates as "MMM DD, YYYY" (e.g. "MAY 16, 2026").
-// Convert to ISO date string for consistent handling.
-
 function parseGameDate(dateStr) {
   if (!dateStr || typeof dateStr !== 'string') return null;
-  // Try native Date parse — handles "MAY 16, 2026" format
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return null;
-  return d.toISOString().split('T')[0];  // YYYY-MM-DD
+  return d.toISOString().split('T')[0];
 }
+
+export const _testing = { gameLogPath, parseMinutes, parseGameDate, gamesAvg, GAMELOG_TABLE_IDS };

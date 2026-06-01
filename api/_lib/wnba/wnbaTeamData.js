@@ -1,301 +1,240 @@
 // api/_lib/wnba/wnbaTeamData.js
 //
-// WNBA TEAM DATA MODULE (May 16, 2026 — Session 2)
+// WNBA TEAM DATA MODULE (June 1, 2026 — basketball-reference migration)
 //
-// Provides team-level inputs for the engine's possessionEnvironment and
-// matchupEngine layers:
-//   - pace, offensive/defensive rating
-//   - rebound percentage allowed
-//   - assist percentage allowed
-//   - turnover pressure
-//   - shooting profile allowed (3pt, paint, etc.)
+// HISTORY:
+//   Session 2 (May 16) — built against stats.wnba.com /leaguedashteamstats
+//   June 1 — migrated to basketball-reference. stats.wnba.com is unreachable
+//     from Vercel; this module's dead calls were the largest single source of
+//     slate latency (timeout+retry on every call). Now sourced from bbref team
+//     pages, which respond in ~96ms and cache for an hour.
 //
-// Note: WNBA doesn't expose all the same "allowed" splits that NBA does.
-// We compute league-relative scores (0-100 scale) where possible and fall
-// back to neutral defaults where data isn't available.
+// CONTRACT (UNCHANGED): getAllTeamStats(season) → { ABBR: {...} } and
+//   getTeamStats(abbr, season) → {...}. The merged per-team shape matches the
+//   previous version so matchupEngine.js and possessionEnvironment.js are
+//   unaffected: { pace, offRating, defRating, netRating, reboundAllowed,
+//   assistAllowed, threeAllowed, rimProtection, paintPointsAllowed, foulRate,
+//   turnoverPressure, switchRate, dropRate, _raw }.
+//
+// SOURCE (verified live June 1):
+//   /wnba/teams/{ABBR}/{season}.html
+//   The team/opponent summary table carries BOTH the team's own per-game stats
+//   (unprefixed, e.g. pts_per_g) and opponent allowed stats (opp_ prefixed,
+//   e.g. opp_pts_per_g, opp_fg_pct, opp_trb_per_g). We locate that table by the
+//   presence of `opp_pts_per_g` and flat-extract its cells — robust to table id.
+//
+//   PACE + RATINGS: bbref WNBA does NOT publish team pace / OFF_RTG / DEF_RTG as
+//   plain fields (only per-player leaderboards). We DERIVE them from the
+//   possession estimate using team + opponent shot/rebound/turnover counts that
+//   ARE present. Standard formula; flagged in _raw.paceSource.
+//
+//   SWITCH/DROP coverage rates remain unavailable (no public source) → neutral 50,
+//   same as before. matchupEngine treats 50 as neutral.
 
-import { fetchWnbaStats, parseResultSet, _testing as apiTesting } from './wnbaStatsApi.js';
+import { fetchBbrefPage, unwrapCommentedTables } from './bbrefClient.js';
 
-// =============================================================
-// TEAM ROSTER (for player ID → team lookup)
-// =============================================================
+// The 15 WNBA franchises (tricodes match the rest of the codebase / injuryFeed).
+const WNBA_TEAMS = ['ATL', 'CHI', 'CON', 'DAL', 'GSV', 'IND', 'LVA', 'LAS', 'MIN', 'NYL', 'PHX', 'POR', 'SEA', 'TOR', 'WAS'];
 
-/**
- * Get a team's current roster.
- * Endpoint: /stats/commonteamroster
- */
-export async function getTeamRoster(teamId, season = 2026) {
-  const response = await fetchWnbaStats('/commonteamroster', {
-    LeagueID: '10',
-    TeamID: String(teamId),
-    Season: String(season)
-  }, { ttlMs: apiTesting.TTL.roster });
-  if (!response) return [];
-  return parseResultSet(response, 'CommonTeamRoster');
+const TTL_MS = 60 * 60 * 1000;
+const _cache = new Map();
+
+function cacheGet(key) {
+  const e = _cache.get(key);
+  if (!e) return null;
+  if (Date.now() - e.ts > TTL_MS) { _cache.delete(key); return null; }
+  return e.data;
+}
+function cacheSet(key, data) { _cache.set(key, { data, ts: Date.now() }); }
+
+function toNum(v) {
+  if (v == null || v === '') return NaN;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
 }
 
 // =============================================================
-// TEAM STATS — BASE + ADVANCED
+// FLAT CELL EXTRACTION
 // =============================================================
+// Pull every data-stat→text cell out of a chunk of table HTML into one map.
+// Used on the team/opponent summary table, where each stat is a distinct
+// (prefixed) data-stat so there are no collisions.
 
-/**
- * Get all teams' base + advanced stats for the season.
- * One call covers the whole league; we filter for the team(s) we need.
- *
- * Endpoint: /stats/leaguedashteamstats
- */
-export async function listAllTeamsBase(season = 2026) {
-  const response = await fetchWnbaStats('/leaguedashteamstats', {
-    LeagueID: '10',
-    Season: String(season),
-    SeasonType: 'Regular Season',
-    PerMode: 'PerGame',
-    MeasureType: 'Base',
-    PaceAdjust: 'N',
-    PlusMinus: 'N',
-    Rank: 'N',
-    LastNGames: '0',
-    Month: '0',
-    OpponentTeamID: '0',
-    Period: '0',
-    GameSegment: '',
-    Location: '',
-    Outcome: '',
-    SeasonSegment: '',
-    DateFrom: '',
-    DateTo: '',
-    TeamID: '0',
-    VsConference: '',
-    VsDivision: ''
-  }, { ttlMs: apiTesting.TTL.teamStats });
-  if (!response) return [];
-  return parseResultSet(response, 'LeagueDashTeamStats');
+function flattenCells(tableHtml) {
+  const cells = {};
+  const re = /data-stat="([a-z0-9_]+)"[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
+  let m;
+  while ((m = re.exec(tableHtml)) !== null) {
+    const stat = m[1];
+    const text = m[2].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+    if (!(stat in cells) && text !== '') cells[stat] = text; // first non-empty wins
+  }
+  return cells;
 }
 
-export async function listAllTeamsAdvanced(season = 2026) {
-  const response = await fetchWnbaStats('/leaguedashteamstats', {
-    LeagueID: '10',
-    Season: String(season),
-    SeasonType: 'Regular Season',
-    PerMode: 'PerGame',
-    MeasureType: 'Advanced',     // includes PACE, DEF_RATING, OFF_RATING, etc.
-    PaceAdjust: 'N',
-    PlusMinus: 'N',
-    Rank: 'N',
-    LastNGames: '0',
-    Month: '0',
-    OpponentTeamID: '0',
-    Period: '0',
-    GameSegment: '',
-    Location: '',
-    Outcome: '',
-    SeasonSegment: '',
-    DateFrom: '',
-    DateTo: '',
-    TeamID: '0',
-    VsConference: '',
-    VsDivision: ''
-  }, { ttlMs: apiTesting.TTL.teamStats });
-  if (!response) return [];
-  return parseResultSet(response, 'LeagueDashTeamStats');
-}
-
-/**
- * Get "opponent stats" — what stats teams allow when playing this team's defense.
- * This is what we need for matchupEngine's reboundAllowed, assistAllowed, etc.
- *
- * Endpoint: /stats/leaguedashteamstats with MeasureType=Opponent
- */
-export async function listAllTeamsOpponent(season = 2026) {
-  const response = await fetchWnbaStats('/leaguedashteamstats', {
-    LeagueID: '10',
-    Season: String(season),
-    SeasonType: 'Regular Season',
-    PerMode: 'PerGame',
-    MeasureType: 'Opponent',
-    PaceAdjust: 'N',
-    PlusMinus: 'N',
-    Rank: 'N',
-    LastNGames: '0',
-    Month: '0',
-    OpponentTeamID: '0',
-    Period: '0',
-    GameSegment: '',
-    Location: '',
-    Outcome: '',
-    SeasonSegment: '',
-    DateFrom: '',
-    DateTo: '',
-    TeamID: '0',
-    VsConference: '',
-    VsDivision: ''
-  }, { ttlMs: apiTesting.TTL.teamStats });
-  if (!response) return [];
-  return parseResultSet(response, 'LeagueDashTeamStats');
+// Find the <table> whose body contains a given data-stat, return its HTML.
+function findTableContaining(html, dataStat) {
+  const tableRe = /<table[\s\S]*?<\/table>/gi;
+  let m;
+  while ((m = tableRe.exec(html)) !== null) {
+    if (m[0].includes(`data-stat="${dataStat}"`)) return m[0];
+  }
+  return null;
 }
 
 // =============================================================
-// MERGED TEAM STATS — the function the engine consumes
+// PER-TEAM FETCH
 // =============================================================
 
 /**
- * Get all team stats merged into the shape `possessionEnvironment.js` and
- * `matchupEngine.js` expect.
- *
- * Returns: { TEAM_ABBR: { pace, defRating, rimProtection, reboundAllowed, ... } }
- *
- * @param {number} season
- * @returns {Promise<Object>} keyed by team abbreviation
+ * Fetch + parse one team's page into a flat stat map.
+ * @returns {Promise<Object|null>} flat { pts_per_g, opp_pts_per_g, ... } or null
  */
+async function fetchTeamCells(abbr, season) {
+  const html = await fetchBbrefPage(`/wnba/teams/${abbr}/${season}.html`, { ttlMs: TTL_MS });
+  if (!html) return null;
+  const unwrapped = unwrapCommentedTables(html);
+  const tableHtml = findTableContaining(unwrapped, 'opp_pts_per_g');
+  if (!tableHtml) {
+    console.warn(`[wnbaTeamData] no team/opponent table for ${abbr} (${season})`);
+    return null;
+  }
+  return flattenCells(tableHtml);
+}
+
+// =============================================================
+// DERIVE PACE + RATINGS FROM POSSESSIONS
+// =============================================================
+// poss/game ≈ 0.5 * ((FGA + 0.44*FTA - ORB + TOV) + opp equivalents)
+// Pace ≈ possessions per game for a 40-min WNBA game.
+// ORtg = 100 * team pts / poss ; DRtg = 100 * opp pts / poss
+
+function derivePaceAndRatings(c) {
+  const fga = toNum(c.fga_per_g), fta = toNum(c.fta_per_g), orb = toNum(c.orb_per_g), tov = toNum(c.tov_per_g);
+  const ofga = toNum(c.opp_fga_per_g), ofta = toNum(c.opp_fta_per_g), oorb = toNum(c.opp_orb_per_g), otov = toNum(c.opp_tov_per_g);
+  const pts = toNum(c.pts_per_g), opts = toNum(c.opp_pts_per_g);
+
+  const teamPoss = Number.isFinite(fga) ? (fga + 0.44 * (fta || 0) - (orb || 0) + (tov || 0)) : NaN;
+  const oppPoss = Number.isFinite(ofga) ? (ofga + 0.44 * (ofta || 0) - (oorb || 0) + (otov || 0)) : NaN;
+
+  let pace = NaN, paceSource = 'unavailable';
+  if (Number.isFinite(teamPoss) && Number.isFinite(oppPoss)) {
+    pace = 0.5 * (teamPoss + oppPoss); paceSource = 'derived_possessions';
+  } else if (Number.isFinite(teamPoss)) {
+    pace = teamPoss; paceSource = 'derived_team_only';
+  }
+
+  const offRating = (Number.isFinite(pts) && Number.isFinite(pace) && pace > 0) ? (100 * pts / pace) : NaN;
+  const defRating = (Number.isFinite(opts) && Number.isFinite(pace) && pace > 0) ? (100 * opts / pace) : NaN;
+
+  return { pace, offRating, defRating, paceSource };
+}
+
+// =============================================================
+// MERGED TEAM STATS (engine-facing) — same contract as before
+// =============================================================
+
 export async function getAllTeamStats(season = 2026) {
-  const [base, advanced, opponent] = await Promise.all([
-    listAllTeamsBase(season),
-    listAllTeamsAdvanced(season),
-    listAllTeamsOpponent(season)
-  ]);
+  const cacheKey = `allTeams:${season}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
 
-  // Build league averages for normalization (used for "allowed" scoring)
-  const leagueAvgs = computeLeagueAverages(opponent);
+  // Fetch all teams in parallel (cached individually by bbrefClient too).
+  const settled = await Promise.all(
+    WNBA_TEAMS.map(async abbr => ({ abbr, cells: await fetchTeamCells(abbr, season).catch(() => null) }))
+  );
+
+  const teams = settled.filter(t => t.cells);
+  if (teams.length === 0) return {};
+
+  // League averages for the opponent-allowed scoring scale.
+  const avg = computeLeagueAverages(teams.map(t => t.cells));
 
   const merged = {};
-  for (const team of base) {
-    const abbr = team.TEAM_ABBREVIATION;
-    if (!abbr) continue;
-
-    const adv = advanced.find(t => t.TEAM_ID === team.TEAM_ID) || {};
-    const opp = opponent.find(t => t.TEAM_ID === team.TEAM_ID) || {};
+  for (const { abbr, cells: c } of teams) {
+    const { pace, offRating, defRating, paceSource } = derivePaceAndRatings(c);
+    const ownPf = toNum(c.pf_per_g);
 
     merged[abbr] = {
-      teamId: Number(team.TEAM_ID),
-      name: team.TEAM_NAME,
+      teamId: null,            // bbref has no numeric team id; abbr is the key
+      name: abbr,
       abbr,
-      gamesPlayed: Number(team.GP),
+      gamesPlayed: Number(toNum(c.g)) || null,
 
-      // Pace and rating — direct from advanced stats
-      pace: Number(adv.PACE) || 80,                  // WNBA average ~80
-      offRating: Number(adv.OFF_RATING) || 100,
-      defRating: Number(adv.DEF_RATING) || 100,
-      netRating: Number(adv.NET_RATING) || 0,
+      pace: Number.isFinite(pace) ? Number(pace.toFixed(1)) : 80,
+      offRating: Number.isFinite(offRating) ? Number(offRating.toFixed(1)) : 100,
+      defRating: Number.isFinite(defRating) ? Number(defRating.toFixed(1)) : 100,
+      netRating: (Number.isFinite(offRating) && Number.isFinite(defRating)) ? Number((offRating - defRating).toFixed(1)) : 0,
 
-      // Opponent shooting profile — what THIS team allows
-      // Score relative to league: 0 = elite defense, 100 = leaky defense
-      reboundAllowed: scoreVsLeague(opp.OPP_REB, leagueAvgs.OPP_REB),
-      assistAllowed: scoreVsLeague(opp.OPP_AST, leagueAvgs.OPP_AST),
-      threeAllowed: scoreVsLeague(opp.OPP_FG3M, leagueAvgs.OPP_FG3M),
+      // Opponent allowed → 0-100 (higher = leakier defense / more allowed)
+      reboundAllowed: scoreVsLeague(toNum(c.opp_trb_per_g), avg.opp_trb_per_g),
+      assistAllowed:  scoreVsLeague(toNum(c.opp_ast_per_g), avg.opp_ast_per_g),
+      threeAllowed:   scoreVsLeague(toNum(c.opp_fg3_per_g), avg.opp_fg3_per_g),
+      // Rim protection: lower opp FG% = better D = higher score (inverse)
+      rimProtection:  scoreVsLeague(toNum(c.opp_fg_pct), avg.opp_fg_pct, true),
+      paintPointsAllowed: scoreVsLeague(toNum(c.opp_pts_per_g), avg.opp_pts_per_g),
 
-      // Rim protection: lower opponent FG% inside is better defense.
-      // Without /shotchart breakdown, use overall opponent FG% as proxy.
-      // 100 = elite rim protection (low opp FG%), 0 = weak.
-      rimProtection: scoreVsLeague(opp.OPP_FG_PCT, leagueAvgs.OPP_FG_PCT, true),
+      foulRate: Number.isFinite(ownPf) ? ownPf : 21,
+      turnoverPressure: scoreVsLeague(toNum(c.opp_tov_per_g), avg.opp_tov_per_g),
 
-      // Paint points: not directly available; use opp 2PM as approximation
-      paintPointsAllowed: scoreVsLeague(opp.OPP_PTS, leagueAvgs.OPP_PTS),
+      switchRate: 50,   // unavailable from bbref — neutral
+      dropRate: 50,     // unavailable from bbref — neutral
 
-      // Foul rate — this team's own foul rate (used by environment for FT boost)
-      foulRate: Number(base.find(t => t.TEAM_ID === team.TEAM_ID)?.PF) || 21,
-
-      // Turnover pressure: how often opponents turn over the ball vs this team
-      turnoverPressure: scoreVsLeague(opp.OPP_TOV, leagueAvgs.OPP_TOV),
-
-      // Switch/drop rates not available from this endpoint; leave as neutral.
-      switchRate: 50,
-      dropRate: 50,
-
-      // Raw values for debugging
       _raw: {
-        PACE: Number(adv.PACE),
-        DEF_RATING: Number(adv.DEF_RATING),
-        OFF_RATING: Number(adv.OFF_RATING),
-        OPP_REB: Number(opp.OPP_REB),
-        OPP_AST: Number(opp.OPP_AST),
-        OPP_FG3M: Number(opp.OPP_FG3M),
-        OPP_FG_PCT: Number(opp.OPP_FG_PCT),
-        OPP_TOV: Number(opp.OPP_TOV)
+        paceSource,
+        pts_per_g: toNum(c.pts_per_g),
+        opp_pts_per_g: toNum(c.opp_pts_per_g),
+        opp_fg_pct: toNum(c.opp_fg_pct),
+        opp_fg3_pct: toNum(c.opp_fg3_pct),
+        opp_trb_per_g: toNum(c.opp_trb_per_g),
+        opp_ast_per_g: toNum(c.opp_ast_per_g),
+        opp_tov_per_g: toNum(c.opp_tov_per_g),
+        opp_fta_per_g: toNum(c.opp_fta_per_g),
+        // surfaced for matchup/whistle work and for deriveOppMissRate in slate.js:
+        opp_fg_pct_decimal: Number.isFinite(toNum(c.opp_fg_pct)) ? toNum(c.opp_fg_pct) : null,
+        source: 'basketball-reference'
       }
     };
   }
 
+  cacheSet(cacheKey, merged);
   return merged;
 }
 
-/**
- * Get team stats for one team by abbreviation.
- * Convenience wrapper around getAllTeamStats.
- */
 export async function getTeamStats(abbr, season = 2026) {
   const all = await getAllTeamStats(season);
-  return all[abbr] || null;
+  return all[String(abbr).toUpperCase()] || null;
 }
 
 // =============================================================
-// LEAGUE AVERAGE HELPERS
+// LEAGUE AVERAGES + SCORING (same scale as before)
 // =============================================================
 
-/**
- * Compute league average for relevant opponent fields. Used to normalize
- * per-team "allowed" stats to a 0-100 scale.
- */
-function computeLeagueAverages(opponentRows) {
-  if (!Array.isArray(opponentRows) || opponentRows.length === 0) return {};
-
-  const sums = {};
-  const counts = {};
-  const fields = ['OPP_REB', 'OPP_AST', 'OPP_FG3M', 'OPP_FG_PCT', 'OPP_PTS', 'OPP_TOV'];
-  for (const f of fields) {
-    sums[f] = 0;
-    counts[f] = 0;
-  }
-
-  for (const row of opponentRows) {
+function computeLeagueAverages(cellMaps) {
+  const fields = ['opp_trb_per_g', 'opp_ast_per_g', 'opp_fg3_per_g', 'opp_fg_pct', 'opp_pts_per_g', 'opp_tov_per_g'];
+  const sums = {}, counts = {};
+  for (const f of fields) { sums[f] = 0; counts[f] = 0; }
+  for (const c of cellMaps) {
     for (const f of fields) {
-      const v = Number(row[f]);
-      if (Number.isFinite(v)) {
-        sums[f] += v;
-        counts[f] += 1;
-      }
+      const v = toNum(c[f]);
+      if (Number.isFinite(v)) { sums[f] += v; counts[f] += 1; }
     }
   }
-
-  const avgs = {};
-  for (const f of fields) {
-    avgs[f] = counts[f] > 0 ? sums[f] / counts[f] : 0;
-  }
-  return avgs;
+  const avg = {};
+  for (const f of fields) avg[f] = counts[f] > 0 ? sums[f] / counts[f] : 0;
+  return avg;
 }
 
-/**
- * Score a team's stat vs league average on a 0-100 scale.
- * Default: higher value = higher score (e.g. opp rebounds allowed → 90 = allows lots of rebounds).
- * inverse=true: lower value = higher score (e.g. opp FG% → 90 = great rim protection).
- *
- * @param {number} value - team's value
- * @param {number} leagueAvg - league average
- * @param {boolean} inverse - flip the scale
- * @returns {number} 0-100 score
- */
 function scoreVsLeague(value, leagueAvg, inverse = false) {
-  const v = Number(value);
-  const a = Number(leagueAvg);
-
+  const v = Number(value), a = Number(leagueAvg);
   if (!Number.isFinite(v) || !Number.isFinite(a) || a === 0) return 50;
-
-  // Ratio of team value to league avg. 1.0 = exactly league average.
-  // Map to 0-100 such that:
-  //   ratio of 0.80 → score 30 (well below avg)
-  //   ratio of 1.00 → score 50 (avg)
-  //   ratio of 1.20 → score 70 (well above avg)
-  // Capped at [0, 100].
   const ratio = v / a;
-  let score = 50 + (ratio - 1) * 100;  // 1% deviation = 1 point change
+  let score = 50 + (ratio - 1) * 100;
   if (inverse) score = 100 - score;
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-// =============================================================
-// EXPORTS FOR TESTING
-// =============================================================
-
 export const _testing = {
-  computeLeagueAverages,
-  scoreVsLeague
+  WNBA_TEAMS, flattenCells, findTableContaining, derivePaceAndRatings,
+  computeLeagueAverages, scoreVsLeague, _cache
 };
