@@ -1751,7 +1751,10 @@ export default async function handler(req, res) {
     // the confidence honestly.
     if (results.firstInning?.recommendation?.side === 'NRFI' && projection) {
       const fi = results.firstInning.recommendation;
-      const projTotal = projection.projTotal || 0;
+      // (Hotfix June 1, 2026) projection.projTotal is stored as a string
+      // (toFixed(2) in buildGameProjection return). parseFloat or .toFixed
+      // crashes with "is not a function". One-line fix at the read site.
+      const projTotal = parseFloat(projection.projTotal) || 0;
       const awayPitcherK = parseFloat(results.homeVsAway?.inningSplits?.season_stats?.kPct) || null;
       const homePitcherK = parseFloat(results.awayVsHome?.inningSplits?.season_stats?.kPct) || null;
       const lowSpKPct = (awayPitcherK !== null && awayPitcherK < 21) ||
