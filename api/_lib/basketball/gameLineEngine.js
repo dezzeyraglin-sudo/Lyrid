@@ -204,10 +204,40 @@ export function analyzeGameLine(input, league = 'WNBA') {
   if (!schemeActive) confidence -= 4;
   confidence = Math.max(0, Math.min(100, confidence));
 
+  // --- WHY this team has the edge: the real drivers behind the projection ---
+  // Built from the same REAL inputs the projection uses, so the explanation is
+  // honest. Compares the favored team's offense/defense/pace/minor-factors to
+  // the opponent's. The card narrates this.
+  const favorsHome = margin >= 0;
+  const favTeam = favorsHome ? home : away;
+  const dogTeam = favorsHome ? away : home;
+  const favProj = favorsHome ? homeProj : awayProj;
+  const dogProj = favorsHome ? awayProj : homeProj;
+  const whyTeam = { favorite: favTeam.abbr || (favorsHome ? 'HOME' : 'AWAY'), drivers: [] };
+  const offGap = (num(favTeam.offRating) ?? 100) - (num(dogTeam.offRating) ?? 100);
+  const defGap = (num(dogTeam.defRating) ?? 100) - (num(favTeam.defRating) ?? 100); // + = favorite defends better
+  const paceGap = (num(favTeam.pace) ?? 80) - (num(dogTeam.pace) ?? 80);
+  if (offGap >= 2) whyTeam.drivers.push({ k: 'offense', mag: offGap, text: `scores more efficiently (${(num(favTeam.offRating)).toFixed(0)} vs ${(num(dogTeam.offRating)).toFixed(0)} off rating)` });
+  if (defGap >= 2) whyTeam.drivers.push({ k: 'defense', mag: defGap, text: `defends better (${(num(favTeam.defRating)).toFixed(0)} vs ${(num(dogTeam.defRating)).toFixed(0)} def rating)` });
+  // Minor factors: which real defensive edges suppress the opponent most.
+  const favSupp = dogProj.defenseMult;   // favorite's defense acting on the dog
+  if (favSupp != null && favSupp < 0.985) {
+    const b = favProj.factors || {};
+    const pieces = [];
+    if (b.forcedTurnovers != null && b.forcedTurnovers < 0.99) pieces.push('forces turnovers');
+    if (b.ballPressure != null && b.ballPressure < 0.99) pieces.push('pressures the ball');
+    if (b.rimDeterrence != null && b.rimDeterrence < 0.99) pieces.push('protects the rim');
+    if (b.secondChance != null && b.secondChance < 1.0) pieces.push('limits second-chance points');
+    if (pieces.length) whyTeam.drivers.push({ k: 'minor', mag: (1 - favSupp) * 100, text: pieces.slice(0, 2).join(' and ') });
+  }
+  if (Math.abs(paceGap) >= 3) whyTeam.drivers.push({ k: 'pace', mag: Math.abs(paceGap), text: paceGap > 0 ? 'plays at a faster pace' : 'controls a slower pace' });
+  whyTeam.drivers.sort((a, b) => b.mag - a.mag);
+
   return {
     matchup: `${away.abbr || away.name || 'AWAY'}@${home.abbr || home.name || 'HOME'}`,
     projectedTotal, homeTotal, awayTotal, spread, margin,
     winner: margin >= 0 ? (home.abbr || 'HOME') : (away.abbr || 'AWAY'),
+    whyTeam,
     moneyline: {
       homeWinProb, awayWinProb,
       homeAmerican: probToAmerican(homeWinProb),

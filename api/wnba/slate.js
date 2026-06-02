@@ -64,7 +64,7 @@ import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
 import { aggregateRecentForm } from "../_lib/wnba/wnbaGameLog.js";
 import { getAllTeamStats } from "../_lib/wnba/wnbaTeamData.js";
 import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
-import { fetchWnbaProps } from "../_lib/wnba/bdlFeed.js";
+import { fetchWnbaProps, fetchWnbaInjuries } from "../_lib/wnba/bdlFeed.js";
 
 // v2 engine modules (ESM)
 import { fetchEspnWnbaInjuries } from "../_lib/basketball/injuryFeed.js";
@@ -180,6 +180,28 @@ async function generateSlate(opts = {}) {
       warnings.push(`v2 injury feed failed: ${err.message} (running v2 with no injury data)`);
       return null;
     });
+    // Merge BallDontLie injuries as a second source — it carries season-ending
+    // injuries (e.g. torn ACL) that ESPN drops off its active report. Name-keyed
+    // so buildV2Roster's name matcher picks them up. BDL wins on conflict only
+    // when it reports OUT and ESPN doesn't have the player.
+    try {
+      const bdlInj = await fetchWnbaInjuries();
+      if (bdlInj?.all?.length) {
+        injuryReport = injuryReport || { all: [], byPlayerId: {}, byTeamAbbrev: {} };
+        injuryReport.byName = injuryReport.byName || {};
+        const existingNames = new Set((injuryReport.all || []).map(i =>
+          String(i.playerName || i.name || '').toLowerCase()));
+        for (const inj of bdlInj.all) {
+          injuryReport.byName[inj.playerName.toLowerCase()] = inj;
+          if (!existingNames.has(inj.playerName.toLowerCase())) {
+            (injuryReport.all = injuryReport.all || []).push(inj);
+          }
+        }
+        injuryReport._bdlInjuriesMerged = bdlInj.all.length;
+      }
+    } catch (err) {
+      warnings.push(`BDL injuries merge failed: ${err.message}`);
+    }
   }
 
   // STEP 2c: Pre-fetch real game lines ONCE for the whole slate (The Odds API).
@@ -573,6 +595,18 @@ async function buildAndRunAnalysis({
       multipliers: unified.multipliers,
       layerDetail: unified.layerDetail,
       dataCompleteness: unified.dataCompleteness,
+      // Player context for the advantage explanation (all real when present).
+      playerContext: {
+        usageRate: player.usageRate ?? null,
+        position: player.position ?? null,
+        tsPct: player.tsPct ?? null,
+        expectedMinutes: playerWithRecent.expectedMinutes ?? null,
+        last5Avg: playerWithRecent.last5Avg ?? null,
+        last10Avg: playerWithRecent.last10Avg ?? null,
+        seasonAvg: player.seasonAvg ?? null,
+        fgPctRecent: playerWithRecent.fgPctRecent ?? null,
+        primaryCreator: player.primaryCreator ?? false,
+      },
       // Rebound-environment surfaces (null for non-rebound markets).
       reboundEnvironment: reboundExtras?.environment || null,
       reboundEquity: reboundExtras?.equity || null,
@@ -612,6 +646,25 @@ async function buildAndRunAnalysis({
  */
 function buildV2Roster(players, teamAbbrev, injuryReport, gameContext) {
   if (!Array.isArray(players) || players.length === 0) return [];
+
+  // Injuries are keyed by ESPN's numeric IDs, but our player.id is now the bbref
+  // slug — those never match. Build a NAME index from the report so we can match
+  // reliably (names match across providers; IDs don't). Accent/punctuation-insensitive.
+  const normName = (s) => String(s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  const injuryByName = {};
+  const injuryList = injuryReport?.all || injuryReport?.players || [];
+  if (Array.isArray(injuryList)) {
+    for (const inj of injuryList) {
+      const nm = inj.playerName || inj.name || inj.athlete || inj.player;
+      if (nm) injuryByName[normName(nm)] = inj;
+    }
+  }
+  // Also fold any name-keyed index the feed may already expose.
+  if (injuryReport?.byName) {
+    for (const [k, v] of Object.entries(injuryReport.byName)) injuryByName[normName(k)] = v;
+  }
 
   // Build minimal v2-shaped player objects from the player + _raw data the slate already has.
   const roster = players.map(p => {
@@ -653,8 +706,10 @@ function buildV2Roster(players, teamAbbrev, injuryReport, gameContext) {
       usage = possessionsUsed > 0 ? Math.min(0.40, possessionsUsed / 16) : 0.20;
     }
 
-    // Look up injury status
-    const injury = injuryReport?.byPlayerId?.[String(p.id)] || null;
+    // Look up injury status — by NAME first (reliable), ID as a fallback.
+    const injury = injuryByName[normName(p.name)]
+      || injuryReport?.byPlayerId?.[String(p.id)]
+      || null;
     const status = injury?.status || 'AVAILABLE';
 
     return {

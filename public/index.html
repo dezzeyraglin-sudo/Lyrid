@@ -12562,6 +12562,15 @@ async function autoGradeOnAppOpen() {
             </div>` : `
             <div style="font-size:10px;color:var(--text-secondary, var(--dim));font-style:italic;border-top:0.5px solid var(--border-hairline, rgba(0,0,0,0.06));padding-top:8px">no book line — projection only</div>`}
           ${gl.dataCompleteness?.defensiveScheme ? `<div style="font-size:9px;color:var(--text-secondary, var(--dim))">defense: ${esc(gl.dataCompleteness.minorDefensiveFactors)} · scheme ${esc(gl.dataCompleteness.defensiveScheme)}</div>` : ''}
+          ${(() => {
+            const wt = gl.whyTeam;
+            if (!wt || !wt.drivers || wt.drivers.length === 0) return '';
+            const bits = wt.drivers.slice(0, 3).map(d => d.text);
+            const joined = bits.length >= 2
+              ? bits.slice(0, -1).join(', ') + ' and ' + bits[bits.length - 1]
+              : bits[0];
+            return `<div style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--text-primary)"><b>${esc(wt.favorite)}</b> has the edge: ${joined}.</div>`;
+          })()}
         </div>
       </div>
     `;
@@ -12698,6 +12707,30 @@ async function autoGradeOnAppOpen() {
     add(mult.whistle, dc.whistle === 'REAL',
         'a strong free-throw rate', 'a low free-throw rate');
 
+    // Player-attribute factors — WHY this specific player is the contributor.
+    // These cite real per-player data (usage role, recent form, efficiency).
+    const ctx = p.playerContext || {};
+    const playerBits = [];
+    if (ctx.primaryCreator || (ctx.usageRate != null && ctx.usageRate >= 26)) {
+      playerBits.push(`a high usage role (${ctx.usageRate != null ? ctx.usageRate.toFixed(0) + '%' : 'primary option'})`);
+    }
+    // Recent form trend vs season baseline (real game-log data, now flowing).
+    if (!market.includes('rebound') && !market.includes('assist')
+        && ctx.last5Avg != null && ctx.seasonAvg != null && ctx.seasonAvg > 0) {
+      const deltaPct = (ctx.last5Avg - ctx.seasonAvg) / ctx.seasonAvg;
+      if (deltaPct >= 0.10) playerBits.push(`hot recent form (L5 ${ctx.last5Avg.toFixed(1)} vs ${ctx.seasonAvg.toFixed(1)} season)`);
+      else if (deltaPct <= -0.10) playerBits.push(`cooling form (L5 ${ctx.last5Avg.toFixed(1)} vs ${ctx.seasonAvg.toFixed(1)} season)`);
+    }
+    // Efficient scorer (real TS%).
+    if (!market.includes('rebound') && !market.includes('assist')
+        && ctx.tsPct != null && ctx.tsPct >= 0.58) {
+      playerBits.push(`elite shooting efficiency (${(ctx.tsPct * 100).toFixed(0)}% TS)`);
+    }
+    // Heavy minutes load = more opportunity (real expected minutes).
+    if (ctx.expectedMinutes != null && ctx.expectedMinutes >= 32) {
+      playerBits.push(`a heavy minutes load (${ctx.expectedMinutes.toFixed(0)} MPG)`);
+    }
+
     // Rebound-specific geometry read (the engine's headline for that market).
     let geo = '';
     if (market.includes('rebound')) {
@@ -12720,12 +12753,19 @@ async function autoGradeOnAppOpen() {
     const reasonBits = [];
     if (geo) reasonBits.push(geo);
     reasonBits.push(...top);
+    // Add the single strongest player-attribute reason (keeps it to ~2-3 total).
+    if (playerBits.length > 0 && reasonBits.length < 2) reasonBits.push(playerBits[0]);
+    else if (playerBits.length > 0 && reasonBits.length === 0) reasonBits.push(...playerBits.slice(0, 2));
 
     // Compose. If we have no real reason and no real line, stay honest/short.
     const projTxt = `Model projects <b>${projection.toFixed(1)}</b> vs a <b>${line}</b> line`;
     const probTxt = prob != null ? ` (${Math.round(prob * 100)}% to land ${dir})` : '';
     if (reasonBits.length === 0) {
-      // Direction with no isolated real driver — lean comes from the blended core.
+      // No isolated multiplier reason — use player attributes if we have them.
+      if (playerBits.length > 0) {
+        const pj = playerBits.slice(0, 2).join(' and ');
+        return `${projTxt}${probTxt}, leaning <b>${dir.toUpperCase()}</b> \u2014 ${pj}.`;
+      }
       const coreTxt = (p.cores && p.cores.blended != null)
         ? ` on the blended scoring core` : '';
       return `${projTxt}${probTxt}, leaning <b>${dir.toUpperCase()}</b>${coreTxt}.`;

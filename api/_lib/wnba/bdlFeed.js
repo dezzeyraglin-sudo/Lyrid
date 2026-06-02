@@ -231,4 +231,52 @@ export async function fetchWnbaPlayerStats(dateYmd, opts = {}) {
   return result;
 }
 
+/**
+ * Fetch WNBA player injuries from BallDontLie, normalized + name-keyed so they
+ * merge with the ESPN feed. BDL often carries season-ending injuries that ESPN
+ * drops off its active report (e.g. a torn ACL moved to the season-ending list).
+ *
+ *   { byName: { "normalized name": { playerName, status, detail, source } },
+ *     all: [...], _audit }
+ */
+export async function fetchWnbaInjuries(opts = {}) {
+  if (!isBdlConfigured()) return { byName: {}, all: [], _audit: { keyPresent: false } };
+  const cacheKey = 'bdl:injuries';
+  if (!opts.noCache) { const c = cacheGet(cacheKey); if (c) return c; }
+
+  const res = await bdlGet('/player_injuries', { per_page: 100 });
+  if (res.status !== 200) {
+    return { byName: {}, all: [], _audit: { keyPresent: true, httpStatus: res.status,
+      warnings: [`injuries HTTP ${res.status}`] } };
+  }
+  const norm = (s) => String(s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  // Map BDL status text → our normalized buckets.
+  const mapStatus = (s) => {
+    const t = String(s || '').toLowerCase();
+    if (t.includes('out') || t.includes('season')) return 'OUT';
+    if (t.includes('doubtful')) return 'DOUBTFUL';
+    if (t.includes('question')) return 'QUESTIONABLE';
+    if (t.includes('day')) return 'DAY_TO_DAY';
+    return s ? String(s).toUpperCase() : 'OUT';
+  };
+  const byName = {}; const all = [];
+  for (const row of (res.body?.data || [])) {
+    const nm = playerName(row) || playerName({ player: row.player });
+    if (!nm) continue;
+    const entry = {
+      playerName: nm,
+      status: mapStatus(row.status),
+      detail: row.description || row.comment || row.return_date || null,
+      source: 'balldontlie',
+    };
+    byName[norm(nm)] = entry;
+    all.push(entry);
+  }
+  const result = { byName, all, _audit: { keyPresent: true, httpStatus: 200, count: all.length } };
+  cacheSet(cacheKey, result);
+  return result;
+}
+
 export const _testing = { normalizeMarket, playerName, BDL_BASE };
