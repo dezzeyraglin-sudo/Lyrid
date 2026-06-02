@@ -22,7 +22,6 @@
 // leak BallDontLie's internal numeric IDs into the rest of the app.
 
 const BDL_BASE = 'https://api.balldontlie.io/wnba/v1';
-const BDL_BASE_V2 = 'https://api.balldontlie.io/wnba/v2';   // odds/player_props live here
 const TTL_MS = 5 * 60 * 1000;
 const _cache = new Map();
 
@@ -108,17 +107,22 @@ export async function fetchWnbaProps(dateYmd, opts = {}) {
     return { propLines: {}, _audit: { keyPresent: true, httpStatus: 200, gamesFound: 0, warnings } };
   }
 
-  // 2) Pull props per game (v2 endpoint, different base + underscore path),
-  // resolve numeric player_id → name, and flatten to name_market → line.
+  // 2) Pull props per game (v1 base, underscore path — confirmed live), resolve
+  // numeric player_id → name, and flatten to name_market → line.
   const propLines = {};
   let propRows = 0, tierBlocked = false;
-  const idToName = {};   // player_id → "First Last", filled lazily per game
+  const idToName = {};            // player_id → "First Last", filled lazily per game
+  const rawTypeCounts = {};       // prop_type → count, including exotic (diagnostics)
+  let rawRowsSeen = 0, overUnderSeen = 0;
 
   for (const gid of gameIds) {
-    const pr = await bdlGet('/odds/player_props', { game_id: gid }, BDL_BASE_V2);
+    // WNBA player props live on the v1 base with an underscore path — confirmed
+    // live via the probe. (NBA docs show v2; WNBA differs — uses v1.)
+    const pr = await bdlGet('/odds/player_props', { game_id: gid });
     if (pr.status === 401) { tierBlocked = true; warnings.push('player_props 401 — GOAT tier/trial required'); break; }
     if (pr.status !== 200) { warnings.push(`player_props game ${gid} HTTP ${pr.status}`); continue; }
     const rows = pr.body?.data || [];
+    rawRowsSeen += rows.length;
     if (rows.length === 0) continue;
 
     // Resolve any unknown player_ids for this game in one batched call.
@@ -134,14 +138,16 @@ export async function fetchWnbaProps(dateYmd, opts = {}) {
     }
 
     for (const row of rows) {
+      const rawType = String(row.prop_type || row.market?.type || row.type || 'unknown');
+      rawTypeCounts[rawType] = (rawTypeCounts[rawType] || 0) + 1;
+      const isOverUnder = row.market?.type === 'over_under' || row.market?.over_odds != null;
+      if (isOverUnder) overUnderSeen++;
       const name = idToName[row.player_id] || (row.player_name) || null;
       const market = normalizeMarket(row.prop_type || row.market?.type || row.type);
       const line = Number(row.line_value ?? row.line ?? row.value);
       if (name && market && Number.isFinite(line)) {
-        // A player can have multiple lines (milestone + over_under); keep the
-        // over_under line (the standard prop) — prefer it over milestone ladders.
+        // Prefer the standard over/under line over milestone ladders for a market.
         const key = `${name}_${market}`;
-        const isOverUnder = row.market?.type === 'over_under' || row.market?.over_odds != null;
         if (propLines[key] == null || isOverUnder) propLines[key] = line;
         propRows++;
       }
@@ -151,7 +157,8 @@ export async function fetchWnbaProps(dateYmd, opts = {}) {
   const result = {
     propLines,
     _audit: { keyPresent: true, httpStatus: 200, gamesFound: gameIds.length,
-      propRows, tierBlocked, source: 'balldontlie', warnings },
+      propRows, tierBlocked, source: 'balldontlie',
+      rawRowsSeen, overUnderSeen, rawTypeCounts, warnings },
   };
   cacheSet(cacheKey, result);
   return result;
