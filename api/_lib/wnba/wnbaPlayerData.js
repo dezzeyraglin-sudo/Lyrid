@@ -475,6 +475,7 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
     // parsed but dropped, so pointsProjection fell back to league-average 0.535
     // for everyone; and FTA was never surfaced so the whistle layer stayed dark.
     tsPct: Number(advanced?.TS_PCT ?? 0) || null,
+    fgPct: Number(base.FG_PCT ?? 0) || null,
     fta: Number(base.FTA ?? 0),
     ftm: Number(base.FT ?? 0),
     ftPct: Number(base.FT_PCT ?? 0),
@@ -503,6 +504,7 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
       // slate.js (it already checks raw.TS_PCT / raw.FTA / raw.POS and falls
       // back when absent; these make the real values available).
       TS_PCT: Number(advanced?.TS_PCT ?? 0) || null,
+      FG_PCT: Number(base.FG_PCT ?? 0) || null,
       FTA: Number(base.FTA ?? 0),
       FT: Number(base.FT ?? 0),
       FGA: Number(base.FGA ?? 0),

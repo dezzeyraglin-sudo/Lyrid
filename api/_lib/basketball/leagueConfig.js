@@ -58,6 +58,7 @@ const WNBA = {
     defenseSensitivity: 0.50,     // dampening on the raw opponent-defense multiplier
     whistleSensitivity: 0.30,     // dampening on the whistle multiplier
     coverageSensitivity: 0.40,    // dampening on the coaching-coverage scheme multiplier
+    shootingFormSensitivity: 0.35, // dampening on recent-vs-season FG% (hot/cold hand)
     blowoutThresholdSpread: 12,   // |spread| beyond which a blowout is likely
     blowoutMinutesHaircut: 0.12,  // fraction of minutes shaved off starters in projected blowouts
     b2bMinutesHaircut: 0.04,      // minutes shaved on the back end of a back-to-back
@@ -74,9 +75,15 @@ const WNBA = {
     defense: [0.90, 1.12],
     whistle: [0.95, 1.06],
     coverage: [0.95, 1.05],       // coaching scheme effect; neutral (1.0) until coverage data exists
+    shootingForm: [0.93, 1.08],   // recent FG% hot/cold adjustment to scoring efficiency
     recentRate: [0.80, 1.25],
     combined: [0.82, 1.25],       // overall cap on the stacked multiplier (anti career-high rail)
   },
+
+  // League-typical gap between FG% and TS% (TS sits above FG% due to 3PT + FT
+  // value). Used to derive a TS proxy from FG% when advanced TS% is missing,
+  // so the possession core stays alive. WNBA: ~0.535 TS vs ~0.435 FG ≈ 0.10.
+  fgToTsGap: 0.10,
 
   // --- Variance / distribution ---
   variance: {
@@ -139,6 +146,7 @@ const NBA = {
     defenseSensitivity: 0.50,
     whistleSensitivity: 0.30,
     coverageSensitivity: 0.40,
+    shootingFormSensitivity: 0.35,
     blowoutThresholdSpread: 14,   // NBA blowouts run a bit wider
     blowoutMinutesHaircut: 0.14,
     b2bMinutesHaircut: 0.05,
@@ -151,9 +159,13 @@ const NBA = {
     defense: [0.90, 1.15],
     whistle: [0.95, 1.06],
     coverage: [0.95, 1.05],
+    shootingForm: [0.93, 1.08],
     recentRate: [0.80, 1.25],
     combined: [0.82, 1.28],
   },
+
+  // NBA: ~0.57 TS vs ~0.46 FG ≈ 0.11.
+  fgToTsGap: 0.11,
 
   variance: {
     baseScoringCv: 0.30,

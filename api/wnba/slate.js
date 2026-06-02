@@ -408,6 +408,12 @@ async function buildAndRunAnalysis({
       seasonAvg: marketSeasonAvg,
       last5Avg,
       last10Avg,
+      // FG% for the engine's shooting-efficiency layer: season FG% plus a recent
+      // FG% (hot/cold form) derived from the game-log shot totals.
+      fgPct: player.fgPct ?? player._raw?.FG_PCT ?? null,
+      fgPctRecent: (recentForm?.totals && recentForm.totals.fga > 0)
+        ? Number((recentForm.totals.fgm / recentForm.totals.fga).toFixed(3))
+        : null,
       ...(recentForm ? {
         minutesLast5: recentForm.minutesLast5,
         minutesCv: recentForm.minutesCv,

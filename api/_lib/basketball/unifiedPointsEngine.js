@@ -67,15 +67,47 @@ function normalCdf(z) {
 // ============================================================
 
 // Possession core: minutes x pace/min x usage x points-per-possession.
+// Efficiency (points-per-possession) is FG%-aware: it uses TS% when present,
+// derives a TS proxy from FG% when TS% is missing (so the core stays alive),
+// and nudges for recent shooting form (recent FG% vs season FG%).
 function possessionCore(player, env, cfg) {
   const minutes = num(player.expectedMinutes) ?? num(player.minutesAvg);
   const usage = normalizeUsage(player.usageRate);
-  const ts = num(player.tsPct) ?? num(player._raw?.TS_PCT);
-  if (minutes == null || usage == null || ts == null) return null;
+  const baseTs = resolveEfficiency(player, cfg);
+  if (minutes == null || usage == null || baseTs == null) return null;
+  const form = shootingForm(player, cfg);                 // { mult, active }
+  const effTs = clamp(baseTs * form.mult, [0.30, 0.75]);
   const pacePerMin = (num(env?.projectedPace) ?? cfg.leagueAvgPace) / cfg.regulationMinutes;
   const possessions = minutes * pacePerMin;
-  const pointsPerPoss = 2 * ts;                 // TS% already folds in FT + 3pt value
+  const pointsPerPoss = 2 * effTs;                        // TS folds in FG% + FT + 3pt
   return possessions * usage * pointsPerPoss;
+}
+
+// Scoring efficiency as a TS%: prefer real TS%, else derive from FG% (+ a small
+// league-typical gap for 3PT/FT value) so a missing advanced stat doesn't kill
+// the possession core. Returns null only when neither TS% nor FG% exists.
+function resolveEfficiency(player, cfg) {
+  const ts = num(player.tsPct) ?? num(player._raw?.TS_PCT);
+  if (ts != null && ts > 0) return ts;
+  const fg = num(player.fgPct) ?? num(player._raw?.FG_PCT);
+  if (fg != null && fg > 0) {
+    return clamp(fg + (cfg.fgToTsGap ?? 0.10), [0.30, 0.70]);
+  }
+  return null;
+}
+
+// Recent shooting form: recent FG% vs season FG%. Hot shooting (>1) lifts
+// efficiency, cold (<1) trims it. Dampened + tightly clamped so it nudges
+// rather than dominates. Neutral (1.0) when recent or season FG% is absent.
+function shootingForm(player, cfg) {
+  const seasonFg = num(player.fgPct) ?? num(player._raw?.FG_PCT);
+  const recentFg = num(player.fgPctRecent);
+  if (seasonFg == null || seasonFg <= 0 || recentFg == null || recentFg <= 0) {
+    return { mult: 1, active: false };
+  }
+  const ratio = recentFg / seasonFg;
+  const damped = 1 + (ratio - 1) * cfg.weights.shootingFormSensitivity;
+  return { mult: clamp(damped, cfg.clamps.shootingForm), active: true };
 }
 
 // Rate core: realized PPG blended with recent form, scaled by minutes ratio.
@@ -271,6 +303,9 @@ export function analyzeUnifiedProp(input, league = 'WNBA') {
     environment: mEnv.active ? 'REAL' : 'NEUTRAL',
     usageFunnel: mFunnel.active ? 'REAL' : 'NEUTRAL',
     tsPctAvailable: (num(player.tsPct) ?? num(player._raw?.TS_PCT)) != null,
+    efficiencySource: ((num(player.tsPct) ?? num(player._raw?.TS_PCT)) > 0) ? 'TS%'
+      : ((num(player.fgPct) ?? num(player._raw?.FG_PCT)) > 0 ? 'FG%-derived' : 'none'),
+    shootingForm: shootingForm(player, cfg).active ? 'REAL (recent FG% vs season)' : 'NEUTRAL',
     recentFormAvailable: num(player.last5Avg) != null,
   };
 
@@ -364,6 +399,7 @@ function recommend(edge, probOver, dc) {
 }
 
 export const _testing = {
-  possessionCore, rateCore, normalizeUsage, environmentMult, matchupMult,
-  coverageMult, whistleMult, funnelMult, normalCdf, computeConfidence, computeFinalEdgeScore,
+  possessionCore, rateCore, normalizeUsage, resolveEfficiency, shootingForm,
+  environmentMult, matchupMult, coverageMult, whistleMult, funnelMult,
+  normalCdf, computeConfidence, computeFinalEdgeScore,
 };
