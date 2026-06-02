@@ -22,6 +22,7 @@
 // leak BallDontLie's internal numeric IDs into the rest of the app.
 
 const BDL_BASE = 'https://api.balldontlie.io/wnba/v1';
+const BDL_BASE_V2 = 'https://api.balldontlie.io/wnba/v2';   // odds/player_props live here
 const TTL_MS = 5 * 60 * 1000;
 const _cache = new Map();
 
@@ -32,8 +33,8 @@ export function isBdlConfigured() {
   return Boolean(process.env.BDL_API_KEY);
 }
 
-async function bdlGet(path, params = {}) {
-  const url = new URL(`${BDL_BASE}${path}`);
+async function bdlGet(path, params = {}, base = BDL_BASE) {
+  const url = new URL(`${base}${path}`);
   for (const [k, v] of Object.entries(params)) {
     if (Array.isArray(v)) v.forEach(x => url.searchParams.append(`${k}[]`, x));
     else if (v != null) url.searchParams.set(k, v);
@@ -55,13 +56,18 @@ async function bdlGet(path, params = {}) {
 
 // Map common BDL prop market labels → our internal market keys.
 function normalizeMarket(label) {
-  const s = String(label || '').toLowerCase();
+  const s = String(label || '').toLowerCase().trim();
+  // Reject exotic/derived markets (first-N-min, quarter/half, double-double, etc.)
+  // so they don't pollute the standard full-game lines our engine projects.
+  if (/first|min|_q[1-4]|quarter|half|double|odd|even|streak|margin/.test(s)) return null;
+  // Combined first (so "pts+reb+ast" doesn't match plain points).
+  if (s === 'pra' || (s.includes('pts') && s.includes('reb') && s.includes('ast'))
+      || (s.includes('points') && s.includes('rebounds') && s.includes('assists'))) return 'pra';
   if (s.includes('rebound')) return 'rebounds';
   if (s.includes('assist')) return 'assists';
-  if (s.includes('point')) return 'points';
-  if (s.includes('three') || s.includes('3pt') || s.includes('3-pt')) return 'threes';
-  if (s.includes('pra') || (s.includes('pts') && s.includes('reb') && s.includes('ast'))) return 'pra';
-  return s.replace(/\s+/g, '_');
+  if (s.includes('three') || s.includes('3pt') || s.includes('3-pt') || s.includes('3pm')) return 'threes';
+  if (s === 'points' || s === 'pts' || (s.includes('point') && !s.includes('_'))) return 'points';
+  return null;   // unknown/exotic — skip rather than invent a market key
 }
 
 function playerName(p) {
@@ -102,19 +108,41 @@ export async function fetchWnbaProps(dateYmd, opts = {}) {
     return { propLines: {}, _audit: { keyPresent: true, httpStatus: 200, gamesFound: 0, warnings } };
   }
 
-  // 2) Pull props per game and flatten to name_market → line.
+  // 2) Pull props per game (v2 endpoint, different base + underscore path),
+  // resolve numeric player_id → name, and flatten to name_market → line.
   const propLines = {};
   let propRows = 0, tierBlocked = false;
+  const idToName = {};   // player_id → "First Last", filled lazily per game
+
   for (const gid of gameIds) {
-    const pr = await bdlGet('/odds/player-props', { game_id: gid });
-    if (pr.status === 401) { tierBlocked = true; warnings.push('player-props 401 — GOAT tier/trial required'); break; }
-    if (pr.status !== 200) { warnings.push(`player-props game ${gid} HTTP ${pr.status}`); continue; }
-    for (const row of (pr.body?.data || [])) {
-      const name = playerName(row);
-      const market = normalizeMarket(row.market || row.type || row.stat);
-      const line = Number(row.line ?? row.value ?? row.over_under);
+    const pr = await bdlGet('/odds/player_props', { game_id: gid }, BDL_BASE_V2);
+    if (pr.status === 401) { tierBlocked = true; warnings.push('player_props 401 — GOAT tier/trial required'); break; }
+    if (pr.status !== 200) { warnings.push(`player_props game ${gid} HTTP ${pr.status}`); continue; }
+    const rows = pr.body?.data || [];
+    if (rows.length === 0) continue;
+
+    // Resolve any unknown player_ids for this game in one batched call.
+    const unknownIds = [...new Set(rows.map(r => r.player_id).filter(id => id != null && !idToName[id]))];
+    if (unknownIds.length) {
+      const pl = await bdlGet('/players', { 'player_ids': unknownIds, per_page: 100 });
+      if (pl.status === 200) {
+        for (const p of (pl.body?.data || [])) {
+          const nm = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+          if (p.id != null && nm) idToName[p.id] = nm;
+        }
+      }
+    }
+
+    for (const row of rows) {
+      const name = idToName[row.player_id] || (row.player_name) || null;
+      const market = normalizeMarket(row.prop_type || row.market?.type || row.type);
+      const line = Number(row.line_value ?? row.line ?? row.value);
       if (name && market && Number.isFinite(line)) {
-        propLines[`${name}_${market}`] = line;
+        // A player can have multiple lines (milestone + over_under); keep the
+        // over_under line (the standard prop) — prefer it over milestone ladders.
+        const key = `${name}_${market}`;
+        const isOverUnder = row.market?.type === 'over_under' || row.market?.over_odds != null;
+        if (propLines[key] == null || isOverUnder) propLines[key] = line;
         propRows++;
       }
     }
