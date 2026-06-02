@@ -18,9 +18,61 @@
 
 import { fetchWnbaProps, fetchWnbaLiveScores, isBdlConfigured } from '../_lib/wnba/bdlFeed.js';
 
+// Server-side path prober — tries candidate odds/props endpoints with the real
+// key (never exposed) against a real game id and reports each status + a snippet.
+// Settles "wrong path" vs "no props posted yet" without a local curl.
+async function probe(url) {
+  try {
+    const r = await fetch(url, { headers: { Authorization: process.env.BDL_API_KEY } });
+    let bodySnippet = '';
+    try {
+      const txt = await r.text();
+      bodySnippet = txt.slice(0, 300);
+    } catch {}
+    return { url: url.replace(/\?.*/, '?…'), status: r.status, body: bodySnippet };
+  } catch (err) {
+    return { url: url.replace(/\?.*/, '?…'), status: 0, error: err.message };
+  }
+}
+
 export default async function handler(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
+
+  // PROBE MODE: /api/wnba/debug-bdl?probe=1[&game_id=24815]
+  if (url.searchParams.get('probe')) {
+    if (!isBdlConfigured()) return res.status(200).json({ ok: false, error: 'BDL_API_KEY not set in this environment' });
+    let gid = url.searchParams.get('game_id');
+    let gamesNote = null;
+    // If no game id given, resolve one from today's games first.
+    if (!gid) {
+      try {
+        const g = await fetch(`https://api.balldontlie.io/wnba/v1/games?dates[]=${date}&per_page=5`,
+          { headers: { Authorization: process.env.BDL_API_KEY } });
+        const gj = await g.json();
+        gid = gj?.data?.[0]?.id;
+        gamesNote = `resolved game_id ${gid} from ${date} (${gj?.data?.length || 0} games)`;
+      } catch (e) { gamesNote = `could not resolve a game id: ${e.message}`; }
+    }
+    const B1 = 'https://api.balldontlie.io/wnba/v1';
+    const B2 = 'https://api.balldontlie.io/wnba/v2';
+    const candidates = [
+      `${B1}/odds/player_props?game_id=${gid}`,
+      `${B2}/odds/player_props?game_id=${gid}`,
+      `${B1}/odds/player-props?game_id=${gid}`,
+      `${B1}/player_props?game_id=${gid}`,
+      `${B2}/player_props?game_id=${gid}`,
+      `${B1}/odds?game_id=${gid}`,
+      `${B2}/odds?game_id=${gid}`,
+      `${B2}/odds/player_props`,            // no filter — any props at all?
+      `${B1}/odds/game_props?game_id=${gid}`,
+    ];
+    const results = [];
+    for (const c of candidates) { results.push(await probe(c)); }
+    return res.status(200).json({ ok: true, mode: 'probe', date, gid, gamesNote, results,
+      readme: 'Look for the first status:200. That is the live path. 404 = wrong path OR no props for that game. 401 = key issue.' });
+  }
+
   try {
     const props = await fetchWnbaProps(date, { noCache: true });
     const live = await fetchWnbaLiveScores({ noCache: true });
