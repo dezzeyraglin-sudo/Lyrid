@@ -57,6 +57,7 @@
 import { analyzeBasketballProp } from "../_lib/basketball/basketballProps.js";
 import { analyzeUnifiedProp } from "../_lib/basketball/unifiedPointsEngine.js";
 import { analyzeReboundProp } from "../_lib/basketball/reboundEnvironmentEngine.js";
+import { analyzeGameLine } from "../_lib/basketball/gameLineEngine.js";
 import { buildAuditEntry } from "../_lib/basketball/basketballAudit.js";
 import { getGamesForDate, getTodaysGames } from "../_lib/wnba/wnbaSchedule.js";
 import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
@@ -215,6 +216,25 @@ async function generateSlate(opts = {}) {
     const lineSource = Number.isFinite(Number(gameLines.spread)) ? 'caller'
       : (feedLine?.spread != null ? `odds_api:${feedLine.bookUsed}` : 'default');
 
+    // ===== GAME-LINE PROJECTION (OUR MODEL) =====
+    // Project total / spread / moneyline from team efficiency + pace + the minor
+    // defensive factors, and compare to the book line when present. Non-fatal:
+    // if team objects are thin, the engine degrades and we just omit it.
+    let gameLine = null;
+    try {
+      const homeTeamObj = allTeamStats[homeAbbr];
+      const awayTeamObj = allTeamStats[awayAbbr];
+      if (homeTeamObj && awayTeamObj) {
+        gameLine = analyzeGameLine({
+          home: homeTeamObj,
+          away: awayTeamObj,
+          bookLine: feedLine ? { total: feedLine.total, spread: feedLine.spread, bookUsed: feedLine.bookUsed } : null,
+        }, 'WNBA');
+      }
+    } catch (glErr) {
+      warnings.push(`Game-line projection failed for ${game.gameId}: ${glErr.message}`);
+    }
+
     gameContexts[game.gameId] = {
       gameId: game.gameId,
       home: homeAbbr,
@@ -224,7 +244,9 @@ async function generateSlate(opts = {}) {
       spread,
       total,
       linesProvided: !!lines[game.gameId],
-      lineSource
+      lineSource,
+      // OUR MODEL: engine-projected lines beside the book line (MLB-style).
+      gameLine
     };
 
     // Get top players for both teams in parallel

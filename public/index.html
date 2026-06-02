@@ -12226,6 +12226,8 @@ async function autoGradeOnAppOpen() {
 
       ${topPick ? renderTopPickBanner(topPick) : ''}
 
+      ${game.gameLine ? renderGameLineBanner(game.gameLine, aw, hm) : ''}
+
       <div class="context-banner ctx-three-col" style="margin-top:14px">
         ${renderContextBlock('GAME TOTAL', game.total != null ? game.total : '—', game.total != null ? 'projected pace · O/U' : 'not provided')}
         ${renderContextBlock('SPREAD', game.spread != null ? (game.spread === 0 ? "PICK'EM" : (game.spread > 0 ? '+' : '') + game.spread) : '—', game.spread != null ? 'home perspective' : 'not provided')}
@@ -12234,6 +12236,54 @@ async function autoGradeOnAppOpen() {
 
       ${renderSideBlock(aw, hm, awayPasses, 'away')}
       ${renderSideBlock(hm, aw, homePasses, 'home')}
+    `;
+  }
+
+  // OUR MODEL — engine-projected total/spread/moneyline beside the book line.
+  function renderGameLineBanner(gl, aw, hm) {
+    const fmtSpread = (s) => s == null ? '—' : (s === 0 ? "PICK'EM" : (s > 0 ? '+' : '') + s);
+    const fmtAm = (a) => a == null ? '—' : (a > 0 ? '+' + a : '' + a);
+    const edgeChip = (label, val, unit) => {
+      if (val == null) return '';
+      const strong = Math.abs(val) >= (unit === 'pts' ? 3 : 1.5);
+      const col = strong ? (val > 0 ? '#14532d' : '#7f1d1d') : 'var(--text-secondary, var(--dim))';
+      return `<span style="font-size:11px;color:${col};font-variant-numeric:tabular-nums">${label} ${val > 0 ? '+' : ''}${val}</span>`;
+    };
+    const ml = gl.moneyline || {};
+    const book = gl.book;
+    const winner = gl.winner;
+    const favPct = ml.homeWinProb >= 0.5 ? ml.homeWinProb : ml.awayWinProb;
+    const favAbbr = ml.homeWinProb >= 0.5 ? hm : aw;
+
+    return `
+      <div class="top-picks-banner single-pick" style="margin-top:14px">
+        <div class="tpb-title">
+          <span>◆ OUR MODEL · PROJECTED LINE</span>
+          <span class="mode-indicator deep" style="background:rgba(201,164,94,0.15);color:var(--accent, #c9a45e)">${gl.confidence != null ? gl.confidence + ' CONF' : 'MODEL'}</span>
+        </div>
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:18px;flex-wrap:wrap">
+            <span style="font-size:11px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">Proj Total</span>
+            <span style="font-size:22px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums">${gl.projectedTotal}</span>
+            <span style="font-size:11px;color:var(--text-secondary, var(--dim))">${esc(aw)} <b style="color:var(--text-primary)">${gl.awayTotal}</b> · ${esc(hm)} <b style="color:var(--text-primary)">${gl.homeTotal}</b></span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:18px;flex-wrap:wrap">
+            <span style="font-size:11px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">Proj Spread</span>
+            <span style="font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums">${esc(hm)} ${fmtSpread(gl.spread)}</span>
+            <span style="font-size:11px;color:var(--text-secondary, var(--dim))">ML ${esc(favAbbr)} ${fmtAm(favAbbr===hm?ml.homeAmerican:ml.awayAmerican)} (${(favPct*100).toFixed(0)}%)</span>
+          </div>
+          ${book ? `
+            <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;border-top:0.5px solid var(--border-hairline, rgba(0,0,0,0.06));padding-top:8px">
+              <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">vs ${esc(book.source || 'book')}</span>
+              <span style="font-size:11px;color:var(--text-secondary, var(--dim))">total <b style="color:var(--text-primary)">${book.total ?? '—'}</b></span>
+              ${edgeChip('edge', gl.edges?.total, 'pts')}
+              <span style="font-size:11px;color:var(--text-secondary, var(--dim))">spread <b style="color:var(--text-primary)">${fmtSpread(book.spread)}</b></span>
+              ${edgeChip('edge', gl.edges?.spread, 'pts')}
+            </div>` : `
+            <div style="font-size:10px;color:var(--text-secondary, var(--dim));font-style:italic;border-top:0.5px solid var(--border-hairline, rgba(0,0,0,0.06));padding-top:8px">no book line — projection only</div>`}
+          ${gl.dataCompleteness?.defensiveScheme ? `<div style="font-size:9px;color:var(--text-secondary, var(--dim))">defense: ${esc(gl.dataCompleteness.minorDefensiveFactors)} · scheme ${esc(gl.dataCompleteness.defensiveScheme)}</div>` : ''}
+        </div>
+      </div>
     `;
   }
 
