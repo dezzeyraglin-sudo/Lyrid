@@ -774,6 +774,23 @@
   .stat-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
   .stat-chip{background:var(--panel-3);padding:2px 7px;border-radius:3px;font-size:10px;color:var(--dim)}
   .stat-chip b{color:var(--accent)}
+  /* Driver panel — labeled "why" rows (MLB HR DRIVERS + WNBA prop drivers) */
+  .hr-drivers-panel{background:var(--panel-2, rgba(0,0,0,0.02));border:0.5px solid var(--border-hairline, rgba(0,0,0,0.08));border-radius:6px;padding:10px 12px}
+  .hr-drivers-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+  .hr-drivers-eyebrow{font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--accent, #b8843f);text-transform:uppercase}
+  .hr-drivers-conf{font-size:9px;font-weight:700;letter-spacing:0.06em;padding:2px 8px;border-radius:10px;text-transform:uppercase}
+  .hr-drivers-conf.high{background:#dcfce7;color:#14532d}
+  .hr-drivers-conf.med{background:#fef3c7;color:#854d0e}
+  .hr-drivers-conf.low{background:#f3f4f6;color:#6b7280}
+  .hr-sample-warn{font-size:9px;color:#854d0e;background:#fef9c3;border-radius:3px;padding:2px 6px;margin-bottom:6px}
+  .hr-drivers-list{display:flex;flex-direction:column;gap:5px}
+  .hr-driver{display:grid;grid-template-columns:120px 1fr auto;align-items:baseline;gap:10px}
+  .hr-driver-feature{font-size:11px;font-weight:600;color:var(--text-primary, #1a1a1a)}
+  .hr-driver-detail{font-size:11px;color:var(--text-secondary, var(--dim))}
+  .hr-driver-weight{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;text-align:right;min-width:42px}
+  .hr-driver-weight.pos{color:#14532d}
+  .hr-driver-weight.neg{color:#7f1d1d}
+  @media(max-width:520px){.hr-driver{grid-template-columns:100px 1fr auto;gap:7px}.hr-driver-feature,.hr-driver-detail{font-size:10px}}
   .adj-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
   .adj-chip{padding:2px 7px;border-radius:3px;font-size:9.5px;letter-spacing:0.03em;font-weight:600}
   .adj-chip.hitter{background:rgba(255,122,61,0.15);color:var(--heat);border:1px solid rgba(255,122,61,0.25)}
@@ -12331,6 +12348,10 @@ async function autoGradeOnAppOpen() {
               <span style="font-size:11px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums">edge ${_edgeStr}</span>
               ${engineTag}
             </div>
+            ${(() => {
+              const read = buildTopPickRead(p);
+              return read ? `<div style="margin-top:10px;font-size:12px;line-height:1.5;color:var(--text-primary)">${read}</div>` : '';
+            })()}
           </div>
         </div>
       </div>
@@ -12380,23 +12401,137 @@ async function autoGradeOnAppOpen() {
   // One card for a player, listing every market they have as a compact row.
   // Shared context (ROLE/USAGE/ENV/MATCHUP/VAR) is per-player, so it's shown
   // ONCE in the header instead of repeated on every market.
+  // -----------------------------------------------------------
+  // EXPLANATION GENERATORS — the "why" prose, MLB-style
+  // -----------------------------------------------------------
+  // buildPropRead: one or two sentences on why the engine leans over/under THIS
+  // line, citing the real factors that moved the projection. Mirrors MLB's
+  // narrative quote block. Returns '' when there's nothing real to say.
+  function buildPropRead(p, proj) {
+    const projection = proj && proj.projection != null ? Number(proj.projection) : null;
+    if (projection == null || p.line == null || !Number.isFinite(Number(p.line))) return '';
+    const line = Number(p.line);
+    const diff = projection - line;
+    const dir = diff >= 0 ? 'over' : 'under';
+    const probOver = p.probOver != null ? p.probOver : null;
+    const prob = probOver != null ? (dir === 'over' ? probOver : 1 - probOver) : null;
+    const mult = p.multipliers || {};
+    const detail = p.layerDetail || {};
+    const dc = p.dataCompleteness || {};
+    const market = String(p.market || '').toLowerCase();
+
+    // Collect the real factors that pushed the projection, ranked by magnitude.
+    const factors = [];
+    const add = (m, realFlag, up, down) => {
+      if (m == null || !Number.isFinite(m) || Math.abs(m - 1) < 0.015 || !realFlag) return;
+      factors.push({ mag: Math.abs(m - 1), text: m > 1 ? up : down });
+    };
+    add(mult.matchup_opposingDefense, dc.opposingDefense === 'REAL',
+        'a soft opposing defense', 'a stingy opposing defense');
+    add(mult.usageFunnel, dc.usageFunnel === 'REAL',
+        'extra usage funneling to them', 'reduced usage share');
+    add(mult.environment, dc.environment === 'REAL',
+        'an up-tempo pace environment', 'a slow-pace environment');
+    add(mult.whistle, dc.whistle === 'REAL',
+        'a strong free-throw rate', 'a low free-throw rate');
+
+    // Rebound-specific geometry read (the engine's headline for that market).
+    let geo = '';
+    if (market.includes('rebound')) {
+      const env = p.reboundEnvironment, eq = p.reboundEquity, trap = p.reboundTrap;
+      if (trap && trap.isTrap) {
+        geo = `the opponent's shot profile sends misses away from this rebounder's zone — a rebound trap`;
+      } else if (env && env.oppType && env.oppProfileSource === 'REAL') {
+        const typ = env.oppType === 'PERIMETER' ? 'a perimeter-heavy opponent (long misses)'
+          : env.oppType === 'DOWNHILL_PAINT' ? 'a paint-attacking opponent (short misses)'
+          : env.oppType === 'PULLUP_MIDRANGE' ? 'a mid-range opponent (mid-length misses)'
+          : 'a balanced shot profile';
+        const lean = eq && eq.equityMultiplier >= 1.04 ? ', favoring this rebounder\u2019s zone'
+          : eq && eq.equityMultiplier <= 0.96 ? ', away from this rebounder\u2019s zone' : '';
+        geo = `${typ}${lean}`;
+      }
+    }
+
+    factors.sort((a, b) => b.mag - a.mag);
+    const top = factors.slice(0, 2).map(f => f.text);
+    const reasonBits = [];
+    if (geo) reasonBits.push(geo);
+    reasonBits.push(...top);
+
+    // Compose. If we have no real reason and no real line, stay honest/short.
+    const projTxt = `Model projects <b>${projection.toFixed(1)}</b> vs a <b>${line}</b> line`;
+    const probTxt = prob != null ? ` (${Math.round(prob * 100)}% to land ${dir})` : '';
+    if (reasonBits.length === 0) {
+      // Direction with no isolated real driver — lean comes from the blended core.
+      const coreTxt = (p.cores && p.cores.blended != null)
+        ? ` on the blended scoring core` : '';
+      return `${projTxt}${probTxt}, leaning <b>${dir.toUpperCase()}</b>${coreTxt}.`;
+    }
+    const joined = reasonBits.length === 2 ? `${reasonBits[0]} and ${reasonBits[1]}` : reasonBits[0];
+    return `${projTxt}${probTxt}, leaning <b>${dir.toUpperCase()}</b> \u2014 driven by ${joined}.`;
+  }
+
+  // buildTopPickRead: why THIS player is the strongest play in the game and
+  // where the matchup edge comes from. Shown in TONIGHT'S SIGNAL.
+  function buildTopPickRead(p) {
+    const sc = p.scores || {};
+    const dc = p.dataCompleteness || {};
+    const mult = p.multipliers || {};
+    const bits = [];
+
+    // The matchup advantage — lead with the strongest REAL edge.
+    if (dc.opposingDefense === 'REAL' && mult.matchup_opposingDefense > 1.03) {
+      bits.push('draws a defense that concedes this stat');
+    } else if (dc.opposingDefense === 'REAL' && mult.matchup_opposingDefense < 0.97) {
+      bits.push('faces a tough defensive matchup, but the projection clears anyway');
+    }
+    if (mult.usageFunnel > 1.02) bits.push('absorbs vacated usage in this lineup');
+    if (sc.roleStability != null && sc.roleStability >= 60) bits.push('holds a locked, high-usage role');
+    if (p.reboundEquity && p.reboundEquity.equityMultiplier >= 1.05) bits.push('owns the rebound geometry in this matchup');
+    if (sc.variance != null && sc.variance >= 55) bits.push('is one of the more stable outputs on the slate');
+
+    const edge = p.edge != null && Number.isFinite(Number(p.edge)) ? Number(p.edge) : null;
+    const edgeTxt = edge != null
+      ? `the largest projection-vs-line edge here (${edge >= 0 ? '+' : ''}${edge.toFixed(1)})`
+      : 'the largest projection edge here';
+
+    if (bits.length === 0) {
+      return `Tops this game on ${edgeTxt}.`;
+    }
+    const why = bits.length >= 2 ? `${bits[0]} and ${bits[1]}` : bits[0];
+    return `Tops this game on ${edgeTxt} \u2014 ${why}.`;
+  }
+
   function renderWnbaPlayerCard(propsForPlayer) {
     // Rank this player's markets by edge; strongest first (gets the ★).
     const props = [...propsForPlayer].sort((a, b) => (b.scores?.finalEdge ?? 0) - (a.scores?.finalEdge ?? 0));
     const lead = props[0];
     const sc = lead.scores || {};
+    const dc = lead.dataCompleteness || {};
+    const mult = lead.multipliers || {};
 
     // Tier badge = the player's strongest market (one badge, not three).
     const tier = edgeTier(sc.finalEdge);
 
-    // Shared per-player context row.
-    const subScores = [
-      { k: 'ROLE', v: sc.roleStability },
-      { k: 'USAGE', v: sc.usageFunnel },
-      { k: 'ENV', v: sc.environment },
-      { k: 'DEF', v: sc.matchup, t: 'Opposing defense (def rating, rim & perimeter) — live data' },
-      { k: 'COV', v: sc.coverage, t: 'Coaching defensive coverage (scheme vs archetype) — neutral until a coverage source feeds it' },
-      { k: 'VAR', v: sc.variance }
+    // ---- Driver model (labeled, like MLB's HR DRIVERS) ----
+    // Each driver reports: label, the human detail, a % weight (from the engine
+    // multiplier where we have one), and whether the underlying data is REAL or
+    // NEUTRAL. NEUTRAL layers render calm/grey (no feed exists for the WNBA) so
+    // they stop looking like alarms; REAL layers are color-coded by strength.
+    const pct = (m) => (m != null && Number.isFinite(m)) ? Math.round((m - 1) * 100) : null;
+    const drivers = [
+      { k: 'ROLE',  label: 'Role stability', score: sc.roleStability, real: true,
+        detail: sc.roleStability != null ? (sc.roleStability >= 55 ? 'Locked rotation role' : 'Unstable minutes/role') : 'No role data' },
+      { k: 'USAGE', label: 'Usage funnel', score: sc.usageFunnel, weight: pct(mult.usageFunnel), real: true,
+        detail: mult.usageFunnel > 1.0 ? 'Absorbs vacated usage' : 'Baseline usage' },
+      { k: 'ENV',   label: 'Pace / environment', score: sc.environment, weight: pct(mult.possessionEnvironment || mult.environment), real: (dc.environment === 'REAL'),
+        detail: (dc.environment === 'REAL') ? 'Live pace estimate' : 'League-average pace (no feed)' },
+      { k: 'DEF',   label: 'Opposing defense', score: sc.matchup, weight: pct(mult.matchup_opposingDefense || mult.matchup), real: (dc.opposingDefense === 'REAL' || sc.matchup != null && dc.opposingDefense !== 'NEUTRAL'),
+        detail: (dc.opposingDefense === 'REAL') ? 'Live def rating / rim & perimeter' : 'No defense data' },
+      { k: 'COV',   label: 'Coaching coverage', score: sc.coverage, weight: pct(mult.coverage_coachingScheme), real: false,
+        detail: 'Scheme — neutral until a coverage feed exists' },
+      { k: 'VAR',   label: 'Variance', score: sc.variance, real: true,
+        detail: sc.variance != null ? (sc.variance >= 50 ? 'Stable game-to-game' : 'Volatile output') : 'No variance data' },
     ];
 
     // If the player is OUT (v2), dim the whole card.
@@ -12409,14 +12544,30 @@ async function autoGradeOnAppOpen() {
     const allChips = [...new Set(props.flatMap(p => p.chips || []))];
     const allFlags = [...new Set(props.flatMap(p => p.hardFlags || []))];
 
-    // Per-market rows.
+    // ---- WHY block: the 3 strongest REAL drivers for the lead market ----
+    // Mirrors MLB's "HR DRIVERS". Only REAL drivers with a meaningful read are
+    // shown so it never fills with empty neutral rows. Confidence pill from the
+    // lead market's projection confidence.
+    const whyDrivers = drivers
+      .filter(d => d.real && (d.weight != null || (d.score != null && (d.score >= 55 || d.score <= 40))))
+      .map(d => {
+        // Prefer the engine % weight; else translate score deviation to a soft %.
+        const w = d.weight != null ? d.weight
+          : (d.score != null ? Math.round((d.score - 50) * 0.6) : 0);
+        return { feature: d.label, detail: d.detail, weight: w };
+      })
+      .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight))
+      .filter(d => d.weight !== 0)
+      .slice(0, 4);
+    const conf = leadProj.confidence
+      || (sc.finalEdge >= 70 ? 'HIGH CONF' : sc.finalEdge >= 55 ? 'MED CONF' : 'LOW CONF');
+    const confClass = /HIGH/i.test(conf) ? 'high' : /MED/i.test(conf) ? 'med' : 'low';
+
+    // Per-market rows — projection dominant, edge colored, line + band secondary.
     const marketRows = props.map((p, i) => {
       const proj = getProjectionForProp(p);
       const projStr = proj.projection != null && Number.isFinite(Number(proj.projection))
         ? Number(proj.projection).toFixed(2) : '—';
-      // Edge must match the projection being shown. When v2 is active and gives
-      // a genuine (non-fallback) number, recompute edge = v2proj - line instead
-      // of showing the v1 edge against a different projection.
       const usingV2 = state.engine === 'v2' && !proj.fallback
         && proj.projection != null && Number.isFinite(Number(proj.projection));
       const edge = (usingV2 && p.line != null && Number.isFinite(Number(p.line)))
@@ -12427,23 +12578,25 @@ async function autoGradeOnAppOpen() {
       const edgeColor = (edge != null && !edgeMuted && Math.abs(edge) >= 0.5)
         ? (edge > 0 ? '#14532d' : '#7f1d1d')
         : 'var(--text-secondary, var(--dim))';
-      const bandStr = (state.engine === 'v2' && proj.floor != null && proj.ceiling != null && proj.ceiling > 0)
-        ? `<span style="font-size:10px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums" title="v2 floor–ceiling band">${proj.floor.toFixed(1)}–${proj.ceiling.toFixed(1)}</span>`
+      const bandStr = (proj.floor != null && proj.ceiling != null && proj.ceiling > 0)
+        ? `<span style="font-size:10px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums" title="floor–ceiling band">${proj.floor.toFixed(1)}–${proj.ceiling.toFixed(1)}</span>`
         : '';
-      const star = (i === 0 && props.length > 1)
-        ? '<span title="strongest edge for this player" style="color:var(--accent, #c9a45e);font-size:10px">★</span>'
-        : '<span style="width:10px;display:inline-block"></span>';
-
+      const lineTag = edgeMuted
+        ? '<span style="font-size:8px;color:var(--text-secondary, var(--dim));opacity:0.7;letter-spacing:0.05em" title="no book line — engine-inferred">INF</span>'
+        : '';
+      const star = (i === 0)
+        ? '<span title="strongest edge for this player" style="color:var(--accent, #c9a45e);font-size:11px">★</span>'
+        : '<span style="width:11px;display:inline-block"></span>';
       return `
-        <div style="display:grid;grid-template-columns:14px 84px 1fr auto auto;align-items:baseline;gap:10px;padding:5px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
+        <div style="display:grid;grid-template-columns:14px 92px 1fr auto auto;align-items:baseline;gap:10px;padding:7px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
           ${star}
-          <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">${esc(p.market)}</span>
-          <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:500">${p.line}</b></span>
+          <span style="font-size:11px;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.07em;font-weight:600">${esc(p.market)}</span>
+          <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:600">${p.line}</b> ${lineTag}</span>
           <span style="display:flex;align-items:baseline;gap:8px;justify-content:flex-end">
-            <span style="font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums">${isOut ? 'OUT' : projStr}</span>
+            <span style="font-size:18px;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${isOut ? 'OUT' : projStr}</span>
             ${bandStr}
           </span>
-          <span style="font-size:11px;color:${edgeColor};font-variant-numeric:tabular-nums;min-width:46px;text-align:right">${edgeStr}</span>
+          <span style="font-size:12px;font-weight:600;color:${edgeColor};font-variant-numeric:tabular-nums;min-width:50px;text-align:right">${edgeStr}</span>
         </div>
       `;
     }).join('');
@@ -12454,19 +12607,47 @@ async function autoGradeOnAppOpen() {
           : '<span class="stat-chip" style="font-size:9px;background:rgba(201,164,94,0.15);color:var(--accent, #c9a45e);letter-spacing:0.05em" title="v2 engine projection">v2</span>')
       : '';
 
+    // Driver chip: REAL → color-coded by score; NEUTRAL → calm grey + dot marker.
+    const driverChip = (d) => {
+      const neutral = !d.real;
+      const col = neutral ? '#9ca3af' : scoreColor(d.score);
+      const wTxt = (d.weight != null && d.weight !== 0)
+        ? ` <span style="color:${d.weight > 0 ? '#14532d' : '#7f1d1d'};font-size:9px;font-variant-numeric:tabular-nums">${d.weight > 0 ? '+' : ''}${d.weight}%</span>` : '';
+      const marker = neutral ? '<span style="opacity:0.5">○</span> ' : '';
+      return `<span class="stat-chip" title="${esc(d.label)} — ${esc(d.detail)}${neutral ? ' (NEUTRAL — no WNBA feed)' : ' (REAL)'}" style="${neutral ? 'opacity:0.75' : ''}">
+        <span style="color:var(--text-secondary, var(--dim));font-size:9px">${marker}${d.k}</span> <b style="color:${col}">${d.score != null ? Math.round(d.score) : '—'}</b>${wTxt}</span>`;
+    };
+
     return `
       <div style="background:var(--surface-card);border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:var(--radius-md, 8px);padding:14px 18px;opacity:${cardOpacity}">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-          <span style="background:${tier.bg};color:${tier.color};padding:3px 8px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em">${tier.label}</span>
-          <span style="font-weight:600;color:var(--text-primary);font-size:14px;font-family:var(--font-serif, var(--font-sans))">${esc(lead.player)}</span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <span style="background:${tier.bg};color:${tier.color};padding:3px 9px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em">${tier.label}</span>
+          <span style="font-weight:600;color:var(--text-primary);font-size:15px;font-family:var(--font-serif, var(--font-sans))">${esc(lead.player)}</span>
           ${statusBadge}
           <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.06em">${esc(lead.team)} vs ${esc(lead.opponent)}</span>
         </div>
 
+        ${whyDrivers.length > 0 ? `
+          <div class="hr-drivers-panel" style="margin-bottom:10px">
+            <div class="hr-drivers-head">
+              <span class="hr-drivers-eyebrow">${esc((lead.market || 'PROP').toUpperCase())} DRIVERS</span>
+              <span class="hr-drivers-conf ${confClass}">${esc(conf)}</span>
+            </div>
+            <div class="hr-drivers-list">
+              ${whyDrivers.map(d => `
+                <div class="hr-driver">
+                  <span class="hr-driver-feature">${esc(d.feature)}</span>
+                  <span class="hr-driver-detail">${esc(d.detail)}</span>
+                  <span class="hr-driver-weight ${d.weight >= 0 ? 'pos' : 'neg'}">${d.weight >= 0 ? '+' : ''}${d.weight}%</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
         <div class="stat-row">
-          ${subScores.map(s => `<span class="stat-chip" title="${esc(s.t || (s.k + ' score (0-100)'))}"><span style="color:var(--text-secondary, var(--dim));font-size:9px">${s.k}</span> <b style="color:${scoreColor(s.v)}">${s.v != null ? Math.round(s.v) : '—'}</b></span>`).join('')}
-          ${lead.hitRate != null ? `<span class="stat-chip" title="Hit rate vs inferred line">HIT <b>${lead.hitRate}%</b></span>` : ''}
-          ${leadProj.confidence ? `<span class="stat-chip">${esc(leadProj.confidence)}</span>` : ''}
+          ${drivers.map(driverChip).join('')}
+          ${lead.hitRate != null ? `<span class="stat-chip" title="Hit rate vs line">HIT <b>${lead.hitRate}%</b></span>` : ''}
           ${engineBadge}
           ${lead.shadowMode ? '<span class="stat-chip" style="opacity:0.6;font-size:9px">shadow</span>' : ''}
         </div>
@@ -12475,13 +12656,18 @@ async function autoGradeOnAppOpen() {
           ${marketRows}
         </div>
 
+        ${(() => {
+          const read = buildPropRead(lead, leadProj);
+          return read ? `<div style="margin-top:10px;padding:9px 12px;border-left:2.5px solid var(--brand-primary, #233859);background:var(--panel-2, rgba(35,56,89,0.04));border-radius:0 4px 4px 0;font-size:12px;line-height:1.5;color:var(--text-primary)">${read}</div>` : '';
+        })()}
+
         ${allChips.length > 0 ? `
-          <div class="stat-row" style="margin-top:8px">
+          <div class="stat-row" style="margin-top:10px">
             ${allChips.map(c => `<span class="stat-chip" style="background:#eef2ff;color:#3730a3;font-size:9px;letter-spacing:0.05em">${esc(c)}</span>`).join('')}
           </div>` : ''}
         ${allFlags.length > 0 ? `
-          <div class="stat-row" style="margin-top:4px">
-            ${allFlags.map(f => `<span class="stat-chip" style="background:#fee2e2;color:#7f1d1d;font-size:9px;letter-spacing:0.05em">⚠ ${esc(f)}</span>`).join('')}
+          <div class="stat-row" style="margin-top:6px">
+            ${allFlags.map(f => `<span class="stat-chip" style="background:#fee2e2;color:#7f1d1d;font-size:9px;letter-spacing:0.05em;font-weight:600">⚠ ${esc(f)}</span>`).join('')}
           </div>` : ''}
       </div>
     `;
