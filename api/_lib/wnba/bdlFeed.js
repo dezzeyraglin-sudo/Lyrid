@@ -23,25 +23,39 @@
 
 const BDL_BASE = 'https://api.balldontlie.io/wnba/v1';
 const TTL_MS = 5 * 60 * 1000;
+const INJURY_TTL_MS = 30 * 60 * 1000;   // injuries change slowly; cache hard
 const _cache = new Map();
 
-function cacheGet(k){ const e=_cache.get(k); if(!e) return null; if(Date.now()-e.ts>TTL_MS){_cache.delete(k); return null;} return e.data; }
-function cacheSet(k,d){ _cache.set(k,{data:d,ts:Date.now()}); }
+function cacheGet(k){ const e=_cache.get(k); if(!e) return null; const ttl=e.ttl||TTL_MS; if(Date.now()-e.ts>ttl){_cache.delete(k); return null;} return e.data; }
+function cacheSet(k,d,ttl){ _cache.set(k,{data:d,ts:Date.now(),ttl}); }
 
 export function isBdlConfigured() {
   return Boolean(process.env.BDL_API_KEY);
 }
 
-async function bdlGet(path, params = {}, base = BDL_BASE) {
-  const url = new URL(`${base}${path}`);
-  for (const [k, v] of Object.entries(params)) {
-    if (Array.isArray(v)) v.forEach(x => url.searchParams.append(`${k}[]`, x));
-    else if (v != null) url.searchParams.set(k, v);
-  }
+// --- Trial-safe rate limiting -------------------------------------------------
+// The GOAT 48h TRIAL is capped at 5 requests/min (the paid tier is 600/min). To
+// avoid false 429 failures during the trial, we serialize requests with a min
+// gap and retry once after a 429. Set BDL_MIN_GAP_MS=0 in env once on paid tier.
+const MIN_GAP_MS = Number(process.env.BDL_MIN_GAP_MS ?? 13000);  // ~4.6 req/min
+let _lastCallAt = 0;
+let _chain = Promise.resolve();
+function spacedSlot() {
+  // Queue each call so they fire one-at-a-time, MIN_GAP_MS apart.
+  const run = _chain.then(async () => {
+    const wait = Math.max(0, _lastCallAt + MIN_GAP_MS - Date.now());
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    _lastCallAt = Date.now();
+  });
+  _chain = run.catch(() => {});
+  return run;
+}
+
+async function rawFetch(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
   try {
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url, {
       headers: { 'Authorization': process.env.BDL_API_KEY },
       signal: controller.signal,
     });
@@ -51,6 +65,23 @@ async function bdlGet(path, params = {}, base = BDL_BASE) {
     clearTimeout(timer);
     return { status: 0, body: `fetch failed: ${err.message}` };
   }
+}
+
+async function bdlGet(path, params = {}, base = BDL_BASE) {
+  const url = new URL(`${base}${path}`);
+  for (const [k, v] of Object.entries(params)) {
+    if (Array.isArray(v)) v.forEach(x => url.searchParams.append(`${k}[]`, x));
+    else if (v != null) url.searchParams.set(k, v);
+  }
+  const u = url.toString();
+  if (MIN_GAP_MS > 0) await spacedSlot();
+  let res = await rawFetch(u);
+  // One retry on 429 after a cooldown (trial cap).
+  if (res.status === 429) {
+    await new Promise(r => setTimeout(r, MIN_GAP_MS > 0 ? MIN_GAP_MS : 13000));
+    res = await rawFetch(u);
+  }
+  return res;
 }
 
 // Map common BDL prop market labels → our internal market keys.
@@ -285,6 +316,9 @@ export async function fetchWnbaInjuries(opts = {}) {
     const res = await bdlGet(p, { per_page: 100 });
     lastStatus = res.status;
     if (res.status === 200 && Array.isArray(res.body?.data)) { rows = res.body.data; pathUsed = p; break; }
+    // 429 = right endpoint, just throttled (trial cap). Don't fall through to a
+    // wrong path — stop and report so a retry later succeeds on this same path.
+    if (res.status === 429) break;
   }
   if (!rows) {
     return { byName: {}, byTeamAbbrev: {}, all: [],
@@ -329,7 +363,7 @@ export async function fetchWnbaInjuries(opts = {}) {
   }
   const result = { byName, byTeamAbbrev, all,
     _audit: { keyPresent: true, httpStatus: 200, pathUsed, count: all.length } };
-  cacheSet(cacheKey, result);
+  cacheSet(cacheKey, result, INJURY_TTL_MS);
   return result;
 }
 
