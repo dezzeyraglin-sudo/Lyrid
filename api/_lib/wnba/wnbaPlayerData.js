@@ -164,11 +164,12 @@ export async function listAllPlayersTouches(season = 2026) {
  * @returns {Promise<Object|null>}
  */
 export async function getPlayerSeasonStats(playerId, season = 2026, market = 'points') {
-  const [base, advanced, bio, touches] = await Promise.all([
+  const [base, advanced, bio, touches, slugMap] = await Promise.all([
     listAllPlayers(season),
     listAllPlayersAdvanced(season),
     listAllPlayersBio(season),
-    listAllPlayersTouches(season)
+    listAllPlayersTouches(season),
+    buildSlugMap(season)
   ]);
 
   const target = String(playerId);
@@ -179,7 +180,7 @@ export async function getPlayerSeasonStats(playerId, season = 2026, market = 'po
   const bioRow = bio.find(p => String(p.PLAYER_ID) === target);
   const touchRow = touches.find(p => String(p.PLAYER_ID) === target);
 
-  return mergePlayerStats(basePlayer, advPlayer, market, bioRow, touchRow);
+  return mergePlayerStats(basePlayer, advPlayer, market, bioRow, touchRow, slugMap);
 }
 
 /**
@@ -193,11 +194,12 @@ export async function getPlayerSeasonStats(playerId, season = 2026, market = 'po
 export async function findPlayerByName(name, season = 2026, market = 'points') {
   if (!name || typeof name !== 'string') return null;
 
-  const [base, advanced, bio, touches] = await Promise.all([
+  const [base, advanced, bio, touches, slugMap] = await Promise.all([
     listAllPlayers(season),
     listAllPlayersAdvanced(season),
     listAllPlayersBio(season),
-    listAllPlayersTouches(season)
+    listAllPlayersTouches(season),
+    buildSlugMap(season)
   ]);
 
   const needle = name.toLowerCase().trim();
@@ -217,7 +219,7 @@ export async function findPlayerByName(name, season = 2026, market = 'points') {
   const bioRow = bio.find(p => String(p.PLAYER_ID) === targetId);
   const touchRow = touches.find(p => String(p.PLAYER_ID) === targetId);
 
-  return mergePlayerStats(basePlayer, advPlayer, market, bioRow, touchRow);
+  return mergePlayerStats(basePlayer, advPlayer, market, bioRow, touchRow, slugMap);
 }
 
 /**
@@ -234,11 +236,12 @@ export async function findPlayerByName(name, season = 2026, market = 'points') {
 export async function getTopPlayersForTeam(teamAbbr, n = 4, season = 2026, market = 'points') {
   if (!teamAbbr) return [];
 
-  const [base, advanced, bio, touches] = await Promise.all([
+  const [base, advanced, bio, touches, slugMap] = await Promise.all([
     listAllPlayers(season),
     listAllPlayersAdvanced(season),
     listAllPlayersBio(season),
-    listAllPlayersTouches(season)
+    listAllPlayersTouches(season),
+    buildSlugMap(season)
   ]);
 
   const targetAbbr = String(teamAbbr).toUpperCase();
@@ -278,7 +281,7 @@ export async function getTopPlayersForTeam(teamAbbr, n = 4, season = 2026, marke
     const advPlayer = advanced.find(p => String(p.PLAYER_ID) === targetId);
     const bioRow = bio.find(p => String(p.PLAYER_ID) === targetId);
     const touchRow = touches.find(p => String(p.PLAYER_ID) === targetId);
-    return mergePlayerStats(basePlayer, advPlayer, market, bioRow, touchRow);
+    return mergePlayerStats(basePlayer, advPlayer, market, bioRow, touchRow, slugMap);
   }).filter(Boolean);
 
   return results;
@@ -399,11 +402,61 @@ function extractBbrefSlug(row) {
   return null;
 }
 
+// -----------------------------------------------------------
+// SLUG MAP — name → bbref slug, parsed from RAW page HTML.
+// -----------------------------------------------------------
+// parseTableRows strips the <a> tag from the player cell, returning only the
+// display name, so the slug never survives into the row. We fetch the raw
+// per-game page once and regex every player anchor:
+//   <th ... data-stat="player"><strong><a href='/wnba/players/a/akoamo01w.html'>Monique Akoa Makani</a>
+// into a { "Monique Akoa Makani": "akoamo01w" } map, cached per season.
+const _slugMapCache = new Map();
+// Matches both single- and double-quoted hrefs, captures slug + display name.
+const PLAYER_ANCHOR_RE = /href=['"]\/wnba\/players\/[a-z]\/([a-z0-9]+)\.html['"]\s*>([^<]+)<\/a>/gi;
+
+function normalizeName(s) {
+  // Lowercase, strip accents and punctuation so "A'ja Wilson" ≈ "aja wilson".
+  return String(s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+async function buildSlugMap(season = 2026) {
+  if (_slugMapCache.has(season)) return _slugMapCache.get(season);
+  const map = new Map();
+  try {
+    const html = await fetchBbrefPage(`/wnba/years/${season}_per_game.html`, { ttlMs: 6 * 60 * 60 * 1000 });
+    if (html) {
+      // Player anchors live in BOTH the live table and bbref's commented-out
+      // duplicate blocks; unwrap so we catch every player.
+      const scan = unwrapCommentedTables(html);
+      let m;
+      PLAYER_ANCHOR_RE.lastIndex = 0;
+      while ((m = PLAYER_ANCHOR_RE.exec(scan)) !== null) {
+        const slug = m[1];
+        const name = m[2].trim();
+        if (slug && name && SLUG_SHAPE_RE.test(slug)) {
+          map.set(normalizeName(name), slug);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`[wnbaPlayerData] slug map build failed: ${err.message}`);
+  }
+  _slugMapCache.set(season, map);
+  return map;
+}
+
+function lookupSlug(slugMap, name) {
+  if (!slugMap || !name) return null;
+  return slugMap.get(normalizeName(name)) || null;
+}
+
 // =============================================================
 // MERGE FUNCTION — unchanged from Session 3 contract
 // =============================================================
 
-function mergePlayerStats(base, advanced, market, bio = null, touchData = null) {
+function mergePlayerStats(base, advanced, market, bio = null, touchData = null, slugMap = null) {
   if (!base) return null;
 
   // Pick the right "seasonAvg" stat based on the market.
@@ -474,8 +527,8 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
     // Identity. `id` carries the bbref SLUG when resolved (the game-log fetch
     // needs it for the URL); falls back to name only so nothing is undefined.
     // `name` is the reliable cross-source join key (injuries, props, history).
-    id: base.BBREF_SLUG || base.PLAYER_NAME,
-    bbrefSlug: base.BBREF_SLUG || null,
+    id: (lookupSlug(slugMap, base.PLAYER_NAME) || base.BBREF_SLUG || base.PLAYER_NAME),
+    bbrefSlug: (lookupSlug(slugMap, base.PLAYER_NAME) || base.BBREF_SLUG || null),
     name: base.PLAYER_NAME,
     team: base.TEAM_ABBREVIATION,
     // ADDED June 1: real position when bbref provides one (per-game `pos`
