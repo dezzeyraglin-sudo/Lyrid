@@ -1,116 +1,99 @@
-/**
- * Basketball Role Stability Engine
- *
- * Purpose:
- * Measures whether a player's role is stable enough to trust a prop edge.
- *
- * This is the basketball equivalent of asking:
- * "Does this edge survive variance?"
- */
+// api/_lib/basketball/roleStability.js
+//
+// ROLE STABILITY (rewritten June 2, 2026)
+//
+// Scores how SECURE a player's role is — the floor under their minutes and
+// touches — on a 0–100 scale. The unified engine reads `score` off the return
+// (pick(role, ['score','stability'], 50)) and uses it as the ROLE sub-score and
+// to widen/narrow the projection band.
+//
+// WHY THIS WAS REWRITTEN: the prior version floored the score to ~1 for players
+// with a small games-played sample. Early in a season (e.g. 4 games in), a
+// locked starter logging 29–30 stable minutes was being scored as "fragile,"
+// which is backwards — a small sample is not an unstable role. This version
+// derives stability from the signals that actually indicate role security:
+//   1. MINUTES LOAD     — heavy minutes ⇒ secure role (starters play 28–34)
+//   2. MINUTES CONSISTENCY (cv) — low game-to-game variance ⇒ locked role;
+//                          high cv ⇒ genuinely volatile usage (the real risk)
+//   3. STARTER / CLOSING ROLE — explicit role signals when present
+// A small games sample only REDUCES CONFIDENCE (dataQuality), it does NOT floor
+// the score.
+//
+// INPUT: the engine passes the whole `input`; we read `input.player`.
+//   player.expectedMinutes | minutesAvg   (recent MPG, REAL from game log)
+//   player.minutesCv                       (0 = perfectly stable, ~0.4 = volatile)
+//   player.gamesPlayed                     (sample size — confidence only)
+//   player.starter | closingRole           (role flags when available)
+//   player.usageRate                       (high usage corroborates a real role)
 
-const clamp = (n, min = 0, max = 100) => Math.max(min, Math.min(max, Number.isFinite(n) ? n : 0));
+const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
 
-function pctDiff(a, b) {
-  const x = Number(a);
-  const y = Number(b);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || y === 0) return 0;
-  return Math.abs(x - y) / Math.abs(y);
-}
+export function calculateRoleStability(input) {
+  const player = (input && input.player) ? input.player : (input || {});
 
-export function calculateRoleStability(player = {}, game = {}, league = "NBA") {
-  const minutesAvg = Number(player.minutesAvg ?? player.minutes ?? 0);
-  const minutesLast5 = Number(player.minutesLast5 ?? minutesAvg);
-  const minutesFloor = Number(player.minutesFloor ?? Math.max(0, minutesAvg - 4));
-  const usageRate = Number(player.usageRate ?? player.usage ?? 0);
-  const touches = Number(player.touches ?? 0);
-  const starter = Boolean(player.starter ?? minutesAvg >= (league === "WNBA" ? 26 : 28));
-  const closingRole = Boolean(player.closingRole ?? player.closer ?? minutesAvg >= (league === "WNBA" ? 28 : 30));
-  const injuryTag = String(player.injuryTag ?? player.status ?? "healthy").toLowerCase();
-  const foulRate = Number(player.foulRate ?? player.foulsPer36 ?? 0);
-  const spread = Math.abs(Number(game.spread ?? 0));
+  const minutes = num(player.expectedMinutes) ?? num(player.minutesAvg) ?? num(player.minutesLast5);
+  const cv = num(player.minutesCv);
+  const gp = num(player.gamesPlayed) ?? 0;
+  const usage = (() => {
+    let u = num(player.usageRate);
+    if (u == null) return null;
+    return u > 1 ? u / 100 : u;   // accept 28.6 or 0.286
+  })();
+  const isStarter = player.starter === true || player.starter === 1
+    || /start|close/i.test(String(player.closingRole || ''));
 
-  // ROLE STABILITY CALIBRATION (May 16, 2026):
-  // Base lowered from 50 to 35. The previous math + every positive attribute
-  // added up to 127 (clamped to 100), meaning a player with all-positive
-  // attributes scored identically to one with most-positive. No differentiation
-  // at the top tier where it matters most. Adjusted weights still preserve
-  // the ranking but now the ceiling is reachable only by genuine across-the-board
-  // elites (think A'ja Wilson playing 36 with 31% usage as primary creator
-  // on a no-rest-disadvantage night).
-  let score = 35;
-  const reasons = [];
-
-  // Minutes are the strongest basketball prop stabilizer.
-  if (minutesAvg >= 34) { score += 22; reasons.push("elite minutes"); }
-  else if (minutesAvg >= 31) { score += 16; reasons.push("strong minutes"); }
-  else if (minutesAvg >= 28) { score += 9; reasons.push("playable minutes"); }
-  else if (minutesAvg < 24) { score -= 18; reasons.push("thin minutes"); }
-
-  // WNBA rotations are often tighter; give stable high-minute starters more credit.
-  // Threshold lowered from 30 to 32 to reflect that WNBA "elite minutes" is 33+,
-  // not 30+ (which is just "solid starter"). Top WNBA starters routinely play 33-35.
-  if (league === "WNBA" && minutesAvg >= 32) {
-    score += 5;
-    reasons.push("WNBA rotation concentration");
+  // If we have no minutes signal at all, return a true neutral (not a floor).
+  if (minutes == null && cv == null && !isStarter) {
+    return { score: 50, stability: 50, detail: 'no role data — neutral', dataQuality: 'NONE' };
   }
 
-  // Recent minutes should not be wildly different unless a role change is known.
-  const minDrift = pctDiff(minutesLast5, minutesAvg);
-  if (minDrift <= 0.06) { score += 8; reasons.push("minutes stable"); }
-  else if (minDrift <= 0.12) { score += 3; reasons.push("minor minutes drift"); }
-  else { score -= 10; reasons.push("minutes volatility"); }
-
-  // Floor matters more than average.
-  if (minutesFloor >= 30) { score += 8; reasons.push("strong minutes floor"); }
-  else if (minutesFloor < 24) { score -= 10; reasons.push("weak minutes floor"); }
-
-  if (starter) { score += 5; reasons.push("starter"); }
-  else { score -= 8; reasons.push("bench role"); }
-
-  if (closingRole) { score += 8; reasons.push("closing role"); }
-  else { score -= 6; reasons.push("not confirmed closer"); }
-
-  // Usage/touch role confirms production path.
-  if (usageRate >= 30) { score += 8; reasons.push("primary usage"); }
-  else if (usageRate >= 24) { score += 5; reasons.push("strong usage"); }
-  else if (usageRate < 16 && usageRate > 0) { score -= 8; reasons.push("low usage"); }
-
-  if (touches >= 70) { score += 7; reasons.push("elite touch volume"); }
-  else if (touches >= 55) { score += 4; reasons.push("strong touch volume"); }
-
-  // Status / injury uncertainty.
-  // NOTE: the "out" case is also caught by the hard-flag system in basketballProps.js
-  // as PLAYER OUT, but we keep this score penalty as defense-in-depth in case
-  // someone calls roleStability directly.
-  if (injuryTag.includes("questionable") || injuryTag.includes("minutes")) {
-    score -= 22;
-    reasons.push("injury/minutes uncertainty");
-  } else if (injuryTag.includes("probable")) {
-    score -= 5;
-    reasons.push("probable tag");
-  } else if (injuryTag.includes("out") || injuryTag.includes("doubtful")) {
-    score -= 100;
-    reasons.push("not playable");
+  // --- 1) Minutes-load component (0–100) ---
+  // 30+ MPG = locked heavy role; 24 = solid rotation; 16 = bench; <10 = fringe.
+  let minutesScore = 50;
+  if (minutes != null) {
+    // Map 8→20 MPG onto 30→55, 20→34 MPG onto 55→95, smoothly.
+    if (minutes >= 20) minutesScore = clamp(55 + (minutes - 20) * (40 / 14), 55, 95);
+    else minutesScore = clamp(20 + (minutes - 8) * (35 / 12), 15, 55);
   }
 
-  // Foul-prone players create sudden minutes downside.
-  if (foulRate >= 5.0) { score -= 10; reasons.push("foul volatility"); }
-  else if (foulRate >= 4.0) { score -= 5; reasons.push("moderate foul risk"); }
+  // --- 2) Minutes-consistency component from cv (0–100) ---
+  // cv 0.10 = rock-solid (95), 0.25 = normal (70), 0.40 = shaky (45), 0.60+ = volatile (20).
+  let consistencyScore = 65;   // neutral-ish when cv unknown
+  if (cv != null) {
+    consistencyScore = clamp(100 - cv * 200, 10, 98);
+  }
 
-  // Blowouts crush overs. Note: 13+ spreads now also trigger a hard flag in
-  // basketballProps.js which overrides the recommendation to PASS regardless
-  // of role score. This penalty remains so the underlying score reflects the
-  // risk for analysts inspecting the diagnostic output.
-  if (spread >= 13) { score -= 12; reasons.push("major blowout risk"); }
-  else if (spread >= 9) { score -= 6; reasons.push("moderate blowout risk"); }
+  // --- 3) Role-flag bonus ---
+  const starterBonus = isStarter ? 8 : 0;
+  // High usage corroborates a featured role (a 25%+ usage player isn't a fringe piece).
+  const usageBonus = (usage != null && usage >= 0.24) ? 5 : 0;
 
-  const finalScore = clamp(Math.round(score));
+  // Blend: minutes load and consistency are the two pillars; flags nudge.
+  // Weight load a bit more — a heavy-minutes player is secure even if cv is moderate.
+  let score = 0.55 * minutesScore + 0.45 * consistencyScore + starterBonus + usageBonus;
+  score = clamp(score, 0, 100);
+
+  // --- Confidence (NOT the score) reflects sample size. A 4-game sample is
+  // trustworthy enough to score, but we flag it so downstream can widen bands. ---
+  let dataQuality = 'REAL';
+  if (gp > 0 && gp < 3) dataQuality = 'THIN (small sample)';
+  else if (gp >= 3 && gp < 6) dataQuality = 'OK (early season)';
+
+  const detail = minutes != null
+    ? `${minutes.toFixed(0)} MPG${cv != null ? `, cv ${cv.toFixed(2)}` : ''}${isStarter ? ', starter' : ''}`
+    : 'role from flags';
 
   return {
-    score: finalScore,
-    tier: finalScore >= 85 ? "Elite" : finalScore >= 72 ? "Strong" : finalScore >= 58 ? "Playable" : "Fragile",
-    volatility: finalScore >= 80 ? "Low" : finalScore >= 65 ? "Medium" : "High",
-    reasons
+    score: Math.round(score),
+    stability: Math.round(score),
+    detail,
+    dataQuality,
+    components: {
+      minutesScore: Math.round(minutesScore),
+      consistencyScore: Math.round(consistencyScore),
+      starterBonus, usageBonus,
+    },
   };
 }
 
