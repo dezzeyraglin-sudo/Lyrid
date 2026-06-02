@@ -64,6 +64,7 @@ import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
 import { aggregateRecentForm } from "../_lib/wnba/wnbaGameLog.js";
 import { getAllTeamStats } from "../_lib/wnba/wnbaTeamData.js";
 import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
+import { fetchWnbaProps } from "../_lib/wnba/bdlFeed.js";
 
 // v2 engine modules (ESM)
 import { fetchEspnWnbaInjuries } from "../_lib/basketball/injuryFeed.js";
@@ -195,6 +196,22 @@ async function generateSlate(opts = {}) {
     warnings.push(`Odds API lines fetch failed: ${err.message}`);
   }
 
+  // STEP 2d: Pre-fetch real PLAYER PROP lines ONCE (BallDontLie, GOAT tier).
+  // Merged into each game's propLines below so the existing precedence holds:
+  // caller-provided line > BDL prop line > engine-inferred line. Non-fatal: if
+  // BDL_API_KEY is unset or tier-gated, propLines stays empty and we infer.
+  let bdlProps = { propLines: {}, _audit: {} };
+  try {
+    bdlProps = await fetchWnbaProps(date);
+    if (bdlProps._audit?.warnings?.length) {
+      warnings.push(...bdlProps._audit.warnings.map(w => `BDL: ${w}`));
+    }
+  } catch (err) {
+    warnings.push(`BDL props fetch failed: ${err.message}`);
+  }
+  const bdlPropLines = bdlProps.propLines || {};
+  const bdlPropsAvailable = Object.keys(bdlPropLines).length > 0;
+
   // STEP 3: For each game, build the list of (player, market) analyses to run
   const analysisPromises = [];
   const gameContexts = {};  // for output organization
@@ -208,6 +225,12 @@ async function generateSlate(opts = {}) {
     }
 
     const gameLines = lines[game.gameId] || {};
+    // Merge BDL player-prop lines into this game's propLines. Caller-provided
+    // lines win; BDL fills the rest. Result feeds the existing per-prop lookup
+    // (gameLines.propLines[playerName_market]) with no downstream change.
+    if (bdlPropsAvailable) {
+      gameLines.propLines = { ...bdlPropLines, ...(gameLines.propLines || {}) };
+    }
     // Real lines from The Odds API, looked up by either team's tricode.
     const feedLine = gameLineFeed.byTeam[homeAbbr] || gameLineFeed.byTeam[awayAbbr] || null;
     // Precedence: explicit caller line > Odds API feed > default fallback.
@@ -461,9 +484,10 @@ async function buildAndRunAnalysis({
     // Look up line: caller can provide per-prop lines via gameLines.propLines[playerName_market]
     const propLineKey = `${player.name}_${market}`;
     const explicitLine = gameLines.propLines?.[propLineKey];
-    const line = Number.isFinite(Number(explicitLine))
-      ? Number(explicitLine)
-      : inferLineFromPlayer(player, market);
+    const hasRealLine = Number.isFinite(Number(explicitLine));
+    const line = hasRealLine ? Number(explicitLine) : inferLineFromPlayer(player, market);
+    // 'provided' = a real book/prop line (caller or BDL); 'inferred' = engine guess.
+    const propLineSource = hasRealLine ? 'provided' : 'inferred';
 
     const input = {
       player: playerWithRecent,
@@ -537,7 +561,7 @@ async function buildAndRunAnalysis({
       scores: unified.scores,
       chips: unified.chips || buildChipsFromUnified(unified, player, reboundExtras),
       hardFlags: buildHardFlagsFromUnified(unified, player, reboundExtras),
-      lineSource: Number.isFinite(Number(explicitLine)) ? 'provided' : 'inferred',
+      lineSource: propLineSource,
       shadowMode: WNBA_SHADOW_MODE,
       _dataQuality: player._dataQuality,
       // Richer unified outputs surfaced for the card + debugging.
