@@ -77,6 +77,8 @@ const WNBA = {
     coverage: [0.95, 1.05],       // coaching scheme effect; neutral (1.0) until coverage data exists
     shootingForm: [0.93, 1.08],   // recent FG% hot/cold adjustment to scoring efficiency
     reboundEquity: [0.78, 1.22],  // archetype rebound-equity swing from shot geography
+    gameLineFactor: [0.96, 1.04], // each minor defensive factor's bound (small nudge)
+    gameLineCombined: [0.93, 1.07],// overall minor-factor suppression bound on a team total
     recentRate: [0.80, 1.25],
     combined: [0.82, 1.25],       // overall cap on the stacked multiplier (anti career-high rail)
   },
@@ -108,6 +110,24 @@ const WNBA = {
     midShare: 0.26,
     ftRate: 0.22,                 // FTA per FGA
     avgDist: 13.5,
+  },
+
+  // --- Game-line engine (team totals, spread, moneyline) ---
+  gameLine: {
+    ppgBlend: 0.70,               // weight on rating-matchup vs league-mean stabilizer
+    homeCourtPoints: 2.0,         // WNBA home edge in points
+    winProbScale: 9.0,            // logistic scale: margin → win prob (~+3.5 ≈ 60%)
+    // Minor-defensive-factor sensitivities — deliberately SMALL. These are fine
+    // nudges (a point or two) on top of the rating matchup, not primary drivers.
+    forcedTovSensitivity: 0.10,
+    stealSensitivity: 0.05,
+    blockSensitivity: 0.04,
+    offRebAllowedSensitivity: 0.06,
+    schemeSensitivity: 0.20,      // applies only when a scheme feed exists
+  },
+  gameLineLeagueAvg: {
+    pts: 82, defRating: 100,
+    forcedTov: 13.5, steals: 7.5, blocks: 3.8, offRebAllowed: 9.0,
   },
 
   // --- Recommendation thresholds ---
@@ -180,6 +200,8 @@ const NBA = {
     coverage: [0.95, 1.05],
     shootingForm: [0.93, 1.08],
     reboundEquity: [0.78, 1.22],
+    gameLineFactor: [0.96, 1.04],
+    gameLineCombined: [0.93, 1.07],
     recentRate: [0.80, 1.25],
     combined: [0.82, 1.28],
   },
@@ -205,6 +227,21 @@ const NBA = {
     midShare: 0.21,
     ftRate: 0.24,
     avgDist: 14.5,
+  },
+
+  gameLine: {
+    ppgBlend: 0.70,
+    homeCourtPoints: 2.4,         // NBA home edge slightly larger
+    winProbScale: 11.0,           // wider NBA scoring → wider scale
+    forcedTovSensitivity: 0.10,
+    stealSensitivity: 0.05,
+    blockSensitivity: 0.04,
+    offRebAllowedSensitivity: 0.06,
+    schemeSensitivity: 0.20,
+  },
+  gameLineLeagueAvg: {
+    pts: 113, defRating: 113,
+    forcedTov: 13.5, steals: 7.8, blocks: 5.0, offRebAllowed: 10.5,
   },
 
   thresholds: {

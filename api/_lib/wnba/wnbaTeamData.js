@@ -215,6 +215,15 @@ export async function getAllTeamStats(season = 2026) {
       foulRate: Number.isFinite(ownPf) ? ownPf : 21,
       turnoverPressure: scoreVsLeague(toNum(c.opp_tov_per_g), avg.opp_tov_per_g),
 
+      // Defensive factors for the game-line engine (all REAL from bbref).
+      stealsPerG:        toNumOrNull(c.stl_per_g),        // ball pressure (forces empty possessions)
+      blocksPerG:        toNumOrNull(c.blk_per_g),        // rim deterrence
+      forcedTovPerG:     toNumOrNull(c.opp_tov_per_g),    // turnovers this defense forces
+      offRebAllowedPerG: toNumOrNull(c.opp_orb_per_g),    // second-chance points conceded
+      oppStealsPerG:     toNumOrNull(c.opp_stl_per_g),    // how often this offense gets stripped
+      ptsPerG:           toNumOrNull(c.pts_per_g),
+      oppPtsPerG:        toNumOrNull(c.opp_pts_per_g),
+
       switchRate: 50,   // unavailable from bbref — neutral
       dropRate: 50,     // unavailable from bbref — neutral
 

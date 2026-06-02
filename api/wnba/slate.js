@@ -56,6 +56,7 @@
 
 import { analyzeBasketballProp } from "../_lib/basketball/basketballProps.js";
 import { analyzeUnifiedProp } from "../_lib/basketball/unifiedPointsEngine.js";
+import { analyzeReboundProp } from "../_lib/basketball/reboundEnvironmentEngine.js";
 import { buildAuditEntry } from "../_lib/basketball/basketballAudit.js";
 import { getGamesForDate, getTodaysGames } from "../_lib/wnba/wnbaSchedule.js";
 import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
@@ -348,7 +349,7 @@ function deriveHitRate(u) {
   return null;
 }
 
-function buildChipsFromUnified(u, player) {
+function buildChipsFromUnified(u, player, reboundExtras) {
   const chips = [];
   if (player?.primaryCreator) chips.push('PRIMARY CREATOR');
   if (player?.primaryOption || (player?.usageRate >= 28)) chips.push('PRIMARY OPTION');
@@ -358,10 +359,22 @@ function buildChipsFromUnified(u, player) {
   if (m.matchup_opposingDefense && m.matchup_opposingDefense < 0.97) chips.push('TOUGH DEFENSE');
   if (m.coverage_coachingScheme && m.coverage_coachingScheme !== 1.0) chips.push('COVERAGE EDGE');
   if (m.whistle && m.whistle > 1.02) chips.push('WHISTLE');
+  // Rebound-environment chips
+  if (reboundExtras?.environment?.oppType && reboundExtras.environment.oppProfileSource === 'REAL') {
+    const t = reboundExtras.environment.oppType;
+    if (t === 'PERIMETER') chips.push('LONG-MISS ENV');
+    else if (t === 'DOWNHILL_PAINT') chips.push('SHORT-MISS ENV');
+    else if (t === 'PULLUP_MIDRANGE') chips.push('MID-MISS ENV');
+  }
+  if (reboundExtras?.equity?.archetype) {
+    const eq = reboundExtras.equity.equityMultiplier;
+    if (eq != null && eq >= 1.05) chips.push('REBOUND EQUITY +');
+    else if (eq != null && eq <= 0.95) chips.push('REBOUND EQUITY −');
+  }
   return chips;
 }
 
-function buildHardFlagsFromUnified(u, player) {
+function buildHardFlagsFromUnified(u, player, reboundExtras) {
   const flags = [];
   const sc = u?.scores || {};
   if (sc.roleStability != null && sc.roleStability < 40) flags.push('ROLE TOO FRAGILE');
@@ -369,6 +382,8 @@ function buildHardFlagsFromUnified(u, player) {
   const dc = u?.dataCompleteness || {};
   if (dc.opposingDefense && dc.opposingDefense !== 'REAL') flags.push('NO DEFENSE DATA');
   if (u?.confidence != null && u.confidence < 45) flags.push('LOW CONFIDENCE');
+  // Rebound trap is the headline flag for the rebounds market.
+  if (reboundExtras?.trap?.isTrap) flags.push('REBOUND TRAP');
   return flags;
 }
 
@@ -443,13 +458,35 @@ async function buildAndRunAnalysis({
       }
     };
 
-    // ===== UNIFIED ENGINE =====
-    // One engine: blends the possession + rate scoring cores and stacks the
-    // role / usage / environment / matchup(opposing defense) / coverage(coaching
-    // scheme) / whistle layers. Replaces the old v1 + v2 split entirely.
+    // ===== ENGINE SELECTION =====
+    // Rebounds run through the rebound-ENVIRONMENT engine (opponent shot
+    // geography → miss profile → archetype equity → trap). Everything else runs
+    // the unified points engine (blended cores + defense/coverage/whistle).
+    const marketLower = String(market).toLowerCase();
+    const isRebounds = marketLower.includes('rebound') || marketLower === 'reb' || marketLower === 'trb';
+
     let unified;
+    let reboundExtras = null;
     try {
-      unified = analyzeUnifiedProp(input, 'WNBA');
+      if (isRebounds) {
+        const reb = analyzeReboundProp(input, 'WNBA');
+        unified = {
+          line: reb.line, projection: reb.projection, edge: reb.edge,
+          recommendation: reb.recommendation, confidence: reb.confidence,
+          tier: reb.tier, hitRate: deriveHitRate(reb), scores: reb.scores,
+          probOver: reb.probOver, probUnder: reb.probUnder,
+          floor: reb.floor, ceiling: reb.ceiling,
+          multipliers: reb.multipliers, dataCompleteness: reb.dataCompleteness,
+          cores: null, layerDetail: null,
+        };
+        // Rebound-specific surfaces for the card.
+        reboundExtras = {
+          environment: reb.environment, equity: reb.equity,
+          trap: reb.trap, variance: reb.variance,
+        };
+      } else {
+        unified = analyzeUnifiedProp(input, 'WNBA');
+      }
     } catch (uerr) {
       // Engine must never break the slate — fall back to the legacy v1 result.
       const legacy = analyzeBasketballProp(input, 'WNBA');
@@ -476,8 +513,8 @@ async function buildAndRunAnalysis({
       label: unified.tier,
       hitRate: unified.hitRate ?? deriveHitRate(unified),
       scores: unified.scores,
-      chips: unified.chips || buildChipsFromUnified(unified, player),
-      hardFlags: buildHardFlagsFromUnified(unified, player),
+      chips: unified.chips || buildChipsFromUnified(unified, player, reboundExtras),
+      hardFlags: buildHardFlagsFromUnified(unified, player, reboundExtras),
       lineSource: Number.isFinite(Number(explicitLine)) ? 'provided' : 'inferred',
       shadowMode: WNBA_SHADOW_MODE,
       _dataQuality: player._dataQuality,
@@ -489,7 +526,12 @@ async function buildAndRunAnalysis({
       cores: unified.cores,
       multipliers: unified.multipliers,
       layerDetail: unified.layerDetail,
-      dataCompleteness: unified.dataCompleteness
+      dataCompleteness: unified.dataCompleteness,
+      // Rebound-environment surfaces (null for non-rebound markets).
+      reboundEnvironment: reboundExtras?.environment || null,
+      reboundEquity: reboundExtras?.equity || null,
+      reboundTrap: reboundExtras?.trap || null,
+      reboundVariance: reboundExtras?.variance || null
     };
   } catch (err) {
     return {
