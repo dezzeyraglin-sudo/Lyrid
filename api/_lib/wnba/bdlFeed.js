@@ -160,4 +160,75 @@ export async function fetchWnbaLiveScores(opts = {}) {
   return result;
 }
 
+/**
+ * Fetch ACTUAL per-player box-score results for a date, for grading predictions.
+ * Returns a name-keyed map of the real stat line so the history tab can mark
+ * each tracked prop win/loss and measure projection error (MAE).
+ *
+ *   { byPlayer: { "Player Name": { points, rebounds, assists, threes, pra,
+ *                                  minutes, didPlay, final } }, _audit }
+ *
+ * Uses the Game Player Stats endpoint (/stats), which carries flat per-game
+ * box lines. Field names are read defensively (pts/points, reb/rebounds, etc.)
+ * so a provider/shape change degrades instead of breaking.
+ */
+export async function fetchWnbaPlayerStats(dateYmd, opts = {}) {
+  if (!isBdlConfigured()) {
+    return { byPlayer: {}, _audit: { keyPresent: false, warnings: ['BDL_API_KEY not set'] } };
+  }
+  const cacheKey = `bdl:stats:${dateYmd}`;
+  if (!opts.noCache) { const c = cacheGet(cacheKey); if (c) return c; }
+
+  const warnings = [];
+  // Resolve the day's games first (also tells us which are final).
+  const games = await bdlGet('/games', { 'dates': [dateYmd], per_page: 100 });
+  if (games.status !== 200) {
+    return { byPlayer: {}, _audit: { keyPresent: true, httpStatus: games.status,
+      warnings: [`games HTTP ${games.status}`] } };
+  }
+  const gameList = games.body?.data || [];
+  const finalById = {};
+  for (const g of gameList) {
+    const isFinal = /final/i.test(String(g.status || '')) || g.period >= 4 && /final/i.test(String(g.time || ''));
+    finalById[g.id] = isFinal;
+  }
+  const gameIds = gameList.map(g => g.id);
+  if (gameIds.length === 0) {
+    return { byPlayer: {}, _audit: { keyPresent: true, httpStatus: 200, gamesFound: 0, warnings: ['no games'] } };
+  }
+
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+  const byPlayer = {};
+  let rows = 0;
+  // Pull box lines per game (stats endpoint paginates; one page covers a game's
+  // ~24 players at per_page=100).
+  for (const gid of gameIds) {
+    const st = await bdlGet('/stats', { 'game_ids': [gid], per_page: 100 });
+    if (st.status === 401) { warnings.push('stats 401 — GOAT tier/trial required'); break; }
+    if (st.status !== 200) { warnings.push(`stats game ${gid} HTTP ${st.status}`); continue; }
+    for (const row of (st.body?.data || [])) {
+      const name = playerName(row) || playerName({ player: row.player });
+      if (!name) continue;
+      const pts = num(row.pts ?? row.points);
+      const reb = num(row.reb ?? row.rebounds ?? row.total_rebounds);
+      const ast = num(row.ast ?? row.assists);
+      const fg3 = num(row.fg3m ?? row.three_pointers_made ?? row.fg3);
+      const minRaw = row.min ?? row.minutes;
+      const minutes = (typeof minRaw === 'string' && minRaw.includes(':'))
+        ? num(minRaw.split(':')[0]) : num(minRaw);
+      const didPlay = (minutes != null && minutes > 0) || pts != null || reb != null;
+      byPlayer[name] = {
+        points: pts, rebounds: reb, assists: ast, threes: fg3,
+        pra: (pts != null && reb != null && ast != null) ? pts + reb + ast : null,
+        minutes, didPlay, final: finalById[gid] === true,
+      };
+      rows++;
+    }
+  }
+  const result = { byPlayer, _audit: { keyPresent: true, httpStatus: 200,
+    gamesFound: gameIds.length, playerRows: rows, warnings } };
+  cacheSet(cacheKey, result);
+  return result;
+}
+
 export const _testing = { normalizeMarket, playerName, BDL_BASE };

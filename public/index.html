@@ -1509,6 +1509,24 @@
   .bb-stat-pct.cold{color:var(--cool)}
   .bb-stat-pct.neutral{color:var(--warn)}
 
+  /* Rollup / slice tables — MLB rollup view + WNBA prop tracking */
+  .rollup-section-title{font-size:11px;letter-spacing:0.15em;color:var(--dim);font-weight:700;margin:18px 0 6px;text-transform:uppercase}
+  .rollup-tier-note{font-size:11px;color:var(--dim);line-height:1.5;margin-bottom:8px;opacity:0.85}
+  .rollup-prop-list{display:flex;flex-direction:column;gap:1px;background:var(--line);border-radius:6px;overflow:hidden}
+  .rollup-prop-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:9px 12px;background:var(--panel-2,var(--panel-3))}
+  .rollup-prop-name{font-size:12px;font-weight:600;color:var(--ink);letter-spacing:0.03em}
+  .rollup-prop-rate{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+  .rollup-prop-rate.hot{color:var(--accent)}
+  .rollup-prop-rate.cold{color:var(--cool)}
+  .rollup-prop-rate.neutral{color:var(--warn)}
+  .rollup-prop-vol{font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums;text-align:right}
+  .rollup-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:8px}
+  .rollup-cell{background:var(--panel-3);border:1px solid var(--line);border-radius:6px;padding:10px;text-align:center}
+  .rollup-cell-label{font-size:9px;letter-spacing:0.12em;color:var(--dim);font-weight:700}
+  .rollup-cell-value{font-size:18px;font-weight:800;color:var(--ink);margin-top:3px;font-variant-numeric:tabular-nums}
+  .rollup-cell-sub{font-size:9px;color:var(--dim);margin-top:2px}
+  .rollup-footnote{font-size:10px;color:var(--dim);line-height:1.5;margin-top:16px;padding-top:10px;border-top:1px solid var(--line);opacity:0.8}
+
   .bb-section-title{font-size:11px;letter-spacing:0.15em;color:var(--dim);font-weight:700;margin:16px 0 8px;text-transform:uppercase}
 
   .bb-breakdown{border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:14px}
@@ -3515,6 +3533,11 @@ let state = {
   gameLineBets: {},      // { 'YYYY-MM-DD_gamePk_type': { date, gamePk, pick, tier, type, price, away, home, result, graded } }
   firstInningBets: {},   // { 'YYYY-MM-DD_gamePk': { date, gamePk, pick, tier, units, probability, price, away, home, result, graded } }
   projectionAudit: {},   // { 'YYYY-MM-DD_gamePk': { date, gamePk, capturedAt, awayTeam, homeTeam, projAwayRuns, projHomeRuns, projTotal, homeWinProb, marketTotal, marketSpread, favoriteML, actualAwayRuns, actualHomeRuns, actualTotal, winner, isFinal, graded } }
+  // WNBA prop prediction tracking (June 2, 2026) — auto-captured on slate render,
+  // graded against actual box scores via /api/wnba/results. Each entry stores the
+  // full prediction context so the engine can be sharpened (which layers predict).
+  // key: 'YYYY-MM-DD_Player_market'
+  wnbaPropHistory: {},   // { date: { key: { date, player, team, opponent, market, line, projection, edge, lean, probOver, tier, lineSource, confidence, drivers, dataCompleteness, floor, ceiling, capturedAt, actual, result, error, graded } } }
   // MLB selection engine toggle (May 23, 2026)
   //   'unassisted' = NEW data-grounded engine — biased toward hitters with the
   //                  best chance to put the ball in play and get on base
@@ -3777,6 +3800,7 @@ function loadState() {
   state.researchTags = state.researchTags || {};
   state.tracking = state.tracking || {};
   state.bestBetHistory = state.bestBetHistory || {};
+  state.wnbaPropHistory = state.wnbaPropHistory || {};
   state.hrAudit = state.hrAudit || { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } };
   state.hrAudit.entries = state.hrAudit.entries || [];
   state.hrAudit.byTier = state.hrAudit.byTier || { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} };
@@ -9988,10 +10012,129 @@ function renderHistory() {
       <button class="history-subnav-btn ${historyView==='calibration'?'active':''}" data-hist-view="calibration" onclick="switchHistoryView('calibration')">◎ CALIBRATION</button>
       <button class="history-subnav-btn ${historyView==='rollup'?'active':''}" data-hist-view="rollup" onclick="switchHistoryView('rollup')">∑ ROLLUP</button>
       <button class="history-subnav-btn ${historyView==='picks'?'active':''}" data-hist-view="picks" onclick="switchHistoryView('picks')">$ MY BETS</button>
-      ${historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
+      <button class="history-subnav-btn ${historyView==='wnba'?'active':''}" data-hist-view="wnba" onclick="switchHistoryView('wnba')">◯ WNBA PROPS</button>
+      ${historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
       <button class="btn sm" onclick="gradeAllBestBets()" style="margin-left:6px">⚡ GRADE ALL</button>`}
     </div>
   `;
+
+  // WNBA PROPS view — in-depth prediction tracking to sharpen the engine
+  if (historyView === 'wnba') {
+    const all = [];
+    Object.keys(state.wnbaPropHistory || {}).forEach(d => {
+      Object.values(state.wnbaPropHistory[d]).forEach(e => all.push(e));
+    });
+    if (all.length === 0) {
+      container.innerHTML = subnavHtml + `<div class="empty"><div class="empty-icon">◌</div><div>No WNBA predictions tracked yet.<br><br>Predictions are auto-captured when you open the WNBA tab and load a slate.<br>After games finish, tap ⚡ GRADE ALL (or reopen the app) to score them against actual box scores.</div></div>`;
+      return;
+    }
+
+    const fmtRate = (r) => r == null ? '—' : (r*100).toFixed(1) + '%';
+    const rateClass = (r) => r == null ? 'neutral' : r >= 0.55 ? 'hot' : r <= 0.45 ? 'cold' : 'neutral';
+    const fmtMae = (m) => m == null ? '—' : m.toFixed(2);
+    const rec = (s) => `${s.wins}-${s.losses}`;
+
+    // Only REAL-line props count toward win/loss record; inferred props still
+    // contribute MAE. Split so the headline record isn't polluted by shadow lines.
+    const realLine = all.filter(e => e.lineSource === 'provided');
+    const overall = computeWnbaPropStats(realLine);
+    const overallMaeAll = computeWnbaPropStats(all);  // MAE across everything
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 14);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+    const recent = computeWnbaPropStats(realLine.filter(e => e.date >= cutoffStr));
+
+    const statsBar = `
+      <div class="bb-stats-grid">
+        <div class="bb-stat-card featured">
+          <div class="bb-stat-val">${rec(overall)}</div>
+          <div class="bb-stat-lbl">RECORD · REAL LINES</div>
+          ${overall.winRate !== null ? `<div class="bb-stat-pct ${rateClass(overall.winRate)}">${fmtRate(overall.winRate)}</div>` : '<div class="bb-stat-pct neutral">—</div>'}
+        </div>
+        <div class="bb-stat-card featured" style="border-color:var(--heat);background:linear-gradient(135deg,rgba(255,122,61,0.1),rgba(255,122,61,0.02))">
+          <div class="bb-stat-val">${fmtMae(overallMaeAll.mae)}</div>
+          <div class="bb-stat-lbl" style="color:var(--heat)">PROJECTION MAE</div>
+          <div class="bb-stat-pct small neutral">${overallMaeAll.bias != null ? (overallMaeAll.bias > 0 ? '+' : '') + overallMaeAll.bias.toFixed(2) + ' bias' : ''}</div>
+        </div>
+        <div class="bb-stat-card">
+          <div class="bb-stat-val">${rec(recent)}</div>
+          <div class="bb-stat-lbl">LAST 14 DAYS</div>
+          ${recent.winRate !== null ? `<div class="bb-stat-pct small ${rateClass(recent.winRate)}">${fmtRate(recent.winRate)}</div>` : ''}
+        </div>
+        <div class="bb-stat-card">
+          <div class="bb-stat-val">${overallMaeAll.pending}</div>
+          <div class="bb-stat-lbl">PENDING</div>
+          <div class="bb-stat-pct small neutral">${all.length} tracked</div>
+        </div>
+      </div>
+    `;
+
+    // Slice helper → table rows.
+    const sliceTable = (title, note, groups) => {
+      const rows = groups.filter(g => g.stats.n > 0)
+        .map(g => {
+          const s = g.stats;
+          return `
+          <div class="rollup-prop-row">
+            <span class="rollup-prop-name">${esc(g.label)}</span>
+            <span class="rollup-prop-rate ${rateClass(s.winRate)}">${fmtRate(s.winRate)}</span>
+            <span class="rollup-prop-vol">${rec(s)} · MAE ${fmtMae(s.mae)} · ${s.n}</span>
+          </div>`;
+        }).join('');
+      return rows ? `<h3 class="rollup-section-title">${esc(title)}</h3>${note ? `<div class="rollup-tier-note">${esc(note)}</div>` : ''}<div class="rollup-prop-list">${rows}</div>` : '';
+    };
+
+    // By model tier — the core calibration signal (STRONG should beat NEUTRAL).
+    const byTier = sliceTable('BY MODEL TIER', 'When the model graded this tier, did the prop hit? STRONG/ELITE should outperform NEUTRAL — that\u2019s the signal the tiers are predictive.', [
+      { label: 'ELITE', stats: computeWnbaPropStats(realLine.filter(e => e.tier === 'elite')) },
+      { label: 'STRONG', stats: computeWnbaPropStats(realLine.filter(e => e.tier === 'strong')) },
+      { label: 'SOLID', stats: computeWnbaPropStats(realLine.filter(e => e.tier === 'solid')) },
+      { label: 'NEUTRAL', stats: computeWnbaPropStats(realLine.filter(e => e.tier === 'neutral' || !e.tier)) },
+    ]);
+
+    // By market — where is the engine sharp vs soft (MAE is the read here).
+    const markets = [...new Set(all.map(e => e.market))];
+    const byMarket = sliceTable('BY MARKET', 'Lower MAE = sharper projections for that stat. Find where the engine is weakest and tune that market first.',
+      markets.map(m => ({ label: m.toUpperCase(), stats: computeWnbaPropStats(all.filter(e => e.market === m)) })));
+
+    // Real vs inferred line — sanity check that real-line edges actually win.
+    const byLineSource = sliceTable('BY LINE SOURCE', 'Real-line props are graded vs the book; inferred are shadow (MAE only). Real lines should show a meaningful record.', [
+      { label: 'REAL BOOK LINE', stats: computeWnbaPropStats(realLine) },
+      { label: 'INFERRED (shadow)', stats: computeWnbaPropStats(all.filter(e => e.lineSource !== 'provided')) },
+    ]);
+
+    // Opposing-defense REAL vs NEUTRAL — does the defense layer being real help?
+    const byDefense = sliceTable('BY DEFENSE-LAYER STATUS', 'Props where the opposing-defense layer was REAL vs NEUTRAL. If REAL outperforms, the defense data is earning its place in the projection.', [
+      { label: 'DEFENSE REAL', stats: computeWnbaPropStats(realLine.filter(e => e.defenseReal)) },
+      { label: 'DEFENSE NEUTRAL', stats: computeWnbaPropStats(realLine.filter(e => !e.defenseReal)) },
+    ]);
+
+    // Recent graded entries (most recent first).
+    const recentEntries = all.filter(e => e.graded).sort((a,b) => (b.date+b.player).localeCompare(a.date+a.player)).slice(0, 40);
+    const entryRows = recentEntries.map(e => {
+      const col = e.result === 'win' ? 'var(--accent)' : e.result === 'loss' ? 'var(--danger)' : 'var(--dim)';
+      const resLabel = (e.result || 'pending').toUpperCase();
+      const errStr = e.error != null ? `${e.error > 0 ? '+' : ''}${e.error}` : '';
+      return `
+        <div class="glb-history-entry" style="border-left-color:${col}">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:600;color:var(--ink)">${esc(e.player)} <span style="font-weight:400;color:var(--dim);font-size:11px">${esc(e.market)}</span></span>
+            <span style="font-size:11px;font-weight:700;color:${col}">${resLabel}</span>
+          </div>
+          <div style="font-size:11px;color:var(--dim);margin-top:3px;font-variant-numeric:tabular-nums">
+            ${esc(e.lean)} ${e.line} · proj <b style="color:var(--ink)">${e.projection}</b> · actual <b style="color:var(--ink)">${e.actual ?? '—'}</b> ${errStr ? `· err ${errStr}` : ''}
+            ${e.tier ? ` · <span style="text-transform:uppercase">${esc(e.tier)}</span>` : ''}
+            ${e.lineSource !== 'provided' ? ' · <span style="opacity:0.7">inferred</span>' : ''}
+          </div>
+          <div style="font-size:10px;color:var(--dim);margin-top:2px">${esc(e.date)} · ${esc(e.team || '')} vs ${esc(e.opponent || '')}</div>
+        </div>`;
+    }).join('');
+
+    container.innerHTML = subnavHtml + statsBar + byTier + byMarket + byLineSource + byDefense
+      + `<h3 class="rollup-section-title">RECENT GRADED PROPS</h3>`
+      + (entryRows || `<div class="empty" style="padding:20px"><div>No graded props yet. Tap ⚡ GRADE ALL after games finish.</div></div>`)
+      + `<div class="rollup-footnote">Predictions auto-capture when you load a WNBA slate and grade against real box scores. Win/loss counts only REAL-line props; inferred-line props track projection error (MAE) in shadow. Calibration sharpens with volume — aim for 30+ graded per slice before trusting it.</div>`;
+    return;
+  }
 
   // GAME BETS view — render the game-line bet tracker
   if (historyView === 'gamebets') {
@@ -11560,7 +11703,7 @@ function saveNotes() {
 function confirmReset() {
   if (!confirm('Reset ALL data?')) return;
   if (!confirm('Are you sure? Cannot be undone.')) return;
-  state = { picks:{}, banned:{pitchers:[],hitters:[],teams:[]}, notes:'', currentDate:getTodayStr(), researchTags:{}, tracking:{}, bestBetHistory:{}, hrAudit: { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } }, gameLineBets: {}, firstInningBets: {}, projectionAudit: {}, secretFilter: { enabled: false } };
+  state = { picks:{}, banned:{pitchers:[],hitters:[],teams:[]}, notes:'', currentDate:getTodayStr(), researchTags:{}, tracking:{}, bestBetHistory:{}, hrAudit: { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } }, gameLineBets: {}, firstInningBets: {}, projectionAudit: {}, wnbaPropHistory: {}, secretFilter: { enabled: false } };
   saveState();
   location.reload();
 }
@@ -11731,6 +11874,118 @@ function _clearHistoryBadgeIfShown() {
   }
 }
 
+// ============================================================
+// WNBA PROP TRACKING — capture, grade, stats (June 2, 2026)
+// ============================================================
+// Captures every projected prop from a rendered slate, grades each against the
+// actual box score via /api/wnba/results, and powers the in-depth History view
+// so the engine can be sharpened: hit rate + projection error (MAE) sliced by
+// tier, market, line source (real vs inferred), and whether the opposing-defense
+// layer was REAL. Only props with a REAL book line count toward record/ROI;
+// inferred-line props still track MAE (projection accuracy) in shadow.
+
+window.captureWnbaPredictions = function(data) {
+  if (!data || !Array.isArray(data.passes)) return;
+  const date = data.date || getTodayStr();
+  state.wnbaPropHistory = state.wnbaPropHistory || {};
+  const day = state.wnbaPropHistory[date] = state.wnbaPropHistory[date] || {};
+  let added = 0;
+  data.passes.forEach(p => {
+    if (!p.player || !p.market) return;
+    const projection = (p.projection != null && Number.isFinite(Number(p.projection))) ? Number(p.projection) : null;
+    if (projection == null || p.line == null) return;
+    const key = `${p.player}_${p.market}`;
+    const existing = day[key];
+    // Don't clobber a graded entry; refresh an ungraded one (lines/projection move pre-game).
+    if (existing && existing.graded) return;
+    const lean = projection >= Number(p.line) ? 'OVER' : 'UNDER';
+    day[key] = {
+      date, player: p.player, team: p.team, opponent: p.opponent, market: p.market,
+      line: Number(p.line), projection: Number(projection.toFixed(2)),
+      edge: (p.edge != null && Number.isFinite(Number(p.edge))) ? Number(Number(p.edge).toFixed(2)) : null,
+      lean, probOver: p.probOver ?? null,
+      tier: (p.label || '').toLowerCase(),
+      finalEdgeScore: p.scores?.finalEdge ?? null,
+      lineSource: p.lineSource || 'inferred',
+      confidence: p.confidence ?? null,
+      defenseReal: (p.dataCompleteness?.opposingDefense === 'REAL'),
+      drivers: p.scores ? {
+        role: p.scores.roleStability, usage: p.scores.usageFunnel,
+        env: p.scores.environment, def: p.scores.matchup,
+        cov: p.scores.coverage, var: p.scores.variance
+      } : null,
+      floor: p.floor ?? null, ceiling: p.ceiling ?? null,
+      capturedAt: existing?.capturedAt || new Date().toISOString(),
+      actual: null, result: null, error: null, graded: false
+    };
+    added++;
+  });
+  if (added > 0) saveState();
+};
+
+// Grade WNBA props for one date (or all ungraded dates) against actual results.
+window.gradeWnbaProps = async function(opts = {}) {
+  const silent = opts.silent;
+  state.wnbaPropHistory = state.wnbaPropHistory || {};
+  const dates = opts.date ? [opts.date]
+    : Object.keys(state.wnbaPropHistory).filter(d =>
+        Object.values(state.wnbaPropHistory[d]).some(e => !e.graded));
+  if (dates.length === 0) { if (!silent) showToast('Nothing to grade'); return; }
+
+  // Don't grade today's slate until games have had time to finish.
+  const today = getTodayStr();
+  let gradedCount = 0;
+  for (const date of dates) {
+    try {
+      const res = await fetch(`/api/wnba/results?date=${date}`);
+      const data = await res.json();
+      if (!data.ok || !data.byPlayer) continue;
+      const day = state.wnbaPropHistory[date];
+      Object.values(day).forEach(e => {
+        if (e.graded) return;
+        const box = data.byPlayer[e.player];
+        if (!box) return;                       // player not found yet (game not posted)
+        if (!box.final && date === today) return; // game still live today
+        if (!box.didPlay) { e.result = 'dnp'; e.actual = 0; e.graded = true; gradedCount++; return; }
+        const marketKey = e.market.toLowerCase().includes('rebound') ? 'rebounds'
+          : e.market.toLowerCase().includes('assist') ? 'assists'
+          : e.market.toLowerCase().includes('three') ? 'threes'
+          : e.market.toLowerCase().includes('pra') ? 'pra' : 'points';
+        const actual = box[marketKey];
+        if (actual == null) return;
+        e.actual = actual;
+        e.error = Number((e.projection - actual).toFixed(2));   // signed proj error
+        // Win/loss is graded vs the line in the direction the model leaned.
+        const overHit = actual > e.line;
+        const push = actual === e.line;
+        e.result = push ? 'push' : ((e.lean === 'OVER') === overHit ? 'win' : 'loss');
+        e.graded = true;
+        gradedCount++;
+      });
+    } catch (err) { if (!silent) console.warn('[gradeWnbaProps]', date, err.message); }
+  }
+  if (gradedCount > 0) { saveState(); if (typeof renderHistory === 'function') renderHistory(); }
+  if (!silent) showToast(gradedCount > 0 ? `Graded ${gradedCount} props` : 'No newly final results');
+};
+
+// Stats roll-up over a list of graded entries.
+function computeWnbaPropStats(entries) {
+  const graded = entries.filter(e => e.graded && (e.result === 'win' || e.result === 'loss'));
+  const wins = graded.filter(e => e.result === 'win').length;
+  const losses = graded.filter(e => e.result === 'loss').length;
+  const total = wins + losses;
+  const winRate = total > 0 ? wins / total : null;
+  // MAE over everything with a real actual (independent of win/loss).
+  const withErr = entries.filter(e => e.graded && e.error != null);
+  const mae = withErr.length > 0
+    ? withErr.reduce((s, e) => s + Math.abs(e.error), 0) / withErr.length : null;
+  const bias = withErr.length > 0
+    ? withErr.reduce((s, e) => s + e.error, 0) / withErr.length : null;  // +over-projects
+  const pending = entries.filter(e => !e.graded).length;
+  const dnp = entries.filter(e => e.result === 'dnp').length;
+  return { wins, losses, total, winRate, mae, bias, pending, dnp, n: entries.length };
+}
+
 async function autoGradeOnAppOpen() {
   // Throttle: don't run more than once per 5-minute window. Uses sessionStorage
   // so a fresh app load runs once, but a tab refresh within 5 min skips.
@@ -11756,6 +12011,9 @@ async function autoGradeOnAppOpen() {
 
   try { if (typeof gradePitcherPropBets === 'function') await gradePitcherPropBets({ silent: true }); }
   catch(err) { console.warn('[autoGrade] pitcher prop bets failed:', err.message); }
+
+  try { if (typeof window.gradeWnbaProps === 'function') await window.gradeWnbaProps({ silent: true }); }
+  catch(err) { console.warn('[autoGrade] wnba props failed:', err.message); }
 
   // Compute newly-graded delta
   const afterCount = _countGradedBets();
@@ -12114,6 +12372,11 @@ async function autoGradeOnAppOpen() {
     const banner = document.getElementById('wnbaBanner');
     const meta = document.getElementById('wnbaMeta');
     if (!data || !list) return;
+
+    // Auto-capture this slate's predictions into the history store for grading.
+    if (typeof window.captureWnbaPredictions === 'function') {
+      try { window.captureWnbaPredictions(data); } catch (e) { console.warn('[wnba capture]', e.message); }
+    }
 
     if (meta) {
       const gen = data.generatedAt ? new Date(data.generatedAt).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) : '';
