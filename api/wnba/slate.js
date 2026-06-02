@@ -55,6 +55,7 @@
 // =============================================================
 
 import { analyzeBasketballProp } from "../_lib/basketball/basketballProps.js";
+import { analyzeUnifiedProp } from "../_lib/basketball/unifiedPointsEngine.js";
 import { buildAuditEntry } from "../_lib/basketball/basketballAudit.js";
 import { getGamesForDate, getTodaysGames } from "../_lib/wnba/wnbaSchedule.js";
 import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
@@ -335,6 +336,42 @@ async function generateSlate(opts = {}) {
  * Build the input for one (player, market) pair, run analysis, return result.
  * Catches errors and tags them so they don't break the whole slate.
  */
+// ----- Unified-output → card adapters -----
+// The card UI consumes chips, hardFlags, and a hitRate. The unified engine
+// reports structured layers instead, so translate them here.
+
+function deriveHitRate(u) {
+  // Use the over-probability as a rough "hit rate vs the (inferred) line".
+  if (u && u.probOver != null && Number.isFinite(Number(u.probOver))) {
+    return Math.round(Number(u.probOver) * 100);
+  }
+  return null;
+}
+
+function buildChipsFromUnified(u, player) {
+  const chips = [];
+  if (player?.primaryCreator) chips.push('PRIMARY CREATOR');
+  if (player?.primaryOption || (player?.usageRate >= 28)) chips.push('PRIMARY OPTION');
+  const m = u?.multipliers || {};
+  if (m.usageFunnel && m.usageFunnel > 1.0) chips.push('USAGE FUNNEL');
+  if (m.matchup_opposingDefense && m.matchup_opposingDefense > 1.03) chips.push('SOFT DEFENSE');
+  if (m.matchup_opposingDefense && m.matchup_opposingDefense < 0.97) chips.push('TOUGH DEFENSE');
+  if (m.coverage_coachingScheme && m.coverage_coachingScheme !== 1.0) chips.push('COVERAGE EDGE');
+  if (m.whistle && m.whistle > 1.02) chips.push('WHISTLE');
+  return chips;
+}
+
+function buildHardFlagsFromUnified(u, player) {
+  const flags = [];
+  const sc = u?.scores || {};
+  if (sc.roleStability != null && sc.roleStability < 40) flags.push('ROLE TOO FRAGILE');
+  if (sc.variance != null && sc.variance < 35) flags.push('HIGH VARIANCE');
+  const dc = u?.dataCompleteness || {};
+  if (dc.opposingDefense && dc.opposingDefense !== 'REAL') flags.push('NO DEFENSE DATA');
+  if (u?.confidence != null && u.confidence < 45) flags.push('LOW CONFIDENCE');
+  return flags;
+}
+
 async function buildAndRunAnalysis({
   player, isHome, opponent, team, market, season, game,
   spread, total, recentFormPromise, allTeamStats, gameLines,
@@ -400,22 +437,23 @@ async function buildAndRunAnalysis({
       }
     };
 
-    const result = analyzeBasketballProp(input, 'WNBA');
-
-    // ===== v2 projection (additive) =====
-    // Compute v2 projection if enabled and we have a roster for this team.
-    // v2Projection is attached to the analysis but the existing UI ignores it.
-    let v2Projection = null;
-    if (WNBA_V2_PROJECTIONS && v2Roster) {
-      try {
-        v2Projection = computeV2Projection({
-          player, market, v2Roster, v2OpponentRoster,
-          teamData, opponentTeam, spread, isHome, recentForm
-        });
-      } catch (v2err) {
-        // v2 failures must NEVER break the analysis. Tag and continue.
-        v2Projection = { error: v2err.message || 'v2 projection failed', engineVersion: 'v2.0.0-shadow' };
-      }
+    // ===== UNIFIED ENGINE =====
+    // One engine: blends the possession + rate scoring cores and stacks the
+    // role / usage / environment / matchup(opposing defense) / coverage(coaching
+    // scheme) / whistle layers. Replaces the old v1 + v2 split entirely.
+    let unified;
+    try {
+      unified = analyzeUnifiedProp(input, 'WNBA');
+    } catch (uerr) {
+      // Engine must never break the slate — fall back to the legacy v1 result.
+      const legacy = analyzeBasketballProp(input, 'WNBA');
+      unified = {
+        line: legacy.line, projection: legacy.projection, edge: legacy.edge,
+        recommendation: legacy.recommendation, confidence: legacy.confidence,
+        tier: legacy.label, hitRate: legacy.hitRate, scores: legacy.scores || {},
+        chips: legacy.chips || [], dataCompleteness: { engine: 'legacy-fallback', error: uerr.message },
+        floor: null, ceiling: null, cores: null, multipliers: null,
+      };
     }
 
     return {
@@ -424,22 +462,28 @@ async function buildAndRunAnalysis({
       team,
       opponent,
       market,
-      line: result.line,
-      projection: result.projection,
-      edge: result.edge,
-      recommendation: result.recommendation,
-      confidence: result.confidence,
-      label: result.label,
-      hitRate: result.hitRate,
-      scores: result.scores,
-      chips: result.chips,
-      hardFlags: result.details?.hardFlags || [],
+      line: unified.line,
+      projection: unified.projection,
+      edge: unified.edge,
+      recommendation: unified.recommendation,
+      confidence: unified.confidence,
+      label: unified.tier,
+      hitRate: unified.hitRate ?? deriveHitRate(unified),
+      scores: unified.scores,
+      chips: unified.chips || buildChipsFromUnified(unified, player),
+      hardFlags: buildHardFlagsFromUnified(unified, player),
       lineSource: Number.isFinite(Number(explicitLine)) ? 'provided' : 'inferred',
       shadowMode: WNBA_SHADOW_MODE,
-      // Diagnostic: data quality
       _dataQuality: player._dataQuality,
-      // v2 projection (shadow): attached for validation, ignored by UI
-      _v2Projection: v2Projection
+      // Richer unified outputs surfaced for the card + debugging.
+      probOver: unified.probOver,
+      probUnder: unified.probUnder,
+      floor: unified.floor,
+      ceiling: unified.ceiling,
+      cores: unified.cores,
+      multipliers: unified.multipliers,
+      layerDetail: unified.layerDetail,
+      dataCompleteness: unified.dataCompleteness
     };
   } catch (err) {
     return {

@@ -2760,12 +2760,7 @@
       <button class="lyrid-date-btn" onclick="changeWnbaDate(1)" aria-label="Next day">›</button>
     </div>
     <button class="lyrid-btn primary" id="loadWnbaBtn" onclick="loadWnbaSlate()">Refresh</button>
-    <!-- v2 engine toggle (May 22, 2026 — session 5) -->
-    <!-- Persists in localStorage. URL ?engine=v2 overrides. v1 = original engine; v2 = new injury-aware engine. -->
-    <div id="wnbaEngineToggle" class="lyrid-engine-toggle" role="group" aria-label="Projection engine selector" style="display:inline-flex;align-items:center;gap:0;border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:6px;overflow:hidden;font-size:11px;letter-spacing:0.06em">
-      <button id="wnbaEngineV1Btn" class="lyrid-engine-btn" data-engine="v1" onclick="setWnbaEngine('v1')" style="padding:6px 12px;border:0;background:transparent;color:var(--text-secondary, var(--dim));font-weight:600;cursor:pointer;font-family:inherit">v1</button>
-      <button id="wnbaEngineV2Btn" class="lyrid-engine-btn" data-engine="v2" onclick="setWnbaEngine('v2')" style="padding:6px 12px;border:0;background:transparent;color:var(--text-secondary, var(--dim));font-weight:600;cursor:pointer;font-family:inherit;border-left:0.5px solid var(--border-hairline, var(--brand-primary, #233859))">v2</button>
-    </div>
+    <!-- Engine toggle removed June 1, 2026 — unified engine, single projection. -->
     <span id="wnbaMeta" style="margin-left:auto;font-size:11px;color:var(--text-secondary, var(--dim));letter-spacing:0.04em"></span>
   </div>
 
@@ -11815,7 +11810,9 @@ async function autoGradeOnAppOpen() {
     expanded: new Set(),         // gameIds with details open in analysis view
     selectedGameId: null,        // which game is currently being analyzed
     loaded: false,
-    engine: 'v1'                 // 'v1' (original) | 'v2' (new injury-aware engine)
+    engine: 'v2'                 // unified engine; kept as 'v2' so the richer
+                                 // display branches (floor–ceiling band, edge
+                                 // recomputed from the shown projection) stay on.
   };
   window._wnbaState = state;     // for debugging
 
@@ -11832,25 +11829,9 @@ async function autoGradeOnAppOpen() {
   const LS_ENGINE_KEY = 'lyrid_wnba_engine';
 
   function initWnbaEngine() {
-    try {
-      // URL param wins
-      const url = new URL(window.location.href);
-      const urlEngine = url.searchParams.get('engine');
-      if (urlEngine === 'v1' || urlEngine === 'v2') {
-        state.engine = urlEngine;
-        return;
-      }
-      // Otherwise localStorage
-      const saved = localStorage.getItem(LS_ENGINE_KEY);
-      if (saved === 'v1' || saved === 'v2') {
-        state.engine = saved;
-        return;
-      }
-    } catch (err) {
-      // localStorage might be unavailable in some environments — fall back to default
-      console.warn('[wnba] engine init failed', err);
-    }
-    state.engine = 'v1'; // safe default
+    // Toggle removed June 1, 2026 — single unified engine. Pin to 'v2' so the
+    // richer display path stays active; ignore any stale saved/URL value.
+    state.engine = 'v2';
   }
 
   function persistWnbaEngine(eng) {
@@ -11904,57 +11885,14 @@ async function autoGradeOnAppOpen() {
    *   - note: for OUT players or other v2-specific context
    */
   function getProjectionForProp(p) {
-    if (state.engine === 'v2') {
-      const v2 = p._v2Projection;
-      // v2 returned a real projection for this market.
-      // Note: v2.projection === null/undefined means "not built" -> fall back.
-      // v2.projection === 0 means "player is OUT" -> show OUT.
-      // Number.isFinite(Number(null)) is true (coerces to 0), so check for null/undefined explicitly.
-      const v2Proj = v2 && v2.projection;
-      if (v2 && v2Proj != null && Number.isFinite(Number(v2Proj))) {
-        return {
-          projection: Number(v2Proj),
-          confidence: v2.confidence != null ? v2.confidence : null,
-          source: 'v2',
-          floor: v2.floor != null ? Number(v2.floor) : null,
-          ceiling: v2.ceiling != null ? Number(v2.ceiling) : null,
-          status: v2.status || null,
-          note: v2.note || null,
-          fallback: false,
-        };
-      }
-      // v2 said the player is OUT (status explicit even if projection is null)
-      if (v2 && v2.status === 'OUT') {
-        return {
-          projection: 0,
-          confidence: 0,
-          source: 'v2',
-          floor: 0,
-          ceiling: 0,
-          status: 'OUT',
-          note: v2.note || 'player is OUT',
-          fallback: false,
-        };
-      }
-      // v2 didn't produce a projection (market not built, or error) -> fall back to v1
-      return {
-        projection: p.projection,
-        confidence: p.confidence,
-        source: 'v1',
-        floor: null,
-        ceiling: null,
-        status: null,
-        note: v2 && v2.note ? v2.note : (v2 && v2.error ? v2.error : 'v2 not available for this market'),
-        fallback: true,
-      };
-    }
-    // v1 engine selected
+    // Unified engine: the slate returns a single projection per prop, with
+    // floor/ceiling and confidence already on the pass object. No engine split.
     return {
       projection: p.projection,
       confidence: p.confidence,
-      source: 'v1',
-      floor: null,
-      ceiling: null,
+      source: 'unified',
+      floor: p.floor != null ? Number(p.floor) : null,
+      ceiling: p.ceiling != null ? Number(p.ceiling) : null,
       status: null,
       note: null,
       fallback: false,
@@ -12391,7 +12329,8 @@ async function autoGradeOnAppOpen() {
       { k: 'ROLE', v: sc.roleStability },
       { k: 'USAGE', v: sc.usageFunnel },
       { k: 'ENV', v: sc.environment },
-      { k: 'MATCHUP', v: sc.matchup },
+      { k: 'DEF', v: sc.matchup, t: 'Opposing defense (def rating, rim & perimeter) — live data' },
+      { k: 'COV', v: sc.coverage, t: 'Coaching defensive coverage (scheme vs archetype) — neutral until a coverage source feeds it' },
       { k: 'VAR', v: sc.variance }
     ];
 
@@ -12460,7 +12399,7 @@ async function autoGradeOnAppOpen() {
         </div>
 
         <div class="stat-row">
-          ${subScores.map(s => `<span class="stat-chip" title="${s.k} score (0-100)"><span style="color:var(--text-secondary, var(--dim));font-size:9px">${s.k}</span> <b style="color:${scoreColor(s.v)}">${s.v != null ? Math.round(s.v) : '—'}</b></span>`).join('')}
+          ${subScores.map(s => `<span class="stat-chip" title="${esc(s.t || (s.k + ' score (0-100)'))}"><span style="color:var(--text-secondary, var(--dim));font-size:9px">${s.k}</span> <b style="color:${scoreColor(s.v)}">${s.v != null ? Math.round(s.v) : '—'}</b></span>`).join('')}
           ${lead.hitRate != null ? `<span class="stat-chip" title="Hit rate vs inferred line">HIT <b>${lead.hitRate}%</b></span>` : ''}
           ${leadProj.confidence ? `<span class="stat-chip">${esc(leadProj.confidence)}</span>` : ''}
           ${engineBadge}

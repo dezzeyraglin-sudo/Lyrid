@@ -57,17 +57,25 @@ const WNBA = {
     paceSensitivity: 0.50,        // dampening on the raw pace multiplier
     defenseSensitivity: 0.50,     // dampening on the raw opponent-defense multiplier
     whistleSensitivity: 0.30,     // dampening on the whistle multiplier
+    coverageSensitivity: 0.40,    // dampening on the coaching-coverage scheme multiplier
     blowoutThresholdSpread: 12,   // |spread| beyond which a blowout is likely
     blowoutMinutesHaircut: 0.12,  // fraction of minutes shaved off starters in projected blowouts
     b2bMinutesHaircut: 0.04,      // minutes shaved on the back end of a back-to-back
   },
+
+  // --- Points blend: how the unified engine combines the two scoring cores ---
+  // possession = minutes x pace x usage x points-per-possession (catches usage spikes)
+  // rate       = realized PPG blended with recent form (robust, lags role change)
+  pointsBlend: { possession: 0.55, rate: 0.45 },
 
   // --- Multiplier clamps (sanity rails; keep adjustments honest) ---
   clamps: {
     pace: [0.90, 1.12],
     defense: [0.90, 1.12],
     whistle: [0.95, 1.06],
+    coverage: [0.95, 1.05],       // coaching scheme effect; neutral (1.0) until coverage data exists
     recentRate: [0.80, 1.25],
+    combined: [0.82, 1.25],       // overall cap on the stacked multiplier (anti career-high rail)
   },
 
   // --- Variance / distribution ---
@@ -130,16 +138,21 @@ const NBA = {
     paceSensitivity: 0.50,
     defenseSensitivity: 0.50,
     whistleSensitivity: 0.30,
+    coverageSensitivity: 0.40,
     blowoutThresholdSpread: 14,   // NBA blowouts run a bit wider
     blowoutMinutesHaircut: 0.14,
     b2bMinutesHaircut: 0.05,
   },
 
+  pointsBlend: { possession: 0.55, rate: 0.45 },
+
   clamps: {
     pace: [0.90, 1.12],
     defense: [0.90, 1.15],
     whistle: [0.95, 1.06],
+    coverage: [0.95, 1.05],
     recentRate: [0.80, 1.25],
+    combined: [0.82, 1.28],
   },
 
   variance: {
