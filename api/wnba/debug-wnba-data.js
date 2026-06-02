@@ -21,11 +21,78 @@
 import { getAllTeamStats, getTeamStats } from '../_lib/wnba/wnbaTeamData.js';
 import { getTopPlayersForTeam } from '../_lib/wnba/wnbaPlayerData.js';
 import { aggregateRecentForm } from '../_lib/wnba/wnbaGameLog.js';
+import { analyzeUnifiedProp } from '../_lib/basketball/unifiedPointsEngine.js';
 
 export default async function handler(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const team = (url.searchParams.get('team') || 'LVA').toUpperCase();
   const season = Number(url.searchParams.get('season')) || 2026;
+
+  // ENGINE TRACE MODE: /api/wnba/debug-wnba-data?team=CHI&trace=1[&opp=WAS]
+  // Builds the SAME engine input the slate builds for the top player, runs the
+  // unified engine, and dumps exactly what the engine receives + returns — so we
+  // can see which input field is null/mis-shaped (why role=1, usage=35 flat).
+  if (url.searchParams.get('trace')) {
+    try {
+      const opp = (url.searchParams.get('opp') || 'WAS').toUpperCase();
+      const [players, allTeams] = await Promise.all([
+        getTopPlayersForTeam(team, 3, season, 'points'),
+        getAllTeamStats(season),
+      ]);
+      const player = players[0];
+      if (!player) return res.status(200).json({ ok: false, error: 'no players' });
+      const recentForm = await aggregateRecentForm(player.id, 10, 'points', season);
+      // Reproduce the slate's playerWithRecent merge.
+      const playerWithRecent = {
+        ...player,
+        last5Avg: player.seasonAvg, last10Avg: player.seasonAvg,
+        ...(recentForm ? {
+          minutesLast5: recentForm.minutesLast5,
+          minutesCv: recentForm.minutesCv,
+          expectedMinutes: recentForm.minutesAvg,
+        } : {}),
+      };
+      const input = {
+        player: playerWithRecent,
+        team: allTeams[team] || { abbr: team },
+        opponent: allTeams[opp] || { abbr: opp },
+        market: 'points', line: 18,
+        game: { spread: -1.5, total: 160, home: false, restDays: 1, backToBack: false },
+      };
+      let engineResult = null, engineError = null;
+      try { engineResult = analyzeUnifiedProp(input, 'WNBA'); }
+      catch (e) { engineError = e.message + '\n' + (e.stack || '').slice(0, 400); }
+
+      return res.status(200).json({
+        ok: true, mode: 'engine-trace', team, opp, player: player.name,
+        // What the engine RECEIVES — the load-bearing input fields:
+        engineInput: {
+          id: player.id, bbrefSlug: player.bbrefSlug,
+          expectedMinutes: playerWithRecent.expectedMinutes,
+          minutesCv: playerWithRecent.minutesCv,
+          minutesLast5: playerWithRecent.minutesLast5,
+          usageRate: player.usageRate,
+          tsPct: player.tsPct,
+          seasonAvg: player.seasonAvg,
+          gamesPlayed: player.gamesPlayed,
+          position: player.position,
+          // dump the keys present on player so we can spot a name mismatch:
+          playerKeys: Object.keys(player),
+          recentFormPresent: !!recentForm,
+          recentFormSample: recentForm ? {
+            gamesUsed: recentForm.gamesUsed, minutesAvg: recentForm.minutesAvg,
+            minutesCv: recentForm.minutesCv,
+          } : null,
+        },
+        // What the engine RETURNS — the scores that show flat in the app:
+        engineScores: engineResult?.scores || null,
+        engineDataCompleteness: engineResult?.dataCompleteness || null,
+        engineError,
+      });
+    } catch (err) {
+      return res.status(200).json({ ok: false, error: err.message, stack: (err.stack || '').slice(0, 400) });
+    }
+  }
 
   const out = { ok: true, team, season, checks: {} };
 
