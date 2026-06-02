@@ -53,6 +53,19 @@ function toNum(v) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+function toNumOrNull(v) {
+  const n = toNum(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// bbref share fields come as either a decimal (".421") or a percentage ("42.1").
+// Normalize to a 0–1 share so the rebound engine math is consistent.
+function pctSum(v) {
+  const n = toNum(v);
+  if (!Number.isFinite(n)) return null;
+  return n > 1 ? Number((n / 100).toFixed(4)) : Number(n.toFixed(4));
+}
+
 // =============================================================
 // FLAT CELL EXTRACTION
 // =============================================================
@@ -99,7 +112,32 @@ async function fetchTeamCells(abbr, season) {
     console.warn(`[wnbaTeamData] no team/opponent table for ${abbr} (${season})`);
     return null;
   }
-  return flattenCells(tableHtml);
+  const cells = flattenCells(tableHtml);
+
+  // Shooting table (shot-distance geography) — drives the rebound-environment
+  // engine. Distance buckets are team-own only on bbref WNBA (no opp_ version),
+  // which is correct: a player rebounds the OPPONENT's missed shots, so the
+  // rebound engine reads the opponent team's OWN shot profile from their page.
+  const shootingHtml = findTableContaining(unwrapped, 'pct_fga_00_03');
+  if (shootingHtml) {
+    const s = flattenCells(shootingHtml);
+    // Merge shot-profile fields under distinct keys (avoid clobbering summary).
+    cells.shot_avg_dist       = s.avg_dist;
+    cells.shot_pct_fga_00_03  = s.pct_fga_00_03;   // at rim
+    cells.shot_pct_fga_03_10  = s.pct_fga_03_10;   // paint / floater
+    cells.shot_pct_fga_10_16  = s.pct_fga_10_16;   // short midrange
+    cells.shot_pct_fga_16_xx  = s.pct_fga_16_xx;   // long midrange (to 3pt line)
+    cells.shot_pct_fga_fg3a   = s.pct_fga_fg3a;    // three-point attempt share
+    cells.shot_pct_fg3a_corner3 = s.pct_fg3a_corner3; // corner-3 share of 3PA
+    cells.shot_fg_pct_00_03   = s.fg_pct_00_03;    // make rate by zone (miss volume)
+    cells.shot_fg_pct_03_10   = s.fg_pct_03_10;
+    cells.shot_fg_pct_10_16   = s.fg_pct_10_16;
+    cells.shot_fg_pct_16_xx   = s.fg_pct_16_xx;
+    cells.shot_fg_pct_fg3a    = s.fg_pct_fg3a;
+    cells.shot_fta_per_fga    = s.fta_per_fga_pct ?? cells.fta_per_fga_pct; // FT rate (downhill signal)
+    cells.shot_fg3a_per_fga   = s.fg3a_per_fga_pct ?? cells.fg3a_per_fga_pct;
+  }
+  return cells;
 }
 
 // =============================================================
@@ -179,6 +217,30 @@ export async function getAllTeamStats(season = 2026) {
 
       switchRate: 50,   // unavailable from bbref — neutral
       dropRate: 50,     // unavailable from bbref — neutral
+
+      // Shot geography (drives the rebound-environment engine). This is the
+      // team's OWN shot diet — when this team is the OPPONENT in a matchup,
+      // these are the shots being missed and rebounded. All REAL from bbref's
+      // shooting table; null when the table was absent.
+      shotProfile: {
+        avgDist:       toNumOrNull(c.shot_avg_dist),
+        rimShare:      pctSum(c.shot_pct_fga_00_03),                       // 0-3 ft
+        paintShare:    pctSum(c.shot_pct_fga_03_10),                       // 3-10 ft
+        shortMidShare: pctSum(c.shot_pct_fga_10_16),
+        longMidShare:  pctSum(c.shot_pct_fga_16_xx),
+        threeShare:    pctSum(c.shot_pct_fga_fg3a),
+        corner3Share:  pctSum(c.shot_pct_fg3a_corner3),
+        ftRate:        toNumOrNull(c.shot_fta_per_fga),                    // downhill/drive signal
+        threeRate:     toNumOrNull(c.shot_fg3a_per_fga),
+        makeRate: {
+          rim:   toNumOrNull(c.shot_fg_pct_00_03),
+          paint: toNumOrNull(c.shot_fg_pct_03_10),
+          shortMid: toNumOrNull(c.shot_fg_pct_10_16),
+          longMid:  toNumOrNull(c.shot_fg_pct_16_xx),
+          three: toNumOrNull(c.shot_fg_pct_fg3a),
+        },
+        available: c.shot_pct_fga_00_03 != null,
+      },
 
       _raw: {
         paceSource,

@@ -76,6 +76,7 @@ const WNBA = {
     whistle: [0.95, 1.06],
     coverage: [0.95, 1.05],       // coaching scheme effect; neutral (1.0) until coverage data exists
     shootingForm: [0.93, 1.08],   // recent FG% hot/cold adjustment to scoring efficiency
+    reboundEquity: [0.78, 1.22],  // archetype rebound-equity swing from shot geography
     recentRate: [0.80, 1.25],
     combined: [0.82, 1.25],       // overall cap on the stacked multiplier (anti career-high rail)
   },
@@ -88,7 +89,25 @@ const WNBA = {
   // --- Variance / distribution ---
   variance: {
     baseScoringCv: 0.32,          // game-to-game points CV for a rotation scorer
+    baseReboundCv: 0.42,          // rebounds are noisier than points
     minutesCvInflation: 1.0,      // how strongly minutes volatility widens the distribution
+  },
+
+  // --- Rebound-environment engine ---
+  rebound: {
+    centerShortSensitivity: 0.55, // center gains as short-miss share rises above 50%
+    centerLongPenalty: 0.65,      // center loses as long-miss share rises above 50%
+    guardLongSensitivity: 0.45,   // guard gains on long misses (perimeter boards)
+    wingLongSensitivity: 0.30,    // wing gains moderately on long misses
+  },
+  reboundLeagueAvg: {
+    // League-average shot diet (shares 0–1) — the classifier types each opponent
+    // relative to these. WNBA-typical; refine from data as the season matures.
+    threeShare: 0.32,
+    interiorShare: 0.42,          // rim + paint
+    midShare: 0.26,
+    ftRate: 0.22,                 // FTA per FGA
+    avgDist: 13.5,
   },
 
   // --- Recommendation thresholds ---
@@ -160,6 +179,7 @@ const NBA = {
     whistle: [0.95, 1.06],
     coverage: [0.95, 1.05],
     shootingForm: [0.93, 1.08],
+    reboundEquity: [0.78, 1.22],
     recentRate: [0.80, 1.25],
     combined: [0.82, 1.28],
   },
@@ -169,7 +189,22 @@ const NBA = {
 
   variance: {
     baseScoringCv: 0.30,
+    baseReboundCv: 0.40,
     minutesCvInflation: 1.0,
+  },
+
+  rebound: {
+    centerShortSensitivity: 0.55,
+    centerLongPenalty: 0.65,
+    guardLongSensitivity: 0.45,
+    wingLongSensitivity: 0.30,
+  },
+  reboundLeagueAvg: {
+    threeShare: 0.39,             // NBA shoots more 3s than WNBA
+    interiorShare: 0.40,
+    midShare: 0.21,
+    ftRate: 0.24,
+    avgDist: 14.5,
   },
 
   thresholds: {
