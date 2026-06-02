@@ -311,7 +311,7 @@
   }
   @media (max-width: 640px){
     .lyrid-auth-username{display:none}
-    /* tier badge kept visible on mobile — compact, useful indicator */
+    .lyrid-auth-tier{display:none}
   }
 
   .lyrid-auth-menu{
@@ -4242,7 +4242,7 @@ window.changeSlateDate = function(deltaDays) {
   const current = state.currentDate || getTodayStr();
   const d = new Date(current + 'T12:00:00');
   d.setDate(d.getDate() + deltaDays);
-  state.currentDate = d.toISOString().slice(0, 10);
+  state.currentDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   saveState();
   document.getElementById('slateDate').value = state.currentDate;
   updateDateDisplay();
@@ -4260,12 +4260,13 @@ window.updateLyridDateDisplay = function() {
   if (!el || !state.currentDate) return;
   const d = new Date(state.currentDate + 'T12:00:00');
   const today = getTodayStr();
+  const ymdLocalStr = (dt) => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+  const tomorrowStr = ymdLocalStr(tomorrow);
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+  const yesterdayStr = ymdLocalStr(yesterday);
 
   let label;
   if (state.currentDate === today) label = 'Today';
@@ -11930,8 +11931,22 @@ async function autoGradeOnAppOpen() {
   function teamAbbr(abbr) { return abbr || '—'; }
 
   function ymdToday() {
+    // LOCAL date (not UTC). Using toISOString() here was the date bug: in the
+    // evening ET, UTC has already rolled to tomorrow, so "today" read as the
+    // next day and the current slate got labeled "Yesterday".
+    return ymdLocal(new Date());
+  }
+
+  // Format a Date as YYYY-MM-DD in the browser's LOCAL timezone.
+  function ymdLocal(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // YYYY-MM-DD for today shifted by N local days.
+  function ymdShift(deltaDays) {
     const d = new Date();
-    return d.toISOString().slice(0, 10);
+    d.setDate(d.getDate() + deltaDays);
+    return ymdLocal(d);
   }
 
   function formatGameTime(iso) {
@@ -11947,8 +11962,8 @@ async function autoGradeOnAppOpen() {
     try {
       const d = new Date(ymd + 'T12:00:00');
       const today = ymdToday();
-      const tomorrow = (() => { const t = new Date(); t.setDate(t.getDate()+1); return t.toISOString().slice(0,10); })();
-      const yesterday = (() => { const t = new Date(); t.setDate(t.getDate()-1); return t.toISOString().slice(0,10); })();
+      const tomorrow = ymdShift(1);
+      const yesterday = ymdShift(-1);
       const longLabel = d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
       if (ymd === today) return 'Today · ' + d.toLocaleDateString([], { month: 'long', day: 'numeric' });
       if (ymd === tomorrow) return 'Tomorrow · ' + d.toLocaleDateString([], { month: 'long', day: 'numeric' });
@@ -12007,7 +12022,7 @@ async function autoGradeOnAppOpen() {
     const current = state.date || ymdToday();
     const d = new Date(current + 'T12:00:00');
     d.setDate(d.getDate() + deltaDays);
-    state.date = d.toISOString().slice(0, 10);
+    state.date = ymdLocal(d);
     updateWnbaDateDisplay();
     window.loadWnbaSlate();
   };
