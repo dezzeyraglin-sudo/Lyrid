@@ -300,16 +300,23 @@ function normalizeBaseRow(row) {
   // bbref repeats the column-header row mid-table on long pages.
   if (row.player === 'Player' || row.team === 'Team' || row.team_id === 'Team') return null;
 
-  // Player ID: use bbref slug as the opaque ID
-  // (extracted by parseTableRows into bbref_player_id)
-  const playerId = row.bbref_player_id || row.player;
+  // Player ID: bbref slug (e.g. "citroso01w"), extracted from the player link.
+  // CRITICAL: never fall back to the player NAME — a name produces a 404 game-log
+  // URL (/wnba/players/s/Sonia Citron/gamelog) which silently returns no games,
+  // which starves the role/minutes/variance layers. null is correct when absent;
+  // downstream skips the game-log fetch cleanly.
+  const playerId = extractBbrefSlug(row);
   // Team abbreviation: try multiple bbref column names + the link extraction
   // bbref WNBA pages variously use: team_name_abbr, team_id, team
   const teamAbbr = row.team_abbr_link || row.team_name_abbr || row.team_id || row.team || '';
 
   return {
-    PLAYER_ID: playerId,
+    // Join key across base/advanced/bio = NAME (always present, matches reliably).
+    // The bbref slug is carried separately for the game-log URL only.
+    PLAYER_ID: row.player,
+    BBREF_SLUG: playerId,
     PLAYER_NAME: row.player,
+    _slugResolved: playerId != null,
     TEAM_ABBREVIATION: String(teamAbbr).toUpperCase(),
     GP: toNum(row.g),
     GS: toNum(row.gs),
@@ -339,10 +346,11 @@ function normalizeAdvancedRow(row) {
   if (!row || !row.player) return null;
   // Skip header rows
   if (row.player === 'Player' || row.team === 'Team' || row.team_id === 'Team') return null;
-  const playerId = row.bbref_player_id || row.player;
+  const playerId = extractBbrefSlug(row);
   const teamAbbr = row.team_abbr_link || row.team_name_abbr || row.team_id || row.team || '';
   return {
-    PLAYER_ID: playerId,
+    PLAYER_ID: row.player,
+    BBREF_SLUG: playerId,
     PLAYER_NAME: row.player,
     TEAM_ABBREVIATION: String(teamAbbr).toUpperCase(),
     // bbref publishes these as percentages (e.g. "28.4" for 28.4%).
@@ -366,6 +374,29 @@ function toNum(v) {
   if (v === null || v === undefined || v === '') return 0;
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+// Extract the bbref player slug (e.g. "citroso01w") for a row. bbref player
+// cells link to /wnba/players/{letter}/{slug}.html — we scan whatever fields
+// parseTableRows exposed for that pattern, then known slug fields. Returns null
+// (NEVER the player name) when no real slug is found, so the game-log URL is
+// never built from a name (which 404s and silently starves the minutes layer).
+const BBREF_SLUG_RE = /\/wnba\/players\/[a-z]\/([a-z0-9]+)\.html/i;
+const SLUG_SHAPE_RE = /^[a-z]+[0-9]{2}w$/i;   // e.g. citroso01w
+function extractBbrefSlug(row) {
+  if (!row) return null;
+  // 1) Direct slug fields parseTableRows may provide.
+  for (const k of ['bbref_player_id', 'data_append_csv', 'append_csv', 'player_slug', 'slug']) {
+    const v = row[k];
+    if (typeof v === 'string' && SLUG_SHAPE_RE.test(v.trim())) return v.trim();
+  }
+  // 2) Scan every string value for the player href pattern.
+  for (const v of Object.values(row)) {
+    if (typeof v !== 'string') continue;
+    const m = v.match(BBREF_SLUG_RE);
+    if (m && m[1]) return m[1];
+  }
+  return null;
 }
 
 // =============================================================
@@ -440,8 +471,11 @@ function mergePlayerStats(base, advanced, market, bio = null, touchData = null) 
   }
 
   return {
-    // Identity
-    id: base.PLAYER_ID,
+    // Identity. `id` carries the bbref SLUG when resolved (the game-log fetch
+    // needs it for the URL); falls back to name only so nothing is undefined.
+    // `name` is the reliable cross-source join key (injuries, props, history).
+    id: base.BBREF_SLUG || base.PLAYER_NAME,
+    bbrefSlug: base.BBREF_SLUG || null,
     name: base.PLAYER_NAME,
     team: base.TEAM_ABBREVIATION,
     // ADDED June 1: real position when bbref provides one (per-game `pos`

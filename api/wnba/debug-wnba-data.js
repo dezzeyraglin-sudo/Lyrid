@@ -74,11 +74,16 @@ export default async function handler(req, res) {
       playersReturned: players.length,
       sample: topPlayer ? {
         name: topPlayer.name, id: topPlayer.id,
+        bbrefSlug: topPlayer.bbrefSlug,        // NEW: should be e.g. "citroso01w", not null
+        slugResolved: topPlayer.bbrefSlug != null,
         position: topPlayer.position,          // null = bbref had no pos column (acceptable)
         tsPct: topPlayer.tsPct,                 // null/0 = field fix not deployed
         fta: topPlayer.fta, ftm: topPlayer.ftm, // 0 = field fix not deployed
         usageRate: topPlayer.usageRate, seasonAvg: topPlayer.seasonAvg
       } : null,
+      slugNote: topPlayer && topPlayer.bbrefSlug == null
+        ? 'SLUG UNRESOLVED — parseTableRows is not exposing the player href; recent form will stay empty until the slug can be parsed. Paste this output.'
+        : 'slug resolved — game-log fetch should now work',
       note: 'position may be null if bbref per-game table has no pos column; tsPct/fta are the load-bearing checks.'
     };
   } catch (err) {

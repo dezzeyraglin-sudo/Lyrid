@@ -64,6 +64,14 @@ function toNum(v) {
  */
 export async function fetchPlayerGameLog(playerId, season = 2026) {
   if (!playerId) return [];
+  // A bbref slug is lowercase alphanumeric ending in a letter (e.g. citroso01w).
+  // A player NAME (has a space/uppercase) would build a 404 URL — skip cleanly so
+  // the caller falls back to season averages instead of hanging on a bad fetch.
+  const looksLikeSlug = /^[a-z0-9]+$/.test(String(playerId)) && /[a-z]$/i.test(String(playerId));
+  if (!looksLikeSlug) {
+    console.warn(`[wnbaGameLog] "${playerId}" is not a bbref slug — skipping game-log fetch (no recent form)`);
+    return [];
+  }
 
   const html = await fetchBbrefPage(gameLogPath(playerId, season), { ttlMs: 30 * 60 * 1000 });
   if (!html) return [];
