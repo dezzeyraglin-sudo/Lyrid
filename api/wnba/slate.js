@@ -64,7 +64,7 @@ import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
 import { aggregateRecentForm } from "../_lib/wnba/wnbaGameLog.js";
 import { getAllTeamStats } from "../_lib/wnba/wnbaTeamData.js";
 import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
-import { fetchWnbaProps, fetchWnbaInjuries } from "../_lib/wnba/bdlFeed.js";
+import { fetchWnbaProps } from "../_lib/wnba/bdlFeed.js";
 
 // v2 engine modules (ESM)
 import { fetchEspnWnbaInjuries } from "../_lib/basketball/injuryFeed.js";
@@ -176,31 +176,14 @@ async function generateSlate(opts = {}) {
   // Failure here is non-fatal: v2 just runs with all players AVAILABLE.
   let injuryReport = null;
   if (WNBA_V2_PROJECTIONS) {
+    // Injuries come from BallDontLie (via injuryFeed, ESPN removed). Fail-safe:
+    // on any failure injuryReport is an empty-but-valid report, players show AVAILABLE.
     injuryReport = await fetchEspnWnbaInjuries().catch(err => {
-      warnings.push(`v2 injury feed failed: ${err.message} (running v2 with no injury data)`);
+      warnings.push(`injury feed failed: ${err.message} (running with no injury data)`);
       return null;
     });
-    // Merge BallDontLie injuries as a second source — it carries season-ending
-    // injuries (e.g. torn ACL) that ESPN drops off its active report. Name-keyed
-    // so buildV2Roster's name matcher picks them up. BDL wins on conflict only
-    // when it reports OUT and ESPN doesn't have the player.
-    try {
-      const bdlInj = await fetchWnbaInjuries();
-      if (bdlInj?.all?.length) {
-        injuryReport = injuryReport || { all: [], byPlayerId: {}, byTeamAbbrev: {} };
-        injuryReport.byName = injuryReport.byName || {};
-        const existingNames = new Set((injuryReport.all || []).map(i =>
-          String(i.playerName || i.name || '').toLowerCase()));
-        for (const inj of bdlInj.all) {
-          injuryReport.byName[inj.playerName.toLowerCase()] = inj;
-          if (!existingNames.has(inj.playerName.toLowerCase())) {
-            (injuryReport.all = injuryReport.all || []).push(inj);
-          }
-        }
-        injuryReport._bdlInjuriesMerged = bdlInj.all.length;
-      }
-    } catch (err) {
-      warnings.push(`BDL injuries merge failed: ${err.message}`);
+    if (injuryReport?._audit) {
+      warnings.push(`injuries: ${injuryReport._audit.count ?? 0} via ${injuryReport._audit.pathUsed || injuryReport.source || 'bdl'}`);
     }
   }
 

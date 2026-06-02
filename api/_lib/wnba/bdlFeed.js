@@ -267,49 +267,68 @@ export async function fetchWnbaPlayerStats(dateYmd, opts = {}) {
 }
 
 /**
- * Fetch WNBA player injuries from BallDontLie, normalized + name-keyed so they
- * merge with the ESPN feed. BDL often carries season-ending injuries that ESPN
- * drops off its active report (e.g. a torn ACL moved to the season-ending list).
+ * Fetch WNBA player injuries from BallDontLie, normalized + name-keyed.
+ * Sole injury source (ESPN removed). Tries candidate paths and uses whichever
+ * returns 200, so it is self-correcting if BDL's WNBA injuries path differs.
  *
- *   { byName: { "normalized name": { playerName, status, detail, source } },
- *     all: [...], _audit }
+ *   { byName: { "normalized name": {...} }, byTeamAbbrev: {}, all: [...], _audit }
  */
 export async function fetchWnbaInjuries(opts = {}) {
-  if (!isBdlConfigured()) return { byName: {}, all: [], _audit: { keyPresent: false } };
+  if (!isBdlConfigured()) return { byName: {}, byTeamAbbrev: {}, all: [], _audit: { keyPresent: false } };
   const cacheKey = 'bdl:injuries';
   if (!opts.noCache) { const c = cacheGet(cacheKey); if (c) return c; }
 
-  const res = await bdlGet('/player_injuries', { per_page: 100 });
-  if (res.status !== 200) {
-    return { byName: {}, all: [], _audit: { keyPresent: true, httpStatus: res.status,
-      warnings: [`injuries HTTP ${res.status}`] } };
+  // Try the likely WNBA injuries paths in order; first 200 with an array wins.
+  const paths = ['/player_injuries', '/injuries', '/players/injuries'];
+  let rows = null, pathUsed = null, lastStatus = null;
+  for (const p of paths) {
+    const res = await bdlGet(p, { per_page: 100 });
+    lastStatus = res.status;
+    if (res.status === 200 && Array.isArray(res.body?.data)) { rows = res.body.data; pathUsed = p; break; }
   }
+  if (!rows) {
+    return { byName: {}, byTeamAbbrev: {}, all: [],
+      _audit: { keyPresent: true, httpStatus: lastStatus, pathsTried: paths,
+        warnings: [`no injuries path returned data (last status ${lastStatus})`] } };
+  }
+
   const norm = (s) => String(s || '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
-  // Map BDL status text → our normalized buckets.
   const mapStatus = (s) => {
     const t = String(s || '').toLowerCase();
-    if (t.includes('out') || t.includes('season')) return 'OUT';
-    if (t.includes('doubtful')) return 'DOUBTFUL';
-    if (t.includes('question')) return 'QUESTIONABLE';
+    if (!t) return 'OUT';
+    if (t.includes('out') || t.includes('season') || t.includes('inactive')) return 'OUT';
+    if (t.includes('doubt')) return 'DOUBTFUL';
+    if (t.includes('quest')) return 'QUESTIONABLE';
     if (t.includes('day')) return 'DAY_TO_DAY';
-    return s ? String(s).toUpperCase() : 'OUT';
+    if (t.includes('prob') || t.includes('available')) return 'PROBABLE';
+    return String(s).toUpperCase();
   };
-  const byName = {}; const all = [];
-  for (const row of (res.body?.data || [])) {
+  const teamAbbr = (row) => {
+    const t = row?.team || row?.player?.team;
+    if (!t) return null;
+    return String(t.abbreviation || t.abbr || t).toUpperCase();
+  };
+
+  const byName = {}; const byTeamAbbrev = {}; const all = [];
+  for (const row of rows) {
     const nm = playerName(row) || playerName({ player: row.player });
     if (!nm) continue;
+    const ab = teamAbbr(row);
     const entry = {
       playerName: nm,
-      status: mapStatus(row.status),
-      detail: row.description || row.comment || row.return_date || null,
+      status: mapStatus(row.status || row.injury_status),
+      detail: row.description || row.comment || row.note || row.return_date || null,
+      teamAbbrev: ab,
       source: 'balldontlie',
     };
     byName[norm(nm)] = entry;
     all.push(entry);
+    if (ab) (byTeamAbbrev[ab] = byTeamAbbrev[ab] || []).push(entry);
   }
-  const result = { byName, all, _audit: { keyPresent: true, httpStatus: 200, count: all.length } };
+  const result = { byName, byTeamAbbrev, all,
+    _audit: { keyPresent: true, httpStatus: 200, pathUsed, count: all.length } };
   cacheSet(cacheKey, result);
   return result;
 }
