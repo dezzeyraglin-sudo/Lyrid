@@ -10012,7 +10012,7 @@ function renderHistory() {
       <button class="history-subnav-btn ${historyView==='calibration'?'active':''}" data-hist-view="calibration" onclick="switchHistoryView('calibration')">◎ CALIBRATION</button>
       <button class="history-subnav-btn ${historyView==='rollup'?'active':''}" data-hist-view="rollup" onclick="switchHistoryView('rollup')">∑ ROLLUP</button>
       <button class="history-subnav-btn ${historyView==='picks'?'active':''}" data-hist-view="picks" onclick="switchHistoryView('picks')">$ MY BETS</button>
-      <button class="history-subnav-btn ${historyView==='wnba'?'active':''}" data-hist-view="wnba" onclick="switchHistoryView('wnba')">◯ WNBA PROPS</button>
+      <button class="history-subnav-btn ${historyView==='wnba'?'active':''}" data-hist-view="wnba" onclick="switchHistoryView('wnba')">★ WNBA BEST BETS</button>
       ${historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
       <button class="btn sm" onclick="gradeAllBestBets()" style="margin-left:6px">⚡ GRADE ALL</button>`}
     </div>
@@ -10043,6 +10043,10 @@ function renderHistory() {
     const cutoffStr = cutoff.toISOString().split('T')[0];
     const recent = computeWnbaPropStats(realLine.filter(e => e.date >= cutoffStr));
 
+    // Best bets (curated picks) — computed early so the stats bar can show the record.
+    const bestBets = all.filter(e => e.isBestBet);
+    const bestBetStats = computeWnbaPropStats(bestBets.filter(e => e.lineSource === 'provided'));
+
     const statsBar = `
       <div class="bb-stats-grid">
         <div class="bb-stat-card featured">
@@ -10060,10 +10064,10 @@ function renderHistory() {
           <div class="bb-stat-lbl">LAST 14 DAYS</div>
           ${recent.winRate !== null ? `<div class="bb-stat-pct small ${rateClass(recent.winRate)}">${fmtRate(recent.winRate)}</div>` : ''}
         </div>
-        <div class="bb-stat-card">
-          <div class="bb-stat-val">${overallMaeAll.pending}</div>
-          <div class="bb-stat-lbl">PENDING</div>
-          <div class="bb-stat-pct small neutral">${all.length} tracked</div>
+        <div class="bb-stat-card" style="border-color:var(--accent)">
+          <div class="bb-stat-val">${rec(bestBetStats)}</div>
+          <div class="bb-stat-lbl" style="color:var(--accent)">★ BEST BETS</div>
+          ${bestBetStats.winRate !== null ? `<div class="bb-stat-pct small ${rateClass(bestBetStats.winRate)}">${fmtRate(bestBetStats.winRate)}</div>` : `<div class="bb-stat-pct small neutral">${bestBetStats.pending || 0} live</div>`}
         </div>
       </div>
     `;
@@ -10108,6 +10112,40 @@ function renderHistory() {
       { label: 'DEFENSE NEUTRAL', stats: computeWnbaPropStats(realLine.filter(e => !e.defenseReal)) },
     ]);
 
+    // --- WNBA BEST BETS: the curated picks (player's strongest actionable market) ---
+    const bestBetsGraded = bestBets.filter(e => e.graded)
+      .sort((a, b) => (b.date + b.player).localeCompare(a.date + a.player));
+    const bestBetsPending = bestBets.filter(e => !e.graded)
+      .sort((a, b) => (b.finalEdgeScore ?? 0) - (a.finalEdgeScore ?? 0));
+
+    const bestBetRow = (e) => {
+      const col = e.result === 'win' ? 'var(--accent)' : e.result === 'loss' ? 'var(--danger)' : 'var(--dim)';
+      const resLabel = e.graded ? (e.result || 'pending').toUpperCase() : 'PENDING';
+      const errStr = e.error != null ? `${e.error > 0 ? '+' : ''}${e.error}` : '';
+      const tierColor = e.tier === 'elite' ? 'var(--accent)' : e.tier === 'strong' ? '#0f1f3a' : 'var(--dim)';
+      return `
+        <div class="glb-history-entry" style="border-left-color:${col}">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:600;color:var(--ink)">
+              ${e.tier ? `<span style="font-size:9px;font-weight:700;color:${tierColor};letter-spacing:0.06em;margin-right:6px">${esc(e.tier.toUpperCase())}</span>` : ''}
+              ${esc(e.player)} <span style="font-weight:400;color:var(--dim);font-size:11px">${esc(e.market)}</span>
+            </span>
+            <span style="font-size:11px;font-weight:700;color:${col}">${resLabel}</span>
+          </div>
+          <div style="font-size:11px;color:var(--dim);margin-top:3px;font-variant-numeric:tabular-nums">
+            <b style="color:var(--ink)">${esc(e.lean)} ${e.line}</b> · proj <b style="color:var(--ink)">${e.projection}</b>${e.edge != null ? ` · edge ${e.edge > 0 ? '+' : ''}${e.edge}` : ''}${e.graded ? ` · actual <b style="color:var(--ink)">${e.actual ?? '—'}</b>${errStr ? ` · err ${errStr}` : ''}` : ''}
+          </div>
+          <div style="font-size:10px;color:var(--dim);margin-top:2px">${esc(e.date)} · ${esc(e.team || '')} vs ${esc(e.opponent || '')}</div>
+        </div>`;
+    };
+
+    const bestBetsSection = bestBets.length > 0 ? `
+      <h3 class="rollup-section-title">★ BEST BETS${bestBetsPending.length ? ` · ${bestBetsPending.length} LIVE` : ''}</h3>
+      <div class="rollup-tier-note">The model's highest-conviction actionable pick per player (real book line, recommended, not PASS). Auto-logged on slate load, graded after games finish.</div>
+      ${bestBetsPending.length ? `<div style="font-size:10px;letter-spacing:0.1em;color:var(--accent);font-weight:600;margin:8px 0 4px">LIVE / UNGRADED</div>${bestBetsPending.slice(0, 20).map(bestBetRow).join('')}` : ''}
+      ${bestBetsGraded.length ? `<div style="font-size:10px;letter-spacing:0.1em;color:var(--dim);font-weight:600;margin:12px 0 4px">GRADED</div>${bestBetsGraded.slice(0, 30).map(bestBetRow).join('')}` : ''}
+    ` : `<h3 class="rollup-section-title">★ BEST BETS</h3><div class="empty" style="padding:20px"><div>No best bets logged yet.<br><br>Best bets auto-log when you load a WNBA slate — the model's strongest actionable pick per player (real book line, recommended). They grade automatically after games finish.</div></div>`;
+
     // Recent graded entries (most recent first).
     const recentEntries = all.filter(e => e.graded).sort((a,b) => (b.date+b.player).localeCompare(a.date+a.player)).slice(0, 40);
     const entryRows = recentEntries.map(e => {
@@ -10129,10 +10167,10 @@ function renderHistory() {
         </div>`;
     }).join('');
 
-    container.innerHTML = subnavHtml + statsBar + byTier + byMarket + byLineSource + byDefense
-      + `<h3 class="rollup-section-title">RECENT GRADED PROPS</h3>`
+    container.innerHTML = subnavHtml + statsBar + bestBetsSection + byTier + byMarket + byLineSource + byDefense
+      + `<h3 class="rollup-section-title">ALL GRADED PROPS</h3>`
       + (entryRows || `<div class="empty" style="padding:20px"><div>No graded props yet. Tap ⚡ GRADE ALL after games finish.</div></div>`)
-      + `<div class="rollup-footnote">Predictions auto-capture when you load a WNBA slate and grade against real box scores. Win/loss counts only REAL-line props; inferred-line props track projection error (MAE) in shadow. Calibration sharpens with volume — aim for 30+ graded per slice before trusting it.</div>`;
+      + `<div class="rollup-footnote">Best bets and all props auto-capture when you load a WNBA slate, and grade against real box scores. Win/loss counts only REAL-line props; inferred-line props track projection error (MAE). Calibration sharpens with volume — aim for 30+ graded per slice before trusting it.</div>`;
     return;
   }
 
@@ -11897,6 +11935,23 @@ window.captureWnbaPredictions = function(data) {
   const date = data.date || getTodayStr();
   state.wnbaPropHistory = state.wnbaPropHistory || {};
   const day = state.wnbaPropHistory[date] = state.wnbaPropHistory[date] || {};
+
+  // BEST BETS: mirror MLB's top-pick logging. A best bet is a player's single
+  // strongest actionable market — real book line, recommendation not PASS, and a
+  // meaningful edge. We pick the highest-finalEdge qualifying market per player.
+  const bestByPlayer = {};
+  for (const p of pool) {
+    if (!p.player || !p.market) continue;
+    const actionable = (p.lineSource === 'provided')
+      && p.recommendation && p.recommendation !== 'PASS'
+      && p.injuryStatus !== 'OUT';
+    if (!actionable) continue;
+    const fe = p.scores?.finalEdge ?? 0;
+    const cur = bestByPlayer[p.player];
+    if (!cur || fe > cur.fe) bestByPlayer[p.player] = { key: `${p.player}_${p.market}`, fe };
+  }
+  const bestBetKeys = new Set(Object.values(bestByPlayer).map(b => b.key));
+
   let added = 0;
   const seen = new Set();
   pool.forEach(p => {
@@ -11918,6 +11973,8 @@ window.captureWnbaPredictions = function(data) {
       tier: (p.label || '').toLowerCase(),
       finalEdgeScore: p.scores?.finalEdge ?? null,
       lineSource: p.lineSource || 'inferred',
+      recommendation: p.recommendation || null,
+      isBestBet: bestBetKeys.has(key),
       confidence: p.confidence ?? null,
       defenseReal: (p.dataCompleteness?.opposingDefense === 'REAL'),
       drivers: p.scores ? {
