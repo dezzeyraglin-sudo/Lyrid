@@ -11,8 +11,17 @@
     },
     "api/auth/*.js": {
       "maxDuration": 30
+    },
+    "api/cron/*.js": {
+      "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/wnba-prefetch",
+      "schedule": "*/10 * * * *"
+    }
+  ],
   "rewrites": [
     { "source": "/", "destination": "/index.html" }
   ],
