@@ -1728,52 +1728,96 @@ export default async function handler(req, res) {
     results.odds = odds;
     results.conversionRates = conversionRates;
 
-    // (Drop #5 Fix #2 — May 31, 2026) NRFI tier post-projection downgrade.
+    // (Drop #7 — June 3, 2026) PROJECTION-STRATEGY GATE.
     //
-    // May 31 audit (n=115 FI bets) showed NRFI STRONG was the worst-performing
-    // FI segment at 36% WR (10-18 on n=28) while NRFI MODERATE went 11-9 (55%)
-    // and NRFI SLIGHT went 7-7 (50%). The model's "most confident" NRFI calls
-    // are statistically the worst — same inverted-confidence signature as
-    // adjustedMaxXwoba had before its earlier cap.
+    // Replaces Drop #5 Fix #2 (NRFI-only tier downgrade for low totals).
     //
-    // Also: 65% of NRFI losses were SINGLE-run innings. The model isn't getting
-    // beat by crooked numbers — it's getting beat by one solo HR, one RBI single,
-    // one productive groundout. That's a low-probability outcome the model isn't
-    // capturing in its YRFI/NRFI math.
+    // June 3 deep audit (n=133 FI bets, n=49 with extreme projections) found
+    // that the model's CALIBRATED PROBABILITY has zero predictive power:
+    //   prob 0.45-0.50: 47% WR (n=64)
+    //   prob 0.50-0.55: 44% WR (n=19)
+    //   prob 0.55-0.60: 33% WR (n=9)
+    //   prob 0.60-0.70: 47% WR (n=34)
+    //   prob 0.70+:     43% WR (n=7)
+    //   Conclusion: probability and outcome are uncorrelated.
     //
-    // Two structural conditions that elevate single-run risk:
-    //   1. Low projected game total (≤7.0) — tight game, every PA matters more
-    //   2. Either SP is a contact-pitcher (K%<21) — no strikeout insurance against
-    //      productive contact
+    // BUT projection magnitude IS strongly predictive at the extremes:
+    //   projTotal ≤6.0, YRFI bet: 9-1 (90%) on n=10
+    //   projTotal ≥9.5, NRFI bet: 21-13 (62%) on n=34
+    //   projTotal 6.0-9.5 middle: 41% WR on n=89 (no edge)
+    //   Combined extreme strategy: 30-14 (68%) on n=44
     //
-    // When NRFI fires with either condition present, downgrade tier one step:
-    // STRONG → MODERATE → SLIGHT → PASS. Don't disable the pick — calibrate
-    // the confidence honestly.
-    if (results.firstInning?.recommendation?.side === 'NRFI' && projection) {
+    // STRATEGY (STRONG-only, MODERATE tier dropped after backtest showed
+    // 40%/33% WR — not edge):
+    //   projTotal ≤6.0 → YRFI STRONG (1.5u)
+    //   projTotal ≥9.5 → NRFI STRONG (1.5u)
+    //   projTotal 6.0-9.5 → PASS
+    //
+    // OVERRIDES the model's probability-based pick. Model's pre-strategy
+    // state preserved on _originalSide/_originalTier/_originalProb for
+    // diagnostic auditing.
+    //
+    // Why this works: the model's per-side scoring probability has good
+    // signal on game environment (high-proj games have more scoring potential)
+    // but is calibrated wrong on WHEN scoring happens (slugfests score middle
+    // innings, not first; pitcher duels produce 1st-inning manufacturing).
+    // Projection magnitude is a cleaner proxy than the model's 1st-inning math.
+    if (results.firstInning?.recommendation && projection) {
       const fi = results.firstInning.recommendation;
-      // (Hotfix June 1, 2026) projection.projTotal is stored as a string
-      // (toFixed(2) in buildGameProjection return). parseFloat or .toFixed
-      // crashes with "is not a function". One-line fix at the read site.
       const projTotal = parseFloat(projection.projTotal) || 0;
-      const awayPitcherK = parseFloat(results.homeVsAway?.inningSplits?.season_stats?.kPct) || null;
-      const homePitcherK = parseFloat(results.awayVsHome?.inningSplits?.season_stats?.kPct) || null;
-      const lowSpKPct = (awayPitcherK !== null && awayPitcherK < 21) ||
-                       (homePitcherK !== null && homePitcherK < 21);
-      const lowProjTotal = projTotal > 0 && projTotal <= 7.0;
-      if (lowProjTotal || lowSpKPct) {
-        const reasons = [];
-        if (lowProjTotal) reasons.push(`low projected total (${projTotal.toFixed(1)})`);
-        if (lowSpKPct) reasons.push('contact-pitcher SP (K%<21)');
-        const tierLadder = { STRONG: 'MODERATE', MODERATE: 'SLIGHT', SLIGHT: 'PASS' };
-        const unitLadder = { STRONG: 1, MODERATE: 0.5, SLIGHT: 0 };
-        const newTier = tierLadder[fi.tier] || 'PASS';
-        const newUnits = unitLadder[fi.tier] ?? 0;
-        if (fi.tier !== 'PASS' && newTier !== fi.tier) {
-          fi._originalTier = fi.tier;
-          fi._downgradeReason = `NRFI tier downgraded ${fi.tier}→${newTier}: ${reasons.join(', ')}. May 31 audit showed NRFI STRONG hits 36% (n=28) and 65% of NRFI losses are single-run innings.`;
-          fi.tier = newTier;
-          fi.units = newUnits;
-        }
+
+      // Preserve original recommendation for diagnostics
+      const _originalSide = fi.side;
+      const _originalTier = fi.tier;
+      const _originalUnits = fi.units;
+      const _originalProb = fi.probability;
+
+      // Determine projection-strategy recommendation. STRONG only — MODERATE
+      // tier removed after backtest showed 6.0-6.5 YRFI (40%) and 9.0-9.5
+      // NRFI (33%) were not edge.
+      let newSide = null, newTier = 'PASS', newUnits = 0, strategyReason = null;
+      if (projTotal > 0 && projTotal <= 6.0) {
+        newSide = 'YRFI';
+        newTier = 'STRONG';
+        newUnits = 1.5;
+        strategyReason = `Extreme low projection (${projTotal.toFixed(2)} ≤ 6.0): backtest 9-1 (90% WR, n=10)`;
+      } else if (projTotal >= 9.5) {
+        newSide = 'NRFI';
+        newTier = 'STRONG';
+        newUnits = 1.5;
+        strategyReason = `Extreme high projection (${projTotal.toFixed(2)} ≥ 9.5): backtest 21-13 (62% WR, n=34)`;
+      } else {
+        // PASS — middle zone 6.0-9.5 has no clean edge
+        strategyReason = projTotal > 0
+          ? `Middle projection (${projTotal.toFixed(2)}): no edge between 6.0-9.5 (backtest 41% WR, n=89)`
+          : 'No projection available';
+      }
+
+      // Apply the new recommendation
+      fi._originalSide = _originalSide;
+      fi._originalTier = _originalTier;
+      fi._originalUnits = _originalUnits;
+      fi._originalProb = _originalProb;
+      fi._strategyReason = strategyReason;
+      fi._projTotal = projTotal;
+
+      fi.side = newSide;
+      fi.pick = newSide;
+      fi.tier = newTier;
+      fi.units = newUnits;
+
+      // Probability display: keep model prob if direction agrees, null if
+      // strategy overrides direction or PASSes (avoid misleading displayed %).
+      if (newSide && _originalSide === newSide && _originalProb) {
+        fi.probability = _originalProb;
+        fi._directionMatch = true;
+      } else if (newSide && _originalSide && _originalSide !== newSide) {
+        fi.probability = null;
+        fi._directionMatch = false;
+        fi._strategyReason += ` (overrides model's ${_originalSide} call)`;
+      } else {
+        fi.probability = null;
+        fi._directionMatch = null;
       }
     }
 

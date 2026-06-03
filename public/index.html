@@ -6948,7 +6948,16 @@ function renderAnalysis(data) {
         units: fi.recommendation.units,
         probability: fi.recommendation.probability,
         away: data.awayTeam?.abbreviation,
-        home: data.homeTeam?.abbreviation
+        home: data.homeTeam?.abbreviation,
+        // (Drop #7 — June 3, 2026) Observability: capture projection-strategy
+        // decision context so future audits can decompose pick performance
+        // by strategy reasoning, not just by tier label.
+        _projTotal: fi.recommendation._projTotal || null,
+        _originalSide: fi.recommendation._originalSide || null,
+        _originalTier: fi.recommendation._originalTier || null,
+        _originalProb: fi.recommendation._originalProb || null,
+        _strategyReason: fi.recommendation._strategyReason || null,
+        _directionMatch: fi.recommendation._directionMatch
       }).replace(/'/g, '&#39;');
 
       firstInningHtml = `
@@ -9714,6 +9723,16 @@ function logFirstInningBet(ctx) {
     loggedAt: Date.now(),
     result: null,
     graded: false,
+    // (Drop #7 — June 3, 2026) Strategy context for post-hoc audit.
+    // Captures Drop #7 decision + WHY, plus what the model would have said
+    // pre-strategy. Lets future validation reports break down WR by strategy
+    // tier (e.g. did YRFI_STRONG actually hit 90% in production?).
+    _projTotal: ctx._projTotal || null,
+    _originalSide: ctx._originalSide || null,
+    _originalTier: ctx._originalTier || null,
+    _originalProb: ctx._originalProb || null,
+    _strategyReason: ctx._strategyReason || null,
+    _directionMatch: ctx._directionMatch === undefined ? null : ctx._directionMatch,
     awayRunsInn1: null,
     homeRunsInn1: null
   };
