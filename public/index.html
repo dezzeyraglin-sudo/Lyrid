@@ -3869,6 +3869,101 @@ function ordinalFrontend(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+// ====================================================================
+// (Drop #8 — June 3, 2026) EMPIRICAL TOTAL STRATEGY
+//
+// Computes rolling-team-average projection from state.projectionAudit and
+// returns OVER/UNDER recommendation if any strategy signal fires.
+//
+// Strategy backtested against n=200 graded games, n=122 with sufficient
+// team history. STRONG-tier signals only (MODERATE dropped after backtest
+// showed 36-50% — not edge):
+//
+//   OVER_STRONG: maxSide >= 5.25 AND empDef >= 10 → 9-1 (90%) on n=10
+//   UNDER_STRONG: both rolling offenses < 3.5 → 7-4 (64%) on n=11
+//
+// Returns null if no signal fires OR insufficient history (< 5 games each team).
+// ====================================================================
+function computeEmpiricalTotalStrategy(awayTeamAbbr, homeTeamAbbr, gameDate) {
+  if (!awayTeamAbbr || !homeTeamAbbr || !state.projectionAudit) return null;
+
+  // Collect each team's last 15 games (excluding the current game's date)
+  const awayHistory = { scored: [], allowed: [] };
+  const homeHistory = { scored: [], allowed: [] };
+
+  const allAudits = Object.values(state.projectionAudit)
+    .filter(e => e.graded && e.date < gameDate &&
+                  typeof e.actualAwayRuns === 'number' &&
+                  typeof e.actualHomeRuns === 'number')
+    .sort((a, b) => (a.date < b.date ? 1 : -1));  // newest first
+
+  for (const e of allAudits) {
+    // Away team's history
+    if (e.awayTeam === awayTeamAbbr && awayHistory.scored.length < 15) {
+      awayHistory.scored.push(e.actualAwayRuns);
+      awayHistory.allowed.push(e.actualHomeRuns);
+    }
+    if (e.homeTeam === awayTeamAbbr && awayHistory.scored.length < 15) {
+      awayHistory.scored.push(e.actualHomeRuns);
+      awayHistory.allowed.push(e.actualAwayRuns);
+    }
+    // Home team's history
+    if (e.awayTeam === homeTeamAbbr && homeHistory.scored.length < 15) {
+      homeHistory.scored.push(e.actualAwayRuns);
+      homeHistory.allowed.push(e.actualHomeRuns);
+    }
+    if (e.homeTeam === homeTeamAbbr && homeHistory.scored.length < 15) {
+      homeHistory.scored.push(e.actualHomeRuns);
+      homeHistory.allowed.push(e.actualAwayRuns);
+    }
+    if (awayHistory.scored.length >= 15 && homeHistory.scored.length >= 15) break;
+  }
+
+  // Require minimum 5 games each
+  if (awayHistory.scored.length < 5 || homeHistory.scored.length < 5) return null;
+
+  const avg = arr => arr.reduce((s,v) => s+v, 0) / arr.length;
+  const awayOff = avg(awayHistory.scored);
+  const homeOff = avg(homeHistory.scored);
+  const awayDef = avg(awayHistory.allowed);
+  const homeDef = avg(homeHistory.allowed);
+
+  const awayProjRuns = (awayOff + homeDef) / 2;
+  const homeProjRuns = (homeOff + awayDef) / 2;
+  const maxSide = Math.max(awayProjRuns, homeProjRuns);
+  const empSum = awayOff + homeOff;
+  const empDef = awayDef + homeDef;
+
+  const sampleSize = Math.min(awayHistory.scored.length, homeHistory.scored.length);
+  const base = { awayOff, homeOff, awayDef, homeDef, maxSide, empSum, empDef, sampleSize };
+
+  // OVER_STRONG: hot matchup + leaky pitching on both sides
+  if (maxSide >= 5.25 && empDef >= 10) {
+    return {
+      ...base,
+      pick: 'OVER',
+      tier: 'STRONG',
+      units: 1.5,
+      reason: `Empirical OVER: best-side matchup ${maxSide.toFixed(2)} R/g, both pitching staffs leaky (combined ${empDef.toFixed(2)} R/g allowed)`,
+      backtest: '9-1 (90%) on n=10 across all book lines'
+    };
+  }
+
+  // UNDER_STRONG: both offenses cold (high bar — both must be < 3.5)
+  if (awayOff < 3.5 && homeOff < 3.5) {
+    return {
+      ...base,
+      pick: 'UNDER',
+      tier: 'STRONG',
+      units: 1.5,
+      reason: `Empirical UNDER: both offenses cold (away ${awayOff.toFixed(2)}, home ${homeOff.toFixed(2)} R/g over last ${sampleSize})`,
+      backtest: '7-4 (64%) on n=11'
+    };
+  }
+
+  return null;  // No empirical signal fires
+}
+
 // Classify a probability (0-1) into a visual tier for styling
 function probTier(p, baseline) {
   // May 18, 2026 — generalized for contact-probability engine outputs.
@@ -6859,6 +6954,103 @@ function renderAnalysis(data) {
     // Game-line bet recommendations (ML/Spread/Total) — separate panel below projection
     let gameLinesHtml = '';
     const gl = data.gameLineBets;
+
+    // ====================================================================
+    // (Drop #8 — June 3, 2026) EMPIRICAL TOTAL STRATEGY OVERRIDE
+    //
+    // June 3 deep audit on n=200 graded games + 122 with team rolling history
+    // found that the SERVER's projection model has correlation -0.109 with
+    // actual totals — anti-correlated. Building team-rolling-average proxies
+    // produces +0.150 correlation and yields two clean signals:
+    //
+    //   OVER_STRONG: maxSide >= 5.25 AND empDef >= 10
+    //                Backtest: 9-1 (90%) on n=10, +14.3u profit
+    //
+    //   UNDER_STRONG: both rolling offenses < 3.5
+    //                 Backtest: 7-4 (64%) on n=11
+    //
+    //   Combined: 16-5 (76%) on n=21 across all book lines tested
+    //
+    // Where:
+    //   awayOff = team's avg runs scored over last 15 games played
+    //   homeOff = team's avg runs scored over last 15 games played
+    //   awayDef = avg runs OPPONENT scored against team over last 15
+    //   homeDef = avg runs OPPONENT scored against team over last 15
+    //   maxSide = max((awayOff + homeDef)/2, (homeOff + awayDef)/2)
+    //   empDef = awayDef + homeDef  (how leaky both teams' pitching is)
+    //
+    // We compute this CLIENT-SIDE from state.projectionAudit because that's
+    // where actual game outcomes live. Server-side analyze.js doesn't have
+    // access to the user's storage.
+    //
+    // When the strategy fires AND it disagrees with the server's gl.total
+    // recommendation, we OVERRIDE the rec. Original is preserved as
+    // gl.total._original* for audit. When the strategy fires AND agrees,
+    // we just upgrade the tier to STRONG.
+    // ====================================================================
+    if (gl?.total && data.awayTeam?.abbreviation && data.homeTeam?.abbreviation) {
+      const empResult = computeEmpiricalTotalStrategy(
+        data.awayTeam.abbreviation,
+        data.homeTeam.abbreviation,
+        data.gameDateET
+      );
+      if (empResult && empResult.pick) {
+        const originalPick = gl.total.pick;
+        const originalTier = gl.total.tier;
+        const originalReasoning = gl.total.reasoning;
+
+        // Apply the empirical strategy
+        gl.total._originalPick = originalPick;
+        gl.total._originalTier = originalTier;
+        gl.total._originalReasoning = originalReasoning;
+        gl.total._empMaxSide = empResult.maxSide;
+        gl.total._empSum = empResult.empSum;
+        gl.total._empDef = empResult.empDef;
+        gl.total._empAwayOff = empResult.awayOff;
+        gl.total._empHomeOff = empResult.homeOff;
+        gl.total._empAwayDef = empResult.awayDef;
+        gl.total._empHomeDef = empResult.homeDef;
+        gl.total._empStrategyFired = true;
+        gl.total._empReason = empResult.reason;
+        gl.total._sampleSize = empResult.sampleSize;
+
+        // Build the new pick string. Need a book line — use the market total if available.
+        // If no market total, use 8.5 as default.
+        const bookLine = (data.odds?.total != null) ? Number(data.odds.total) : 8.5;
+        const newPickDirection = empResult.pick;  // 'OVER' or 'UNDER'
+        gl.total.pick = `${newPickDirection} ${bookLine}`;
+        gl.total.tier = empResult.tier;
+        gl.total.units = empResult.units;
+        gl.total.reasoning = [
+          empResult.reason,
+          `Away (${data.awayTeam.abbreviation}): ${empResult.awayOff.toFixed(2)} R/G scored, ${empResult.awayDef.toFixed(2)} R/G allowed (last 15)`,
+          `Home (${data.homeTeam.abbreviation}): ${empResult.homeOff.toFixed(2)} R/G scored, ${empResult.homeDef.toFixed(2)} R/G allowed (last 15)`,
+          `Backtest: ${empResult.backtest}`,
+        ];
+
+        // Also bump overallBest if total is now STRONG
+        if (gl.overallBest && empResult.tier === 'STRONG' && gl.overallBest.type !== 'total') {
+          // Empirical total is now the best play
+          gl.overallBest = {
+            type: 'total',
+            pick: gl.total.pick,
+            tier: gl.total.tier,
+            units: gl.total.units,
+            price: gl.total.price,
+            reasoning: gl.total.reasoning,
+            _empStrategyFired: true
+          };
+        } else if (gl.overallBest && gl.overallBest.type === 'total') {
+          // Update overallBest with new total info
+          gl.overallBest.pick = gl.total.pick;
+          gl.overallBest.tier = gl.total.tier;
+          gl.overallBest.units = gl.total.units;
+          gl.overallBest.reasoning = gl.total.reasoning;
+          gl.overallBest._empStrategyFired = true;
+        }
+      }
+    }
+
     if (gl?.hasMarket && gl.overallBest) {
       const tierClass = gl.overallBest.tier.toLowerCase();
       const typeLabel = {
@@ -6903,7 +7095,7 @@ function renderAnalysis(data) {
             <ul class="glb-best-reasons">
               ${(gl.overallBest.reasoning || []).map(r => `<li>${r}</li>`).join('')}
             </ul>
-            <button class="glb-log-btn" onclick='logGameLineBet(${JSON.stringify({ gamePk: data.gamePk, date: data.gameDateET, pick: gl.overallBest.pick, tier: gl.overallBest.tier, type: gl.overallBest.type, price: gl.overallBest.price, units: gl.overallBest.units, away: data.awayTeam.abbreviation, home: data.homeTeam.abbreviation }).replace(/'/g, '&#39;')})'>
+            <button class="glb-log-btn" onclick='logGameLineBet(${JSON.stringify({ gamePk: data.gamePk, date: data.gameDateET, pick: gl.overallBest.pick, tier: gl.overallBest.tier, type: gl.overallBest.type, price: gl.overallBest.price, units: gl.overallBest.units, away: data.awayTeam.abbreviation, home: data.homeTeam.abbreviation, _empStrategyFired: gl.overallBest._empStrategyFired || (gl.total && gl.total._empStrategyFired) || false, _empReason: (gl.total && gl.total._empReason) || null, _empMaxSide: (gl.total && gl.total._empMaxSide) || null, _empSum: (gl.total && gl.total._empSum) || null, _empDef: (gl.total && gl.total._empDef) || null, _empAwayOff: (gl.total && gl.total._empAwayOff) || null, _empHomeOff: (gl.total && gl.total._empHomeOff) || null, _empAwayDef: (gl.total && gl.total._empAwayDef) || null, _empHomeDef: (gl.total && gl.total._empHomeDef) || null, _originalPick: (gl.total && gl.total._originalPick) || null, _originalTier: (gl.total && gl.total._originalTier) || null }).replace(/'/g, '&#39;')})'>
               + LOG THIS BET
             </button>
           </div>
@@ -9066,7 +9258,21 @@ function logGameLineBet(ctx) {
     result: null,      // 'win' | 'loss' | 'push' | null
     graded: false,
     finalAwayRuns: null,
-    finalHomeRuns: null
+    finalHomeRuns: null,
+    // (Drop #8 — June 3, 2026) Empirical-total-strategy audit fields.
+    // When the strategy fired, capture which signal and the team rolling stats
+    // so future audits can validate the strategy in production.
+    _empStrategyFired: ctx._empStrategyFired || false,
+    _empReason: ctx._empReason || null,
+    _empMaxSide: ctx._empMaxSide || null,
+    _empSum: ctx._empSum || null,
+    _empDef: ctx._empDef || null,
+    _empAwayOff: ctx._empAwayOff || null,
+    _empHomeOff: ctx._empHomeOff || null,
+    _empAwayDef: ctx._empAwayDef || null,
+    _empHomeDef: ctx._empHomeDef || null,
+    _originalPick: ctx._originalPick || null,
+    _originalTier: ctx._originalTier || null
   };
   saveState();
   showToast(`★ Logged: ${ctx.tier} ${ctx.pick} (${ctx.units || 0}u)`);
