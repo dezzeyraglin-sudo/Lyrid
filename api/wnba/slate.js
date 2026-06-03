@@ -340,7 +340,22 @@ async function generateSlate(opts = {}) {
 
   // STEP 4: Wait for all games to finish
   const gameResults = await Promise.all(analysisPromises);
-  const allAnalyses = gameResults.flat().filter(Boolean);
+  const allAnalysesRaw = gameResults.flat().filter(Boolean);
+
+  // Remove OUT players from the slate entirely (preference: don't show them as
+  // cards at all). Capture them first so we can report who's out + who benefits.
+  const outAnalyses = allAnalysesRaw.filter(a => a.injuryStatus === 'OUT');
+  const allAnalyses = allAnalysesRaw.filter(a => a.injuryStatus !== 'OUT');
+
+  // Dedup the removed players (one entry per name, not per market) for the summary.
+  const removedOut = [];
+  const _seenOut = new Set();
+  for (const a of outAnalyses) {
+    const key = (a.player || '').toLowerCase();
+    if (_seenOut.has(key)) continue;
+    _seenOut.add(key);
+    removedOut.push({ player: a.player, team: a.team, detail: a.injuryDetail || null });
+  }
 
   // STEP 5: Organize output
   const successful = allAnalyses.filter(a => !a.error && a.recommendation !== 'PASS');
@@ -368,6 +383,25 @@ async function generateSlate(opts = {}) {
     note: WNBA_V2_PROJECTIONS ? 'injury feed failed; v2 ran without injury data' : 'v2 disabled (WNBA_V2_PROJECTIONS=false)'
   };
 
+  // Injury summary for the UI: who was removed (out) and who benefits, grouped
+  // by team. Beneficiaries are derived from the surviving analyses' benefitsFrom.
+  const beneficiaryByName = {};
+  for (const a of allAnalyses) {
+    if (a.benefitsFrom && !beneficiaryByName[a.player]) {
+      beneficiaryByName[a.player] = {
+        player: a.player, team: a.team,
+        minGain: a.benefitsFrom.minGain,
+        projMinutes: a.benefitsFrom.projMinutes,
+        becauseOut: a.benefitsFrom.out,
+      };
+    }
+  }
+  const injuriesSummary = {
+    out: removedOut,                                   // [{player, team, detail}]
+    beneficiaries: Object.values(beneficiaryByName)    // [{player, team, minGain, projMinutes, becauseOut}]
+      .sort((x, y) => y.minGain - x.minGain),
+  };
+
   return {
     date,
     season,
@@ -376,6 +410,7 @@ async function generateSlate(opts = {}) {
     passes,
     errors,
     bestPlays,
+    injuries: injuriesSummary,
     warnings,
     summary: {
       games: games.length,
@@ -384,6 +419,7 @@ async function generateSlate(opts = {}) {
       totalAnalyses: allAnalyses.length,
       recommendations: successful.length,
       passes: passes.length,
+      removedOut: removedOut.length,
       errors: errors.length,
       durationMs: Date.now() - startedAt,
       v2: v2Summary
@@ -572,6 +608,21 @@ async function buildAndRunAnalysis({
     const isOut = injuryStatus === 'OUT';
     const isDoubtful = injuryStatus === 'DOUBTFUL';
 
+    // Beneficiary context: if a teammate is OUT, surface who's out and how much
+    // THIS player gains from it (so the card can say "boosted by X out").
+    let benefitsFrom = null;
+    const ben = Array.isArray(v2Roster) ? v2Roster._beneficiaries : null;
+    if (ben && ben.out?.length) {
+      const myGain = (ben.gainers || []).find(g => _normName(g.name) === _normName(player.name));
+      if (myGain && myGain.minGain >= 1.5) {
+        benefitsFrom = {
+          out: ben.out.map(o => o.name),
+          minGain: myGain.minGain,
+          projMinutes: myGain.projMinutes,
+        };
+      }
+    }
+
     return {
       gameId: game.gameId,
       player: player.name,
@@ -581,6 +632,7 @@ async function buildAndRunAnalysis({
       // Injury status surfaced to the card. OUT players are forced to PASS.
       injuryStatus,
       injuryDetail,
+      benefitsFrom,
       line: unified.line,
       projection: unified.projection,
       edge: unified.edge,
@@ -677,11 +729,16 @@ function buildV2Roster(players, teamAbbrev, injuryReport, gameContext) {
   // Build minimal v2-shaped player objects from the player + _raw data the slate already has.
   const roster = players.map(p => {
     const raw = p._raw || {};
-    const gp = Number(raw.GP) || Number(raw.gp) || 10;
-    const gs = Number(raw.GS) || Number(raw.gs) || 0;
-    const mpg = Number(raw.MIN) || Number(raw.MPG) || Number(raw.mpg) || 0;
-    const ppg = Number(raw.PTS) || Number(raw.PPG) || 0;
-    const rpg = Number(raw.REB) || Number(raw.RPG) || 0;
+    const gp = Number(p.gamesPlayed) || Number(raw.GP) || Number(raw.g) || Number(raw.gp) || 10;
+    const gs = Number(raw.GS) || Number(raw.gs) || Number(raw.gs_gp) || 0;
+    // Minutes: prefer the REAL resolved values on the player object (expectedMinutes
+    // from the game log, then season minutesAvg). bbref's raw per-game column is `mp`
+    // (lowercase), NOT `MIN` — reading MIN gave 0, which zeroed redistribution so no
+    // one ever showed as benefiting from an OUT player.
+    const mpg = Number(p.expectedMinutes) || Number(p.minutesAvg)
+      || Number(raw.mp) || Number(raw.MIN) || Number(raw.MPG) || 0;
+    const ppg = Number(p.seasonAvg) || Number(raw.pts) || Number(raw.PTS) || Number(raw.PPG) || 0;
+    const rpg = Number(raw.trb) || Number(raw.REB) || Number(raw.RPG) || 0;
 
     // Derive per-minute rates (used by points & rebounds engines)
     const reb_per_min = mpg > 0 ? rpg / mpg : 0;
@@ -696,21 +753,15 @@ function buildV2Roster(players, teamAbbrev, injuryReport, gameContext) {
       ts_pct = denom > 0 ? ppg / denom : 0.535; // league avg fallback
     }
 
-    // Usage rate: if not provided, approximate from FGA + TO + 0.44*FTA per game.
-    // Real USG% needs team-level pace data; this is a rough proxy.
-    let usage = Number(raw.USG_PCT) || Number(raw.usage);
-    // UNITS FIX (June 1, 2026): wnbaPlayerData surfaces USG_PCT in PERCENTAGE
-    // form (e.g. 28.4), but pointsProjection.js expects a DECIMAL fraction
-    // (LEAGUE_AVG_USAGE = 0.20). Without this, points blew up ~100x and railed
-    // at the 2x-season ceiling (e.g. a 16-ppg player projecting 32.00).
+    // Usage rate: prefer the REAL resolved value on the player object (usageRate,
+    // e.g. 28.6), then raw fields, then a proxy. Normalize to a decimal fraction.
+    let usage = Number(p.usageRate) || Number(raw.USG_PCT) || Number(raw.usage);
     if (Number.isFinite(usage) && usage > 1) usage = usage / 100;
     if (!Number.isFinite(usage)) {
-      const fga = Number(raw.FGA) || 0;
-      const fta = Number(raw.FTA) || 0;
-      const tov = Number(raw.TOV) || Number(raw.TO) || 0;
+      const fga = Number(raw.FGA) || Number(raw.fga) || 0;
+      const fta = Number(raw.FTA) || Number(raw.fta) || 0;
+      const tov = Number(raw.TOV) || Number(raw.TO) || Number(raw.tov) || 0;
       const possessionsUsed = fga + tov + 0.44 * fta;
-      // Crude usage estimate: player's possessions used / team possessions in player's minutes.
-      // Without team pace, fall back to 0.20 (league avg) and let downstream flag it.
       usage = possessionsUsed > 0 ? Math.min(0.40, possessionsUsed / 16) : 0.20;
     }
 
@@ -723,7 +774,7 @@ function buildV2Roster(players, teamAbbrev, injuryReport, gameContext) {
     return {
       playerId: String(p.id),
       playerName: p.name,
-      position: raw.POS || raw.position || p.position || 'F',
+      position: p.position || raw.pos || raw.POS || raw.position || 'F',
       // Stats for minutes engine
       season_mpg: mpg,
       gp,
@@ -759,13 +810,36 @@ function buildV2Roster(players, teamAbbrev, injuryReport, gameContext) {
   // STEP B: redistribute minutes/usage from OUT players to teammates
   // (modifies the roster in place; OUT players keep projMinutes=0,
   // backups get boosted projMinutes and usage)
+  // Snapshot pre-redistribution minutes so we can measure who BENEFITS.
+  const preMinutes = {};
+  for (const p of roster) preMinutes[p.playerName] = Number(p.projMinutes ?? p.season_mpg) || 0;
   try {
     const { audit: redistAudit } = redistributeOutMinutes(roster);
-    // Attach redistribution audit at roster level (not per-player)
     roster._redistributionAudit = redistAudit;
   } catch (err) {
     roster._redistributionAudit = { error: err.message };
   }
+
+  // Build the "who benefits" map: out players → teammates whose projected
+  // minutes/usage rose after redistribution. Self-contained from the boosted
+  // roster (doesn't depend on the audit's internal shape).
+  const outPlayers = roster.filter(p => p.status === 'OUT');
+  const gainers = roster
+    .filter(p => p.status !== 'OUT')
+    .map(p => {
+      const before = preMinutes[p.playerName] || 0;
+      const after = Number(p.projMinutes) || before;
+      const minGain = Math.round((after - before) * 10) / 10;
+      return { name: p.playerName, minGain, projMinutes: Math.round(after * 10) / 10,
+        usage: p.usage != null ? Math.round((p.usage > 1 ? p.usage : p.usage * 100)) : null };
+    })
+    .filter(g => g.minGain >= 1.5)            // meaningful bump only
+    .sort((a, b) => b.minGain - a.minGain);
+
+  roster._beneficiaries = outPlayers.length > 0 ? {
+    out: outPlayers.map(p => ({ name: p.playerName, detail: p._injury?.detail || null })),
+    gainers,
+  } : null;
 
   return roster;
 }

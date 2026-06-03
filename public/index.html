@@ -12387,15 +12387,33 @@ async function autoGradeOnAppOpen() {
     if (banner) {
       const games = data.games || [];
       const anyLines = games.some(g => g.linesProvided);
+      let html = '';
       if (games.length > 0 && !anyLines) {
-        banner.innerHTML = `
-          <div style="background:var(--surface-card);border:0.5px solid var(--brand-primary, #233859);border-left:3px solid var(--accent, #c9a45e);padding:14px 18px;margin-bottom:18px;border-radius:var(--radius-md, 8px);font-size:12px;color:var(--text-primary);line-height:1.6;letter-spacing:0.01em">
+        html += `
+          <div style="background:var(--surface-card);border:0.5px solid var(--brand-primary, #233859);border-left:3px solid var(--accent, #c9a45e);padding:14px 18px;margin-bottom:12px;border-radius:var(--radius-md, 8px);font-size:12px;color:var(--text-primary);line-height:1.6;letter-spacing:0.01em">
             <div style="font-size:10px;letter-spacing:0.12em;color:var(--accent, #c9a45e);font-weight:600;margin-bottom:4px">PROJECTIONS ONLY · SHADOW MODE</div>
             Book lines haven't wired in yet. Edges shown are against the engine's own inferred lines and are not actionable. Recommendations stay PASS until a paid line feed connects.
           </div>`;
-      } else {
-        banner.innerHTML = '';
       }
+      // Injury report: who's OUT (removed from the slate) and who benefits.
+      const inj = data.injuries;
+      if (inj && (inj.out?.length || inj.beneficiaries?.length)) {
+        const outRows = (inj.out || []).map(o =>
+          `<span style="display:inline-block;margin:2px 6px 2px 0;padding:2px 8px;border-radius:100px;background:#fee2e2;color:#7f1d1d;font-size:11px;font-weight:600">
+            ${esc(o.player)} <span style="opacity:0.7;font-weight:400">${esc(o.team)}${o.detail ? ' · ' + esc(o.detail) : ''}</span></span>`).join('');
+        const benRows = (inj.beneficiaries || []).slice(0, 8).map(b =>
+          `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0;border-bottom:0.5px solid var(--border-hairline, rgba(0,0,0,0.06))">
+            <span style="color:var(--text-primary);font-weight:600">${esc(b.player)} <span style="font-weight:400;color:var(--text-secondary,var(--dim))">${esc(b.team)}</span></span>
+            <span style="color:#14532d;font-variant-numeric:tabular-nums">+${b.minGain} min → ${b.projMinutes} proj <span style="color:var(--text-secondary,var(--dim));font-weight:400">(${esc((b.becauseOut||[]).join(', '))} out)</span></span>
+          </div>`).join('');
+        html += `
+          <div style="background:var(--surface-card);border:0.5px solid var(--border-hairline, rgba(0,0,0,0.1));border-left:3px solid #b91c1c;padding:14px 18px;margin-bottom:18px;border-radius:var(--radius-md, 8px)">
+            <div style="font-size:10px;letter-spacing:0.12em;color:#b91c1c;font-weight:700;margin-bottom:8px">INJURY REPORT · ${(inj.out||[]).length} OUT</div>
+            ${outRows ? `<div style="margin-bottom:${benRows ? '10px' : '0'}">${outRows}</div>` : ''}
+            ${benRows ? `<div style="font-size:10px;letter-spacing:0.1em;color:var(--text-secondary,var(--dim));font-weight:600;margin-bottom:4px">WHO BENEFITS</div>${benRows}` : ''}
+          </div>`;
+      }
+      banner.innerHTML = html;
     }
 
     const games = data.games || [];
@@ -12933,6 +12951,7 @@ async function autoGradeOnAppOpen() {
           <span style="font-weight:600;color:var(--text-primary);font-size:15px;font-family:var(--font-serif, var(--font-sans))">${esc(lead.player)}</span>
           ${statusBadge}
           <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.06em">${esc(lead.team)} vs ${esc(lead.opponent)}</span>
+          ${lead.benefitsFrom ? `<span style="font-size:10px;font-weight:600;color:#14532d;background:#dcfce7;padding:2px 8px;border-radius:100px" title="Projected minutes boosted because a teammate is out">▲ +${lead.benefitsFrom.minGain} min (${esc(lead.benefitsFrom.out.join(', '))} out)</span>` : ''}
         </div>
 
         ${whyDrivers.length > 0 ? `
