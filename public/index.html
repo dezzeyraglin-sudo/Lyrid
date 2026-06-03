@@ -12815,7 +12815,7 @@ async function autoGradeOnAppOpen() {
     return `
       <div class="top-picks-banner single-pick" style="margin-top:14px">
         <div class="tpb-title">
-          <span>★ TONIGHT'S SIGNAL · STRONGEST PROJECTION THIS GAME</span>
+          <span><span style="display:inline-block;background:var(--brand-primary, #233859);color:var(--accent, #c9a45e);font-weight:700;font-size:11px;letter-spacing:0.08em;padding:3px 10px;border-radius:6px;margin-right:8px">★ TOP PICK</span>STRONGEST PLAY THIS GAME</span>
           <span class="mode-indicator deep" style="background:${tier.bg};color:${tier.color}">${tier.label}</span>
         </div>
         <div class="tpb-grid single">
@@ -13206,8 +13206,71 @@ async function autoGradeOnAppOpen() {
         <span style="color:var(--text-secondary, var(--dim));font-size:9px">${marker}${d.k}</span> <b style="color:${col}">${d.score != null ? Math.round(d.score) : '—'}</b>${wTxt}</span>`;
     };
 
+    // ---- MLB-DEPTH DETAIL SECTIONS (only render rows backed by real data) ----
+    const ctx = lead.playerContext || {};
+    const num = (v) => (v != null && Number.isFinite(Number(v))) ? Number(v) : null;
+    const mkt = String(lead.market || '').toLowerCase();
+
+    // (1) PROFILE — the underlying numbers behind the drivers, MLB-table style.
+    const profileRows = [];
+    if (num(ctx.usageRate) != null) profileRows.push(['Usage rate', `${num(ctx.usageRate).toFixed(1)}%`, num(ctx.usageRate) >= 26 ? 'pos' : '']);
+    if (num(ctx.expectedMinutes) != null) profileRows.push(['Projected minutes', `${num(ctx.expectedMinutes).toFixed(0)} MPG`, num(ctx.expectedMinutes) >= 30 ? 'pos' : '']);
+    if (num(ctx.tsPct) != null) profileRows.push(['True shooting', `${(num(ctx.tsPct) * 100).toFixed(0)}%`, num(ctx.tsPct) >= 0.58 ? 'pos' : (num(ctx.tsPct) <= 0.50 ? 'neg' : '')]);
+    if (num(ctx.fgPctRecent) != null) profileRows.push(['FG% (last 10)', `${(num(ctx.fgPctRecent) * 100).toFixed(0)}%`, '']);
+    if (ctx.position) profileRows.push(['Position', String(ctx.position), '']);
+    if (num(ctx.gamesPlayed) != null) profileRows.push(['Games played', `${num(ctx.gamesPlayed)}`, num(ctx.gamesPlayed) < 5 ? 'neg' : '']);
+
+    // (2) RECENT FORM — last-5 / last-10 vs season for this market, hot/cold.
+    const s = num(ctx.seasonAvg), l5 = num(ctx.last5Avg), l10 = num(ctx.last10Avg);
+    let formRow = '';
+    if (s != null && l5 != null && s > 0) {
+      const dp = (l5 - s) / s;
+      const hot = dp >= 0.10, cold = dp <= -0.10;
+      const tag = hot ? '<span style="color:#14532d;font-weight:700">HOT</span>' : cold ? '<span style="color:#7f1d1d;font-weight:700">COOLING</span>' : '<span style="color:var(--text-secondary,var(--dim))">STEADY</span>';
+      formRow = `
+        <div style="font-size:11px;color:var(--text-secondary,var(--dim));line-height:1.7">
+          ${tag} · last 5 <b style="color:var(--text-primary)">${l5.toFixed(1)}</b>${l10 != null ? ` · last 10 <b style="color:var(--text-primary)">${l10.toFixed(1)}</b>` : ''} · season <b style="color:var(--text-primary)">${s.toFixed(1)}</b> <span style="font-variant-numeric:tabular-nums">(${dp >= 0 ? '+' : ''}${(dp * 100).toFixed(0)}%)</span>
+        </div>`;
+    }
+    if (num(ctx.minutesLast5) != null && num(ctx.minutesCv) != null) {
+      const cvPct = (num(ctx.minutesCv) * 100).toFixed(0);
+      formRow += `<div style="font-size:11px;color:var(--text-secondary,var(--dim));line-height:1.7">Minutes last 5 <b style="color:var(--text-primary)">${num(ctx.minutesLast5).toFixed(0)}</b> · consistency <b style="color:var(--text-primary)">${100 - cvPct}%</b> ${num(ctx.minutesCv) <= 0.15 ? '<span style="color:#14532d">(locked)</span>' : num(ctx.minutesCv) >= 0.30 ? '<span style="color:#7f1d1d">(swingy)</span>' : ''}</div>`;
+    }
+
+    // (3) MATCHUP — opponent, home/away, pace/total, defense read.
+    const matchupBits = [];
+    matchupBits.push(`${ctx.isHome === true ? 'Home' : ctx.isHome === false ? 'Away' : ''} vs <b style="color:var(--text-primary)">${esc(lead.opponent || '')}</b>`);
+    if (num(ctx.teamTotal) != null) matchupBits.push(`game total <b style="color:var(--text-primary)">${num(ctx.teamTotal).toFixed(1)}</b>`);
+    if (dc.opposingDefense === 'REAL' && num(mult.matchup_opposingDefense) != null) {
+      const dm = num(mult.matchup_opposingDefense);
+      matchupBits.push(dm > 1.03 ? '<span style="color:#14532d;font-weight:600">soft defense for this stat</span>' : dm < 0.97 ? '<span style="color:#7f1d1d;font-weight:600">tough defense for this stat</span>' : 'neutral defense');
+    }
+    if (mkt.includes('rebound') && lead.reboundEquity && num(lead.reboundEquity.equityMultiplier) != null && lead.reboundEquity.equityMultiplier >= 1.04) {
+      matchupBits.push('<span style="color:#14532d;font-weight:600">favorable rebound geometry</span>');
+    }
+    const matchupRow = matchupBits.filter(Boolean).join(' · ');
+
+    const detailSections = `
+      ${profileRows.length ? `
+        <div style="margin-top:10px">
+          <div style="font-size:9px;letter-spacing:0.1em;color:var(--text-secondary,var(--dim));font-weight:700;margin-bottom:5px">PLAYER PROFILE</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 16px">
+            ${profileRows.map(([k, v, cls]) => `<div style="display:flex;justify-content:space-between;font-size:11px;border-bottom:0.5px solid var(--border-hairline,rgba(0,0,0,0.05));padding:2px 0"><span style="color:var(--text-secondary,var(--dim))">${esc(k)}</span><b style="color:${cls === 'pos' ? '#14532d' : cls === 'neg' ? '#7f1d1d' : 'var(--text-primary)'};font-variant-numeric:tabular-nums">${esc(v)}</b></div>`).join('')}
+          </div>
+        </div>` : ''}
+      ${formRow ? `
+        <div style="margin-top:10px">
+          <div style="font-size:9px;letter-spacing:0.1em;color:var(--text-secondary,var(--dim));font-weight:700;margin-bottom:3px">RECENT FORM</div>
+          ${formRow}
+        </div>` : ''}
+      ${matchupRow ? `
+        <div style="margin-top:10px">
+          <div style="font-size:9px;letter-spacing:0.1em;color:var(--text-secondary,var(--dim));font-weight:700;margin-bottom:3px">MATCHUP</div>
+          <div style="font-size:11px;color:var(--text-secondary,var(--dim));line-height:1.6">${matchupRow}</div>
+        </div>` : ''}
+    `;
+
     return `
-      <div id="wnba-card-${esc((lead.player || '').replace(/[^a-zA-Z0-9]/g, ''))}" style="background:var(--surface-card);border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:var(--radius-md, 8px);padding:14px 18px;opacity:${cardOpacity};scroll-margin-top:80px;transition:box-shadow 0.3s">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
           <span style="background:${tier.bg};color:${tier.color};padding:3px 9px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em">${tier.label}</span>
           <span style="font-weight:600;color:var(--text-primary);font-size:15px;font-family:var(--font-serif, var(--font-sans))">${esc(lead.player)}</span>
@@ -13248,6 +13311,8 @@ async function autoGradeOnAppOpen() {
           const read = buildPropRead(lead, leadProj);
           return read ? `<div style="margin-top:10px;padding:9px 12px;border-left:2.5px solid var(--brand-primary, #233859);background:var(--panel-2, rgba(35,56,89,0.04));border-radius:0 4px 4px 0;font-size:12px;line-height:1.5;color:var(--text-primary)">${read}</div>` : '';
         })()}
+
+        ${detailSections}
 
         ${allChips.length > 0 ? `
           <div class="stat-row" style="margin-top:10px">
