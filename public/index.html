@@ -11885,16 +11885,27 @@ function _clearHistoryBadgeIfShown() {
 // inferred-line props still track MAE (projection accuracy) in shadow.
 
 window.captureWnbaPredictions = function(data) {
-  if (!data || !Array.isArray(data.passes)) return;
+  if (!data) return;
+  // Capture the COMPLETE set: analyses (recommended plays) + passes + bestPlays.
+  // Reading only data.passes missed every non-PASS recommendation, so recommended
+  // plays never landed in history. Dedup by player_market.
+  const pool = [];
+  if (Array.isArray(data.analyses)) pool.push(...data.analyses);
+  if (Array.isArray(data.passes)) pool.push(...data.passes);
+  if (Array.isArray(data.bestPlays)) pool.push(...data.bestPlays);
+  if (pool.length === 0) return;
   const date = data.date || getTodayStr();
   state.wnbaPropHistory = state.wnbaPropHistory || {};
   const day = state.wnbaPropHistory[date] = state.wnbaPropHistory[date] || {};
   let added = 0;
-  data.passes.forEach(p => {
+  const seen = new Set();
+  pool.forEach(p => {
     if (!p.player || !p.market) return;
+    const key = `${p.player}_${p.market}`;
+    if (seen.has(key)) return;        // first occurrence wins (analyses before passes)
+    seen.add(key);
     const projection = (p.projection != null && Number.isFinite(Number(p.projection))) ? Number(p.projection) : null;
     if (projection == null || p.line == null) return;
-    const key = `${p.player}_${p.market}`;
     const existing = day[key];
     // Don't clobber a graded entry; refresh an ungraded one (lines/projection move pre-game).
     if (existing && existing.graded) return;
