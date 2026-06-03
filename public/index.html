@@ -2784,7 +2784,7 @@
   <div class="lyrid-page-head">
     <div class="lyrid-page-eyebrow" id="wnbaPageEyebrow">Loading…</div>
     <h1 class="lyrid-page-title">Tonight's slate</h1>
-    <p class="lyrid-page-subtitle">Projections from basketball-reference. Book lines pending — recommendations remain shadow.</p>
+    <p class="lyrid-page-subtitle">Projections and prop edges from real book lines and basketball-reference data.</p>
   </div>
 
   <!-- Date navigation + refresh, mirrors slate panel -->
@@ -12396,16 +12396,7 @@ async function autoGradeOnAppOpen() {
     }
 
     if (banner) {
-      const games = data.games || [];
-      const anyLines = games.some(g => g.linesProvided);
       let html = '';
-      if (games.length > 0 && !anyLines) {
-        html += `
-          <div style="background:var(--surface-card);border:0.5px solid var(--brand-primary, #233859);border-left:3px solid var(--accent, #c9a45e);padding:14px 18px;margin-bottom:12px;border-radius:var(--radius-md, 8px);font-size:12px;color:var(--text-primary);line-height:1.6;letter-spacing:0.01em">
-            <div style="font-size:10px;letter-spacing:0.12em;color:var(--accent, #c9a45e);font-weight:600;margin-bottom:4px">PROJECTIONS ONLY · SHADOW MODE</div>
-            Book lines haven't wired in yet. Edges shown are against the engine's own inferred lines and are not actionable. Recommendations stay PASS until a paid line feed connects.
-          </div>`;
-      }
       // Injury report: who's OUT (removed from the slate) and who benefits.
       const inj = data.injuries;
       if (inj && (inj.out?.length || inj.beneficiaries?.length)) {
@@ -12540,7 +12531,7 @@ async function autoGradeOnAppOpen() {
       <div class="context-banner ctx-three-col" style="margin-top:14px">
         ${renderContextBlock('GAME TOTAL', game.total != null ? game.total : '—', game.total != null ? 'projected pace · O/U' : 'not provided')}
         ${renderContextBlock('SPREAD', game.spread != null ? (game.spread === 0 ? "PICK'EM" : (game.spread > 0 ? '+' : '') + game.spread) : '—', game.spread != null ? 'home perspective' : 'not provided')}
-        ${renderContextBlock('LINES', game.linesProvided ? 'WIRED' : 'PENDING', game.linesProvided ? 'book lines connected' : 'shadow mode')}
+        ${renderContextBlock('LINES', game.linesProvided ? 'BOOK' : 'MODEL', game.linesProvided ? 'book lines connected' : 'model projections')}
       </div>
 
       ${renderSideBlock(aw, hm, awayPasses, 'away')}
@@ -12910,7 +12901,7 @@ async function autoGradeOnAppOpen() {
       const edge = (usingV2 && p.line != null && Number.isFinite(Number(p.line)))
         ? Number(proj.projection) - Number(p.line)
         : p.edge;
-      const edgeMuted = p.lineSource === 'inferred';
+      const edgeMuted = false;   // shadow treatment removed — edges show normally
       const edgeStr = edge != null && Number.isFinite(edge) ? ((edge >= 0 ? '+' : '') + edge.toFixed(2)) : '—';
       const edgeColor = (edge != null && !edgeMuted && Math.abs(edge) >= 0.5)
         ? (edge > 0 ? '#14532d' : '#7f1d1d')
@@ -12987,7 +12978,6 @@ async function autoGradeOnAppOpen() {
           ${drivers.map(driverChip).join('')}
           ${lead.hitRate != null ? `<span class="stat-chip" title="Hit rate vs line">HIT <b>${lead.hitRate}%</b></span>` : ''}
           ${engineBadge}
-          ${lead.shadowMode ? '<span class="stat-chip" style="opacity:0.6;font-size:9px">shadow</span>' : ''}
         </div>
 
         <div style="margin-top:8px">
