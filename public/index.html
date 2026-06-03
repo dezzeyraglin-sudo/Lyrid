@@ -11991,6 +11991,81 @@ window.captureWnbaPredictions = function(data) {
   if (added > 0) saveState();
 };
 
+// Log best bets for ONE game on the Analyze click (mirrors MLB's logBestBets,
+// which fires inside analyzeGame). Scoped to a single gameId; captures that
+// game's full pool, tags the strongest actionable pick per player as a best bet,
+// and marks them loggedFromAnalyze so we know they came from an explicit analyze.
+window.logWnbaBestBetsForGame = function(data, gameId) {
+  if (!data || !gameId) return;
+  const pool = [];
+  if (Array.isArray(data.analyses)) pool.push(...data.analyses);
+  if (Array.isArray(data.passes)) pool.push(...data.passes);
+  if (Array.isArray(data.bestPlays)) pool.push(...data.bestPlays);
+  const gamePool = pool.filter(p => p.gameId === gameId);
+  if (gamePool.length === 0) return;
+
+  const date = data.date || getTodayStr();
+  state.wnbaPropHistory = state.wnbaPropHistory || {};
+  const day = state.wnbaPropHistory[date] = state.wnbaPropHistory[date] || {};
+
+  // Strongest actionable market per player in THIS game = the best bet(s).
+  const bestByPlayer = {};
+  for (const p of gamePool) {
+    if (!p.player || !p.market) continue;
+    const actionable = (p.lineSource === 'provided')
+      && p.recommendation && p.recommendation !== 'PASS'
+      && p.injuryStatus !== 'OUT';
+    if (!actionable) continue;
+    const fe = p.scores?.finalEdge ?? 0;
+    const cur = bestByPlayer[p.player];
+    if (!cur || fe > cur.fe) bestByPlayer[p.player] = { key: `${p.player}_${p.market}`, fe, p };
+  }
+  const bests = Object.values(bestByPlayer);
+  if (bests.length === 0) return;
+
+  let added = 0;
+  for (const { key, p } of bests) {
+    const existing = day[key];
+    if (existing && existing.graded) continue;   // never overwrite a graded result
+    const projection = Number(p.projection);
+    if (!Number.isFinite(projection) || p.line == null) continue;
+    const lean = projection >= Number(p.line) ? 'OVER' : 'UNDER';
+    day[key] = {
+      ...existing,
+      date, player: p.player, team: p.team, opponent: p.opponent, market: p.market,
+      line: Number(p.line), projection: Number(projection.toFixed(2)),
+      edge: (p.edge != null && Number.isFinite(Number(p.edge))) ? Number(Number(p.edge).toFixed(2)) : null,
+      lean, probOver: p.probOver ?? null,
+      tier: (p.label || '').toLowerCase(),
+      finalEdgeScore: p.scores?.finalEdge ?? null,
+      lineSource: p.lineSource || 'inferred',
+      recommendation: p.recommendation || null,
+      isBestBet: true,
+      loggedFromAnalyze: true,
+      confidence: p.confidence ?? null,
+      defenseReal: (p.dataCompleteness?.opposingDefense === 'REAL'),
+      drivers: p.scores ? {
+        role: p.scores.roleStability, usage: p.scores.usageFunnel,
+        env: p.scores.environment, def: p.scores.matchup,
+        cov: p.scores.coverage, var: p.scores.variance
+      } : null,
+      floor: p.floor ?? null, ceiling: p.ceiling ?? null,
+      capturedAt: existing?.capturedAt || new Date().toISOString(),
+      actual: existing?.actual ?? null, result: existing?.result ?? null,
+      error: existing?.error ?? null, graded: existing?.graded ?? false
+    };
+    added++;
+  }
+  if (added > 0) {
+    saveState();
+    // Refresh the history view if the user is looking at it.
+    if (typeof historyView !== 'undefined' && historyView === 'wnba' &&
+        document.getElementById('historyList')) {
+      try { renderHistory(); } catch (_) {}
+    }
+  }
+};
+
 // Grade WNBA props for one date (or all ungraded dates) against actual results.
 window.gradeWnbaProps = async function(opts = {}) {
   const silent = opts.silent;
@@ -12557,6 +12632,12 @@ async function autoGradeOnAppOpen() {
     const passes = (data.passes || []).filter(p => p.gameId === gameId);
     const container = document.getElementById('wnbaAnalysisContainer');
     if (!container || !game) return;
+
+    // Log this game's best bets on Analyze — mirrors MLB's logBestBets(data),
+    // which fires inside the analyze flow. Captures the full pool for THIS game
+    // (analyses + passes + bestPlays), so clicking Analyze records its picks even
+    // if the initial slate-load capture missed them.
+    try { logWnbaBestBetsForGame(data, gameId); } catch (e) { console.warn('[wnba best-bet log]', e.message); }
 
     container.innerHTML = renderWnbaAnalysis(game, passes);
     container.scrollIntoView({ behavior: 'smooth', block: 'start' });
