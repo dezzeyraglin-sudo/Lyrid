@@ -12951,7 +12951,7 @@ async function autoGradeOnAppOpen() {
           <span style="font-weight:600;color:var(--text-primary);font-size:15px;font-family:var(--font-serif, var(--font-sans))">${esc(lead.player)}</span>
           ${statusBadge}
           <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.06em">${esc(lead.team)} vs ${esc(lead.opponent)}</span>
-          ${lead.benefitsFrom ? `<span style="font-size:10px;font-weight:600;color:#14532d;background:#dcfce7;padding:2px 8px;border-radius:100px" title="Projected minutes boosted because a teammate is out">▲ +${lead.benefitsFrom.minGain} min (${esc(lead.benefitsFrom.out.join(', '))} out)</span>` : ''}
+          ${(lead.benefitsFrom && Array.isArray(lead.benefitsFrom.out) && lead.benefitsFrom.out.length) ? `<span style="font-size:10px;font-weight:600;color:#14532d;background:#dcfce7;padding:2px 8px;border-radius:100px" title="Projected minutes boosted because a teammate is out">▲ +${lead.benefitsFrom.minGain ?? 0} min (${esc(lead.benefitsFrom.out.join(', '))} out)</span>` : ''}
         </div>
 
         ${whyDrivers.length > 0 ? `
