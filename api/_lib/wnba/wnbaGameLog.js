@@ -26,6 +26,43 @@ import { fetchBbrefPage, unwrapCommentedTables, extractTableHtml, parseTableRows
 
 const GAMELOG_TABLE_IDS = ['wnba_pgl_basic', 'pgl_basic'];
 
+// --- GLOBAL bbref CONCURRENCY GATE --------------------------------------------
+// The slate fans out ~30 game-log fetches at once (one per player across all
+// games). basketball-reference 429s that burst, which starved the engine of
+// real data and produced the flat fallback scores. This gate caps simultaneous
+// bbref game-log requests and spaces them slightly so bbref stops throttling.
+// Tunable via env; defaults are conservative enough to clear bbref's limiter.
+const BBREF_MAX_CONCURRENT = Number(process.env.BBREF_MAX_CONCURRENT ?? 2);
+const BBREF_GAP_MS = Number(process.env.BBREF_GAP_MS ?? 350);
+let _active = 0;
+const _queue = [];
+let _lastStart = 0;
+
+function _drain() {
+  if (_active >= BBREF_MAX_CONCURRENT || _queue.length === 0) return;
+  const sinceLast = Date.now() - _lastStart;
+  const wait = Math.max(0, BBREF_GAP_MS - sinceLast);
+  const { fn, resolve, reject } = _queue.shift();
+  _active++;
+  _lastStart = Date.now() + wait;
+  setTimeout(() => {
+    Promise.resolve()
+      .then(fn)
+      .then(resolve, reject)
+      .finally(() => { _active--; _drain(); });
+  }, wait);
+  // Try to start another (respects the concurrency cap inside the guard).
+  _drain();
+}
+
+// Run an async bbref task through the gate.
+function gateBbref(fn) {
+  return new Promise((resolve, reject) => {
+    _queue.push({ fn, resolve, reject });
+    _drain();
+  });
+}
+
 /**
  * Build the bbref game-log path for a player slug.
  * Slug "wilsoa01w" → /wnba/players/w/wilsoa01w/gamelog/2026
@@ -73,7 +110,11 @@ export async function fetchPlayerGameLog(playerId, season = 2026) {
     return [];
   }
 
-  const html = await fetchBbrefPage(gameLogPath(playerId, season), { ttlMs: 30 * 60 * 1000 });
+  // Route through the global gate so the slate's ~30 simultaneous game-log
+  // fetches become a capped, spaced stream — this is what stops bbref's 429s.
+  const html = await gateBbref(() =>
+    fetchBbrefPage(gameLogPath(playerId, season), { ttlMs: 30 * 60 * 1000 })
+  );
   if (!html) return [];
 
   const unwrapped = unwrapCommentedTables(html);
