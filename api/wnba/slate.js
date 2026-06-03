@@ -138,11 +138,19 @@ const DEFAULT_TOTAL = 164;       // WNBA league average total
  * @returns {Promise<Object>} slate result with games + analyses
  */
 async function generateSlate(opts = {}) {
-  const date = opts.date || new Date().toISOString().split('T')[0];
+  // Default date = "today" in US Eastern (the WNBA's scheduling timezone), NOT
+  // UTC. toISOString() returns UTC, which rolls to tomorrow after ~7-8pm in the
+  // US and makes that night's games vanish mid-evening. en-CA gives YYYY-MM-DD.
+  const date = opts.date || new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
   const markets = Array.isArray(opts.markets) && opts.markets.length ? opts.markets : DEFAULT_MARKETS;
   const topN = Number(opts.topN) || DEFAULT_TOP_N;
   const lines = opts.lines || {};
-  const season = Number(opts.season) || new Date().getFullYear();
+  // Season also in Eastern, for the same rollover reason.
+  const season = Number(opts.season) || Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', year: 'numeric',
+  }).format(new Date()));
 
   const startedAt = Date.now();
   const warnings = [];
