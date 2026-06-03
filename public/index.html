@@ -12832,7 +12832,7 @@ async function autoGradeOnAppOpen() {
     const mult = lead.multipliers || {};
 
     // Tier badge = the player's strongest market (one badge, not three).
-    const _inj = leadProj.injuryStatus || leadProj.status;
+    const _inj = lead.injuryStatus || lead.status;
     const tier = _inj === 'OUT'
       ? { label: 'OUT', bg: '#fee2e2', color: '#7f1d1d' }
       : (_inj === 'DOUBTFUL'
