@@ -67,18 +67,22 @@ async function rawFetch(url) {
   }
 }
 
-async function bdlGet(path, params = {}, base = BDL_BASE) {
+async function bdlGet(path, params = {}, base = BDL_BASE, opts = {}) {
   const url = new URL(`${base}${path}`);
   for (const [k, v] of Object.entries(params)) {
     if (Array.isArray(v)) v.forEach(x => url.searchParams.append(`${k}[]`, x));
     else if (v != null) url.searchParams.set(k, v);
   }
   const u = url.toString();
-  if (MIN_GAP_MS > 0) await spacedSlot();
+  // Priority calls (injuries) skip the inter-call spacer — they're the first and
+  // most important fetch, one request, and must not wait behind the prop queue
+  // or exceed the serverless function timeout.
+  if (MIN_GAP_MS > 0 && !opts.priority) await spacedSlot();
   let res = await rawFetch(u);
-  // One retry on 429 after a cooldown (trial cap).
-  if (res.status === 429) {
-    await new Promise(r => setTimeout(r, MIN_GAP_MS > 0 ? MIN_GAP_MS : 13000));
+  // One quick retry on 429. Keep the wait SHORT (3s) so the whole call finishes
+  // inside Vercel's function timeout — a 13s wait + 8s fetch would abort.
+  if (res.status === 429 && !opts.noRetry) {
+    await new Promise(r => setTimeout(r, 3000));
     res = await rawFetch(u);
   }
   return res;
@@ -120,7 +124,7 @@ function playerName(p) {
 export async function fetchWnbaProps(dateYmd, opts = {}) {
   const warnings = [];
   if (!isBdlConfigured()) {
-    return { propLines: {}, _audit: { keyPresent: false, warnings: ['BDL_API_KEY not set — props skipped'] } };
+    return { propLines: {}, propMeta: {}, _audit: { keyPresent: false, warnings: ['BDL_API_KEY not set — props skipped'] } };
   }
 
   const cacheKey = `bdl:props:${dateYmd}`;
@@ -130,17 +134,18 @@ export async function fetchWnbaProps(dateYmd, opts = {}) {
   const games = await bdlGet('/games', { 'dates': [dateYmd], per_page: 100 });
   if (games.status !== 200) {
     warnings.push(`games HTTP ${games.status}: ${String(games.body).slice(0,120)}`);
-    return { propLines: {}, _audit: { keyPresent: true, httpStatus: games.status, gamesFound: 0, warnings } };
+    return { propLines: {}, propMeta: {}, _audit: { keyPresent: true, httpStatus: games.status, gamesFound: 0, warnings } };
   }
   const gameIds = (games.body?.data || []).map(g => g.id);
   if (gameIds.length === 0) {
     warnings.push('no WNBA games for date');
-    return { propLines: {}, _audit: { keyPresent: true, httpStatus: 200, gamesFound: 0, warnings } };
+    return { propLines: {}, propMeta: {}, _audit: { keyPresent: true, httpStatus: 200, gamesFound: 0, warnings } };
   }
 
   // 2) Pull props per game (v1 base, underscore path — confirmed live), resolve
   // numeric player_id → name, and flatten to name_market → line.
   const propLines = {};
+  const propMeta = {};
   let propRows = 0, tierBlocked = false;
   const idToName = {};            // player_id → "First Last", filled lazily per game
   const rawTypeCounts = {};       // prop_type → count, including exotic (diagnostics)
@@ -179,7 +184,15 @@ export async function fetchWnbaProps(dateYmd, opts = {}) {
       if (name && market && Number.isFinite(line)) {
         // Prefer the standard over/under line over milestone ladders for a market.
         const key = `${name}_${market}`;
-        if (propLines[key] == null || isOverUnder) propLines[key] = line;
+        if (propLines[key] == null || isOverUnder) {
+          propLines[key] = line;
+          propMeta[key] = {
+            vendor: row.vendor || row.book || null,
+            overOdds: row.market?.over_odds ?? null,
+            underOdds: row.market?.under_odds ?? null,
+            updatedAt: row.updated_at || null,
+          };
+        }
         propRows++;
       }
     }
@@ -187,6 +200,7 @@ export async function fetchWnbaProps(dateYmd, opts = {}) {
 
   const result = {
     propLines,
+    propMeta,
     _audit: { keyPresent: true, httpStatus: 200, gamesFound: gameIds.length,
       propRows, tierBlocked, source: 'balldontlie',
       rawRowsSeen, overUnderSeen, rawTypeCounts, warnings },
@@ -313,7 +327,7 @@ export async function fetchWnbaInjuries(opts = {}) {
   const paths = ['/player_injuries', '/injuries', '/players/injuries'];
   let rows = null, pathUsed = null, lastStatus = null;
   for (const p of paths) {
-    const res = await bdlGet(p, { per_page: 100 });
+    const res = await bdlGet(p, { per_page: 100 }, BDL_BASE, { priority: true });
     lastStatus = res.status;
     if (res.status === 200 && Array.isArray(res.body?.data)) { rows = res.body.data; pathUsed = p; break; }
     // 429 = right endpoint, just throttled (trial cap). Don't fall through to a

@@ -13171,11 +13171,15 @@ async function autoGradeOnAppOpen() {
       const star = (i === 0)
         ? '<span title="strongest edge for this player" style="color:var(--accent, #c9a45e);font-size:11px">★</span>'
         : '<span style="width:11px;display:inline-block"></span>';
+      // Book label for a real line (e.g. FanDuel); "model" when engine-inferred.
+      const bookLabel = (p.lineSource === 'provided')
+        ? (p.lineBook ? `<span style="font-size:8px;color:var(--text-secondary, var(--dim));letter-spacing:0.04em;text-transform:uppercase" title="book line from ${esc(p.lineBook)}">${esc(p.lineBook)}</span>` : '<span style="font-size:8px;color:var(--accent, #c9a45e);letter-spacing:0.04em" title="real book line">BOOK</span>')
+        : '<span style="font-size:8px;color:var(--text-secondary, var(--dim));opacity:0.7;letter-spacing:0.04em" title="no book line — model projection">MODEL</span>';
       return `
         <div style="display:grid;grid-template-columns:14px 92px 1fr auto auto;align-items:baseline;gap:10px;padding:7px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
           ${star}
           <span style="font-size:11px;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.07em;font-weight:600">${esc(p.market)}</span>
-          <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:600">${p.line}</b> ${lineTag}</span>
+          <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:600">${p.line}</b> ${bookLabel}</span>
           <span style="display:flex;align-items:baseline;gap:8px;justify-content:flex-end">
             <span style="font-size:18px;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${isOut ? 'OUT' : projStr}</span>
             ${bandStr}

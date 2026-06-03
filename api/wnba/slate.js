@@ -223,6 +223,7 @@ async function generateSlate(opts = {}) {
     warnings.push(`BDL props fetch failed: ${err.message}`);
   }
   const bdlPropLines = bdlProps.propLines || {};
+  const bdlPropMeta = bdlProps.propMeta || {};
   const bdlPropsAvailable = Object.keys(bdlPropLines).length > 0;
 
   // STEP 3: For each game, build the list of (player, market) analyses to run
@@ -243,6 +244,7 @@ async function generateSlate(opts = {}) {
     // (gameLines.propLines[playerName_market]) with no downstream change.
     if (bdlPropsAvailable) {
       gameLines.propLines = { ...bdlPropLines, ...(gameLines.propLines || {}) };
+      gameLines.propMeta = { ...bdlPropMeta, ...(gameLines.propMeta || {}) };
     }
     // Real lines from The Odds API, looked up by either team's tricode.
     const feedLine = gameLineFeed.byTeam[homeAbbr] || gameLineFeed.byTeam[awayAbbr] || null;
@@ -537,6 +539,8 @@ async function buildAndRunAnalysis({
     const line = hasRealLine ? Number(explicitLine) : inferLineFromPlayer(player, market);
     // 'provided' = a real book/prop line (caller or BDL); 'inferred' = engine guess.
     const propLineSource = hasRealLine ? 'provided' : 'inferred';
+    // Book/vendor for a real line (e.g. "fanduel"), surfaced to the card.
+    const lineMeta = hasRealLine ? (gameLines.propMeta?.[propLineKey] || null) : null;
 
     const input = {
       player: playerWithRecent,
@@ -644,6 +648,9 @@ async function buildAndRunAnalysis({
       chips: unified.chips || buildChipsFromUnified(unified, player, reboundExtras),
       hardFlags: buildHardFlagsFromUnified(unified, player, reboundExtras),
       lineSource: propLineSource,
+      lineBook: lineMeta?.vendor || null,
+      lineOdds: lineMeta ? { over: lineMeta.overOdds, under: lineMeta.underOdds } : null,
+      lineUpdatedAt: lineMeta?.updatedAt || null,
       shadowMode: WNBA_SHADOW_MODE,
       _dataQuality: player._dataQuality,
       // Richer unified outputs surfaced for the card + debugging.
