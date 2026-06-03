@@ -3267,6 +3267,16 @@
     if (wrap && !wrap.contains(e.target)) closeMenu();
   });
 
+  // Best-bet row → jump to that player's card in the WNBA analysis view.
+  document.addEventListener('click', function(e) {
+    const row = e.target && e.target.closest ? e.target.closest('.wnba-bestbet-row') : null;
+    if (!row) return;
+    const gameId = row.getAttribute('data-wnba-gameid');
+    const pid = row.getAttribute('data-wnba-player');
+    if (!gameId || !pid) return;
+    try { if (typeof window.jumpToWnbaPlayerCard === 'function') window.jumpToWnbaPlayerCard(gameId, pid); } catch (_) {}
+  });
+
   function getToken() {
     if (!currentSession) return null;
     return currentSession.access_token || null;
@@ -10123,19 +10133,29 @@ function renderHistory() {
       const resLabel = e.graded ? (e.result || 'pending').toUpperCase() : 'PENDING';
       const errStr = e.error != null ? `${e.error > 0 ? '+' : ''}${e.error}` : '';
       const tierColor = e.tier === 'elite' ? 'var(--accent)' : e.tier === 'strong' ? '#0f1f3a' : 'var(--dim)';
+      // Full reasoning: structured advantage list, falling back to the prose read.
+      const reasonsHtml = Array.isArray(e.reasons) && e.reasons.length
+        ? `<div style="margin-top:8px;display:flex;flex-direction:column;gap:3px">
+            ${e.reasons.map(r => `<div style="font-size:11px;color:var(--dim);line-height:1.5"><span style="display:inline-block;min-width:120px;font-size:9px;font-weight:700;letter-spacing:0.05em;color:var(--ink);text-transform:uppercase">${esc(r.label)}</span> ${esc(r.detail)}</div>`).join('')}
+          </div>`
+        : (e.reasonText ? `<div style="margin-top:6px;font-size:11px;color:var(--dim);line-height:1.5">${e.reasonText}</div>` : '');
+      const gid = e.gameId ? esc(String(e.gameId)) : '';
+      const pid = esc((e.player || '').replace(/[^a-zA-Z0-9]/g, ''));
       return `
-        <div class="glb-history-entry" style="border-left-color:${col}">
+        <div class="glb-history-entry wnba-bestbet-row" data-wnba-gameid="${gid}" data-wnba-player="${pid}" style="border-left-color:${col};cursor:pointer" title="Open ${esc(e.player)}'s card in the analysis view">
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
             <span style="font-weight:600;color:var(--ink)">
               ${e.tier ? `<span style="font-size:9px;font-weight:700;color:${tierColor};letter-spacing:0.06em;margin-right:6px">${esc(e.tier.toUpperCase())}</span>` : ''}
               ${esc(e.player)} <span style="font-weight:400;color:var(--dim);font-size:11px">${esc(e.market)}</span>
+              <span style="font-size:10px;color:var(--accent);margin-left:6px">→ view card</span>
             </span>
             <span style="font-size:11px;font-weight:700;color:${col}">${resLabel}</span>
           </div>
           <div style="font-size:11px;color:var(--dim);margin-top:3px;font-variant-numeric:tabular-nums">
             <b style="color:var(--ink)">${esc(e.lean)} ${e.line}</b> · proj <b style="color:var(--ink)">${e.projection}</b>${e.edge != null ? ` · edge ${e.edge > 0 ? '+' : ''}${e.edge}` : ''}${e.graded ? ` · actual <b style="color:var(--ink)">${e.actual ?? '—'}</b>${errStr ? ` · err ${errStr}` : ''}` : ''}
           </div>
-          <div style="font-size:10px;color:var(--dim);margin-top:2px">${esc(e.date)} · ${esc(e.team || '')} vs ${esc(e.opponent || '')}</div>
+          ${reasonsHtml}
+          <div style="font-size:10px;color:var(--dim);margin-top:4px">${esc(e.date)} · ${esc(e.team || '')} vs ${esc(e.opponent || '')}</div>
         </div>`;
     };
 
@@ -12030,6 +12050,11 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
     const projection = Number(p.projection);
     if (!Number.isFinite(projection) || p.line == null) continue;
     const lean = projection >= Number(p.line) ? 'OVER' : 'UNDER';
+    // Capture the full reasoning the card shows: the prose read + the ranked list
+    // of every real advantage factor, so the Best Bets tab explains WHY.
+    let reasonText = '';
+    try { reasonText = buildPropRead(p, { projection }); } catch (_) {}
+    const reasons = buildBestBetReasons(p, projection);
     day[key] = {
       ...existing,
       date, player: p.player, team: p.team, opponent: p.opponent, market: p.market,
@@ -12037,11 +12062,15 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
       edge: (p.edge != null && Number.isFinite(Number(p.edge))) ? Number(Number(p.edge).toFixed(2)) : null,
       lean, probOver: p.probOver ?? null,
       tier: (p.label || '').toLowerCase(),
+      gameId: p.gameId || gameId,
       finalEdgeScore: p.scores?.finalEdge ?? null,
       lineSource: p.lineSource || 'inferred',
       recommendation: p.recommendation || null,
       isBestBet: true,
       loggedFromAnalyze: true,
+      reasonText,
+      reasons,
+      benefitsFrom: p.benefitsFrom || null,
       confidence: p.confidence ?? null,
       defenseReal: (p.dataCompleteness?.opposingDefense === 'REAL'),
       drivers: p.scores ? {
@@ -12643,6 +12672,32 @@ async function autoGradeOnAppOpen() {
     container.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  // Jump from a Best Bets row to the player's card: switch to WNBA tab, open the
+  // game's analysis, then scroll to + briefly highlight the specific player card.
+  window.jumpToWnbaPlayerCard = function(gameId, playerIdSlug) {
+    try { if (typeof switchTab === 'function') switchTab('wnba'); } catch (_) {}
+    const open = () => {
+      try { window.analyzeWnbaGame(gameId); } catch (_) { return; }
+      // Wait for the analysis DOM to render, then scroll to the card.
+      setTimeout(() => {
+        const el = document.getElementById('wnba-card-' + playerIdSlug);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const prevShadow = el.style.boxShadow;
+          el.style.boxShadow = '0 0 0 2px var(--accent, #c9a45e)';
+          setTimeout(() => { el.style.boxShadow = prevShadow; }, 1600);
+        }
+      }, 120);
+    };
+    // If the slate isn't loaded yet (e.g. opened straight from History), load it first.
+    if (!state.raw || !(state.raw.games || []).some(g => g.gameId === gameId)) {
+      if (typeof loadWnbaSlate === 'function') {
+        try { Promise.resolve(loadWnbaSlate()).then(() => setTimeout(open, 200)); return; } catch (_) {}
+      }
+    }
+    open();
+  };
+
   function renderWnbaAnalysis(game, passes) {
     const aw = teamAbbr(game.away);
     const hm = teamAbbr(game.home);
@@ -12837,6 +12892,69 @@ async function autoGradeOnAppOpen() {
   // buildPropRead: one or two sentences on why the engine leans over/under THIS
   // line, citing the real factors that moved the projection. Mirrors MLB's
   // narrative quote block. Returns '' when there's nothing real to say.
+  // buildBestBetReasons: a STRUCTURED list of every real advantage the engine
+  // found for this pick — stored on the best-bet entry so the Best Bets tab can
+  // show the full "why" without recomputing. Each item: { label, detail }.
+  function buildBestBetReasons(p, projection) {
+    const out = [];
+    const mult = p.multipliers || {};
+    const dc = p.dataCompleteness || {};
+    const sc = p.scores || {};
+    const ctx = p.playerContext || {};
+    const market = String(p.market || '').toLowerCase();
+    const line = Number(p.line);
+    const dir = (projection != null && Number.isFinite(line) && projection >= line) ? 'OVER' : 'UNDER';
+
+    // Edge headline
+    if (projection != null && Number.isFinite(line)) {
+      const d = projection - line;
+      out.push({ label: 'PROJECTION EDGE', detail: `Model ${projection.toFixed(1)} vs ${line} line (${d >= 0 ? '+' : ''}${d.toFixed(1)}), leaning ${dir}.` });
+    }
+    if (p.probOver != null) {
+      const pr = dir === 'OVER' ? p.probOver : 1 - p.probOver;
+      out.push({ label: 'HIT PROBABILITY', detail: `${Math.round(pr * 100)}% to land ${dir.toLowerCase()}.` });
+    }
+    // Real multiplier advantages
+    const addMult = (m, real, up, down) => {
+      if (m == null || !Number.isFinite(m) || Math.abs(m - 1) < 0.015 || !real) return;
+      out.push({ label: m > 1 ? 'FAVORABLE MATCHUP' : 'TOUGH MATCHUP', detail: m > 1 ? up : down });
+    };
+    addMult(mult.matchup_opposingDefense, dc.opposingDefense === 'REAL', 'Soft opposing defense for this market.', 'Stingy opposing defense for this market.');
+    addMult(mult.usageFunnel, dc.usageFunnel === 'REAL', 'Extra usage funneling to this player.', 'Reduced usage share in this lineup.');
+    addMult(mult.environment, dc.environment === 'REAL', 'Up-tempo pace environment.', 'Slow-pace environment.');
+    addMult(mult.whistle, dc.whistle === 'REAL', 'Strong free-throw rate.', 'Low free-throw rate.');
+    // Player attributes (real per-player data)
+    if (ctx.primaryCreator || (ctx.usageRate != null && ctx.usageRate >= 26)) {
+      out.push({ label: 'ROLE', detail: `High usage role${ctx.usageRate != null ? ` (${ctx.usageRate.toFixed(0)}%)` : ' (primary option)'}.` });
+    }
+    if (sc.roleStability != null && sc.roleStability >= 70) {
+      out.push({ label: 'ROLE STABILITY', detail: `Locked rotation role (stability ${sc.roleStability}/100).` });
+    }
+    if (ctx.expectedMinutes != null && ctx.expectedMinutes >= 30) {
+      out.push({ label: 'MINUTES', detail: `Heavy minutes load (${ctx.expectedMinutes.toFixed(0)} MPG).` });
+    }
+    if (!market.includes('rebound') && !market.includes('assist') && ctx.tsPct != null && ctx.tsPct >= 0.58) {
+      out.push({ label: 'EFFICIENCY', detail: `Elite shooting efficiency (${(ctx.tsPct * 100).toFixed(0)}% TS).` });
+    }
+    if (!market.includes('rebound') && ctx.last5Avg != null && ctx.seasonAvg != null && ctx.seasonAvg > 0) {
+      const dp = (ctx.last5Avg - ctx.seasonAvg) / ctx.seasonAvg;
+      if (dp >= 0.10) out.push({ label: 'HOT FORM', detail: `Last 5 ${ctx.last5Avg.toFixed(1)} vs ${ctx.seasonAvg.toFixed(1)} season avg.` });
+      else if (dp <= -0.10) out.push({ label: 'COOLING FORM', detail: `Last 5 ${ctx.last5Avg.toFixed(1)} vs ${ctx.seasonAvg.toFixed(1)} season avg.` });
+    }
+    if (sc.variance != null && sc.variance >= 55) {
+      out.push({ label: 'STABLE OUTPUT', detail: `Low game-to-game variance (${sc.variance}/100).` });
+    }
+    // Rebound geometry
+    if (market.includes('rebound') && p.reboundEquity && p.reboundEquity.equityMultiplier >= 1.04) {
+      out.push({ label: 'REBOUND GEOMETRY', detail: `Opponent's miss profile favors this rebounder's zone.` });
+    }
+    // Teammate-out boost
+    if (p.benefitsFrom && Array.isArray(p.benefitsFrom.out) && p.benefitsFrom.out.length) {
+      out.push({ label: 'INJURY BOOST', detail: `+${p.benefitsFrom.minGain} projected minutes with ${p.benefitsFrom.out.join(', ')} out.` });
+    }
+    return out;
+  }
+
   function buildPropRead(p, proj) {
     const projection = proj && proj.projection != null ? Number(proj.projection) : null;
     if (projection == null || p.line == null || !Number.isFinite(Number(p.line))) return '';
@@ -13085,7 +13203,7 @@ async function autoGradeOnAppOpen() {
     };
 
     return `
-      <div style="background:var(--surface-card);border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:var(--radius-md, 8px);padding:14px 18px;opacity:${cardOpacity}">
+      <div id="wnba-card-${esc((lead.player || '').replace(/[^a-zA-Z0-9]/g, ''))}" style="background:var(--surface-card);border:0.5px solid var(--border-hairline, var(--brand-primary, #233859));border-radius:var(--radius-md, 8px);padding:14px 18px;opacity:${cardOpacity};scroll-margin-top:80px;transition:box-shadow 0.3s">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
           <span style="background:${tier.bg};color:${tier.color};padding:3px 9px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em">${tier.label}</span>
           <span style="font-weight:600;color:var(--text-primary);font-size:15px;font-family:var(--font-serif, var(--font-sans))">${esc(lead.player)}</span>
