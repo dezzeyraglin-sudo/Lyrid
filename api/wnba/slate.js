@@ -558,18 +558,35 @@ async function buildAndRunAnalysis({
       };
     }
 
+    // Pull this player's injury status off the v2 roster (buildV2Roster computed
+    // it but it never reached the card). Name-normalized match. If OUT, the card
+    // shows an OUT badge and the pick is forced to PASS — an out player is not a play.
+    const _normName = (s) => String(s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+    let injuryStatus = 'AVAILABLE', injuryDetail = null;
+    if (Array.isArray(v2Roster)) {
+      const re = v2Roster.find(r => _normName(r.playerName) === _normName(player.name));
+      if (re) { injuryStatus = re.status || 'AVAILABLE'; injuryDetail = re._injury?.detail || null; }
+    }
+    const isOut = injuryStatus === 'OUT';
+    const isDoubtful = injuryStatus === 'DOUBTFUL';
+
     return {
       gameId: game.gameId,
       player: player.name,
       team,
       opponent,
       market,
+      // Injury status surfaced to the card. OUT players are forced to PASS.
+      injuryStatus,
+      injuryDetail,
       line: unified.line,
       projection: unified.projection,
       edge: unified.edge,
-      recommendation: unified.recommendation,
-      confidence: unified.confidence,
-      label: unified.tier,
+      recommendation: isOut ? 'PASS' : unified.recommendation,
+      confidence: isOut ? 0 : unified.confidence,
+      label: isOut ? 'OUT' : (isDoubtful ? 'RISK' : unified.tier),
       hitRate: unified.hitRate ?? deriveHitRate(unified),
       scores: unified.scores,
       chips: unified.chips || buildChipsFromUnified(unified, player, reboundExtras),

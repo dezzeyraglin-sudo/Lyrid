@@ -12581,7 +12581,7 @@ async function autoGradeOnAppOpen() {
     const proj = getProjectionForProp(p);
     const projStr = proj.projection != null && Number.isFinite(Number(proj.projection))
       ? Number(proj.projection).toFixed(2) : '—';
-    const statusBadge = state.engine === 'v2' ? renderV2StatusBadge(proj.status) : '';
+    const statusBadge = renderV2StatusBadge(proj.injuryStatus || proj.status);
     const engineTag = state.engine === 'v2'
       ? (proj.fallback
           ? '<span style="font-size:9px;color:var(--text-secondary, var(--dim));letter-spacing:0.06em;font-weight:600">v1·fallback</span>'
@@ -12814,7 +12814,12 @@ async function autoGradeOnAppOpen() {
     const mult = lead.multipliers || {};
 
     // Tier badge = the player's strongest market (one badge, not three).
-    const tier = edgeTier(sc.finalEdge);
+    const _inj = leadProj.injuryStatus || leadProj.status;
+    const tier = _inj === 'OUT'
+      ? { label: 'OUT', bg: '#fee2e2', color: '#7f1d1d' }
+      : (_inj === 'DOUBTFUL'
+          ? { label: 'DOUBTFUL', bg: '#fed7aa', color: '#9a3412' }
+          : edgeTier(sc.finalEdge));
 
     // ---- Driver model (labeled, like MLB's HR DRIVERS) ----
     // Each driver reports: label, the human detail, a % weight (from the engine
@@ -12841,7 +12846,7 @@ async function autoGradeOnAppOpen() {
     const leadProj = getProjectionForProp(lead);
     const isOut = (state.engine === 'v2' && leadProj.status === 'OUT');
     const cardOpacity = isOut ? '0.55' : '1';
-    const statusBadge = state.engine === 'v2' ? renderV2StatusBadge(leadProj.status) : '';
+    const statusBadge = renderV2StatusBadge(leadProj.injuryStatus || leadProj.status);
 
     // Union of chips/flags across the player's markets (deduped) — shown once.
     const allChips = [...new Set(props.flatMap(p => p.chips || []))];
