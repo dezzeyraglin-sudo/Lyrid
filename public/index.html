@@ -3548,6 +3548,7 @@ let state = {
   // full prediction context so the engine can be sharpened (which layers predict).
   // key: 'YYYY-MM-DD_Player_market'
   wnbaPropHistory: {},   // { date: { key: { date, player, team, opponent, market, line, projection, edge, lean, probOver, tier, lineSource, confidence, drivers, dataCompleteness, floor, ceiling, capturedAt, actual, result, error, graded } } }
+  wnbaManualLines: {},   // { 'gameId_player_market': lineNumber } — user-entered book lines, grade against these
   // MLB selection engine toggle (May 23, 2026)
   //   'unassisted' = NEW data-grounded engine — biased toward hitters with the
   //                  best chance to put the ball in play and get on base
@@ -10622,7 +10623,8 @@ function renderHistory() {
 
     // Only REAL-line props count toward win/loss record; inferred props still
     // contribute MAE. Split so the headline record isn't polluted by shadow lines.
-    const realLine = all.filter(e => e.lineSource === 'provided');
+    const isRealLine = (e) => e.lineSource === 'provided' || e.lineSource === 'manual';
+    const realLine = all.filter(isRealLine);
     const overall = computeWnbaPropStats(realLine);
     const overallMaeAll = computeWnbaPropStats(all);  // MAE across everything
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 14);
@@ -10631,7 +10633,7 @@ function renderHistory() {
 
     // Best bets (curated picks) — computed early so the stats bar can show the record.
     const bestBets = all.filter(e => e.isBestBet);
-    const bestBetStats = computeWnbaPropStats(bestBets.filter(e => e.lineSource === 'provided'));
+    const bestBetStats = computeWnbaPropStats(bestBets.filter(isRealLine));
 
     const statsBar = `
       <div class="bb-stats-grid">
@@ -10689,7 +10691,7 @@ function renderHistory() {
     // Real vs inferred line — sanity check that real-line edges actually win.
     const byLineSource = sliceTable('BY LINE SOURCE', 'Real-line props are graded vs the book; inferred are shadow (MAE only). Real lines should show a meaningful record.', [
       { label: 'REAL BOOK LINE', stats: computeWnbaPropStats(realLine) },
-      { label: 'INFERRED (shadow)', stats: computeWnbaPropStats(all.filter(e => e.lineSource !== 'provided')) },
+      { label: 'INFERRED (shadow)', stats: computeWnbaPropStats(all.filter(e => !isRealLine(e))) },
     ]);
 
     // Opposing-defense REAL vs NEUTRAL — does the defense layer being real help?
@@ -12337,7 +12339,7 @@ function saveNotes() {
 function confirmReset() {
   if (!confirm('Reset ALL data?')) return;
   if (!confirm('Are you sure? Cannot be undone.')) return;
-  state = { picks:{}, banned:{pitchers:[],hitters:[],teams:[]}, notes:'', currentDate:getTodayStr(), researchTags:{}, tracking:{}, bestBetHistory:{}, hrAudit: { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } }, gameLineBets: {}, firstInningBets: {}, projectionAudit: {}, wnbaPropHistory: {}, secretFilter: { enabled: false } };
+  state = { picks:{}, banned:{pitchers:[],hitters:[],teams:[]}, notes:'', currentDate:getTodayStr(), researchTags:{}, tracking:{}, bestBetHistory:{}, hrAudit: { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } }, gameLineBets: {}, firstInningBets: {}, projectionAudit: {}, wnbaPropHistory: {}, wnbaManualLines: {}, secretFilter: { enabled: false } };
   saveState();
   location.reload();
 }
@@ -12590,6 +12592,52 @@ window.captureWnbaPredictions = function(data) {
 // which fires inside analyzeGame). Scoped to a single gameId; captures that
 // game's full pool, tags the strongest actionable pick per player as a best bet,
 // and marks them loggedFromAnalyze so we know they came from an explicit analyze.
+// Set (or clear) a user-entered book line for a WNBA prop. The model grades its
+// projection against THIS line — sidesteps the prop-API paywall entirely. The
+// line is treated as a real provided line: it counts toward the actionable record.
+window.setWnbaManualLine = function(mlKey, raw) {
+  state.wnbaManualLines = state.wnbaManualLines || {};
+  const val = parseFloat(raw);
+  if (!Number.isFinite(val) || val <= 0) {
+    delete state.wnbaManualLines[mlKey];   // empty/invalid clears the override
+  } else {
+    state.wnbaManualLines[mlKey] = val;
+  }
+  saveState();
+
+  // Push the line onto the matching pass in the loaded slate so it flows through
+  // logging + grading exactly like a real book line (lineSource 'manual').
+  const data = state.raw;
+  if (data) {
+    const pools = [data.analyses, data.passes, data.bestPlays].filter(Array.isArray);
+    for (const pool of pools) {
+      for (const p of pool) {
+        const k = `${p.gameId || ''}_${p.player}_${p.market}`;
+        if (k === mlKey) {
+          if (state.wnbaManualLines[mlKey] != null) {
+            p.line = state.wnbaManualLines[mlKey];
+            p.lineSource = 'manual';
+            // Recompute edge against the new line if we have a projection.
+            const proj = getProjectionForProp(p);
+            if (proj && proj.projection != null && Number.isFinite(Number(proj.projection))) {
+              p.edge = Number((Number(proj.projection) - p.line).toFixed(2));
+              p.recommendation = p.edge >= 0 ? 'OVER' : 'UNDER';
+            }
+          }
+        }
+      }
+    }
+    // Re-log this game's best bets so the manual-lined pick lands in history,
+    // then re-render the open analysis + the history view if visible.
+    const gameId = mlKey.split('_')[0];
+    try { if (gameId) window.logWnbaBestBetsForGame(data, gameId); } catch (_) {}
+    try { if (gameId && typeof window.analyzeWnbaGame === 'function') window.analyzeWnbaGame(gameId); } catch (_) {}
+    if (typeof historyView !== 'undefined' && historyView === 'wnba' && typeof renderHistory === 'function') {
+      try { renderHistory(); } catch (_) {}
+    }
+  }
+};
+
 window.logWnbaBestBetsForGame = function(data, gameId) {
   if (!data || !gameId) return;
   const pool = [];
@@ -12630,7 +12678,7 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
     const projection = Number(p.projection);
     if (!Number.isFinite(projection) || p.line == null) continue;
     const lean = projection >= Number(p.line) ? 'OVER' : 'UNDER';
-    const actionable = (p.lineSource === 'provided')
+    const actionable = (p.lineSource === 'provided' || p.lineSource === 'manual')
       && p.recommendation && p.recommendation !== 'PASS';
     // Capture the full reasoning the card shows: the prose read + the ranked list
     // of every real advantage factor, so the Best Bets tab explains WHY.
@@ -13735,34 +13783,46 @@ async function autoGradeOnAppOpen() {
       const proj = getProjectionForProp(p);
       const projStr = proj.projection != null && Number.isFinite(Number(proj.projection))
         ? Number(proj.projection).toFixed(2) : '—';
+      // Manual book-line override: if the user typed a line for this prop, it wins
+      // over the model/BDL line for edge, display, and grading.
+      const mlKey = `${lead.gameId || p.gameId || ''}_${p.player}_${p.market}`;
+      const manualLine = (state.wnbaManualLines || {})[mlKey];
+      const hasManual = manualLine != null && Number.isFinite(Number(manualLine));
+      const effLine = hasManual ? Number(manualLine) : p.line;
       const usingV2 = state.engine === 'v2' && !proj.fallback
         && proj.projection != null && Number.isFinite(Number(proj.projection));
-      const edge = (usingV2 && p.line != null && Number.isFinite(Number(p.line)))
-        ? Number(proj.projection) - Number(p.line)
+      const edge = (proj.projection != null && Number.isFinite(Number(proj.projection)) && effLine != null && Number.isFinite(Number(effLine)))
+        ? Number(proj.projection) - Number(effLine)
         : p.edge;
-      const edgeMuted = false;   // shadow treatment removed — edges show normally
       const edgeStr = edge != null && Number.isFinite(edge) ? ((edge >= 0 ? '+' : '') + edge.toFixed(2)) : '—';
-      const edgeColor = (edge != null && !edgeMuted && Math.abs(edge) >= 0.5)
+      const edgeColor = (edge != null && Math.abs(edge) >= 0.5)
         ? (edge > 0 ? '#14532d' : '#7f1d1d')
         : 'var(--text-secondary, var(--dim))';
       const bandStr = (proj.floor != null && proj.ceiling != null && proj.ceiling > 0)
         ? `<span style="font-size:10px;color:var(--text-secondary, var(--dim));font-variant-numeric:tabular-nums" title="floor–ceiling band">${proj.floor.toFixed(1)}–${proj.ceiling.toFixed(1)}</span>`
         : '';
-      const lineTag = edgeMuted
-        ? '<span style="font-size:8px;color:var(--text-secondary, var(--dim));opacity:0.7;letter-spacing:0.05em" title="no book line — engine-inferred">INF</span>'
-        : '';
       const star = (i === 0)
         ? '<span title="strongest edge for this player" style="color:var(--accent, #c9a45e);font-size:11px">★</span>'
         : '<span style="width:11px;display:inline-block"></span>';
-      // Book label for a real line (e.g. FanDuel); "model" when engine-inferred.
-      const bookLabel = (p.lineSource === 'provided')
-        ? (p.lineBook ? `<span style="font-size:8px;color:var(--text-secondary, var(--dim));letter-spacing:0.04em;text-transform:uppercase" title="book line from ${esc(p.lineBook)}">${esc(p.lineBook)}</span>` : '<span style="font-size:8px;color:var(--accent, #c9a45e);letter-spacing:0.04em" title="real book line">BOOK</span>')
-        : '<span style="font-size:8px;color:var(--text-secondary, var(--dim));opacity:0.7;letter-spacing:0.04em" title="no book line — model projection">MODEL</span>';
+      // Source label: manual entry > real book line > model.
+      const bookLabel = hasManual
+        ? '<span style="font-size:8px;color:#14532d;letter-spacing:0.04em;font-weight:700" title="your manually-entered book line">YOUR LINE</span>'
+        : ((p.lineSource === 'provided')
+            ? (p.lineBook ? `<span style="font-size:8px;color:var(--text-secondary, var(--dim));letter-spacing:0.04em;text-transform:uppercase" title="book line from ${esc(p.lineBook)}">${esc(p.lineBook)}</span>` : '<span style="font-size:8px;color:var(--accent, #c9a45e);letter-spacing:0.04em" title="real book line">BOOK</span>')
+            : '<span style="font-size:8px;color:var(--text-secondary, var(--dim));opacity:0.7;letter-spacing:0.04em" title="no book line — model projection">MODEL</span>');
+      // Editable line input — type the book line you see; grades against it.
+      const lineInput = `<input type="number" step="0.5" inputmode="decimal"
+        value="${hasManual ? Number(manualLine) : (p.lineSource === 'provided' && p.line != null ? p.line : '')}"
+        placeholder="${p.line != null ? p.line : 'line'}"
+        onchange="window.setWnbaManualLine('${esc(mlKey)}', this.value)"
+        onclick="event.stopPropagation()"
+        title="Type the book line you see — the model grades its projection against this"
+        style="width:54px;font-size:12px;font-weight:600;text-align:center;padding:2px 4px;border:1px solid ${hasManual ? '#14532d' : 'var(--border-hairline, rgba(0,0,0,0.15))'};border-radius:4px;background:${hasManual ? 'rgba(20,83,45,0.06)' : 'var(--surface-card)'};color:var(--text-primary);font-variant-numeric:tabular-nums">`;
       return `
-        <div style="display:grid;grid-template-columns:14px 92px 1fr auto auto;align-items:baseline;gap:10px;padding:7px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
+        <div style="display:grid;grid-template-columns:14px 84px 1fr auto auto;align-items:center;gap:10px;padding:7px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
           ${star}
           <span style="font-size:11px;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.07em;font-weight:600">${esc(p.market)}</span>
-          <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:600">${p.line}</b> ${bookLabel}</span>
+          <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary, var(--dim))">line ${lineInput} ${bookLabel}</span>
           <span style="display:flex;align-items:baseline;gap:8px;justify-content:flex-end">
             <span style="font-size:18px;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${isOut ? 'OUT' : projStr}</span>
             ${bandStr}
