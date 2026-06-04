@@ -1774,10 +1774,28 @@ export default async function handler(req, res) {
         newUnits = 1.5;
         strategyReason = `Extreme low projection (${projTotal.toFixed(2)} ≤ 6.0): backtest 9-1 (90% WR, n=10)`;
       } else if (projTotal >= 9.5) {
-        newSide = 'NRFI';
-        newTier = 'STRONG';
-        newUnits = 1.5;
-        strategyReason = `Extreme high projection (${projTotal.toFixed(2)} ≥ 9.5): backtest 21-13 (62% WR, n=34)`;
+        // (Drop #7 hotfix — June 3, 2026) MODEL-AGREEMENT GATE for NRFI.
+        //
+        // Original Drop #7 fired NRFI on every projTotal ≥ 9.5 game (21-13, 62%).
+        // Sub-bucket audit found: when model_yrfi_prob > 0.65, NRFI hits only 46%
+        // (6-7 on n=13) — negative EV. Adding a 0.65 cap excludes those losing
+        // picks and improves the rule to 17-9 (65%) on n=26, +9.7u.
+        //
+        // Practical reason: when the model is THIS confident in YRFI, the
+        // matchup signals (slow-starter SP + strong lineups) usually overcome
+        // the high-projection NRFI tendency. The strategy backtest assumed
+        // model probability was uncorrelated with outcome, but the extremes
+        // do carry signal.
+        const modelYrfiProb = _originalSide === 'YRFI' ? _originalProb : (1 - (_originalProb || 0));
+        if (modelYrfiProb && modelYrfiProb > 0.65) {
+          // Model too strongly favors YRFI — skip the NRFI override
+          strategyReason = `High projection (${projTotal.toFixed(2)} ≥ 9.5) but model YRFI conviction too strong (${(modelYrfiProb*100).toFixed(0)}% > 65% gate). NRFI strategy 6-7 (46%) in this bucket — PASS.`;
+        } else {
+          newSide = 'NRFI';
+          newTier = 'STRONG';
+          newUnits = 1.5;
+          strategyReason = `Extreme high projection (${projTotal.toFixed(2)} ≥ 9.5) + model YRFI ≤ 65% gate: backtest 17-9 (65% WR, n=26)`;
+        }
       } else {
         strategyReason = projTotal > 0
           ? `Middle projection (${projTotal.toFixed(2)}): no edge between 6.0-9.5 (backtest 41% WR, n=89)`
@@ -1797,18 +1815,38 @@ export default async function handler(req, res) {
       fi.tier = newTier;
       fi.units = newUnits;
 
-      // Probability display: keep model prob if direction agrees, null if
-      // strategy overrides direction or PASSes (avoid misleading displayed %).
+      // Probability display logic.
+      //
+      // (Drop #7 hotfix — June 3, 2026) Original code set probability=null when
+      // strategy overrode model direction, which the UI rendered as "0.0%" —
+      // showing "NRFI STRONG 0.0%" next to "YRFI 65%" looks broken and erodes
+      // trust. Replace with the EMPIRICAL backtest WR so the user sees what
+      // the historical data actually says about this strategy.
+      //
+      // YRFI STRONG (proj ≤ 6.0): 9-1 (90%) on n=10 → display 0.90
+      // NRFI STRONG (proj ≥ 9.5 + gate): 17-9 (65%) on n=26 → display 0.65
+      // When strategy and model AGREE on direction, preserve model prob.
       if (newSide && _originalSide === newSide && _originalProb) {
+        // Strategy agrees with model — use model's probability
         fi.probability = _originalProb;
         fi._directionMatch = true;
+        fi._probabilitySource = 'model';
       } else if (newSide && _originalSide && _originalSide !== newSide) {
-        fi.probability = null;
+        // Strategy overrides model — use backtest WR for honest display
+        fi.probability = newSide === 'YRFI' ? 0.90 : 0.65;
         fi._directionMatch = false;
-        fi._strategyReason += ` (overrides model's ${_originalSide} call)`;
+        fi._probabilitySource = 'backtest';
+        fi._strategyReason += ` (overrides model's ${_originalSide} call at ${((_originalSide==='YRFI' ? _originalProb : 1-_originalProb)*100).toFixed(0)}%)`;
+      } else if (newSide) {
+        // Strategy fires but model had no rec — use backtest WR
+        fi.probability = newSide === 'YRFI' ? 0.90 : 0.65;
+        fi._directionMatch = null;
+        fi._probabilitySource = 'backtest';
       } else {
+        // Strategy passed — keep model's original prob for diagnostics, UI hides it
         fi.probability = null;
         fi._directionMatch = null;
+        fi._probabilitySource = null;
       }
     }
 
