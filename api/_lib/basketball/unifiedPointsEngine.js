@@ -135,11 +135,16 @@ function normalizeUsage(u) {
 // MULTIPLIER LAYERS — each returns { mult, active, detail }
 // ============================================================
 
-function environmentMult(env, cfg) {
-  const raw = num(env?.environmentMultiplier);
+function environmentMult(env, cfg, providedMult) {
+  // Provided-first: any future pace/environment feed can set input.environmentMultiplier
+  // and this activates automatically. Falls back to the matchup-derived env value.
+  // Guard num(null)===0: only take provided when truly present.
+  const prov = (providedMult != null && Number(providedMult) > 0) ? num(providedMult) : null;
+  const raw = (prov != null) ? prov : num(env?.environmentMultiplier);
   if (raw == null) return { mult: 1, active: false, detail: 'no environment data' };
   const damped = 1 + (raw - 1) * cfg.weights.paceSensitivity;
-  return { mult: clamp(damped, cfg.clamps.pace), active: true, detail: `pace/total env ${raw.toFixed(3)}` };
+  const src = (prov != null) ? 'pace feed' : 'pace/total env';
+  return { mult: clamp(damped, cfg.clamps.pace), active: true, detail: `${src} ${raw.toFixed(3)}` };
 }
 
 // OPPOSING DEFENSE — first-class layer, REAL from live bbref opponent data.
@@ -147,10 +152,12 @@ function matchupMult(matchup, cfg, providedMult) {
   // Prefer an explicitly-provided defense multiplier (the WNBA defense feed built
   // from box scores: pts/reb/ast allowed by position). Fall back to the matchup
   // engine's own scoringMultiplier, then to neutral.
-  const raw = num(providedMult) ?? num(matchup?.scoringMultiplier);
+  // NOTE: guard against num(null)===0 — only take provided when it's truly present.
+  const prov = (providedMult != null && Number(providedMult) > 0) ? num(providedMult) : null;
+  const raw = (prov != null) ? prov : num(matchup?.scoringMultiplier);
   if (raw == null) return { mult: 1, active: false, detail: 'no opponent-defense data' };
   const damped = 1 + (raw - 1) * cfg.weights.defenseSensitivity;
-  const src = num(providedMult) != null ? 'allowed-by-position (last 10G)' : 'opp def rtg/rim/perimeter';
+  const src = (prov != null) ? 'allowed-by-position (last 10G)' : 'opp def rtg/rim/perimeter';
   return {
     mult: clamp(damped, cfg.clamps.defense), active: true,
     detail: `${src} ${raw.toFixed(3)}`,
@@ -243,7 +250,7 @@ export function analyzeUnifiedProp(input, league = 'WNBA') {
   }
 
   // Multiplier layers
-  const mEnv = environmentMult(env, cfg);
+  const mEnv = environmentMult(env, cfg, input.environmentMultiplier);
   const mMatch = matchupMult(matchup, cfg, input.opponent?.defenseMultiplier);          // opposing defense
   const mCover = coverageMult(input, cfg);           // coaching coverage
   const mWhistle = isPoints ? whistleMult(player, input.opponent, cfg)

@@ -59,6 +59,7 @@ import { analyzeUnifiedProp } from "../_lib/basketball/unifiedPointsEngine.js";
 import { analyzeReboundProp } from "../_lib/basketball/reboundEnvironmentEngine.js";
 import { analyzeGameLine } from "../_lib/basketball/gameLineEngine.js";
 import { buildWnbaDefenseTable, defenseMultiplier } from "../_lib/wnba/wnbaDefenseFeed.js";
+import { externalCoverageSignal, externalFoulRate, externalPaceSignal } from "../_lib/wnba/wnbaExternalSignals.js";
 import { buildAuditEntry } from "../_lib/basketball/basketballAudit.js";
 import { getGamesForDate, getTodaysGames } from "../_lib/wnba/wnbaSchedule.js";
 import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
@@ -507,12 +508,40 @@ async function buildAndRunAnalysis({
     const opponentTeam = allTeamStats[opponent] || { abbr: opponent };
     const teamData = allTeamStats[team] || { abbr: team };
 
-    // Opposing-defense multiplier for THIS player's position + market (pts/reb/ast
-    // allowed vs league avg, last 10G). Makes DEF a REAL layer instead of neutral.
+    // ── EXTERNAL SIGNAL SOCKETS ──────────────────────────────────────────────
+    // Each engine layer reads a known field; whenever a feed populates that field,
+    // the layer activates AUTOMATICALLY (no engine change needed). This is the
+    // single place to wire any future data source — fill the field and it flows.
+    //
+    //   DEF  → opponentTeam.defenseMultiplier   (live: wnbaDefenseFeed, /stats)
+    //   COV  → opponentTeam.coverage            (unwired: needs a scheme source)
+    //   WHISTLE → opponentTeam.foulRate         (unwired: needs team foul-rate source)
+    //   ENV  → input.environmentMultiplier      (unwired: needs a pace source)
+    //   USAGE FUNNEL → already fed by teammateRedistribution when a player is OUT
+    //
+    // DEF — opposing defense by position+market (REAL now).
     if (defenseTable && defenseTable.byTeam) {
       const dm = defenseMultiplier(defenseTable, opponent, player.position, market);
       if (dm != null) opponentTeam.defenseMultiplier = dm;
     }
+    // COV — coaching coverage scheme. Socket ready: if any source provides a
+    // per-opponent coverage signal, expose it here and the layer turns on.
+    //   e.g. opponentTeam.coverage = { scheme, vsArchetypeMultiplier }
+    if (typeof externalCoverageSignal === 'function') {
+      try { const c = externalCoverageSignal(opponent, player, market); if (c != null) opponentTeam.coverage = c; } catch (_) {}
+    }
+    // WHISTLE — opponent foul rate. Socket ready: a team-foul-rate feed sets this
+    // and the whistle layer (already FTA-aware) starts using the matchup.
+    if (typeof externalFoulRate === 'function') {
+      try { const fr = externalFoulRate(opponent); if (fr != null) opponentTeam.foulRate = fr; } catch (_) {}
+    }
+    // ENV — pace/environment. Socket ready: a pace feed sets envMultiplierOverride
+    // and the environment layer activates. Threaded onto the engine input below.
+    let envMultiplierOverride = null;
+    if (typeof externalPaceSignal === 'function') {
+      try { envMultiplierOverride = externalPaceSignal(opponent, team, total); } catch (_) {}
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Wait for recent form (was already initiated in parallel)
     const recentForm = await recentFormPromise;
@@ -569,6 +598,7 @@ async function buildAndRunAnalysis({
       opponent: opponentTeam,
       market,
       line,
+      environmentMultiplier: envMultiplierOverride,   // pace socket (null until fed)
       game: {
         spread: isHome ? spread : -spread,   // home perspective by default; flip for away
         total,
