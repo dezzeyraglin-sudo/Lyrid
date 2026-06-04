@@ -4003,6 +4003,130 @@ function computeEmpiricalTotalStrategy(awayTeamAbbr, homeTeamAbbr, gameDate, mar
   return null;
 }
 
+// ====================================================================
+// (Drop #9 — June 3, 2026) EMPIRICAL ML STRATEGY
+//
+// Computes rolling-team-average run differential from state.projectionAudit
+// and returns home/away ML recommendation if a STRONG signal fires.
+//
+// Why this exists: June 3 audit on n=200 graded games found the server's
+// homeWinProb is anti-predictive at high conviction:
+//   homeWinProb 65%+: actual home WR 53% (miss -29pts)
+//   homeWinProb <35%: actual home WR 44% (miss +27pts)
+// When the model is most confident, it's most wrong on direction.
+//
+// Empirical strategy: each team's rolling 15-game run differential
+// (scored - allowed) is a CLEAN signal. Pick the team whose differential
+// is strongly positive when opponent's is non-positive.
+//
+//   STRONG ML: stronger team's diff >= 1.5 AND weaker team's diff <= 0
+//              Backtest: 21-10 (68% WR) on n=31, +9.1u at -110 flat 1.5u
+//              Stable across time thirds: 78% / 70% / 58%
+//              Wilson 95% CI: [50%, 81%]
+//
+// STRONG-only — looser thresholds (1.0/0.5 MODERATE tier) regress to 58%
+// and add noise. Better to PASS than to fake tier confidence.
+//
+// Returns null if no signal fires OR insufficient history (< 5 games per team).
+// ====================================================================
+function computeEmpiricalMLStrategy(awayTeamAbbr, homeTeamAbbr, gameDate) {
+  if (!awayTeamAbbr || !homeTeamAbbr || !state.projectionAudit) return null;
+
+  // Collect each team's last 15 graded games (excluding the current game's date)
+  const awayScored = [];
+  const awayAllowed = [];
+  const homeScored = [];
+  const homeAllowed = [];
+
+  const allAudits = Object.values(state.projectionAudit)
+    .filter(e => e.graded && e.date < gameDate
+                && typeof e.actualAwayRuns === 'number'
+                && typeof e.actualHomeRuns === 'number')
+    .sort((a, b) => (a.date < b.date ? 1 : -1));  // newest first
+
+  for (const e of allAudits) {
+    if (e.awayTeam === awayTeamAbbr && awayScored.length < 15) {
+      awayScored.push(e.actualAwayRuns);
+      awayAllowed.push(e.actualHomeRuns);
+    } else if (e.homeTeam === awayTeamAbbr && awayScored.length < 15) {
+      awayScored.push(e.actualHomeRuns);
+      awayAllowed.push(e.actualAwayRuns);
+    }
+    if (e.awayTeam === homeTeamAbbr && homeScored.length < 15) {
+      homeScored.push(e.actualAwayRuns);
+      homeAllowed.push(e.actualHomeRuns);
+    } else if (e.homeTeam === homeTeamAbbr && homeScored.length < 15) {
+      homeScored.push(e.actualHomeRuns);
+      homeAllowed.push(e.actualAwayRuns);
+    }
+    if (awayScored.length >= 15 && homeScored.length >= 15) break;
+  }
+
+  // Require minimum 5 games each
+  if (awayScored.length < 5 || homeScored.length < 5) return null;
+
+  const avg = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
+  const awayOff = avg(awayScored);
+  const homeOff = avg(homeScored);
+  const awayDef = avg(awayAllowed);
+  const homeDef = avg(homeAllowed);
+  const awayDiff = awayOff - awayDef;
+  const homeDiff = homeOff - homeDef;
+  const sampleSize = Math.min(awayScored.length, homeScored.length);
+
+  const baseStats = {
+    awayOff: +awayOff.toFixed(2),
+    homeOff: +homeOff.toFixed(2),
+    awayDef: +awayDef.toFixed(2),
+    homeDef: +homeDef.toFixed(2),
+    awayDiff: +awayDiff.toFixed(2),
+    homeDiff: +homeDiff.toFixed(2),
+    sampleSize
+  };
+
+  // STRONG: stronger team's diff >= 1.5 AND weaker team's diff <= 0
+  // Direction determined by which team is stronger.
+  if (homeDiff >= 1.5 && awayDiff <= 0) {
+    return {
+      ...baseStats,
+      side: 'HOME',
+      tier: 'STRONG',
+      units: 1.5,
+      probability: 0.68,
+      backtestWR: 0.68,
+      backtestN: 31,
+      reason: `Empirical HOME ML: home run-differential ${homeDiff.toFixed(2)} vs away ${awayDiff.toFixed(2)} (strong vs sub-average)`,
+      reasoningLines: [
+        `Home rolling diff: ${homeDiff.toFixed(2)} R/g (threshold ≥ 1.5)`,
+        `Away rolling diff: ${awayDiff.toFixed(2)} R/g (threshold ≤ 0)`,
+        `Team rolling (last ${sampleSize}): ${homeTeamAbbr} ${homeOff.toFixed(2)} scored / ${homeDef.toFixed(2)} allowed; ${awayTeamAbbr} ${awayOff.toFixed(2)} scored / ${awayDef.toFixed(2)} allowed`,
+        `Backtest: 21-10 (68% WR) on n=31, +9.1u at flat -110, stable across time thirds`
+      ]
+    };
+  }
+
+  if (awayDiff >= 1.5 && homeDiff <= 0) {
+    return {
+      ...baseStats,
+      side: 'AWAY',
+      tier: 'STRONG',
+      units: 1.5,
+      probability: 0.68,
+      backtestWR: 0.68,
+      backtestN: 31,
+      reason: `Empirical AWAY ML: away run-differential ${awayDiff.toFixed(2)} vs home ${homeDiff.toFixed(2)} (strong vs sub-average)`,
+      reasoningLines: [
+        `Away rolling diff: ${awayDiff.toFixed(2)} R/g (threshold ≥ 1.5)`,
+        `Home rolling diff: ${homeDiff.toFixed(2)} R/g (threshold ≤ 0)`,
+        `Team rolling (last ${sampleSize}): ${awayTeamAbbr} ${awayOff.toFixed(2)} scored / ${awayDef.toFixed(2)} allowed; ${homeTeamAbbr} ${homeOff.toFixed(2)} scored / ${homeDef.toFixed(2)} allowed`,
+        `Backtest: 21-10 (68% WR) on n=31, +9.1u at flat -110, stable across time thirds`
+      ]
+    };
+  }
+
+  return null;
+}
+
 // Classify a probability (0-1) into a visual tier for styling
 function probTier(p, baseline) {
   // May 18, 2026 — generalized for contact-probability engine outputs.
@@ -7118,6 +7242,130 @@ function renderAnalysis(data) {
       }
     }
 
+    // ====================================================================
+    // (Drop #9 — June 3, 2026) EMPIRICAL ML STRATEGY INTEGRATION
+    //
+    // Same architectural pattern as Drop #8: after the server returns its
+    // homeWinProb-based ML rec, check whether our empirical rolling-diff
+    // signal fires STRONG. If yes, override gl.moneyline.
+    //
+    // Why override is justified: June 3 audit showed homeWinProb has
+    // INVERTED signal at high conviction (model 65%+ → home actually wins
+    // 53%). Rolling run differential produces 68% WR on n=31 when STRONG
+    // criteria are met. The model is reversing what works.
+    //
+    // STRONG-only: backtest showed MODERATE thresholds (1.0/0.5) regress
+    // to 58% — below break-even at -110. Don't fake confidence.
+    // ====================================================================
+    if (gl && data.awayTeam?.abbreviation && data.homeTeam?.abbreviation) {
+      const empML = computeEmpiricalMLStrategy(
+        data.awayTeam.abbreviation,
+        data.homeTeam.abbreviation,
+        data.gameDateET
+      );
+
+      if (empML) {
+        // Strategy fired. Override gl.moneyline with empirical pick.
+        const pickTeam = empML.side === 'HOME'
+          ? data.homeTeam.abbreviation
+          : data.awayTeam.abbreviation;
+        const isSameDirection = gl.moneyline?.side === empML.side;
+
+        // Preserve original ML rec for diagnostics
+        const _origPick = gl.moneyline?.pick || null;
+        const _origTier = gl.moneyline?.tier || null;
+        const _origSide = gl.moneyline?.side || null;
+        const _origPickTeam = gl.moneyline?.pickTeam || null;
+        const _origPrice = gl.moneyline?.price || null;
+        const _origHomeEdge = gl.moneyline?.homeEdge || null;
+        const _origAwayEdge = gl.moneyline?.awayEdge || null;
+        const _origReasoning = gl.moneyline?.reasoning || null;
+        const _origProbability = gl.moneyline?.modelHomeWP || null;
+        const _origMarketHomeWP = gl.moneyline?.marketHomeWP || null;
+
+        // Build the override. Use server's price if direction matches; null otherwise
+        // so the bet panel doesn't show a misleading "market line" against our pick.
+        const overridePrice = isSameDirection ? _origPrice : null;
+
+        gl.moneyline = {
+          // Match gameLineBets.js shape
+          modelHomeWP: empML.side === 'HOME' ? empML.probability : 1 - empML.probability,
+          modelAwayWP: empML.side === 'AWAY' ? empML.probability : 1 - empML.probability,
+          marketHomeWP: _origMarketHomeWP,  // preserved from server if available
+          marketAwayWP: _origMarketHomeWP != null ? 1 - _origMarketHomeWP : null,
+          homeEdge: empML.side === 'HOME' ? +(empML.probability - 0.5).toFixed(3) : +(0.5 - empML.probability).toFixed(3),
+          awayEdge: empML.side === 'AWAY' ? +(empML.probability - 0.5).toFixed(3) : +(0.5 - empML.probability).toFixed(3),
+          tier: empML.tier,
+          side: empML.side,
+          pick: `${pickTeam} ML`,
+          price: overridePrice,
+          pickTeam,
+          units: empML.units,
+          probability: empML.probability,
+          reasoning: empML.reasoningLines,
+          // Audit trail
+          _empStrategyFired: true,
+          _empReason: empML.reason,
+          _empAwayOff: empML.awayOff,
+          _empHomeOff: empML.homeOff,
+          _empAwayDef: empML.awayDef,
+          _empHomeDef: empML.homeDef,
+          _empAwayDiff: empML.awayDiff,
+          _empHomeDiff: empML.homeDiff,
+          _empSampleSize: empML.sampleSize,
+          _empBacktestWR: empML.backtestWR,
+          _empBacktestN: empML.backtestN,
+          _originalPick: _origPick,
+          _originalTier: _origTier,
+          _originalSide: _origSide,
+          _originalPickTeam: _origPickTeam,
+          _originalHomeEdge: _origHomeEdge,
+          _originalAwayEdge: _origAwayEdge,
+          _originalReasoning: _origReasoning,
+          _originalProbability: _origProbability,
+          _directionMatch: isSameDirection
+        };
+
+        // Recompute overallBest. STRONG ML score = 32 (tierRank 3 * 10 + typePriority 2).
+        // STRONG total score = 33 (already higher). So total still beats ML.
+        // But if total isn't fired but ML is, ML becomes new best.
+        const candidates = [];
+        if (gl.total?.tier && gl.total.tier !== 'PASS') {
+          candidates.push({ type: 'total', rec: gl.total });
+        }
+        if (gl.moneyline?.tier && gl.moneyline.tier !== 'PASS') {
+          candidates.push({ type: 'moneyline', rec: gl.moneyline });
+        }
+        if (gl.spread?.tier && gl.spread.tier !== 'PASS') {
+          candidates.push({ type: 'spread', rec: gl.spread });
+        }
+        const tierRank = { STRONG: 3, MODERATE: 2, SLIGHT: 1 };
+        const typePriority = { total: 3, moneyline: 2, spread: 1 };
+        candidates.sort((a, b) => {
+          const sA = (tierRank[a.rec.tier] || 0) * 10 + (typePriority[a.type] || 0);
+          const sB = (tierRank[b.rec.tier] || 0) * 10 + (typePriority[b.type] || 0);
+          return sB - sA;
+        });
+        if (candidates.length > 0) {
+          const best = candidates[0];
+          gl.overallBest = {
+            type: best.type,
+            tier: best.rec.tier,
+            pick: best.rec.pick,
+            price: best.rec.price || null,
+            units: best.rec.units || (best.rec.tier === 'STRONG' ? 2 : best.rec.tier === 'MODERATE' ? 1 : 0.5),
+            reasoning: best.rec.reasoning,
+            probability: best.rec.probability,
+            _empStrategyFired: best.type === 'moneyline' ? best.rec._empStrategyFired :
+                                best.type === 'total' ? best.rec._empStrategyFired : false
+          };
+        }
+
+        // Force hasMarket=true so panel renders even without book odds
+        gl.hasMarket = true;
+      }
+    }
+
     if (gl?.hasMarket && gl.overallBest) {
       const tierClass = gl.overallBest.tier.toLowerCase();
       const typeLabel = {
@@ -7172,24 +7420,30 @@ function renderAnalysis(data) {
               units: gl.overallBest.units,
               away: data.awayTeam.abbreviation,
               home: data.homeTeam.abbreviation,
-              // (Drop #8 — June 3, 2026) Empirical-strategy audit fields
-              _empStrategyFired: gl.overallBest.type === 'total' && gl.total && gl.total._empStrategyFired || false,
-              _empReason: gl.total ? (gl.total._empReason || null) : null,
+              // (Drop #8 — June 3, 2026) Empirical-total-strategy audit fields
+              _empStrategyFired: (gl.overallBest.type === 'total' && gl.total && gl.total._empStrategyFired) || (gl.overallBest.type === 'moneyline' && gl.moneyline && gl.moneyline._empStrategyFired) || false,
+              _empReason: gl.overallBest.type === 'total' ? (gl.total && gl.total._empReason || null) : gl.overallBest.type === 'moneyline' ? (gl.moneyline && gl.moneyline._empReason || null) : null,
+              // Total-specific empirical fields (only populated when overallBest is total)
               _empMaxSide: gl.total ? (gl.total._empMaxSide || null) : null,
               _empSum: gl.total ? (gl.total._empSum || null) : null,
               _empDef: gl.total ? (gl.total._empDef || null) : null,
-              _empAwayOff: gl.total ? (gl.total._empAwayOff || null) : null,
-              _empHomeOff: gl.total ? (gl.total._empHomeOff || null) : null,
-              _empAwayDef: gl.total ? (gl.total._empAwayDef || null) : null,
-              _empHomeDef: gl.total ? (gl.total._empHomeDef || null) : null,
               _empProj: gl.total ? (gl.total._empProj || null) : null,
-              _empSampleSize: gl.total ? (gl.total._empSampleSize || null) : null,
-              _empBacktestWR: gl.total ? (gl.total._empBacktestWR || null) : null,
-              _empBacktestN: gl.total ? (gl.total._empBacktestN || null) : null,
-              _originalPick: gl.total ? (gl.total._originalPick || null) : null,
-              _originalTier: gl.total ? (gl.total._originalTier || null) : null,
-              _originalSide: gl.total ? (gl.total._originalSide || null) : null,
-              _directionMatch: gl.total ? (gl.total._directionMatch === undefined ? null : gl.total._directionMatch) : null
+              // Shared rolling-stats fields (populated by whichever empirical strategy fired)
+              _empAwayOff: gl.overallBest.type === 'total' ? (gl.total && gl.total._empAwayOff || null) : gl.overallBest.type === 'moneyline' ? (gl.moneyline && gl.moneyline._empAwayOff || null) : null,
+              _empHomeOff: gl.overallBest.type === 'total' ? (gl.total && gl.total._empHomeOff || null) : gl.overallBest.type === 'moneyline' ? (gl.moneyline && gl.moneyline._empHomeOff || null) : null,
+              _empAwayDef: gl.overallBest.type === 'total' ? (gl.total && gl.total._empAwayDef || null) : gl.overallBest.type === 'moneyline' ? (gl.moneyline && gl.moneyline._empAwayDef || null) : null,
+              _empHomeDef: gl.overallBest.type === 'total' ? (gl.total && gl.total._empHomeDef || null) : gl.overallBest.type === 'moneyline' ? (gl.moneyline && gl.moneyline._empHomeDef || null) : null,
+              _empSampleSize: gl.overallBest.type === 'total' ? (gl.total && gl.total._empSampleSize || null) : gl.overallBest.type === 'moneyline' ? (gl.moneyline && gl.moneyline._empSampleSize || null) : null,
+              _empBacktestWR: gl.overallBest.type === 'total' ? (gl.total && gl.total._empBacktestWR || null) : gl.overallBest.type === 'moneyline' ? (gl.moneyline && gl.moneyline._empBacktestWR || null) : null,
+              _empBacktestN: gl.overallBest.type === 'total' ? (gl.total && gl.total._empBacktestN || null) : gl.overallBest.type === 'moneyline' ? (gl.moneyline && gl.moneyline._empBacktestN || null) : null,
+              // ML-specific empirical fields (only populated when overallBest is moneyline)
+              _empAwayDiff: gl.moneyline ? (gl.moneyline._empAwayDiff || null) : null,
+              _empHomeDiff: gl.moneyline ? (gl.moneyline._empHomeDiff || null) : null,
+              // Original server rec (preserved for audit; varies by bet type)
+              _originalPick: gl.overallBest.type === 'total' ? (gl.total && gl.total._originalPick || null) : gl.overallBest.type === 'moneyline' ? (gl.moneyline && gl.moneyline._originalPick || null) : null,
+              _originalTier: gl.overallBest.type === 'total' ? (gl.total && gl.total._originalTier || null) : gl.overallBest.type === 'moneyline' ? (gl.moneyline && gl.moneyline._originalTier || null) : null,
+              _originalSide: gl.overallBest.type === 'total' ? (gl.total && gl.total._originalSide || null) : gl.overallBest.type === 'moneyline' ? (gl.moneyline && gl.moneyline._originalSide || null) : null,
+              _directionMatch: gl.overallBest.type === 'total' ? (gl.total ? (gl.total._directionMatch === undefined ? null : gl.total._directionMatch) : null) : gl.overallBest.type === 'moneyline' ? (gl.moneyline ? (gl.moneyline._directionMatch === undefined ? null : gl.moneyline._directionMatch) : null) : null
             }).replace(/'/g, '&#39;')})'>
               + LOG THIS BET
             </button>
@@ -9363,6 +9617,9 @@ function logGameLineBet(ctx) {
     _empAwayDef: ctx._empAwayDef || null,
     _empHomeDef: ctx._empHomeDef || null,
     _empProj: ctx._empProj || null,
+    // (Drop #9 — June 3, 2026) ML-specific empirical fields
+    _empAwayDiff: ctx._empAwayDiff || null,
+    _empHomeDiff: ctx._empHomeDiff || null,
     _empSampleSize: ctx._empSampleSize || null,
     _empBacktestWR: ctx._empBacktestWR || null,
     _empBacktestN: ctx._empBacktestN || null,
