@@ -13709,7 +13709,13 @@ async function autoGradeOnAppOpen() {
 
     // Union of chips/flags across the player's markets (deduped) — shown once.
     const allChips = [...new Set(props.flatMap(p => p.chips || []))];
-    const allFlags = [...new Set(props.flatMap(p => p.hardFlags || []))];
+    let allFlags = [...new Set(props.flatMap(p => p.hardFlags || []))];
+    // Team defense (ALL-STAR) now satisfies the defense read for straight bets, so
+    // drop the "NO DEFENSE DATA" flag when we have a team-level rating. The flag was
+    // really about the positional layer; with team defense present it's misleading.
+    if (lead.teamDefense && num(lead.teamDefense.allowedPerGame) != null) {
+      allFlags = allFlags.filter(f => !/NO DEFENSE DATA/i.test(f));
+    }
 
     // ---- WHY block: the 3 strongest REAL drivers for the lead market ----
     // Mirrors MLB's "HR DRIVERS". Only REAL drivers with a meaningful read are
@@ -13830,6 +13836,14 @@ async function autoGradeOnAppOpen() {
     }
     if (mkt.includes('rebound') && lead.reboundEquity && num(lead.reboundEquity.equityMultiplier) != null && lead.reboundEquity.equityMultiplier >= 1.04) {
       matchupBits.push('<span style="color:#14532d;font-weight:600">favorable rebound geometry</span>');
+    }
+    // Team-level opposing defense (ALL-STAR): points allowed/game vs league.
+    const td = lead.teamDefense;
+    if (td && num(td.allowedPerGame) != null) {
+      const tag = td.rating === 'SOFT' ? '<span style="color:#14532d;font-weight:600">soft team defense</span>'
+        : td.rating === 'TOUGH' ? '<span style="color:#7f1d1d;font-weight:600">tough team defense</span>'
+        : 'average team defense';
+      matchupBits.push(`${tag} (allows ${num(td.allowedPerGame).toFixed(1)}/g vs ${num(td.leagueAvg).toFixed(1)} lg)`);
     }
     const matchupRow = matchupBits.filter(Boolean).join(' · ');
 

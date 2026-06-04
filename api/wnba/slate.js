@@ -58,7 +58,7 @@ import { analyzeBasketballProp } from "../_lib/basketball/basketballProps.js";
 import { analyzeUnifiedProp } from "../_lib/basketball/unifiedPointsEngine.js";
 import { analyzeReboundProp } from "../_lib/basketball/reboundEnvironmentEngine.js";
 import { analyzeGameLine } from "../_lib/basketball/gameLineEngine.js";
-import { buildWnbaDefenseTable, defenseMultiplier } from "../_lib/wnba/wnbaDefenseFeed.js";
+import { buildWnbaDefenseTable, defenseMultiplier, teamDefenseFor } from "../_lib/wnba/wnbaDefenseFeed.js";
 import { externalCoverageSignal, externalFoulRate, externalPaceSignal } from "../_lib/wnba/wnbaExternalSignals.js";
 import { buildAuditEntry } from "../_lib/basketball/basketballAudit.js";
 import { getGamesForDate, getTodaysGames } from "../_lib/wnba/wnbaSchedule.js";
@@ -527,11 +527,15 @@ async function buildAndRunAnalysis({
     //   ENV  → input.environmentMultiplier      (unwired: needs a pace source)
     //   USAGE FUNNEL → already fed by teammateRedistribution when a player is OUT
     //
-    // DEF — opposing defense by position+market (REAL now).
+    // DEF — opposing defense. Two tiers, both wired:
+    //   • player-position multiplier (GOAT /player_stats) → engine projection input
+    //   • team-level rating (ALL-STAR /games) → straight bets + card chip
     if (defenseTable && defenseTable.byTeam) {
       const dm = defenseMultiplier(defenseTable, opponent, player.position, market);
-      if (dm != null) opponentTeam.defenseMultiplier = dm;
+      if (dm != null) opponentTeam.defenseMultiplier = dm;   // positional (GOAT)
     }
+    // Team-level defense always attaches when available (works on ALL-STAR now).
+    const teamDef = teamDefenseFor(defenseTable, opponent);
     // COV — coaching coverage scheme. Socket ready: if any source provides a
     // per-opponent coverage signal, expose it here and the layer turns on.
     //   e.g. opponentTeam.coverage = { scheme, vsArchetypeMultiplier }
@@ -743,7 +747,10 @@ async function buildAndRunAnalysis({
       reboundEnvironment: reboundExtras?.environment || null,
       reboundEquity: reboundExtras?.equity || null,
       reboundTrap: reboundExtras?.trap || null,
-      reboundVariance: reboundExtras?.variance || null
+      reboundVariance: reboundExtras?.variance || null,
+      // Team-level opposing defense (ALL-STAR): { allowedPerGame, leagueAvg,
+      // multiplier, rating SOFT|AVERAGE|TOUGH, games }. null until enough games.
+      teamDefense: teamDef || null
     };
   } catch (err) {
     return {
