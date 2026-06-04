@@ -12532,16 +12532,15 @@ window.captureWnbaPredictions = function(data) {
   state.wnbaPropHistory = state.wnbaPropHistory || {};
   const day = state.wnbaPropHistory[date] = state.wnbaPropHistory[date] || {};
 
-  // BEST BETS: mirror MLB's top-pick logging. A best bet is a player's single
-  // strongest actionable market — real book line, recommendation not PASS, and a
-  // meaningful edge. We pick the highest-finalEdge qualifying market per player.
+  // BEST BETS: each player's single strongest market by edge (the model's best
+  // read), regardless of book line. Mirrors MLB's top-pick logging. Actionability
+  // (real line + non-PASS) is tracked per-entry below, not used to gate logging.
   const bestByPlayer = {};
   for (const p of pool) {
     if (!p.player || !p.market) continue;
-    const actionable = (p.lineSource === 'provided')
-      && p.recommendation && p.recommendation !== 'PASS'
-      && p.injuryStatus !== 'OUT';
-    if (!actionable) continue;
+    if (p.injuryStatus === 'OUT') continue;
+    const proj = Number(p.projection);
+    if (!Number.isFinite(proj) || p.line == null) continue;
     const fe = p.scores?.finalEdge ?? 0;
     const cur = bestByPlayer[p.player];
     if (!cur || fe > cur.fe) bestByPlayer[p.player] = { key: `${p.player}_${p.market}`, fe };
@@ -12604,14 +12603,19 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
   state.wnbaPropHistory = state.wnbaPropHistory || {};
   const day = state.wnbaPropHistory[date] = state.wnbaPropHistory[date] || {};
 
-  // Strongest actionable market per player in THIS game = the best bet(s).
+  // Strongest pick per player in THIS game = the best bet — MIRRORS MLB, which
+  // logs its top pick per side regardless of whether a book line exists. We pick
+  // each player's highest-finalEdge market (the model's strongest read), log it,
+  // and TAG whether it's actionable (real book line + non-PASS + not OUT). This
+  // way the tool always records its strong points; the actionable ones are just
+  // flagged for the real-line win/loss record. Previously this required a real
+  // book line AND a non-PASS rec, so slates with throttled props saved nothing.
   const bestByPlayer = {};
   for (const p of gamePool) {
     if (!p.player || !p.market) continue;
-    const actionable = (p.lineSource === 'provided')
-      && p.recommendation && p.recommendation !== 'PASS'
-      && p.injuryStatus !== 'OUT';
-    if (!actionable) continue;
+    if (p.injuryStatus === 'OUT') continue;            // skip ruled-out players only
+    const proj = Number(p.projection);
+    if (!Number.isFinite(proj) || p.line == null) continue;   // need a projection vs a line
     const fe = p.scores?.finalEdge ?? 0;
     const cur = bestByPlayer[p.player];
     if (!cur || fe > cur.fe) bestByPlayer[p.player] = { key: `${p.player}_${p.market}`, fe, p };
@@ -12626,6 +12630,8 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
     const projection = Number(p.projection);
     if (!Number.isFinite(projection) || p.line == null) continue;
     const lean = projection >= Number(p.line) ? 'OVER' : 'UNDER';
+    const actionable = (p.lineSource === 'provided')
+      && p.recommendation && p.recommendation !== 'PASS';
     // Capture the full reasoning the card shows: the prose read + the ranked list
     // of every real advantage factor, so the Best Bets tab explains WHY.
     let reasonText = '';
@@ -12643,6 +12649,7 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
       lineSource: p.lineSource || 'inferred',
       recommendation: p.recommendation || null,
       isBestBet: true,
+      actionable,
       loggedFromAnalyze: true,
       reasonText,
       reasons,
