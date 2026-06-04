@@ -1745,7 +1745,7 @@ export default async function handler(req, res) {
     //   projTotal ≤6.0, YRFI bet: 9-1 (90%) on n=10
     //   projTotal ≥9.5, NRFI bet: 21-13 (62%) on n=34
     //   projTotal 6.0-9.5 middle: 41% WR on n=89 (no edge)
-    //   Combined extreme strategy: 30-14 (68%) on n=44
+    //   Combined extreme strategy: 30-14 (68%) on n=44, +20u profit at -110
     //
     // STRATEGY (STRONG-only, MODERATE tier dropped after backtest showed
     // 40%/33% WR — not edge):
@@ -1756,12 +1756,6 @@ export default async function handler(req, res) {
     // OVERRIDES the model's probability-based pick. Model's pre-strategy
     // state preserved on _originalSide/_originalTier/_originalProb for
     // diagnostic auditing.
-    //
-    // Why this works: the model's per-side scoring probability has good
-    // signal on game environment (high-proj games have more scoring potential)
-    // but is calibrated wrong on WHEN scoring happens (slugfests score middle
-    // innings, not first; pitcher duels produce 1st-inning manufacturing).
-    // Projection magnitude is a cleaner proxy than the model's 1st-inning math.
     if (results.firstInning?.recommendation && projection) {
       const fi = results.firstInning.recommendation;
       const projTotal = parseFloat(projection.projTotal) || 0;
@@ -1772,9 +1766,7 @@ export default async function handler(req, res) {
       const _originalUnits = fi.units;
       const _originalProb = fi.probability;
 
-      // Determine projection-strategy recommendation. STRONG only — MODERATE
-      // tier removed after backtest showed 6.0-6.5 YRFI (40%) and 9.0-9.5
-      // NRFI (33%) were not edge.
+      // STRONG-only — MODERATE tier removed after backtest showed 40%/33%
       let newSide = null, newTier = 'PASS', newUnits = 0, strategyReason = null;
       if (projTotal > 0 && projTotal <= 6.0) {
         newSide = 'YRFI';
@@ -1787,7 +1779,6 @@ export default async function handler(req, res) {
         newUnits = 1.5;
         strategyReason = `Extreme high projection (${projTotal.toFixed(2)} ≥ 9.5): backtest 21-13 (62% WR, n=34)`;
       } else {
-        // PASS — middle zone 6.0-9.5 has no clean edge
         strategyReason = projTotal > 0
           ? `Middle projection (${projTotal.toFixed(2)}): no edge between 6.0-9.5 (backtest 41% WR, n=89)`
           : 'No projection available';
