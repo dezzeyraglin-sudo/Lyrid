@@ -439,6 +439,14 @@ async function generateSlate(opts = {}) {
       removedOut: removedOut.length,
       errors: errors.length,
       durationMs: Date.now() - startedAt,
+      // Deploy/verification marker: tells you at a glance whether the defense
+      // feed is live (teams>0) or not yet deployed/no data (teams=0).
+      defenseTable: {
+        version: 'defense-v1',
+        teams: Object.keys(defenseTable?.byTeam || {}).length,
+        builtAt: defenseTable?._audit?.builtAt || null,
+        audit: defenseTable?._audit || null,
+      },
       v2: v2Summary
     }
   };
