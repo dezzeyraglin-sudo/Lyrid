@@ -39,10 +39,12 @@ export function isBdlConfigured() {
 }
 
 // --- Trial-safe rate limiting -------------------------------------------------
-// The GOAT 48h TRIAL is capped at 5 requests/min (the paid tier is 600/min). To
-// avoid false 429 failures during the trial, we serialize requests with a min
-// gap and retry once after a 429. Set BDL_MIN_GAP_MS=0 in env once on paid tier.
-const MIN_GAP_MS = Number(process.env.BDL_MIN_GAP_MS ?? 13000);  // ~4.6 req/min
+// Tier spacing. ALL-STAR is 60 req/min, so ~1000ms (one call/second) keeps us
+// safely under the cap with no perceptible lag. The old 13000ms default was for
+// the 5/min trial. Override via BDL_MIN_GAP_MS if the tier changes (GOAT 600/min
+// → set BDL_MIN_GAP_MS=0; trial 5/min → set 13000). The 429 retry below remains
+// as a safety net regardless. Default now matches the ALL-STAR plan.
+const MIN_GAP_MS = Number(process.env.BDL_MIN_GAP_MS ?? 1000);  // ~60 req/min (ALL-STAR)
 let _lastCallAt = 0;
 let _chain = Promise.resolve();
 function spacedSlot() {
