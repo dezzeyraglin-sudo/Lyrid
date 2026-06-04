@@ -143,13 +143,17 @@ function environmentMult(env, cfg) {
 }
 
 // OPPOSING DEFENSE — first-class layer, REAL from live bbref opponent data.
-function matchupMult(matchup, cfg) {
-  const raw = num(matchup?.scoringMultiplier);
+function matchupMult(matchup, cfg, providedMult) {
+  // Prefer an explicitly-provided defense multiplier (the WNBA defense feed built
+  // from box scores: pts/reb/ast allowed by position). Fall back to the matchup
+  // engine's own scoringMultiplier, then to neutral.
+  const raw = num(providedMult) ?? num(matchup?.scoringMultiplier);
   if (raw == null) return { mult: 1, active: false, detail: 'no opponent-defense data' };
   const damped = 1 + (raw - 1) * cfg.weights.defenseSensitivity;
+  const src = num(providedMult) != null ? 'allowed-by-position (last 10G)' : 'opp def rtg/rim/perimeter';
   return {
     mult: clamp(damped, cfg.clamps.defense), active: true,
-    detail: `opp def rtg/rim/perimeter ${raw.toFixed(3)}`,
+    detail: `${src} ${raw.toFixed(3)}`,
   };
 }
 
@@ -240,7 +244,7 @@ export function analyzeUnifiedProp(input, league = 'WNBA') {
 
   // Multiplier layers
   const mEnv = environmentMult(env, cfg);
-  const mMatch = matchupMult(matchup, cfg);          // opposing defense
+  const mMatch = matchupMult(matchup, cfg, input.opponent?.defenseMultiplier);          // opposing defense
   const mCover = coverageMult(input, cfg);           // coaching coverage
   const mWhistle = isPoints ? whistleMult(player, input.opponent, cfg)
                             : { mult: 1, active: false, detail: 'whistle points-only' };

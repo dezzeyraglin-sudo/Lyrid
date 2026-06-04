@@ -94,4 +94,5 @@ export async function cacheWrite(key, value) {
 export const CACHE_KEYS = {
   props: (date) => `wnba:props:${date}`,
   injuries: () => `wnba:injuries`,
+  defense: () => `wnba:defense`,
 };

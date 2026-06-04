@@ -58,6 +58,7 @@ import { analyzeBasketballProp } from "../_lib/basketball/basketballProps.js";
 import { analyzeUnifiedProp } from "../_lib/basketball/unifiedPointsEngine.js";
 import { analyzeReboundProp } from "../_lib/basketball/reboundEnvironmentEngine.js";
 import { analyzeGameLine } from "../_lib/basketball/gameLineEngine.js";
+import { buildWnbaDefenseTable, defenseMultiplier } from "../_lib/wnba/wnbaDefenseFeed.js";
 import { buildAuditEntry } from "../_lib/basketball/basketballAudit.js";
 import { getGamesForDate, getTodaysGames } from "../_lib/wnba/wnbaSchedule.js";
 import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
@@ -226,6 +227,19 @@ async function generateSlate(opts = {}) {
   const bdlPropMeta = bdlProps.propMeta || {};
   const bdlPropsAvailable = Object.keys(bdlPropLines).length > 0;
 
+  // OPPOSING DEFENSE table (pts/reb/ast allowed by position, last 10G). Built once
+  // per slate from box scores (ALL-STAR /stats). Cached in Supabase. Fail-safe:
+  // on any error this is an empty table and the engine stays neutral (DEF 50).
+  let defenseTable = { byTeam: {}, leagueAvg: null, _audit: {} };
+  try {
+    defenseTable = await buildWnbaDefenseTable();
+    if (defenseTable._audit?.warnings?.length) {
+      warnings.push(...defenseTable._audit.warnings.map(w => `DEF: ${w}`));
+    }
+  } catch (err) {
+    warnings.push(`Defense table failed: ${err.message}`);
+  }
+
   // STEP 3: For each game, build the list of (player, market) analyses to run
   const analysisPromises = [];
   const gameContexts = {};  // for output organization
@@ -328,7 +342,7 @@ async function generateSlate(opts = {}) {
             buildAndRunAnalysis({
               player, isHome, opponent, team, market, season, game, spread, total,
               recentFormPromise, allTeamStats, gameLines,
-              v2Roster, v2OpponentRoster, injuryReport
+              v2Roster, v2OpponentRoster, injuryReport, defenseTable
             })
           );
         }
@@ -486,12 +500,19 @@ function buildHardFlagsFromUnified(u, player, reboundExtras) {
 async function buildAndRunAnalysis({
   player, isHome, opponent, team, market, season, game,
   spread, total, recentFormPromise, allTeamStats, gameLines,
-  v2Roster, v2OpponentRoster, injuryReport
+  v2Roster, v2OpponentRoster, injuryReport, defenseTable
 }) {
   try {
     // Get opponent team stats from the pre-fetched map
     const opponentTeam = allTeamStats[opponent] || { abbr: opponent };
     const teamData = allTeamStats[team] || { abbr: team };
+
+    // Opposing-defense multiplier for THIS player's position + market (pts/reb/ast
+    // allowed vs league avg, last 10G). Makes DEF a REAL layer instead of neutral.
+    if (defenseTable && defenseTable.byTeam) {
+      const dm = defenseMultiplier(defenseTable, opponent, player.position, market);
+      if (dm != null) opponentTeam.defenseMultiplier = dm;
+    }
 
     // Wait for recent form (was already initiated in parallel)
     const recentForm = await recentFormPromise;
