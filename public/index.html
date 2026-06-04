@@ -3811,6 +3811,7 @@ function loadState() {
   state.tracking = state.tracking || {};
   state.bestBetHistory = state.bestBetHistory || {};
   state.wnbaPropHistory = state.wnbaPropHistory || {};
+  state.wnbaLoggedBets = state.wnbaLoggedBets || {};
   state.hrAudit = state.hrAudit || { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } };
   state.hrAudit.entries = state.hrAudit.entries || [];
   state.hrAudit.byTier = state.hrAudit.byTier || { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} };
@@ -10764,7 +10765,43 @@ function renderHistory() {
         </div>`;
     }).join('');
 
-    container.innerHTML = subnavHtml + statsBar + bestBetsSection + byTier + byMarket + byLineSource + byDefense
+    // ---- MY LOGGED BETS (manual "+ LOG THIS BET" picks) ----
+    const loggedAll = Object.entries(state.wnbaLoggedBets || {})
+      .map(([k, e]) => ({ ...e, _key: k }))
+      .sort((a, b) => (b.loggedAt || 0) - (a.loggedAt || 0));
+    const loggedStats = computeWnbaPropStats(loggedAll);
+    const loggedRows = loggedAll.map(e => {
+      const col = e.result === 'win' ? 'var(--accent)' : e.result === 'loss' ? 'var(--danger)' : 'var(--dim)';
+      const resLabel = e.graded ? (e.result || 'pending').toUpperCase() : 'PENDING';
+      const errStr = e.error != null ? `${e.error > 0 ? '+' : ''}${e.error}` : '';
+      const k = esc(e._key);
+      const gradeBtns = e.graded
+        ? `<button onclick="gradeWnbaLoggedBetManual('${k}', null)" title="reset to pending" style="font-size:9px;color:var(--dim);background:transparent;border:0.5px solid var(--dim);border-radius:3px;padding:1px 6px;cursor:pointer">↺</button>`
+        : `<button onclick="gradeWnbaLoggedBetManual('${k}','win')" style="font-size:9px;font-weight:700;color:var(--accent);background:transparent;border:1px solid var(--accent);border-radius:3px;padding:1px 7px;cursor:pointer">W</button>
+           <button onclick="gradeWnbaLoggedBetManual('${k}','loss')" style="font-size:9px;font-weight:700;color:var(--danger);background:transparent;border:1px solid var(--danger);border-radius:3px;padding:1px 7px;cursor:pointer">L</button>`;
+      return `
+        <div class="glb-history-entry" style="border-left-color:${col}">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:600;color:var(--ink)">${esc(e.player)} <span style="font-weight:400;color:var(--dim);font-size:11px">${esc(e.market)}</span></span>
+            <span style="display:flex;gap:5px;align-items:center">
+              <span style="font-size:11px;font-weight:700;color:${col}">${resLabel}</span>
+              ${gradeBtns}
+              <button onclick="deleteWnbaLoggedBet('${k}')" title="delete" style="font-size:10px;color:var(--dim);background:transparent;border:0;cursor:pointer">✕</button>
+            </span>
+          </div>
+          <div style="font-size:11px;color:var(--dim);margin-top:3px;font-variant-numeric:tabular-nums">
+            <b style="color:var(--ink)">${esc(e.lean || '')} ${e.line ?? ''}</b>${e.projection != null ? ` · proj <b style="color:var(--ink)">${e.projection}</b>` : ''}${e.graded && e.actual != null ? ` · actual <b style="color:var(--ink)">${e.actual}</b>` : ''}${errStr ? ` · err ${errStr}` : ''}${e.units ? ` · ${e.units}u` : ''}
+          </div>
+          <div style="font-size:10px;color:var(--dim);margin-top:2px">${esc(e.date)} · ${esc(e.team || '')} vs ${esc(e.opponent || '')}${e.lineSource === 'provided' ? ' · book line' : ''}</div>
+        </div>`;
+    }).join('');
+    const loggedSection = loggedAll.length > 0 ? `
+      <h3 class="rollup-section-title">📋 MY LOGGED BETS · ${loggedStats.wins}-${loggedStats.losses}${loggedStats.pending ? ` · ${loggedStats.pending} live` : ''}</h3>
+      <div style="font-size:11px;color:var(--dim);margin:-4px 0 8px">Bets you logged with "+ LOG THIS BET". Player props auto-grade vs box score; use W/L to grade manually.</div>
+      ${loggedRows}
+    ` : '';
+
+    container.innerHTML = subnavHtml + statsBar + loggedSection + bestBetsSection + byTier + byMarket + byLineSource + byDefense
       + `<h3 class="rollup-section-title">ALL GRADED PROPS</h3>`
       + (entryRows || `<div class="empty" style="padding:20px"><div>No graded props yet. Tap ⚡ GRADE ALL after games finish.</div></div>`)
       + `<div class="rollup-footnote">Best bets and all props auto-capture when you load a WNBA slate, and grade against real box scores. Win/loss counts only REAL-line props; inferred-line props track projection error (MAE). Calibration sharpens with volume — aim for 30+ graded per slice before trusting it.</div>`;
@@ -12723,6 +12760,109 @@ window.gradeWnbaProps = async function(opts = {}) {
   if (!silent) showToast(gradedCount > 0 ? `Graded ${gradedCount} props` : 'No newly final results');
 };
 
+// ====================================================================
+// WNBA MANUAL BET LOGGING — the "+ LOG THIS BET" action on prop cards.
+//
+// Separate from wnbaPropHistory (which auto-captures every model prediction).
+// state.wnbaLoggedBets holds bets the USER actually placed, keyed by
+// `${date}_${player}_${market}`. Player props auto-grade vs box score using the
+// same /api/wnba/results path as gradeWnbaProps; non-player bets (e.g. 1Q/1H,
+// entered later) stay manual-grade via gradeWnbaLoggedBetManual().
+// ====================================================================
+function logWnbaBet(ctx) {
+  if (!ctx || !ctx.player || !ctx.market) return;
+  state.wnbaLoggedBets = state.wnbaLoggedBets || {};
+  const date = ctx.date || getTodayStr();
+  const pid = String(ctx.player).replace(/[^a-zA-Z0-9]/g, '');
+  const key = `${date}_${pid}_${String(ctx.market).toLowerCase()}`;
+  if (state.wnbaLoggedBets[key]) { showToast('Already logged this bet'); return; }
+
+  state.wnbaLoggedBets[key] = {
+    date,
+    player: ctx.player,
+    team: ctx.team || null,
+    opponent: ctx.opponent || null,
+    market: ctx.market,
+    line: ctx.line ?? null,
+    lean: ctx.lean || null,            // 'OVER' | 'UNDER'
+    projection: ctx.projection ?? null,
+    edge: ctx.edge ?? null,
+    tier: ctx.tier || null,
+    units: ctx.units || 1,
+    gameId: ctx.gameId || null,
+    lineSource: ctx.lineSource || 'logged',
+    loggedAt: Date.now(),
+    result: null,
+    actual: null,
+    error: null,
+    graded: false,
+    manualOnly: ctx.manualOnly === true,   // true → never auto-grade (e.g. 1Q/1H)
+  };
+  saveState();
+  showToast(`★ Logged: ${ctx.player} ${ctx.lean || ''} ${ctx.market} ${ctx.line ?? ''}`.trim());
+  if (typeof renderHistory === 'function') renderHistory();
+}
+window.logWnbaBet = logWnbaBet;
+
+// Auto-grade logged player-prop bets against the box score (mirrors gradeWnbaProps).
+window.gradeWnbaLoggedBets = async function(opts = {}) {
+  const silent = opts.silent;
+  state.wnbaLoggedBets = state.wnbaLoggedBets || {};
+  const entries = Object.values(state.wnbaLoggedBets).filter(e => !e.graded && !e.manualOnly);
+  if (entries.length === 0) { if (!silent) showToast('Nothing to grade'); return; }
+  const today = getTodayStr();
+  const byDate = {};
+  entries.forEach(e => { (byDate[e.date] = byDate[e.date] || []).push(e); });
+  let gradedCount = 0;
+  for (const date of Object.keys(byDate)) {
+    try {
+      const res = await fetch(`/api/wnba/results?date=${date}`);
+      const data = await res.json();
+      if (!data.ok || !data.byPlayer) continue;
+      for (const e of byDate[date]) {
+        const box = data.byPlayer[e.player];
+        if (!box) continue;
+        if (!box.final && date === today) continue;
+        if (!box.didPlay) { e.result = 'dnp'; e.actual = 0; e.graded = true; gradedCount++; continue; }
+        const mk = e.market.toLowerCase();
+        const marketKey = mk.includes('rebound') ? 'rebounds'
+          : mk.includes('assist') ? 'assists'
+          : mk.includes('three') ? 'threes'
+          : mk.includes('pra') ? 'pra' : 'points';
+        const actual = box[marketKey];
+        if (actual == null) continue;
+        e.actual = actual;
+        if (e.projection != null) e.error = Number((e.projection - actual).toFixed(2));
+        if (e.line != null && e.lean) {
+          const overHit = actual > e.line;
+          const push = actual === e.line;
+          e.result = push ? 'push' : ((e.lean === 'OVER') === overHit ? 'win' : 'loss');
+        }
+        e.graded = true;
+        gradedCount++;
+      }
+    } catch (err) { if (!silent) console.warn('[gradeWnbaLoggedBets]', date, err.message); }
+  }
+  if (gradedCount > 0) { saveState(); if (typeof renderHistory === 'function') renderHistory(); }
+  if (!silent) showToast(gradedCount > 0 ? `Graded ${gradedCount} logged bets` : 'No newly final results');
+};
+
+// Manual grade toggle for any logged bet (the only path for 1Q/1H / manualOnly).
+window.gradeWnbaLoggedBetManual = function(key, result) {
+  state.wnbaLoggedBets = state.wnbaLoggedBets || {};
+  const e = state.wnbaLoggedBets[key];
+  if (!e) return;
+  e.result = result;          // 'win' | 'loss' | 'push'
+  e.graded = result !== null;
+  saveState();
+  if (typeof renderHistory === 'function') renderHistory();
+};
+
+window.deleteWnbaLoggedBet = function(key) {
+  state.wnbaLoggedBets = state.wnbaLoggedBets || {};
+  if (state.wnbaLoggedBets[key]) { delete state.wnbaLoggedBets[key]; saveState(); if (typeof renderHistory === 'function') renderHistory(); }
+};
+
 // Stats roll-up over a list of graded entries.
 function computeWnbaPropStats(entries) {
   const graded = entries.filter(e => e.graded && (e.result === 'win' || e.result === 'loss'));
@@ -12769,6 +12909,9 @@ async function autoGradeOnAppOpen() {
 
   try { if (typeof window.gradeWnbaProps === 'function') await window.gradeWnbaProps({ silent: true }); }
   catch(err) { console.warn('[autoGrade] wnba props failed:', err.message); }
+
+  try { if (typeof window.gradeWnbaLoggedBets === 'function') await window.gradeWnbaLoggedBets({ silent: true }); }
+  catch(err) { console.warn('[autoGrade] wnba logged bets failed:', err.message); }
 
   // Compute newly-graded delta
   const afterCount = _countGradedBets();
@@ -13764,8 +13907,22 @@ async function autoGradeOnAppOpen() {
       const bookLabel = (p.lineSource === 'provided')
         ? (p.lineBook ? `<span style="font-size:8px;color:var(--text-secondary, var(--dim));letter-spacing:0.04em;text-transform:uppercase" title="book line from ${esc(p.lineBook)}">${esc(p.lineBook)}</span>` : '<span style="font-size:8px;color:var(--accent, #c9a45e);letter-spacing:0.04em" title="real book line">BOOK</span>')
         : '<span style="font-size:8px;color:var(--text-secondary, var(--dim));opacity:0.7;letter-spacing:0.04em" title="no book line — model projection">MODEL</span>';
+      // "+ LOG THIS BET" — records the bet the user is placing into state.wnbaLoggedBets.
+      // Player props auto-grade vs box score; tracked alongside MLB in the export.
+      const lean = (p.recommendation === 'OVER' || p.recommendation === 'UNDER') ? p.recommendation
+        : (proj.projection != null && p.line != null ? (proj.projection >= p.line ? 'OVER' : 'UNDER') : '');
+      const logCtx = esc(JSON.stringify({
+        player: lead.player, team: lead.team || (lead.playerContext && lead.playerContext.team) || null,
+        opponent: lead.opponent || null, market: p.market, line: p.line ?? null, lean,
+        projection: proj.projection ?? null, edge: edge ?? null,
+        tier: (lead.tier || '').toString().toLowerCase() || null,
+        gameId: lead.gameId || null, lineSource: p.lineSource === 'provided' ? 'provided' : 'logged',
+        date: (typeof currentWnbaSlateDate !== 'undefined' ? currentWnbaSlateDate : null),
+      }));
+      const logBtn = isOut ? '' :
+        `<button onclick='logWnbaBet(JSON.parse(this.dataset.ctx))' data-ctx="${logCtx}" title="Log this bet to your tracker" style="font-size:9px;font-weight:700;letter-spacing:0.04em;color:var(--accent,#c9a45e);background:transparent;border:1px solid var(--accent,#c9a45e);border-radius:4px;padding:2px 7px;cursor:pointer;white-space:nowrap">+ LOG</button>`;
       return `
-        <div style="display:grid;grid-template-columns:14px 92px 1fr auto auto;align-items:baseline;gap:10px;padding:7px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
+        <div style="display:grid;grid-template-columns:14px 92px 1fr auto auto auto;align-items:baseline;gap:10px;padding:7px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
           ${star}
           <span style="font-size:11px;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.07em;font-weight:600">${esc(p.market)}</span>
           <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:600">${p.line}</b> ${bookLabel}</span>
@@ -13774,6 +13931,7 @@ async function autoGradeOnAppOpen() {
             ${bandStr}
           </span>
           <span style="font-size:12px;font-weight:600;color:${edgeColor};font-variant-numeric:tabular-nums;min-width:50px;text-align:right">${edgeStr}</span>
+          <span style="text-align:right">${logBtn}</span>
         </div>
       `;
     }).join('');
