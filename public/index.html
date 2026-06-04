@@ -7475,13 +7475,7 @@ function renderAnalysis(data) {
     if (fi) {
       const tierClass = fi.recommendation.tier.toLowerCase();
       const isPass = fi.recommendation.tier === 'PASS';
-      // (Drop #7 hotfix — June 3, 2026) Guard against null probability rendering as 0.0%
-      // and label backtest-sourced probabilities so the user knows what they're reading.
-      const probValue = fi.recommendation.probability;
-      const probPct = (probValue != null && !isNaN(probValue)) ? (probValue * 100).toFixed(1) : null;
-      const probSource = fi.recommendation._probabilitySource;
-      const probLabel = probSource === 'backtest' ? ' BT' : '';
-      const probDisplay = probPct != null ? `${probPct}%${probLabel}` : '—';
+      const probPct = (fi.recommendation.probability * 100).toFixed(1);
       const yrfiPct = (fi.yrfiProb * 100).toFixed(1);
       const nrfiPct = (fi.nrfiProb * 100).toFixed(1);
       const awayPct = (fi.awayScoresProb * 100).toFixed(1);
@@ -7502,8 +7496,7 @@ function renderAnalysis(data) {
         _originalTier: fi.recommendation._originalTier || null,
         _originalProb: fi.recommendation._originalProb || null,
         _strategyReason: fi.recommendation._strategyReason || null,
-        _directionMatch: fi.recommendation._directionMatch,
-        _probabilitySource: fi.recommendation._probabilitySource || null
+        _directionMatch: fi.recommendation._directionMatch
       }).replace(/'/g, '&#39;');
 
       firstInningHtml = `
@@ -7526,7 +7519,7 @@ function renderAnalysis(data) {
               <div class="yrfi-best-pick">
                 <b>${fi.recommendation.side}</b>
                 <span class="yrfi-best-units">${fi.recommendation.units}u</span>
-                <span class="yrfi-best-prob ${probTier(fi.recommendation.probability)}">${probDisplay}</span>
+                <span class="yrfi-best-prob ${probTier(fi.recommendation.probability)}">${probPct}%</span>
               </div>
               <div class="yrfi-probs">
                 <div class="yrfi-prob-cell"><span class="yrfi-prob-label">YRFI</span><span class="yrfi-prob-val">${yrfiPct}%</span></div>
@@ -7534,32 +7527,11 @@ function renderAnalysis(data) {
                 <div class="yrfi-prob-cell"><span class="yrfi-prob-label">AWAY SCORES</span><span class="yrfi-prob-val">${awayPct}%</span></div>
                 <div class="yrfi-prob-cell"><span class="yrfi-prob-label">HOME SCORES</span><span class="yrfi-prob-val">${homePct}%</span></div>
               </div>
-              ${(() => {
-                // (Drop #7 hotfix — June 3, 2026) When the strategy overrode the model's
-                // direction, the original fi.reasoning bullets explain the model's pick
-                // and CONTRADICT the recommendation displayed. Replace them with the
-                // strategy reason so the rationale matches the recommendation.
-                const directionOverridden = fi.recommendation._directionMatch === false;
-                if (directionOverridden && fi.recommendation._strategyReason) {
-                  const strategyBullets = [
-                    fi.recommendation._strategyReason,
-                    `Model's original pick: ${fi.recommendation._originalSide} ${fi.recommendation._originalTier} at ${((fi.recommendation._originalSide==='YRFI' ? fi.recommendation._originalProb : 1-fi.recommendation._originalProb)*100).toFixed(0)}% — strategy overrides based on backtest`
-                  ];
-                  return `
-                    <ul class="yrfi-reasons">
-                      ${strategyBullets.map(r => `<li>${r}</li>`).join('')}
-                    </ul>
-                    <div style="font-size:11px;color:#666;margin-top:8px;font-style:italic;">
-                      BT = backtest WR. Strategy override means displayed % reflects historical performance of this empirical rule (n=10-26 backtest samples), not the model's match-up math.
-                    </div>
-                  `;
-                }
-                return fi.reasoning?.length > 0 ? `
-                  <ul class="yrfi-reasons">
-                    ${fi.reasoning.slice(0, 5).map(r => `<li>${r}</li>`).join('')}
-                  </ul>
-                ` : '';
-              })()}
+              ${fi.reasoning?.length > 0 ? `
+                <ul class="yrfi-reasons">
+                  ${fi.reasoning.slice(0, 5).map(r => `<li>${r}</li>`).join('')}
+                </ul>
+              ` : ''}
               <button class="glb-log-btn" onclick='logFirstInningBet(${logCtx})'>
                 + LOG THIS BET
               </button>
@@ -10634,6 +10606,7 @@ function renderHistory() {
 
   // WNBA PROPS view — in-depth prediction tracking to sharpen the engine
   if (historyView === 'wnba') {
+   try {
     const all = [];
     Object.keys(state.wnbaPropHistory || {}).forEach(d => {
       Object.values(state.wnbaPropHistory[d]).forEach(e => all.push(e));
@@ -10796,6 +10769,12 @@ function renderHistory() {
       + (entryRows || `<div class="empty" style="padding:20px"><div>No graded props yet. Tap ⚡ GRADE ALL after games finish.</div></div>`)
       + `<div class="rollup-footnote">Best bets and all props auto-capture when you load a WNBA slate, and grade against real box scores. Win/loss counts only REAL-line props; inferred-line props track projection error (MAE). Calibration sharpens with volume — aim for 30+ graded per slice before trusting it.</div>`;
     return;
+   } catch (err) {
+     // Never leave the previous tab's content on screen — show the error instead.
+     console.error('[wnba history view]', err);
+     container.innerHTML = subnavHtml + `<div class="empty" style="padding:20px"><div class="empty-icon">⚠</div><div>WNBA Best Bets view hit an error:<br><br><code style="font-size:11px;color:var(--danger)">${esc(err.message)}</code><br><br>This is a bug — the data is safe. Screenshot this and it can be fixed.</div></div>`;
+     return;
+   }
   }
 
   // GAME BETS view — render the game-line bet tracker
