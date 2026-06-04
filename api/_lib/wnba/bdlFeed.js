@@ -21,12 +21,7 @@
 // that emits the same key shape; the slate join logic is untouched. We do NOT
 // leak BallDontLie's internal numeric IDs into the rest of the app.
 
-import { cacheRead, CACHE_KEYS } from './wnbaCache.js';
-
 const BDL_BASE = 'https://api.balldontlie.io/wnba/v1';
-// Prefetch cache freshness: a slate read accepts cached props/injuries up to this
-// old. The cron warms it every ~10 min, so 25 min tolerates a missed run.
-const PREFETCH_MAX_AGE_MS = 25 * 60 * 1000;
 const TTL_MS = 5 * 60 * 1000;
 const INJURY_TTL_MS = 30 * 60 * 1000;   // injuries change slowly; cache hard
 const _cache = new Map();
@@ -132,20 +127,6 @@ export async function fetchWnbaProps(dateYmd, opts = {}) {
   const warnings = [];
   if (!isBdlConfigured()) {
     return { propLines: {}, propMeta: {}, _audit: { keyPresent: false, warnings: ['BDL_API_KEY not set — props skipped'] } };
-  }
-
-  // CRON PREFETCH: read the warm Supabase cache first (written by the scheduled
-  // prefetch). A hit means zero live BDL calls — instant + no rate-cap throttle.
-  // Skipped when opts.noCache (the cron itself passes that to force a fresh pull).
-  if (!opts.noCache && !opts.skipPrefetchCache) {
-    try {
-      const cached = await cacheRead(CACHE_KEYS.props(dateYmd), PREFETCH_MAX_AGE_MS);
-      if (cached && cached.value && Object.keys(cached.value.propLines || {}).length > 0) {
-        const v = cached.value;
-        v._audit = { ...(v._audit || {}), servedFromPrefetch: true, prefetchAgeMs: cached.ageMs };
-        return v;
-      }
-    } catch { /* fall through to live fetch */ }
   }
 
   const cacheKey = `bdl:props:${dateYmd}`;
@@ -341,18 +322,6 @@ export async function fetchWnbaPlayerStats(dateYmd, opts = {}) {
  */
 export async function fetchWnbaInjuries(opts = {}) {
   if (!isBdlConfigured()) return { byName: {}, byTeamAbbrev: {}, all: [], _audit: { keyPresent: false } };
-
-  // Read the warm Supabase prefetch cache first (written by the cron).
-  if (!opts.noCache && !opts.skipPrefetchCache) {
-    try {
-      const cached = await cacheRead(CACHE_KEYS.injuries(), PREFETCH_MAX_AGE_MS);
-      if (cached && cached.value && Array.isArray(cached.value.all)) {
-        const v = cached.value;
-        v._audit = { ...(v._audit || {}), servedFromPrefetch: true, prefetchAgeMs: cached.ageMs };
-        return v;
-      }
-    } catch { /* fall through to live fetch */ }
-  }
 
   const cacheKey = 'bdl:injuries';
   if (!opts.noCache) { const c = cacheGet(cacheKey); if (c) return c; }

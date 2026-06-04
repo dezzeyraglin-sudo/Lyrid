@@ -12,18 +12,20 @@
 // No props/odds needed here — this is built purely from box scores, so ALL-STAR
 // is sufficient. Position comes from the player row; markets map to pts/reb/ast.
 //
-// CACHING: the whole league table is expensive to compute (N games × ~24 rows ×
-// every team), so it's cached in Supabase via wnbaCache for DEFENSE_MAX_AGE_MS
-// and ideally warmed by the cron. A slate read is then a single cache hit.
+// CACHING: the league table is expensive to compute (N games × ~24 rows × every
+// team), so it's memoized in-process for MEMO_TTL_MS — one build per warm instance
+// rather than per player. No external store; always live on a cold instance.
 //
 // FAIL-SAFE: any error → returns an empty table; the engine falls back to the
 // neutral 1.0 multiplier (DEF 50), exactly as before. Never throws.
 
-import { cacheRead, cacheWrite, CACHE_KEYS } from './wnbaCache.js';
-
+// No external cache — always fetch live. A tiny in-memory memo prevents rebuilding
+// the (heavy) league table once per player within a single slate run / warm
+// serverless instance. TTL keeps it fresh; it's per-instance, not shared.
 const WINDOW_GAMES = Number(process.env.WNBA_DEF_WINDOW ?? 10);   // last N games per team
-const DEFENSE_MAX_AGE_MS = 6 * 60 * 60 * 1000;                    // 6h cache freshness
+const MEMO_TTL_MS = 6 * 60 * 60 * 1000;                          // in-memory freshness
 const BDL_BASE = 'https://api.balldontlie.io/wnba/v1';
+let _memo = { at: 0, table: null };
 
 // Cap how far a single matchup can move a projection, mirroring the engine's own
 // defense clamp. Raw allowed-ratios can be noisy on small samples.
@@ -82,15 +84,9 @@ const STAT_OF = { points: 'pts', rebounds: 'reb', assists: 'ast' };
  * All multipliers are centered on 1.0 (team allowed / league allowed), clamped.
  */
 export async function buildWnbaDefenseTable(opts = {}) {
-  // Read warm cache first unless told to force-refresh (cron passes noCache).
-  if (!opts.noCache) {
-    try {
-      const cached = await cacheRead(CACHE_KEYS.defense(), DEFENSE_MAX_AGE_MS);
-      if (cached && cached.value && cached.value.byTeam) {
-        cached.value._audit = { ...(cached.value._audit || {}), servedFromCache: true, ageMs: cached.ageMs };
-        return cached.value;
-      }
-    } catch { /* fall through */ }
+  // In-memory memo: skip a rebuild if we built recently in this instance.
+  if (!opts.noCache && _memo.table && (Date.now() - _memo.at) < MEMO_TTL_MS) {
+    return { ..._memo.table, _audit: { ...(_memo.table._audit || {}), servedFromMemo: true } };
   }
 
   const warnings = [];
@@ -212,7 +208,7 @@ export async function buildWnbaDefenseTable(opts = {}) {
       gamesPulled: gamesToPull.length, rowsSeen, warnings, builtAt: new Date().toISOString(),
     },
   };
-  try { await cacheWrite(CACHE_KEYS.defense(), result); } catch { /* */ }
+  _memo = { at: Date.now(), table: result };
   return result;
 }
 
