@@ -13854,9 +13854,10 @@ async function autoGradeOnAppOpen() {
     const allChips = [...new Set(props.flatMap(p => p.chips || []))];
     let allFlags = [...new Set(props.flatMap(p => p.hardFlags || []))];
     // Team defense (ALL-STAR) now satisfies the defense read for straight bets, so
-    // drop the "NO DEFENSE DATA" flag when we have a team-level rating. The flag was
-    // really about the positional layer; with team defense present it's misleading.
-    if (lead.teamDefense && num(lead.teamDefense.allowedPerGame) != null) {
+    // drop the "NO DEFENSE DATA" flag when we have a team-level rating. NOTE: num()
+    // is declared later in this function, so use an inline finite check here.
+    const _tdAllowed = lead.teamDefense && lead.teamDefense.allowedPerGame;
+    if (_tdAllowed != null && Number.isFinite(Number(_tdAllowed))) {
       allFlags = allFlags.filter(f => !/NO DEFENSE DATA/i.test(f));
     }
 
