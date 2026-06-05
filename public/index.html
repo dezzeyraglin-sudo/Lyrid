@@ -3840,6 +3840,240 @@ window.setMlbEngine = function(eng) {
  *   - This means in 'prob' mode, the top pick is always a prop that the contact
  *     engine could score (H, R, HR, TB, RBI) — never a fantasy-score prop
  */
+// ====================================================================
+// (Drop #14 — June 5, 2026) SHARP HITS EMPIRICAL OVERRIDE
+//
+// Full audit on n=1,213 graded hitter best bets (April 18 - June 4) found:
+//   HRR prop overall: 497-544 (48% WR) — LOSING at -110 with time decay
+//      (latest chunk: 43% WR — actively bleeding)
+//   HITS prop overall: 90-68 (57% WR) — PROFITABLE
+//
+// Two HITS sub-segments are dramatically profitable:
+//   R hitter vs RHP, xwoba ≥ 0.60: 17-7 (71% WR) on n=24
+//   any hitter vs LHP, xwoba ≥ 0.45: 26-13 (67% WR) on n=39
+//   UNION (either rule fires): 43-20 (68% WR) on n=63
+//     Stability across thirds: 67% / 71% / 67%
+//     Wilson 95% CI: [56%, 78%]
+//
+// This function checks whether the hitter qualifies for "Sharp HITS" and,
+// if so, overrides the chosen ★ BEST prop to be the HITS prop instead of
+// whatever the engine picked (usually HRR).
+//
+// The override only fires when:
+//   1. A HITS prop exists in propRecs (not all matchups produce one)
+//   2. The hitter+matchup matches one of the two backtest-profitable cuts
+//   3. The HITS prop isn't fragility-eliminated
+//
+// Returns the chosen prop, or null if no override applies.
+// ====================================================================
+function applySharpHitsOverride(propRecs, hitterContext) {
+  if (!Array.isArray(propRecs) || propRecs.length === 0) return null;
+  if (!hitterContext) return null;
+
+  // Find a HITS prop in the list
+  const hitsProp = propRecs.find(p => p.key === 'H');
+  if (!hitsProp) return null;
+
+  // Don't override if fragility eliminated
+  if (hitsProp.fragility && hitsProp.fragility.tier === 'eliminated') return null;
+
+  // Pull the predictive features
+  const xwoba = typeof hitsProp.adjustedMaxXwoba === 'number'
+    ? hitsProp.adjustedMaxXwoba
+    : (hitterContext.adjustedMaxXwoba || 0);
+  const hand = hitterContext.hand || '';
+  const pitcherHand = hitterContext.pitcherHand || '';
+
+  // Rule 1: R hitter vs RHP, xwoba >= 0.60 (backtest 17-7 / 71%)
+  const rule1 = (hand === 'R' && pitcherHand === 'R' && xwoba >= 0.60);
+  // Rule 2: any hitter vs LHP, xwoba >= 0.45 (backtest 26-13 / 67%)
+  const rule2 = (pitcherHand === 'L' && xwoba >= 0.45);
+
+  if (!rule1 && !rule2) return null;
+
+  // Mark the HITS prop so it can be visually tagged downstream
+  hitsProp._sharpHits = true;
+  hitsProp._sharpHitsRule = rule1 ? 'R-vs-RHP-high-xwoba' : 'vs-LHP-mid-xwoba';
+  hitsProp._sharpHitsBacktestWR = 0.68;
+  hitsProp._sharpHitsBacktestN = 63;
+
+  return hitsProp;
+}
+
+// ====================================================================
+// (Drop #15 — June 5, 2026) EMPIRICAL UNDER ENGINE
+//
+// The audit that drove Drop #14 also exposed strong UNDER signals — places
+// where HRR/Fantasy goes UNDER more often than the OVER market price implies.
+// This helper detects those patterns and returns an UNDER recommendation
+// with tier classification matching Lyrid's Best.
+//
+// Full audit on n=1,213 graded hitter bets (April 18 - June 4):
+//
+// HRR UNDERs:
+//   STRONG: mult 0.95-1.05 + xwoba≥0.55 → 19-4 (83% WR) on n=23
+//     Thirds 86/71/89, CI [63%, 93%]
+//   STANDARD: mult 0.95-1.10 OR SCORCHING form → 68-41 (62% WR) on n=109
+//     Thirds 64/64/59, CI [53%, 71%]
+//
+// Fantasy Score (FS) UNDERs:
+//   FS_7 STRONG: elite/strong bp + mult 0.95-1.05 + xwoba≥0.55
+//     → 18-4 (82% WR) on n=22, thirds 86/71/88, CI [61%, 93%]
+//   FS_7 STANDARD: elite bp + mult 0.95-1.05 → 22-8 (73%) on n=30
+//     Thirds 90/60/70, CI [56%, 86%]
+//   FS_5 STANDARD: elite bp + mult 0.95-1.05 → 20-10 (67%) on n=30
+//
+// Why this works: the contextMultiplier 0.95-1.05 zone is where the engine
+// projects "neutral environment" — but the data shows hitters consistently
+// UNDER-perform their projections in this zone, especially when paired with
+// strong pitching environments (elite bullpen) and high baseline projections
+// (xwoba≥0.55, where the model expects more than the game delivers).
+//
+// Returns an object with side='UNDER', tier (PLATINUM/GOLD/SILVER/BRONZE),
+// rule description, backtest WR + n. Returns null if no UNDER signal fires.
+// ====================================================================
+function computeEmpiricalUnderProp(propRecs, hitterContext) {
+  if (!Array.isArray(propRecs) || propRecs.length === 0) return null;
+  if (!hitterContext) return null;
+
+  // Pull predictive features from the props/context
+  const hrrProp = propRecs.find(p => p.key === 'HRR');
+  const xwoba = (hitterContext.adjustedMaxXwoba || 0);
+  const contextMult = hitterContext.contextMultiplier;
+  const recentForm = hitterContext.recentFormLabel || '';
+  const bullpenTier = hitterContext.bullpenTier || '';
+  const hand = hitterContext.hand || '';
+
+  // contextMultiplier is the master gate — most rules require it to be set
+  if (contextMult == null) return null;
+  const mult = parseFloat(contextMult);
+  if (isNaN(mult)) return null;
+
+  // === HRR UNDER detection (only if HRR prop exists) ===
+  if (hrrProp && (!hrrProp.fragility || hrrProp.fragility.tier !== 'eliminated')) {
+    // STRONG HRR UNDER: mult 0.95-1.05 + xwoba >= 0.55 → 83% backtest
+    if (mult >= 0.95 && mult < 1.05 && xwoba >= 0.55) {
+      return {
+        side: 'UNDER',
+        propKey: 'HRR',
+        propLabel: 'HRR 1.5',
+        tier: 'STRONG',
+        lyridBestTier: 'platinum',
+        backtestWR: 0.83,
+        backtestN: 23,
+        rule: 'mult-neutral-high-xwoba',
+        units: 1.5,
+        reason: `Empirical HRR UNDER STRONG: neutral environment (mult ${mult.toFixed(2)}) suppresses high-projection hitter (xwOBA ${xwoba.toFixed(3)})`,
+        reasoningLines: [
+          `Context multiplier ${mult.toFixed(2)} (neutral zone 0.95-1.05)`,
+          `Hitter projection elevated (xwOBA ${xwoba.toFixed(3)} ≥ 0.55)`,
+          `Backtest: 19-4 (83% WR) on n=23, stable thirds 86/71/89, CI [63%, 93%]`
+        ]
+      };
+    }
+
+    // STANDARD HRR UNDER: mult 0.95-1.10 OR SCORCHING form → 62%
+    if ((mult >= 0.95 && mult < 1.10) || recentForm === 'SCORCHING') {
+      return {
+        side: 'UNDER',
+        propKey: 'HRR',
+        propLabel: 'HRR 1.5',
+        tier: 'STANDARD',
+        lyridBestTier: 'bronze',
+        backtestWR: 0.62,
+        backtestN: 109,
+        rule: mult >= 0.95 && mult < 1.10 ? 'mult-neutral-wide' : 'scorching-regression',
+        units: 1.0,
+        reason: recentForm === 'SCORCHING'
+          ? `Empirical HRR UNDER: regression candidate (SCORCHING recent form fades hard)`
+          : `Empirical HRR UNDER: neutral-to-mild environment (mult ${mult.toFixed(2)})`,
+        reasoningLines: [
+          mult >= 0.95 && mult < 1.10 ? `Context multiplier ${mult.toFixed(2)} (neutral-wide 0.95-1.10)` : `Recent form: SCORCHING (regression to mean)`,
+          `Backtest: 68-41 (62% WR) on n=109, stable thirds 64/64/59, CI [53%, 71%]`
+        ]
+      };
+    }
+  }
+
+  // === Fantasy Score UNDER detection ===
+  // These don't require a specific prop to exist; they're slate-level fades
+  // for PrizePicks Fantasy 6/8 and Underdog Fantasy 5/7 lines.
+
+  // FS_7 STRONG: elite/strong bp + mult 0.95-1.05 + xwoba≥0.55 → 82%
+  if (mult >= 0.95 && mult < 1.05 && xwoba >= 0.55
+      && (bullpenTier === 'elite' || bullpenTier === 'strong')) {
+    return {
+      side: 'UNDER',
+      propKey: 'PP_FS_7',
+      propLabel: 'FS 7',
+      tier: 'STRONG',
+      lyridBestTier: 'platinum',
+      backtestWR: 0.82,
+      backtestN: 22,
+      rule: 'elite-bullpen-neutral-high-xwoba',
+      units: 1.5,
+      reason: `Empirical FS UNDER 7 STRONG: ${bullpenTier} bullpen + neutral environment (mult ${mult.toFixed(2)}) + high projection (xwOBA ${xwoba.toFixed(3)})`,
+      reasoningLines: [
+        `Bullpen tier: ${bullpenTier} (suppresses late-game scoring)`,
+        `Context multiplier ${mult.toFixed(2)} (neutral zone 0.95-1.05)`,
+        `Hitter projection elevated (xwOBA ${xwoba.toFixed(3)} ≥ 0.55)`,
+        `Backtest: 18-4 (82% WR) on n=22, stable thirds 86/71/88, CI [61%, 93%]`
+      ]
+    };
+  }
+
+  // FS_7 STANDARD: elite bullpen + mult 0.95-1.05 → 73%
+  if (mult >= 0.95 && mult < 1.05 && bullpenTier === 'elite') {
+    return {
+      side: 'UNDER',
+      propKey: 'PP_FS_7',
+      propLabel: 'FS 7',
+      tier: 'STANDARD',
+      lyridBestTier: 'gold',
+      backtestWR: 0.73,
+      backtestN: 30,
+      rule: 'elite-bullpen-neutral',
+      units: 1.0,
+      reason: `Empirical FS UNDER 7: elite bullpen + neutral environment (mult ${mult.toFixed(2)})`,
+      reasoningLines: [
+        `Elite bullpen tier (top-shelf late-game suppression)`,
+        `Context multiplier ${mult.toFixed(2)} (neutral zone 0.95-1.05)`,
+        `Backtest: 22-8 (73% WR) on n=30, thirds 90/60/70, CI [56%, 86%]`
+      ]
+    };
+  }
+
+  // FS_5 STANDARD: elite bullpen + mult 0.95-1.05 → 67% (UD low line)
+  // Note: This overlaps with FS_7 STANDARD; the higher-conviction one wins above.
+  // Keeping this branch for completeness when xwoba is mid-tier.
+  if (mult >= 0.95 && mult < 1.05 && bullpenTier === 'elite' && xwoba < 0.55) {
+    return {
+      side: 'UNDER',
+      propKey: 'UD_FS_5',
+      propLabel: 'FS 5',
+      tier: 'STANDARD',
+      lyridBestTier: 'silver',
+      backtestWR: 0.67,
+      backtestN: 30,
+      rule: 'elite-bullpen-neutral-mid-xwoba',
+      units: 1.0,
+      reason: `Empirical FS UNDER 5: elite bullpen + neutral environment (mult ${mult.toFixed(2)})`,
+      reasoningLines: [
+        `Elite bullpen tier`,
+        `Context multiplier ${mult.toFixed(2)} (neutral zone 0.95-1.05)`,
+        `Backtest: 20-10 (67% WR) on n=30, thirds 80/60/60, CI [49%, 81%]`
+      ]
+    };
+  }
+
+  // NOTE: FS_7 NON_SWITCH rule was dropped in final review — it backtested
+  // 67% on a pre-filtered subset but regressed to 38% (5-8) when applied
+  // independently to all bets matching mult/hand criteria. The interaction
+  // with the other rules wasn't clean; volume comes at the cost of accuracy.
+
+  return null;
+}
+
 function applyMlbEngineRanking(propRecs, activeEngine) {
   if (!Array.isArray(propRecs) || propRecs.length === 0) return propRecs;
 
@@ -3899,10 +4133,33 @@ function applyMlbEngineRanking(propRecs, activeEngine) {
     topPropForEngine = scoreEligible.length > 0 ? scoreEligible[0] : byScore[0];
   }
 
-  // Update isBest based on the active engine's #1 pick
-  propRecs.forEach(p => {
-    p.isBest = (topPropForEngine != null && p === topPropForEngine);
-  });
+  // (Drop #14 — June 5, 2026) SHARP HITS OVERRIDE
+  //
+  // Before the engine picks, check if a HITS prop qualifies for the
+  // empirically-profitable Sharp HITS cut. If yes, force the HITS prop
+  // to be ★ BEST regardless of engine. This pre-empts the HRR-favoring
+  // tendency that drove the 48% live WR.
+  //
+  // The override is gated on fragility + hitter context. If the hitter
+  // context isn't available (passed via propRecs[0] metadata), the override
+  // is skipped and normal engine logic applies.
+  const hitterCtx = (propRecs[0] && {
+    hand: propRecs[0]._ctxHand,
+    pitcherHand: propRecs[0]._ctxPitcherHand,
+    adjustedMaxXwoba: propRecs[0]._ctxAdjustedMaxXwoba
+  }) || null;
+  const sharpHitsPick = applySharpHitsOverride(propRecs, hitterCtx);
+
+  // Update isBest based on the active engine's #1 pick OR Sharp HITS override
+  if (sharpHitsPick) {
+    propRecs.forEach(p => {
+      p.isBest = (p === sharpHitsPick);
+    });
+  } else {
+    propRecs.forEach(p => {
+      p.isBest = (topPropForEngine != null && p === topPropForEngine);
+    });
+  }
 
   return propRecs;
 }
@@ -4422,27 +4679,26 @@ function buildLyridBestBanner(backtestWR, backtestN, opts = {}) {
   if (backtestWR == null || isNaN(backtestWR)) return '';
   const wrPct = Math.round(backtestWR * 100);
 
-  let tier, icon, title;
+  let tier, icon;
   if (wrPct >= 80) {
     tier = 'platinum';
     icon = '✦';
-    title = "LYRID'S BEST";
   } else if (wrPct >= 70) {
     tier = 'gold';
     icon = '★';
-    title = "LYRID'S BEST";
   } else if (wrPct >= 65) {
     tier = 'silver';
     icon = '◆';
-    title = "LYRID'S BEST";
   } else if (wrPct >= 55) {
     tier = 'bronze';
     icon = '◇';
-    title = "LYRID'S BEST";
   } else {
     return '';  // Below 55% — no banner
   }
 
+  // (Drop #15 — June 5, 2026) Allow custom label so UNDER fades render
+  // as "LYRID UNDER · FS 7" etc. instead of generic "LYRID'S BEST".
+  const title = opts.label || "LYRID'S BEST";
   const tierLabel = tier.toUpperCase();
   const sub = backtestN
     ? `${wrPct}% BACKTEST · n=${backtestN}`
@@ -4450,10 +4706,14 @@ function buildLyridBestBanner(backtestWR, backtestN, opts = {}) {
 
   const isCompact = opts.kind === 'compact';
   const cls = `lyrid-best-banner lyrid-best-${tier}${isCompact ? ' compact' : ''}`;
+  // Escape any special chars in tooltip text for safe HTML attribute embedding
+  const tooltip = opts.tooltip
+    ? ` title="${String(opts.tooltip).replace(/"/g, '&quot;').replace(/\n/g, '&#10;')}"`
+    : '';
 
   if (isCompact) {
     return `
-      <div class="${cls}">
+      <div class="${cls}"${tooltip}>
         <span class="lyrid-best-icon">${icon}</span>
         <span class="lyrid-best-text"><span class="lyrid-best-title">${title}</span></span>
         <span class="lyrid-best-tier-badge">${tierLabel}</span>
@@ -4462,7 +4722,7 @@ function buildLyridBestBanner(backtestWR, backtestN, opts = {}) {
   }
 
   return `
-    <div class="${cls}">
+    <div class="${cls}"${tooltip}>
       <span class="lyrid-best-icon">${icon}</span>
       <span class="lyrid-best-text">
         <span class="lyrid-best-title">${title}</span>
@@ -5850,7 +6110,28 @@ function renderAnalysis(data) {
           // probRank in place. The active engine drives the ★ BEST badge;
           // the inactive engine's rank shows as a small secondary chip.
           if (m.propRecs && m.propRecs.length > 0) {
+            // (Drop #14 — June 5, 2026) Stamp hitter context onto each prop
+            // so the Sharp HITS override can read it inside applyMlbEngineRanking
+            // without restructuring the function signature.
+            const _ctxPitcherHand = s.pitcher?.hand || '';
+            m.propRecs.forEach(p => {
+              p._ctxHand = m.hand || '';
+              p._ctxPitcherHand = _ctxPitcherHand;
+              p._ctxAdjustedMaxXwoba = p.adjustedMaxXwoba || m.adjustedMaxXwoba || 0;
+            });
             applyMlbEngineRanking(m.propRecs, state.mlbEngine);
+
+            // (Drop #15 — June 5, 2026) Empirical UNDER engine.
+            // Computes whether this hitter qualifies for a HRR UNDER or
+            // Fantasy Score UNDER recommendation based on backtest patterns.
+            // Result is stamped onto the matchup for downstream rendering.
+            m._empUnderRec = computeEmpiricalUnderProp(m.propRecs, {
+              adjustedMaxXwoba: m.adjustedMaxXwoba ? parseFloat(m.adjustedMaxXwoba) : 0,
+              contextMultiplier: m.cappedContextMultiplier || m.contextMultiplier,
+              recentFormLabel: m.recentFormLabel || m.recentForm?.label,
+              bullpenTier: m.bullpenTier || s.pitcher?.bullpenTier,
+              hand: m.hand
+            });
           }
 
           // =========================================================
@@ -5941,6 +6222,7 @@ function renderAnalysis(data) {
                       ${p.isUnderRecommendation ? `<span class="pp-under-badge" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:${p.underTier === 'STRONG' ? '#7f1d1d' : '#b91c1c'};color:#fff;font-size:8px;font-weight:700;padding:1px 6px;border-radius:100px;letter-spacing:0.08em;white-space:nowrap;${p.underTier === 'STRONG' ? 'box-shadow:0 0 0 1.5px #fbbf24' : ''}" title="${p.underTier === 'STRONG' ? 'STRONG' : 'STANDARD'} UNDER recommendation&#10;&#10;Fade audit returned HIGH RISK on this hitter (fade score ${m._fadeScore || '?'}).&#10;The hitter is structurally unlikely to clear this line.&#10;&#10;${p.underTier === 'STRONG' ? 'STRONG UNDER trigger: ' + (p.underReason || 'highest-confidence under signal') + '&#10;Live hit rate: 78% (n=9, small sample, still validating)&#10;Recommended sizing: 1.5x normal UNDER&#10;&#10;' : ''}Backtested under hit rate: ${p.underHitRate}% (n=${p.underSampleSize})&#10;Validated against live HRR fade-engine data through May 31, 2026.&#10;&#10;This is a backtested rate against actual game outcomes — not an engine probability.">${p.underTier === 'STRONG' ? '⏬⏬ STRONG UNDER' : '⏬ BET UNDER'} ${p.underHitRate}%</span>` : ''}
                       ${p.isSkipRecommendation ? `<span class="pp-skip-badge" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#6b7280;color:#fff;font-size:8px;font-weight:700;padding:1px 6px;border-radius:100px;letter-spacing:0.08em;white-space:nowrap" title="SKIP recommendation\n\nFade audit returned HIGH RISK on this pick (fade score ${m._fadeScore || '?'}).\nUnlike HRR/HITS props where backtested under hit rates are validated (73% / 67%), the under hit rate for ${p.key} props has NOT been validated — recommending an UNDER bet would be guessing.\n\nThe engine considered and rejected this pick. Recommendation: SKIP entirely, do not bet either direction.\n\nReason: ${p.skipReason}">⊘ SKIP</span>` : ''}
                       ${p.platform ? `<span class="pp-platform ${p.platform}">${p.platform}</span>` : ''}
+                      ${p._sharpHits ? `<span class="pp-sharp-hits" style="background:linear-gradient(135deg,#e8e9eb 0%,#c6c9cd 35%,#f5f6f8 50%,#b5b8bc 65%,#d8dadd 100%);color:#1a1d22;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.1em;margin-right:4px;border:1px solid rgba(155,158,162,0.6);text-shadow:0 0 1px rgba(255,255,255,0.5)" title="Lyrid's Sharp HITS&#10;&#10;Empirical override: backtest 43-20 (68% WR) on n=63 graded bets&#10;Rule: ${p._sharpHitsRule === 'R-vs-RHP-high-xwoba' ? 'R hitter vs RHP, xwOBA ≥ 0.60' : 'any hitter vs LHP, xwOBA ≥ 0.45'}&#10;Wilson 95% CI: [56%, 78%]&#10;Stable across time thirds: 67/71/67">✦ SHARP</span>` : ''}
                       <span class="pp-key">${p.label}</span>
                       ${p.probability != null ? `<span class="pp-prob ${probTier(p.probability, p.probabilityBaseline)}" title="Per-game probability: ${(p.probability*100).toFixed(1)}% (baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(1) : '?'}%${p.probabilityPerPa != null ? ', per-PA rate ' + (p.probabilityPerPa*100).toFixed(1) + '%' : ''}${p.expectedPa != null ? ', expected PA ' + p.expectedPa.toFixed(1) : ''})">${(p.probability*100).toFixed(0)}%</span>` : ''}
                       ${secondaryRankChip}
@@ -6051,6 +6333,7 @@ function renderAnalysis(data) {
 
           return `
             <div class="match ${m.tier}${m.isTopPick?' top-pick':''}${m.hrChance?' has-hr-chance':''}">
+              ${m._empUnderRec ? `<div style="padding:10px 12px 0">${buildLyridBestBanner(m._empUnderRec.backtestWR, m._empUnderRec.backtestN, { kind: 'compact', label: 'LYRID UNDER · ' + m._empUnderRec.propLabel, tooltip: m._empUnderRec.reasoningLines.join(' · ') })}</div>` : ''}
               <div class="match-head">
                 <div class="match-hitter">
                   ${m.isTopPick ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}
@@ -9420,6 +9703,11 @@ function logBestBets(data) {
         pitcherHand: sideData.pitcher?.hand,
         tier: m.tier,
         isTopPick: true,
+        // (Drop #14 — June 5, 2026) Sharp HITS empirical override audit fields
+        _sharpHits: bestBet._sharpHits || false,
+        _sharpHitsRule: bestBet._sharpHitsRule || null,
+        _sharpHitsBacktestWR: bestBet._sharpHitsBacktestWR || null,
+        _sharpHitsBacktestN: bestBet._sharpHitsBacktestN || null,
         isDeepVerified: true,   // flag so we know this is premium
         // (Phase 1 — May 29, 2026) Fade tier + score for validation tracking
         fadeTier: m._fadeTier || 'normal',
