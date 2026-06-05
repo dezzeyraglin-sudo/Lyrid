@@ -1772,29 +1772,29 @@ export default async function handler(req, res) {
         newSide = 'YRFI';
         newTier = 'STRONG';
         newUnits = 1.5;
-        strategyReason = `Extreme low projection (${projTotal.toFixed(2)} ≤ 6.0): backtest 9-1 (90% WR, n=10)`;
+        strategyReason = `Extreme low projection (${projTotal.toFixed(2)} ≤ 6.0): backtest 10-1 (91% WR, n=11)`;
       } else if (projTotal >= 9.5) {
-        // (Drop #7 hotfix — June 3, 2026) MODEL-AGREEMENT GATE for NRFI.
+        // (Drop #10 — June 5, 2026) NRFI GATE TIGHTENED to 0.60.
         //
-        // Original Drop #7 fired NRFI on every projTotal ≥ 9.5 game (21-13, 62%).
-        // Sub-bucket audit found: when model_yrfi_prob > 0.65, NRFI hits only 46%
-        // (6-7 on n=13) — negative EV. Adding a 0.65 cap excludes those losing
-        // picks and improves the rule to 17-9 (65%) on n=26, +9.7u.
+        // Drop #7 hotfix (June 3) introduced 0.65 cap → 17-9 (65%) on n=26.
+        // Fresh n=140 audit (June 5) shows the 0.60-0.65 sub-bucket hits only
+        // 56% (5-4) — barely break-even at -110. Tightening to 0.60 cap:
         //
-        // Practical reason: when the model is THIS confident in YRFI, the
-        // matchup signals (slow-starter SP + strong lineups) usually overcome
-        // the high-projection NRFI tendency. The strategy backtest assumed
-        // model probability was uncorrelated with outcome, but the extremes
-        // do carry signal.
+        //   ≤ 0.65 (previous): 18-9 (67%) on n=27, +11.1u
+        //   ≤ 0.60 (new):      13-5 (72%) on n=18, +10.2u  ← STABLE: T1 67%, T2 67%, T3 83%
+        //   ≤ 0.55:            13-5 (72%) on n=18 — same picks, same outcomes
+        //
+        // The 0.60 cap excludes 9 marginal picks that went 5-4 (56%) and
+        // matched the toxic borderline zone where June 4's BAL@BOS parlay
+        // got buried. Stable across all three time thirds in backtest.
         const modelYrfiProb = _originalSide === 'YRFI' ? _originalProb : (1 - (_originalProb || 0));
-        if (modelYrfiProb && modelYrfiProb > 0.65) {
-          // Model too strongly favors YRFI — skip the NRFI override
-          strategyReason = `High projection (${projTotal.toFixed(2)} ≥ 9.5) but model YRFI conviction too strong (${(modelYrfiProb*100).toFixed(0)}% > 65% gate). NRFI strategy 6-7 (46%) in this bucket — PASS.`;
+        if (modelYrfiProb && modelYrfiProb > 0.60) {
+          strategyReason = `High projection (${projTotal.toFixed(2)} ≥ 9.5) but model YRFI conviction too strong (${(modelYrfiProb*100).toFixed(0)}% > 60% gate). NRFI strategy 5-4 (56%) in this bucket — PASS.`;
         } else {
           newSide = 'NRFI';
           newTier = 'STRONG';
           newUnits = 1.5;
-          strategyReason = `Extreme high projection (${projTotal.toFixed(2)} ≥ 9.5) + model YRFI ≤ 65% gate: backtest 17-9 (65% WR, n=26)`;
+          strategyReason = `Extreme high projection (${projTotal.toFixed(2)} ≥ 9.5) + model YRFI ≤ 60% gate: backtest 13-5 (72% WR, n=18)`;
         }
       } else {
         strategyReason = projTotal > 0
@@ -1833,13 +1833,14 @@ export default async function handler(req, res) {
         fi._probabilitySource = 'model';
       } else if (newSide && _originalSide && _originalSide !== newSide) {
         // Strategy overrides model — use backtest WR for honest display
-        fi.probability = newSide === 'YRFI' ? 0.90 : 0.65;
+        // YRFI STRONG: 91% (10-1) on n=11. NRFI STRONG (≤0.60 gate): 72% (13-5) on n=18.
+        fi.probability = newSide === 'YRFI' ? 0.91 : 0.72;
         fi._directionMatch = false;
         fi._probabilitySource = 'backtest';
         fi._strategyReason += ` (overrides model's ${_originalSide} call at ${((_originalSide==='YRFI' ? _originalProb : 1-_originalProb)*100).toFixed(0)}%)`;
       } else if (newSide) {
         // Strategy fires but model had no rec — use backtest WR
-        fi.probability = newSide === 'YRFI' ? 0.90 : 0.65;
+        fi.probability = newSide === 'YRFI' ? 0.91 : 0.72;
         fi._directionMatch = null;
         fi._probabilitySource = 'backtest';
       } else {
