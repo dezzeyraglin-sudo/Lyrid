@@ -13536,7 +13536,7 @@ async function autoGradeOnAppOpen() {
       <h3 style="margin-top:28px;font-size:14px;letter-spacing:0.06em;color:var(--text-primary);font-weight:500;text-transform:uppercase">
         ${esc(teamName(teamAbbr))} <span style="color:var(--text-secondary, var(--dim));font-weight:400;text-transform:none;font-size:12px">vs ${esc(teamName(oppAbbr))}</span>
       </h3>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <div style="display:flex;flex-direction:column;margin-top:10px">
         ${players.map(renderWnbaPlayerCard).join('')}
       </div>
     `;
@@ -13929,13 +13929,22 @@ async function autoGradeOnAppOpen() {
         </div>` : ''}
     `;
 
+    // Tier class for the MLB .match stripe + .tier-badge (elite/strong/solid).
+    const _tierClass = /elite/i.test(tier.label) ? 'elite'
+      : /strong/i.test(tier.label) ? 'strong'
+      : /solid/i.test(tier.label) ? 'solid' : '';
+    const _cardId = 'wnba-card-' + String(lead.player || '').replace(/[^a-zA-Z0-9]/g, '');
+
     return `
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-          <span style="background:${tier.bg};color:${tier.color};padding:3px 9px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em">${tier.label}</span>
-          <span style="font-weight:600;color:var(--text-primary);font-size:15px;font-family:var(--font-serif, var(--font-sans))">${esc(lead.player)}</span>
-          ${statusBadge}
-          <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.06em">${esc(lead.team)} vs ${esc(lead.opponent)}</span>
-          ${(lead.benefitsFrom && Array.isArray(lead.benefitsFrom.out) && lead.benefitsFrom.out.length) ? `<span style="font-size:10px;font-weight:600;color:#14532d;background:#dcfce7;padding:2px 8px;border-radius:100px" title="Projected minutes boosted because a teammate is out">▲ +${lead.benefitsFrom.minGain ?? 0} min (${esc(lead.benefitsFrom.out.join(', '))} out)</span>` : ''}
+      <div class="match ${_tierClass}" id="${_cardId}" style="opacity:${cardOpacity}">
+        <div class="match-head">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span class="match-hitter">${esc(lead.player)}<span class="hand">${ctx.position ? esc(ctx.position) : ''}</span></span>
+            ${statusBadge}
+            <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.06em">${esc(lead.team)} vs ${esc(lead.opponent)}</span>
+            ${(lead.benefitsFrom && Array.isArray(lead.benefitsFrom.out) && lead.benefitsFrom.out.length) ? `<span style="font-size:10px;font-weight:600;color:#14532d;background:#dcfce7;padding:2px 8px;border-radius:100px" title="Projected minutes boosted because a teammate is out">▲ +${lead.benefitsFrom.minGain ?? 0} min (${esc(lead.benefitsFrom.out.join(', '))} out)</span>` : ''}
+          </div>
+          <div class="tier-badge ${_tierClass}">${esc(tier.label)}</div>
         </div>
 
         ${whyDrivers.length > 0 ? `
@@ -13962,7 +13971,8 @@ async function autoGradeOnAppOpen() {
           ${engineBadge}
         </div>
 
-        <div style="margin-top:8px">
+        <div class="prop-recs">
+          <div class="prop-rec-label">PROP PROJECTIONS · MODEL vs LINE</div>
           ${marketRows}
         </div>
 
