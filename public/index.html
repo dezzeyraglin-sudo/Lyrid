@@ -1566,9 +1566,10 @@
   /* =============== LYRID'S BEST TIER BANNERS (Drop #13) =============== */
   /* Animated tier badges that appear when empirical strategies fire.
      Tiers based on backtest WR:
-       PLATINUM (80%+):  OVER, YRFI
-       GOLD     (70-79%): UNDER
-       SILVER   (65-69%): NRFI, ML
+       PLATINUM (80%+):  OVER (81%), YRFI (87%)
+       GOLD     (70-79%): UNDER (70%)
+       SILVER   (65-69%): NRFI (66%), ML (66%)
+       BRONZE   reserved for future (55-64%)
   */
   @keyframes lyridShimmer {
     0%   { background-position: -200% 0; }
@@ -4248,6 +4249,9 @@ function computeEmpiricalTotalStrategy(awayTeamAbbr, homeTeamAbbr, gameDate, mar
   return null;
 }
 
+// (deprecated UNDER block from Drop #11 removed in Drop #12; old rule
+//  off<3.5 + def<4.5 regressed to 60% on full n=473 dataset.)
+
 // ====================================================================
 // (Drop #9 — June 3, 2026) EMPIRICAL ML STRATEGY
 //
@@ -4278,31 +4282,26 @@ function computeEmpiricalMLStrategy(awayTeamAbbr, homeTeamAbbr, gameDate) {
   // (Drop #12 — June 5, 2026) ML STRATEGY RE-ENABLED with environment filter.
   //
   // History:
-  //   Drop #9 (June 3): shipped at 21-10 (68%) on n=31, regressed to 59% live
+  //   Drop #9 (June 3): shipped at 21-10 (68%) on n=31, regressed live to 59%
   //   Drop #10 (June 5 AM): DISABLED entirely after audit showed signal decay
-  //   Drop #12 (June 5 PM): RE-ENABLED with env filter discovered on n=473 audit
+  //   Drop #12 (June 5 PM): RE-ENABLED with env filter from n=473 audit
   //
   // The root cause of Drop #9's regression: the empirical rolling-diff rule
-  // is environment-dependent. It works when league scoring is COLD (≤8.5
-  // R/g avg) and fails when league is HOT.
-  //
-  // Full n=473 audit found:
+  // is COLD-environment-dependent. Full n=473 audit found:
   //   env <= 8.5, sm >= 1.5, wm <= 0.5: 19-10 (66% WR) on n=29
   //   Thirds 56%/67%/73% — improving over time, stable across all thirds
   //   Wilson 95% CI: [47%, 80%]
-  //   Lower bound 47% is BELOW -110 break-even (52.4%) — disclose this.
   //
-  // Why this works: in cold scoring environments, run-differential gaps
-  // matter more (fewer runs to spread around, the better team's marginal
-  // edge converts to wins). In hot environments, anyone can put up 8 runs
-  // and a stronger team's edge gets washed out.
+  // Why this works: in cold scoring, run-differential gaps matter more
+  // (fewer runs to spread around — the better team's marginal edge
+  // converts to wins). In hot scoring, anyone can put up 8 runs and a
+  // stronger team's edge gets washed out.
   if (!awayTeamAbbr || !homeTeamAbbr || !state.projectionAudit) return null;
 
-  // Compute league environment FIRST — only fire ML when cold
+  // Environment gate — only fire ML when league is cold
   const leagueEnv = computeLeagueEnvironment(gameDate, 7);
   if (leagueEnv == null || leagueEnv > 8.5) {
-    // Hot environment — ML rule disabled. Server's homeWinProb stands.
-    return null;
+    return null;  // Hot env → server's homeWinProb stands
   }
 
   // Collect each team's last 15 graded games (excluding the current game's date)
@@ -13855,7 +13854,7 @@ async function autoGradeOnAppOpen() {
       <h3 style="margin-top:28px;font-size:14px;letter-spacing:0.06em;color:var(--text-primary);font-weight:500;text-transform:uppercase">
         ${esc(teamName(teamAbbr))} <span style="color:var(--text-secondary, var(--dim));font-weight:400;text-transform:none;font-size:12px">vs ${esc(teamName(oppAbbr))}</span>
       </h3>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <div style="display:flex;flex-direction:column;margin-top:10px">
         ${players.map(renderWnbaPlayerCard).join('')}
       </div>
     `;
@@ -14248,13 +14247,22 @@ async function autoGradeOnAppOpen() {
         </div>` : ''}
     `;
 
+    // Tier class for the MLB .match stripe + .tier-badge (elite/strong/solid).
+    const _tierClass = /elite/i.test(tier.label) ? 'elite'
+      : /strong/i.test(tier.label) ? 'strong'
+      : /solid/i.test(tier.label) ? 'solid' : '';
+    const _cardId = 'wnba-card-' + String(lead.player || '').replace(/[^a-zA-Z0-9]/g, '');
+
     return `
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-          <span style="background:${tier.bg};color:${tier.color};padding:3px 9px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em">${tier.label}</span>
-          <span style="font-weight:600;color:var(--text-primary);font-size:15px;font-family:var(--font-serif, var(--font-sans))">${esc(lead.player)}</span>
-          ${statusBadge}
-          <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.06em">${esc(lead.team)} vs ${esc(lead.opponent)}</span>
-          ${(lead.benefitsFrom && Array.isArray(lead.benefitsFrom.out) && lead.benefitsFrom.out.length) ? `<span style="font-size:10px;font-weight:600;color:#14532d;background:#dcfce7;padding:2px 8px;border-radius:100px" title="Projected minutes boosted because a teammate is out">▲ +${lead.benefitsFrom.minGain ?? 0} min (${esc(lead.benefitsFrom.out.join(', '))} out)</span>` : ''}
+      <div class="match ${_tierClass}" id="${_cardId}" style="opacity:${cardOpacity}">
+        <div class="match-head">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span class="match-hitter">${esc(lead.player)}<span class="hand">${ctx.position ? esc(ctx.position) : ''}</span></span>
+            ${statusBadge}
+            <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.06em">${esc(lead.team)} vs ${esc(lead.opponent)}</span>
+            ${(lead.benefitsFrom && Array.isArray(lead.benefitsFrom.out) && lead.benefitsFrom.out.length) ? `<span style="font-size:10px;font-weight:600;color:#14532d;background:#dcfce7;padding:2px 8px;border-radius:100px" title="Projected minutes boosted because a teammate is out">▲ +${lead.benefitsFrom.minGain ?? 0} min (${esc(lead.benefitsFrom.out.join(', '))} out)</span>` : ''}
+          </div>
+          <div class="tier-badge ${_tierClass}">${esc(tier.label)}</div>
         </div>
 
         ${whyDrivers.length > 0 ? `
@@ -14281,7 +14289,8 @@ async function autoGradeOnAppOpen() {
           ${engineBadge}
         </div>
 
-        <div style="margin-top:8px">
+        <div class="prop-recs">
+          <div class="prop-rec-label">PROP PROJECTIONS · MODEL vs LINE</div>
           ${marketRows}
         </div>
 
