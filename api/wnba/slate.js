@@ -734,10 +734,13 @@ async function buildAndRunAnalysis({
       if (recentForm?.games?.length) {
         const g2arr = (pick) => recentForm.games.map(pick)
           .filter(v => v != null && Number.isFinite(v)).reverse();
+        // Minutes aligned oldest→newest for the rebounds minutes-drop sharpening.
+        const priorMinutes = recentForm.games.map(g => Number(g.minutes))
+          .filter(v => v != null && Number.isFinite(v)).reverse();
         const vals = g2arr(g => marketLower.includes('rebound') ? g.rebounds
           : marketLower.includes('assist') ? g.assists : g.points);
         propSignal = evaluatePropSignal(vals, isRebounds ? 'rebounds'
-          : marketLower.includes('assist') ? 'assists' : 'points');
+          : marketLower.includes('assist') ? 'assists' : 'points', priorMinutes);
         // PRA = points + rebounds + assists per game (only when all three present).
         const praVals = recentForm.games
           .map(g => (g.points != null && g.rebounds != null && g.assists != null)

@@ -14083,8 +14083,12 @@ async function autoGradeOnAppOpen() {
       const sigChip = (sig, label) => {
         if (!sig || sig.side !== 'UNDER') return '';
         const c = tierColors[sig.tier] || { bg: 'var(--panel-2)', fg: 'var(--text-primary)' };
-        const tip = `${sig.tier} cold-form UNDER${label ? ' ('+label+')' : ''}. Recent ${sig.recent} vs ${sig.baseline} baseline (signal ${sig.signal}). Backtest ${sig.backtestWR}% (n=${sig.backtestN})${sig.bumped ? ' · deep-cold bump' : ''}. Proxy-grounded vs rolling avg — confirming vs real book lines as live picks grade.`;
-        return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:8px;font-weight:800;letter-spacing:0.06em;color:${c.fg};background:${c.bg};padding:2px 7px;border-radius:3px" title="${esc(tip)}">⬢ ${sig.tier} UNDER${label ? ' · '+label : ''} · ${sig.backtestWR}%${sig.proxy ? ' · proxy' : ''}</span>`;
+        const belowBar = !sig.meetsThreshold;
+        const sharpTag = sig.sharpened ? ' · sharpened' : '';
+        const barTag = belowBar ? ' · below 70%' : '';
+        const tip = `${sig.tier} cold-form UNDER${label ? ' ('+label+')' : ''}. Recent ${sig.recent} vs ${sig.baseline} baseline (signal ${sig.signal}). Backtest ${sig.backtestWR}% (n=${sig.backtestN})${sig.sharpened ? ' · minutes-drop sharpening applied' : ''}.${belowBar ? ' BELOW your 70% threshold — shown for reference.' : ' Meets your 70% threshold.'} Proxy-grounded vs rolling avg — confirming vs real book lines as live picks grade.`;
+        // Below-bar chips render at reduced opacity so 70%+ picks stand out.
+        return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:8px;font-weight:800;letter-spacing:0.06em;color:${c.fg};background:${c.bg};padding:2px 7px;border-radius:3px;opacity:${belowBar ? '0.62' : '1'}" title="${esc(tip)}">⬢ ${sig.tier} UNDER${label ? ' · '+label : ''} · ${sig.backtestWR}%${sharpTag}${barTag}${sig.proxy ? ' · proxy' : ''}</span>`;
       };
       const sig = p.propSignal;
       const pra = p.praSignal;
