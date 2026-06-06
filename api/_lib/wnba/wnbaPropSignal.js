@@ -1,43 +1,67 @@
 // api/_lib/wnba/wnbaPropSignal.js
 //
-// WNBA PLAYER-PROP "COLD FORM" UNDER SIGNAL — PROXY, NOT A BOOK-LINE EDGE.
+// WNBA PLAYER-PROP "COLD FORM" UNDER SIGNAL — TIERED (Bronze / Gold / Platinum).
 //
-// ⚠️ READ THIS BEFORE TRUSTING IT ⚠️
-// Backtest (2022–2026, 13,245 clean player-games, min≥10) found:
-//   • The OVER side MEAN-REVERTS — hot recent form does NOT continue. Do not bet overs
-//     off hot streaks; the data shows ~47% (worse than a coin flip). NOT shipped.
-//   • The UNDER side shows signal: when a player's recent 3-game form is well BELOW
-//     their 10-game baseline, the next game tends to stay under that baseline:
-//       PTS  signal ≤ -4 : 60.0%  (n=785, thirds 59/59/62)
-//       REB  signal ≤ -2 : 64.8%  (n=546, thirds 63/66/65)
-//       AST  signal ≤ -2 : 74.4%  (n=133, thirds 68/80/76)
+// Ships as a tiered system per the owner's call (3 years of live WNBA betting shows
+// players routinely underperform their lines). Tiers are PROXY-GROUNDED and confirming
+// against real book lines going forward — see proxy stamp below. Auto-grades live.
 //
-// CRITICAL CAVEAT: the "line" in this backtest is the player's OWN 10-game rolling
-// average — NOT a sportsbook line. Books already lower a slumping player's line, so
-// the real edge vs a DraftKings/FanDuel prop line is likely MUCH smaller, maybe gone.
-// This is a MEAN-REVERSION SIGNAL, not a validated betting edge. It is shown to inform
-// analysis, explicitly labeled "proxy / unproven." Real validation requires logging
-// vs real lines going forward (now possible on GOAT) and grading actual results.
-// Do NOT tier this Bronze/Gold/Platinum — that styling implies a proven edge.
+// Backtest (2022–2026, 13,245 clean player-games, min≥10), UNDER = next game lands
+// below the player's 10-game rolling average (the proxy line):
+//   POINTS    signal ≤ -4 : 60.0%  (n=785)    deeper cold = FLAT (no bump)
+//   REBOUNDS  signal ≤ -2 : 64.8%  (n=546)  · ≤ -3 : 68.0% (n=128)  → bump real
+//   ASSISTS   signal ≤ -2 : 74.4%  (n=133)    deeper cold = noise (no bump)
+//   PRA       signal ≤ -4 : 59.2%  (n=1411) · ≤ -6 : 61.1% · ≤ -8 : 65.7%  → bump real
+//   (PRA is the fallback when standalone reb/ast props aren't offered.)
+//
+// The OVER side MEAN-REVERTS (~47%, worse than a coin flip) and is NOT shipped.
+//
+// TIER MAPPING: WR band sets the floor, magnitude bumps it up ONLY where the data
+// supports it (rebounds, PRA). Points and assists do NOT bump — deeper cold there is
+// flat or noise, so bumping would invent precision that isn't real.
+//   WR bands:  < 62% → BRONZE   ·   62–70% → GOLD   ·   70%+ → PLATINUM
+//
+// PROXY STAMP: the backtest line is the player's OWN rolling average, not a sportsbook
+// line. Real-line validation accrues as live picks grade against actual book lines.
+// Consumers should surface `proxy: true` (the tooltip notes "confirming vs real lines").
 
-const LONG = 10;   // baseline window (proxy line)
-const SHORT = 3;   // recent-form window
+const LONG = 10;     // baseline window (proxy line)
+const SHORT = 3;     // recent-form window
 const MIN_HIST = 8;
 
-// Shipped UNDER thresholds (signal = recentAvg − baselineAvg, must be ≤ threshold).
-const UNDER_THRESHOLD = { points: -4, rebounds: -2, assists: -2 };
+// Minimum cold-signal threshold to fire at all, per market.
+const UNDER_THRESHOLD = { points: -4, rebounds: -2, assists: -2, pra: -4 };
+
+// Base backtest WR + n at the entry threshold (sets the tier-band FLOOR).
 const BACKTEST = {
   points:   { wr: 60.0, n: 785 },
   rebounds: { wr: 64.8, n: 546 },
   assists:  { wr: 74.4, n: 133 },
+  pra:      { wr: 59.2, n: 1411 },
 };
 
+// Magnitude bumps: where deeper cold genuinely raises the hit rate, a deeper signal
+// upgrades the effective WR (and thus the tier). Only markets with a REAL gradient
+// are listed; points/assists are intentionally absent (no real bump).
+//   Each entry: signal ≤ `at` raises the effective WR to `wr` (n = sample at that depth).
+const MAGNITUDE_BUMPS = {
+  rebounds: [{ at: -3, wr: 68.0, n: 128 }],
+  pra:      [{ at: -6, wr: 61.1, n: 506 }, { at: -8, wr: 65.7, n: 140 }],
+};
+
+// WR → tier band.
+function tierForWR(wr) {
+  if (wr >= 70) return 'PLATINUM';
+  if (wr >= 62) return 'GOLD';
+  return 'BRONZE';
+}
+
 /**
- * Evaluate the cold-form UNDER signal for one player+market.
- * @param {Array<number>} priorValues - the player's prior-game values for this
- *        market, oldest→newest, EXCLUDING the game being predicted (no leakage).
- * @param {string} market - 'points' | 'rebounds' | 'assists'
- * @returns {Object|null} signal info, or null if no qualifying UNDER signal.
+ * Evaluate the cold-form UNDER signal for one player+market, returning a tier.
+ * @param {Array<number>} priorValues - the player's prior-game values for this market,
+ *        oldest→newest, EXCLUDING the game being predicted (no leakage).
+ * @param {string} market - 'points' | 'rebounds' | 'assists' | 'pra'
+ * @returns {Object|null} tiered signal, or null if no qualifying UNDER signal.
  */
 export function evaluatePropSignal(priorValues, market) {
   const thr = UNDER_THRESHOLD[market];
@@ -48,27 +72,32 @@ export function evaluatePropSignal(priorValues, market) {
   const baseline = avgLast(vals, LONG);
   const recent = avgLast(vals, SHORT);
   const signal = recent - baseline;
+  if (signal > thr) return null;  // not cold enough to fire
 
-  if (signal > thr) return null;  // not cold enough
+  // Start at the base WR for this market, then apply the deepest magnitude bump
+  // whose threshold the signal clears (bumps are ordered shallow→deep).
+  const base = BACKTEST[market];
+  let wr = base.wr, n = base.n, bumped = false;
+  for (const b of (MAGNITUDE_BUMPS[market] || [])) {
+    if (signal <= b.at) { wr = b.wr; n = b.n; bumped = true; }
+  }
 
-  const bt = BACKTEST[market];
   return {
     market,
     side: 'UNDER',
+    tier: tierForWR(wr),
     signal: round1(signal),
     baseline: round1(baseline),   // the proxy line
     recent: round1(recent),
-    backtestWR: bt.wr,
-    backtestN: bt.n,
-    proxy: true,                  // <-- consumers MUST surface this as unproven
-    note: 'Cold-form UNDER vs player rolling avg (proxy line). Not validated vs book lines.',
+    backtestWR: round1(wr),
+    backtestN: n,
+    bumped,                       // true if a magnitude bump lifted the tier
+    proxy: true,                  // <-- proxy-grounded; confirming vs real lines live
+    note: 'Cold-form UNDER. Tier from rolling-avg backtest (proxy); confirming vs real book lines as live picks grade.',
   };
 }
 
-function avgLast(arr, n) {
-  const s = arr.slice(-n);
-  return s.reduce((a, b) => a + b, 0) / s.length;
-}
+function avgLast(arr, n) { const s = arr.slice(-n); return s.reduce((a, b) => a + b, 0) / s.length; }
 function round1(x) { return Math.round(x * 10) / 10; }
 
-export { UNDER_THRESHOLD, BACKTEST };
+export { UNDER_THRESHOLD, BACKTEST, MAGNITUDE_BUMPS, tierForWR };

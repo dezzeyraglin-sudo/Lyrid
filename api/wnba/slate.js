@@ -725,21 +725,27 @@ async function buildAndRunAnalysis({
       }
     }
 
-    // Cold-form UNDER signal (PROXY, not a book-line edge — see wnbaPropSignal.js).
-    // Built from this player's recent per-game values for THIS market (recentForm.games
-    // is most-recent-first, so reverse to oldest→newest).
+    // Cold-form UNDER signal (tiered — see wnbaPropSignal.js). Computed for THIS
+    // market, plus a parallel PRA signal (the fallback when standalone reb/ast props
+    // aren't offered). recentForm.games is most-recent-first, so reverse to oldest→newest.
     let propSignal = null;
+    let praSignal = null;
     try {
       if (recentForm?.games?.length) {
-        const vals = recentForm.games
-          .map(g => marketLower.includes('rebound') ? g.rebounds
-            : marketLower.includes('assist') ? g.assists : g.points)
-          .filter(v => v != null && Number.isFinite(v))
-          .reverse();
+        const g2arr = (pick) => recentForm.games.map(pick)
+          .filter(v => v != null && Number.isFinite(v)).reverse();
+        const vals = g2arr(g => marketLower.includes('rebound') ? g.rebounds
+          : marketLower.includes('assist') ? g.assists : g.points);
         propSignal = evaluatePropSignal(vals, isRebounds ? 'rebounds'
           : marketLower.includes('assist') ? 'assists' : 'points');
+        // PRA = points + rebounds + assists per game (only when all three present).
+        const praVals = recentForm.games
+          .map(g => (g.points != null && g.rebounds != null && g.assists != null)
+            ? g.points + g.rebounds + g.assists : null)
+          .filter(v => v != null && Number.isFinite(v)).reverse();
+        praSignal = evaluatePropSignal(praVals, 'pra');
       }
-    } catch (_) { propSignal = null; }
+    } catch (_) { propSignal = null; praSignal = null; }
 
     return {
       gameId: game.gameId,
@@ -763,7 +769,8 @@ async function buildAndRunAnalysis({
       hardFlags: buildHardFlagsFromUnified(unified, player, reboundExtras),
       lineSource: propLineSource,
       lineBook: lineMeta?.vendor || null,
-      propSignal,   // cold-form UNDER proxy signal (or null) — labeled unproven in UI
+      propSignal,   // cold-form UNDER tier (or null) for THIS market
+      praSignal,    // cold-form UNDER tier (or null) for PRA — fallback when reb/ast not offered
       lineOdds: lineMeta ? { over: lineMeta.overOdds, under: lineMeta.underOdds } : null,
       lineUpdatedAt: lineMeta?.updatedAt || null,
       shadowMode: WNBA_SHADOW_MODE,
