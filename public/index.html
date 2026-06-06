@@ -14069,6 +14069,11 @@ async function autoGradeOnAppOpen() {
       const bookLabel = (p.lineSource === 'provided')
         ? (p.lineBook ? `<span style="font-size:8px;color:var(--text-secondary, var(--dim));letter-spacing:0.04em;text-transform:uppercase" title="book line from ${esc(p.lineBook)}">${esc(p.lineBook)}</span>` : '<span style="font-size:8px;color:var(--accent, #c9a45e);letter-spacing:0.04em" title="real book line">BOOK</span>')
         : '<span style="font-size:8px;color:var(--text-secondary, var(--dim));opacity:0.7;letter-spacing:0.04em" title="no book line — model projection">MODEL</span>';
+      // Cold-form UNDER signal — PROXY/unproven, never styled as a graded edge.
+      const sig = p.propSignal;
+      const sigTag = (sig && sig.side === 'UNDER')
+        ? `<span style="display:inline-block;margin-top:3px;font-size:8px;font-weight:600;color:#92400e;background:#fef3c7;border:0.5px solid #fcd34d;padding:1px 6px;border-radius:3px;letter-spacing:0.03em" title="Cold recent form (last 3 avg ${sig.recent} vs 10-game ${sig.baseline}). Backtest ${sig.backtestWR}% vs the player's own rolling average (n=${sig.backtestN}) — a PROXY, NOT validated vs book lines. Treat as a lean, not a proven edge.">⚠ COLD-FORM UNDER LEAN · proxy ${sig.backtestWR}% · unproven</span>`
+        : '';
       return `
         <div style="display:grid;grid-template-columns:14px 92px 1fr auto auto;align-items:baseline;gap:10px;padding:7px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
           ${star}
@@ -14080,6 +14085,7 @@ async function autoGradeOnAppOpen() {
           </span>
           <span style="font-size:12px;font-weight:600;color:${edgeColor};font-variant-numeric:tabular-nums;min-width:50px;text-align:right">${edgeStr}</span>
         </div>
+        ${sigTag ? `<div style="padding:0 0 6px 24px">${sigTag}</div>` : ''}
       `;
     }).join('');
 

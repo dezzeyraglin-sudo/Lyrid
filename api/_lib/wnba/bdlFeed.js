@@ -184,12 +184,22 @@ export async function fetchWnbaProps(dateYmd, opts = {}) {
       const market = normalizeMarket(row.prop_type || row.market?.type || row.type);
       const line = Number(row.line_value ?? row.line ?? row.value);
       if (name && market && Number.isFinite(line)) {
-        // Prefer the standard over/under line over milestone ladders for a market.
         const key = `${name}_${market}`;
-        if (propLines[key] == null || isOverUnder) {
+        const vendor = String(row.vendor || row.book || '').toLowerCase();
+        // Vendor preference: PrizePicks/Underdog aren't carried by BDL, so among
+        // the available sportsbooks we prefer DraftKings → FanDuel → BetRivers.
+        // (Lower rank = more preferred.) Anything else ranks last.
+        const VENDOR_RANK = { draftkings: 0, fanduel: 1, betrivers: 2 };
+        const rank = VENDOR_RANK[vendor] != null ? VENDOR_RANK[vendor] : 9;
+        const prevRank = propMeta[key]?._rank ?? 99;
+        // Take this row if: nothing yet, OR this vendor is more preferred, OR same
+        // vendor but this is the standard over/under (vs a milestone ladder).
+        const better = propLines[key] == null || rank < prevRank || (rank === prevRank && isOverUnder);
+        if (better) {
           propLines[key] = line;
           propMeta[key] = {
             vendor: row.vendor || row.book || null,
+            _rank: rank,
             overOdds: row.market?.over_odds ?? null,
             underOdds: row.market?.under_odds ?? null,
             updatedAt: row.updated_at || null,

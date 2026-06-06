@@ -68,6 +68,7 @@ import { getAllTeamStats } from "../_lib/wnba/wnbaTeamData.js";
 import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
 import { fetchWnbaProps, fetchWnbaSeasonGames } from "../_lib/wnba/bdlFeed.js";
 import { buildEmpiricalTotals } from "../_lib/wnba/wnbaEmpiricalTotals.js";
+import { evaluatePropSignal } from "../_lib/wnba/wnbaPropSignal.js";
 
 // v2 engine modules (ESM)
 import { fetchEspnWnbaInjuries } from "../_lib/basketball/injuryFeed.js";
@@ -724,6 +725,22 @@ async function buildAndRunAnalysis({
       }
     }
 
+    // Cold-form UNDER signal (PROXY, not a book-line edge — see wnbaPropSignal.js).
+    // Built from this player's recent per-game values for THIS market (recentForm.games
+    // is most-recent-first, so reverse to oldest→newest).
+    let propSignal = null;
+    try {
+      if (recentForm?.games?.length) {
+        const vals = recentForm.games
+          .map(g => marketLower.includes('rebound') ? g.rebounds
+            : marketLower.includes('assist') ? g.assists : g.points)
+          .filter(v => v != null && Number.isFinite(v))
+          .reverse();
+        propSignal = evaluatePropSignal(vals, isRebounds ? 'rebounds'
+          : marketLower.includes('assist') ? 'assists' : 'points');
+      }
+    } catch (_) { propSignal = null; }
+
     return {
       gameId: game.gameId,
       player: player.name,
@@ -746,6 +763,7 @@ async function buildAndRunAnalysis({
       hardFlags: buildHardFlagsFromUnified(unified, player, reboundExtras),
       lineSource: propLineSource,
       lineBook: lineMeta?.vendor || null,
+      propSignal,   // cold-form UNDER proxy signal (or null) — labeled unproven in UI
       lineOdds: lineMeta ? { over: lineMeta.overOdds, under: lineMeta.underOdds } : null,
       lineUpdatedAt: lineMeta?.updatedAt || null,
       shadowMode: WNBA_SHADOW_MODE,
