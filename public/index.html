@@ -10889,12 +10889,16 @@ function renderHistory() {
       const resLabel = b.graded ? (b.result || 'pending').toUpperCase() : 'PENDING';
       const finalStr = b.graded && b.finalAwayScore != null ? ` · final ${esc(b.away)} ${b.finalAwayScore}–${b.finalHomeScore} ${esc(b.home)}` : '';
       const typeLabel = b.type === 'total' ? 'TOTAL' : b.type === 'moneyline' ? 'ML' : 'SPREAD';
+      const tierBadge = b.empTier ? (() => {
+        const c = { PLATINUM: '#8a8a95', GOLD: '#c9a45e', BRONZE: '#a87444' }[b.empTier] || 'var(--dim)';
+        return `<span style="font-size:8px;font-weight:800;letter-spacing:0.08em;color:#fff;background:${c};padding:1px 5px;border-radius:3px;margin-left:6px" title="Empirical ${esc(b.empSide||'')} · backtest ${b.empBacktestWR ?? '?'}% (n=${b.empBacktestN ?? '?'})">⬢ ${esc(b.empTier)}</span>`;
+      })() : '';
       return `
         <div class="glb-history-entry" style="border-left-color:${col}">
           <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
             <span style="font-weight:600;color:var(--ink)">
               <span style="font-size:9px;font-weight:700;color:var(--dim);letter-spacing:0.06em;margin-right:6px">${typeLabel}</span>
-              ${esc(b.pick)} ${b.tier ? `<span style="font-size:9px;color:var(--dim);margin-left:4px">${esc(b.tier.toUpperCase())}</span>` : ''}
+              ${esc(b.pick)} ${b.tier ? `<span style="font-size:9px;color:var(--dim);margin-left:4px">${esc(b.tier.toUpperCase())}</span>` : ''}${tierBadge}
             </span>
             <span style="display:flex;gap:6px;align-items:center">
               <span style="font-size:11px;font-weight:700;color:${col}">${resLabel}</span>
@@ -12758,6 +12762,10 @@ window.logWnbaGameBet = function(ctx) {
     home: ctx.home, away: ctx.away,
     projTotal: ctx.projTotal ?? null, projSpread: ctx.projSpread ?? null,
     edge: ctx.edge ?? null,
+    // Empirical totals observability (present only on empirical total picks).
+    empTier: ctx._empTier ?? null, empSide: ctx._empSide ?? null, empSignal: ctx._empSignal ?? null,
+    empProj: ctx._empProj ?? null, empProxy: ctx._empProxy ?? null, empCombDef: ctx._empCombDef ?? null,
+    empBacktestWR: ctx._empBacktestWR ?? null, empBacktestN: ctx._empBacktestN ?? null,
     loggedAt: Date.now(),
     result: null, graded: false, finalHomeScore: null, finalAwayScore: null,
   };
@@ -13613,13 +13621,48 @@ async function autoGradeOnAppOpen() {
               : bits[0];
             return `<div style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--text-primary)"><b>${esc(wt.favorite)}</b> has the edge: ${joined}.</div>`;
           })()}
+          ${(() => {
+            const e = gl.empiricalTotal;
+            if (!e || !e.side) return '';
+            const tierStyle = {
+              PLATINUM: { bg: 'linear-gradient(135deg,#e5e4e2,#b8b8c0)', fg: '#2a2a35', label: 'PLATINUM' },
+              GOLD:     { bg: 'linear-gradient(135deg,#f0d27a,#c9a45e)', fg: '#3a2e10', label: 'GOLD' },
+              BRONZE:   { bg: 'linear-gradient(135deg,#cd9b6a,#a87444)', fg: '#2e1c0c', label: 'BRONZE' },
+            }[e.tier] || { bg: 'var(--panel-2)', fg: 'var(--text-primary)', label: e.tier };
+            return `
+              <div style="margin-top:10px;border:1px solid var(--border-hairline, rgba(0,0,0,0.08));border-radius:8px;overflow:hidden">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:${tierStyle.bg}">
+                  <span style="font-size:11px;font-weight:800;letter-spacing:0.1em;color:${tierStyle.fg}">⬢ ${tierStyle.label} · EMPIRICAL ${esc(e.side)}</span>
+                  <span style="font-size:11px;font-weight:700;color:${tierStyle.fg};opacity:0.85">${e.backtestWR}% · n=${e.backtestN}</span>
+                </div>
+                <div style="padding:9px 12px;font-size:11px;color:var(--text-secondary, var(--dim));line-height:1.5">
+                  Model projects <b style="color:var(--text-primary)">${e.projTotal}</b> vs proxy line <b style="color:var(--text-primary)">${e.proxyLine}</b>
+                  — a <b style="color:var(--text-primary)">${e.signal > 0 ? '+' : ''}${e.signal}</b> ${esc(e.side)} signal.${e.side === 'UNDER' ? ` Both defenses stingy (allow ${e.combDef}/g combined).` : ''}
+                  <span style="display:block;margin-top:3px;font-size:9px;font-style:italic;opacity:0.8">Backtested vs rolling league avg (proxy), 2022–26. Live edge vs a real book line may be smaller.</span>
+                </div>
+              </div>`;
+          })()}
           ${gameId ? (() => {
-            // Build the pick strings. Total: lean vs book line if present, else OVER proj.
+            const emp = gl.empiricalTotal;
+            // Build the pick strings. Total: prefer the EMPIRICAL edge when it fires
+            // (that's the backtested recommendation), else lean vs book/proj.
             const projTotal = gl.projectedTotal;
             const bookTotal = book?.total;
-            const totalSide = (bookTotal != null && projTotal != null)
-              ? (projTotal > bookTotal ? 'OVER' : 'UNDER') : 'OVER';
-            const totalLine = bookTotal != null ? bookTotal : projTotal;
+            let totalSide, totalLine, totalTier = null, empFields = {};
+            if (emp && emp.side) {
+              totalSide = emp.side;
+              // Grade against the book line if present, else the proxy line.
+              totalLine = bookTotal != null ? bookTotal : emp.proxyLine;
+              totalTier = emp.tier;
+              empFields = {
+                _empTier: emp.tier, _empSide: emp.side, _empSignal: emp.signal,
+                _empProj: emp.projTotal, _empProxy: emp.proxyLine, _empCombDef: emp.combDef,
+                _empBacktestWR: emp.backtestWR, _empBacktestN: emp.backtestN,
+              };
+            } else {
+              totalSide = (bookTotal != null && projTotal != null) ? (projTotal > bookTotal ? 'OVER' : 'UNDER') : 'OVER';
+              totalLine = bookTotal != null ? bookTotal : projTotal;
+            }
             const totalPick = (totalLine != null) ? `${totalSide} ${totalLine}` : null;
             // ML: the model's favorite.
             const mlPick = favAbbr ? `${favAbbr} ML` : null;
@@ -13628,11 +13671,11 @@ async function autoGradeOnAppOpen() {
             const spreadTeam = (spreadLine != null && spreadLine <= 0) ? hm : aw;
             const spreadVal = (spreadLine != null) ? (spreadTeam === hm ? spreadLine : -spreadLine) : null;
             const spreadPick = (spreadVal != null) ? `${spreadTeam} ${spreadVal > 0 ? '+' : ''}${spreadVal}` : null;
-            const mk = (label, type, pick, extra) => pick ? `<button class="btn sm" style="font-size:10px;padding:3px 9px" onclick='logWnbaGameBet(${esc(JSON.stringify({ gameId: String(gameId), type, pick, home: hm, away: aw, projTotal: projTotal ?? null, projSpread: gl.spread ?? null, tier: gl.confidence != null ? (gl.confidence >= 90 ? "strong" : "solid") : null, ...extra }))})'>+ LOG ${label}</button>` : '';
+            const mk = (label, type, pick, tier, extra) => pick ? `<button class="btn sm" style="font-size:10px;padding:3px 9px" onclick='logWnbaGameBet(${esc(JSON.stringify({ gameId: String(gameId), type, pick, home: hm, away: aw, projTotal: projTotal ?? null, projSpread: gl.spread ?? null, tier: tier || (gl.confidence != null ? (gl.confidence >= 90 ? "strong" : "solid") : null), ...extra }))})'>+ LOG ${label}</button>` : '';
             return `<div style="display:flex;gap:6px;flex-wrap:wrap;border-top:0.5px solid var(--border-hairline, rgba(0,0,0,0.06));padding-top:10px;margin-top:2px">
-              ${mk(`TOTAL ${totalPick ? esc(totalPick) : ''}`, 'total', totalPick, { edge: gl.edges?.total ?? null })}
-              ${mk(`ML ${mlPick ? esc(mlPick) : ''}`, 'moneyline', mlPick, {})}
-              ${mk(`SPREAD ${spreadPick ? esc(spreadPick) : ''}`, 'spread', spreadPick, { edge: gl.edges?.spread ?? null })}
+              ${mk(`TOTAL ${totalPick ? esc(totalPick) : ''}${totalTier ? ' ('+esc(totalTier)+')' : ''}`, 'total', totalPick, totalTier ? totalTier.toLowerCase() : null, { edge: gl.edges?.total ?? null, ...empFields })}
+              ${mk(`ML ${mlPick ? esc(mlPick) : ''}`, 'moneyline', mlPick, null, {})}
+              ${mk(`SPREAD ${spreadPick ? esc(spreadPick) : ''}`, 'spread', spreadPick, null, { edge: gl.edges?.spread ?? null })}
             </div>`;
           })() : ''}
         </div>

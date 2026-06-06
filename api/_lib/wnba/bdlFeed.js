@@ -250,6 +250,49 @@ export async function fetchWnbaGameScores(dateYmd, opts = {}) {
   return result;
 }
 
+/**
+ * Fetch ALL finished games for a season (paginated), normalized for the
+ * empirical-totals rolling-stats builder. Works on ALL-STAR (final scores only).
+ * Cached per season — the history only grows, so a short TTL is fine.
+ *
+ *   -> [{ id, date 'YYYY-MM-DD', season, postseason, home_abbr, away_abbr,
+ *         home_score, away_score, status }]
+ */
+export async function fetchWnbaSeasonGames(season, opts = {}) {
+  if (!isBdlConfigured()) return { games: [], _audit: { keyPresent: false } };
+  const cacheKey = `bdl:season:${season}`;
+  if (!opts.noCache) { const c = cacheGet(cacheKey); if (c) return c; }
+
+  const out = [];
+  let cursor = null, pages = 0;
+  const warnings = [];
+  while (pages < 30) {
+    const params = { 'seasons[]': season, per_page: 100 };
+    if (cursor != null) params.cursor = cursor;
+    const r = await bdlGet('/games', params);
+    if (r.status !== 200) { warnings.push(`season ${season} HTTP ${r.status}`); break; }
+    for (const g of (r.body?.data || [])) {
+      const home = g.home_team?.abbreviation || g.home_team_abbr;
+      const away = g.visitor_team?.abbreviation || g.away_team_abbr;
+      if (!home || !away) continue;
+      out.push({
+        id: String(g.id), date: (g.date || '').slice(0, 10), season,
+        postseason: !!g.postseason,
+        home_abbr: home, away_abbr: away,
+        home_score: g.home_score ?? g.home_team_score ?? null,
+        away_score: g.away_score ?? g.visitor_team_score ?? null,
+        status: g.status || null,
+      });
+    }
+    cursor = r.body?.meta?.next_cursor;
+    pages++;
+    if (cursor == null) break;
+  }
+  const result = { games: out, _audit: { keyPresent: true, season, games: out.length, pages, warnings } };
+  cacheSet(cacheKey, result);
+  return result;
+}
+
 export async function fetchWnbaLiveScores(opts = {}) {
   if (!isBdlConfigured()) return { byMatchup: {}, _audit: { keyPresent: false } };
   const cacheKey = 'bdl:live';

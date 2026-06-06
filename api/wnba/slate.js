@@ -66,7 +66,8 @@ import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
 import { aggregateRecentForm } from "../_lib/wnba/wnbaGameLog.js";
 import { getAllTeamStats } from "../_lib/wnba/wnbaTeamData.js";
 import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
-import { fetchWnbaProps } from "../_lib/wnba/bdlFeed.js";
+import { fetchWnbaProps, fetchWnbaSeasonGames } from "../_lib/wnba/bdlFeed.js";
+import { buildEmpiricalTotals } from "../_lib/wnba/wnbaEmpiricalTotals.js";
 
 // v2 engine modules (ESM)
 import { fetchEspnWnbaInjuries } from "../_lib/basketball/injuryFeed.js";
@@ -241,6 +242,23 @@ async function generateSlate(opts = {}) {
     warnings.push(`Defense table failed: ${err.message}`);
   }
 
+  // Empirical team-totals evaluator (rolling team off/def vs league proxy line).
+  // Built once per slate from this season's finished games that PRECEDE the slate
+  // date (no leakage). Fail-safe: stays null if BDL/season history is unavailable.
+  let empiricalTotals = null;
+  try {
+    const seasonData = await fetchWnbaSeasonGames(season);
+    // Only use games strictly before the slate date so today's results can't leak.
+    const priorGames = (seasonData.games || []).filter(g => g.date && g.date < date);
+    if (priorGames.length >= 10) {
+      empiricalTotals = buildEmpiricalTotals(priorGames, season);
+    } else {
+      warnings.push(`Empirical totals: only ${priorGames.length} prior games this season — rule dormant until ~10+`);
+    }
+  } catch (err) {
+    warnings.push(`Empirical totals build failed: ${err.message}`);
+  }
+
   // STEP 3: For each game, build the list of (player, market) analyses to run
   const analysisPromises = [];
   const gameContexts = {};  // for output organization
@@ -287,6 +305,15 @@ async function generateSlate(opts = {}) {
     } catch (glErr) {
       warnings.push(`Game-line projection failed for ${game.gameId}: ${glErr.message}`);
     }
+
+    // Empirical team-total edge (tiered BRONZE/GOLD/PLATINUM). Attached to the
+    // gameLine so the card and game-bets logger can surface it. Null when dormant.
+    let empiricalEdge = null;
+    if (empiricalTotals) {
+      try { empiricalEdge = empiricalTotals.evaluate(homeAbbr, awayAbbr); }
+      catch (eErr) { warnings.push(`Empirical edge failed for ${game.gameId}: ${eErr.message}`); }
+    }
+    if (gameLine && empiricalEdge) gameLine.empiricalTotal = empiricalEdge;
 
     gameContexts[game.gameId] = {
       gameId: game.gameId,
@@ -446,6 +473,13 @@ async function generateSlate(opts = {}) {
         teams: Object.keys(defenseTable?.byTeam || {}).length,
         builtAt: defenseTable?._audit?.builtAt || null,
         audit: defenseTable?._audit || null,
+      },
+      // Marker for the empirical totals rule: proxyLine non-null means it's live.
+      empiricalTotals: {
+        version: 'emp-totals-v1',
+        active: !!empiricalTotals,
+        proxyLine: empiricalTotals?.proxyLine ?? null,
+        audit: empiricalTotals?._audit || null,
       },
       v2: v2Summary
     }
