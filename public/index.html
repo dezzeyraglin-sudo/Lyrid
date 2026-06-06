@@ -13600,7 +13600,9 @@ async function autoGradeOnAppOpen() {
           <div style="display:flex;align-items:baseline;gap:18px;flex-wrap:wrap">
             <span style="font-size:11px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">Proj Spread</span>
             <span style="font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums">${esc(hm)} ${fmtSpread(gl.spread)}</span>
+            <span style="font-size:8px;font-weight:600;color:#7f1d1d;background:#fef2f2;border:0.5px solid #fecaca;padding:1px 5px;border-radius:3px;letter-spacing:0.03em" title="Backtest: the model has NO spread edge — straight 18-26% vs real lines, and fading it is just 45% on 979 games. Shown for reference only. Do not bet the model's spread side.">NO EDGE · REFERENCE ONLY</span>
             <span style="font-size:11px;color:var(--text-secondary, var(--dim))">ML ${esc(favAbbr)} ${fmtAm(favAbbr===hm?ml.homeAmerican:ml.awayAmerican)} (${(favPct*100).toFixed(0)}%)</span>
+            <span style="font-size:8px;font-weight:600;color:#92400e;background:#fef3c7;border:0.5px solid #fcd34d;padding:1px 5px;border-radius:3px;letter-spacing:0.03em" title="Backtest: model picks the straight-up winner only ~49% on 979 games (worse with confidence). Lean only — no proven edge.">ML LEAN · ~49% SU · no edge</span>
           </div>
           ${book ? `
             <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;border-top:0.5px solid var(--border-hairline, rgba(0,0,0,0.06));padding-top:8px">
@@ -13672,11 +13674,13 @@ async function autoGradeOnAppOpen() {
             const spreadVal = (spreadLine != null) ? (spreadTeam === hm ? spreadLine : -spreadLine) : null;
             const spreadPick = (spreadVal != null) ? `${spreadTeam} ${spreadVal > 0 ? '+' : ''}${spreadVal}` : null;
             const mk = (label, type, pick, tier, extra) => pick ? `<button class="btn sm" style="font-size:10px;padding:3px 9px" onclick='logWnbaGameBet(${esc(JSON.stringify({ gameId: String(gameId), type, pick, home: hm, away: aw, projTotal: projTotal ?? null, projSpread: gl.spread ?? null, tier: tier || (gl.confidence != null ? (gl.confidence >= 90 ? "strong" : "solid") : null), ...extra }))})'>+ LOG ${label}</button>` : '';
-            return `<div style="display:flex;gap:6px;flex-wrap:wrap;border-top:0.5px solid var(--border-hairline, rgba(0,0,0,0.06));padding-top:10px;margin-top:2px">
+            return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-top:0.5px solid var(--border-hairline, rgba(0,0,0,0.06));padding-top:10px;margin-top:2px">
               ${mk(`TOTAL ${totalPick ? esc(totalPick) : ''}${totalTier ? ' ('+esc(totalTier)+')' : ''}`, 'total', totalPick, totalTier ? totalTier.toLowerCase() : null, { edge: gl.edges?.total ?? null, ...empFields })}
+              <span style="font-size:8px;color:var(--text-secondary, var(--dim));margin-left:4px">log your own pick:</span>
               ${mk(`ML ${mlPick ? esc(mlPick) : ''}`, 'moneyline', mlPick, null, {})}
               ${mk(`SPREAD ${spreadPick ? esc(spreadPick) : ''}`, 'spread', spreadPick, null, { edge: gl.edges?.spread ?? null })}
-            </div>`;
+            </div>
+            <div style="font-size:8px;color:var(--text-secondary, var(--dim));font-style:italic;margin-top:5px">Only TOTAL carries a backtested edge. ML and spread are log-only — the model has no proven edge there.</div>`;
           })() : ''}
         </div>
       </div>
