@@ -14073,26 +14073,43 @@ async function autoGradeOnAppOpen() {
       const bookLabel = (p.lineSource === 'provided')
         ? (p.lineBook ? `<span style="font-size:8px;color:var(--text-secondary, var(--dim));letter-spacing:0.04em;text-transform:uppercase" title="book line from ${esc(p.lineBook)}">${esc(p.lineBook)}</span>` : '<span style="font-size:8px;color:var(--accent, #c9a45e);letter-spacing:0.04em" title="real book line">BOOK</span>')
         : '<span style="font-size:8px;color:var(--text-secondary, var(--dim));opacity:0.7;letter-spacing:0.04em" title="no book line — model projection">MODEL</span>';
-      // Cold-form UNDER signal — tiered Bronze/Gold/Platinum. Proxy-grounded,
-      // confirming vs real lines (noted in tooltip). PRA shown as fallback.
+      // Cold-form UNDER signal — tiered, prominence scales with tier.
+      // PLATINUM → full-width banner (like team totals). GOLD/BRONZE → left-bar strip.
       const tierColors = {
-        PLATINUM: { bg: 'linear-gradient(135deg,#e5e4e2,#b8b8c0)', fg: '#2a2a35' },
-        GOLD:     { bg: 'linear-gradient(135deg,#f0d27a,#c9a45e)', fg: '#3a2e10' },
-        BRONZE:   { bg: 'linear-gradient(135deg,#cd9b6a,#a87444)', fg: '#2e1c0c' },
+        PLATINUM: { bg: 'linear-gradient(135deg,#e5e4e2,#b8b8c0)', fg: '#2a2a35', bar: '#8a8a95', wash: 'linear-gradient(135deg,rgba(229,228,226,0.5),rgba(184,184,192,0.22))' },
+        GOLD:     { bg: 'linear-gradient(135deg,#f0d27a,#c9a45e)', fg: '#3a2e10', bar: '#c9a45e', wash: 'linear-gradient(135deg,rgba(240,210,122,0.42),rgba(201,164,94,0.18))' },
+        BRONZE:   { bg: 'linear-gradient(135deg,#cd9b6a,#a87444)', fg: '#2e1c0c', bar: '#a87444', wash: 'linear-gradient(135deg,rgba(205,155,106,0.34),rgba(168,116,68,0.15))' },
       };
-      const sigChip = (sig, label) => {
+      const sigBanner = (sig, label) => {
         if (!sig || sig.side !== 'UNDER') return '';
-        const c = tierColors[sig.tier] || { bg: 'var(--panel-2)', fg: 'var(--text-primary)' };
+        const c = tierColors[sig.tier] || { bg: 'var(--panel-2)', fg: 'var(--text-primary)', bar: 'var(--dim)', wash: 'var(--panel-2)' };
         const belowBar = !sig.meetsThreshold;
-        const sharpTag = sig.sharpened ? ' · sharpened' : '';
-        const barTag = belowBar ? ' · below 70%' : '';
-        const tip = `${sig.tier} cold-form UNDER${label ? ' ('+label+')' : ''}. Recent ${sig.recent} vs ${sig.baseline} baseline (signal ${sig.signal}). Backtest ${sig.backtestWR}% (n=${sig.backtestN})${sig.sharpened ? ' · minutes-drop sharpening applied' : ''}.${belowBar ? ' BELOW your 70% threshold — shown for reference.' : ' Meets your 70% threshold.'} Proxy-grounded vs rolling avg — confirming vs real book lines as live picks grade.`;
-        // Below-bar chips render at reduced opacity so 70%+ picks stand out.
-        return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:8px;font-weight:800;letter-spacing:0.06em;color:${c.fg};background:${c.bg};padding:2px 7px;border-radius:3px;opacity:${belowBar ? '0.62' : '1'}" title="${esc(tip)}">⬢ ${sig.tier} UNDER${label ? ' · '+label : ''} · ${sig.backtestWR}%${sharpTag}${barTag}${sig.proxy ? ' · proxy' : ''}</span>`;
+        const pickStr = `UNDER ${p.line != null ? p.line : ''}${label ? ' ('+label+')' : ''}`.trim();
+        const sharpTag = sig.sharpened ? ' · sharpened (minutes drop)' : '';
+        const barNote = belowBar ? 'below 70% bar' : 'meets 70% bar';
+        const tip = `${sig.tier} cold-form UNDER${label ? ' ('+label+')' : ''}. Recent ${sig.recent} vs ${sig.baseline} baseline (signal ${sig.signal}). Backtest ${sig.backtestWR}% (n=${sig.backtestN})${sharpTag}. ${belowBar ? 'BELOW your 70% threshold — reference.' : 'Meets your 70% threshold.'} Proxy-grounded; confirming vs real book lines as live picks grade.`;
+        if (sig.tier === 'PLATINUM') {
+          // Full-width banner, mirrors the team-total empirical banner.
+          return `
+            <div style="margin:4px 0 8px 24px;border:1px solid var(--border-hairline, rgba(0,0,0,0.08));border-radius:8px;overflow:hidden" title="${esc(tip)}">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:${c.bg}">
+                <span style="font-size:11px;font-weight:800;letter-spacing:0.1em;color:${c.fg}">⬢ ${sig.tier} · ${esc(pickStr)}</span>
+                <span style="font-size:11px;font-weight:700;color:${c.fg};opacity:0.85">${sig.backtestWR}%${sig.proxy ? ' · proxy' : ''}</span>
+              </div>
+              <div style="padding:6px 12px;font-size:10px;color:var(--text-secondary, var(--dim))">Recent <b style="color:var(--text-primary)">${sig.recent}</b> vs <b style="color:var(--text-primary)">${sig.baseline}</b> baseline (${sig.signal} cold)${sig.sharpened ? ' · role shrinking' : ''} · ${barNote}</div>
+            </div>`;
+        }
+        // GOLD / BRONZE → left-bar accent strip (bigger than the old chip).
+        return `
+          <div style="margin:2px 0 7px 24px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:${c.wash};border-left:3px solid ${c.bar};border-radius:0 6px 6px 0;padding:5px 10px;opacity:${belowBar ? '0.78' : '1'}" title="${esc(tip)}">
+            <span style="font-size:10px;font-weight:800;letter-spacing:0.07em;color:${c.fg}">⬢ ${sig.tier}</span>
+            <span style="font-size:11px;font-weight:700;color:var(--text-primary)">${esc(pickStr)}</span>
+            <span style="font-size:10px;color:var(--text-secondary, var(--dim))">${sig.backtestWR}% hit · ${barNote}${sig.proxy ? ' · proxy' : ''}</span>
+          </div>`;
       };
       const sig = p.propSignal;
       const pra = p.praSignal;
-      const sigTags = [sigChip(sig, ''), (pra ? sigChip(pra, 'PRA') : '')].filter(Boolean).join(' ');
+      const sigTags = [sigBanner(sig, ''), (pra ? sigBanner(pra, 'PRA') : '')].filter(Boolean).join('');
       return `
         <div style="display:grid;grid-template-columns:14px 92px 1fr auto auto;align-items:baseline;gap:10px;padding:7px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
           ${star}
@@ -14104,7 +14121,7 @@ async function autoGradeOnAppOpen() {
           </span>
           <span style="font-size:12px;font-weight:600;color:${edgeColor};font-variant-numeric:tabular-nums;min-width:50px;text-align:right">${edgeStr}</span>
         </div>
-        ${sigTags ? `<div style="padding:0 0 6px 24px;display:flex;gap:5px;flex-wrap:wrap">${sigTags}</div>` : ''}
+        ${sigTags}
       `;
     }).join('');
 
