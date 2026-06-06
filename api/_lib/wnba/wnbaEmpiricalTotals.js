@@ -96,7 +96,13 @@ export function buildEmpiricalTotals(games, season) {
     if (signal >= 6) return { ...base, side: 'OVER', tier: 'GOLD', backtestWR: 70.1, backtestN: 87 };
     if (signal >= 4) return { ...base, side: 'OVER', tier: 'BRONZE', backtestWR: 65.3, backtestN: 75 };
 
-    // UNDER — single GOLD tier, requires the defense filter to qualify.
+    // UNDER tiers (require the defense filter to qualify). Sharpening retest:
+    // elite combined defense (<155) lifts the under to Platinum (78.6%, n=28);
+    // adding cold offenses pushes 81% (n=21) but that sub-sample is small, so the
+    // dependable sharpened tier is the elite-defense one.
+    if (signal <= -6 && combDef < 155) {
+      return { ...base, side: 'UNDER', tier: 'PLATINUM', backtestWR: 78.6, backtestN: 28 };
+    }
     if (signal <= -6 && combDef < DEF_FILTER) {
       return { ...base, side: 'UNDER', tier: 'GOLD', backtestWR: 74.5, backtestN: 55 };
     }

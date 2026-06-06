@@ -3721,6 +3721,7 @@ let state = {
   // full prediction context so the engine can be sharpened (which layers predict).
   // key: 'YYYY-MM-DD_Player_market'
   wnbaPropHistory: {},   // { date: { key: { date, player, team, opponent, market, line, projection, edge, lean, probOver, tier, lineSource, confidence, drivers, dataCompleteness, floor, ceiling, capturedAt, actual, result, error, graded } } }
+  wnbaGameBets: {},      // { date_gameId_type: { date, gameId, type, pick, tier, units, home, away, result, graded, finalHomeScore, finalAwayScore, _emp* } }
   // MLB selection engine toggle (May 23, 2026)
   //   'unassisted' = NEW data-grounded engine — biased toward hitters with the
   //                  best chance to put the ball in play and get on base
@@ -4241,6 +4242,7 @@ function loadState() {
   state.tracking = state.tracking || {};
   state.bestBetHistory = state.bestBetHistory || {};
   state.wnbaPropHistory = state.wnbaPropHistory || {};
+  state.wnbaGameBets = state.wnbaGameBets || {};
   state.hrAudit = state.hrAudit || { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } };
   state.hrAudit.entries = state.hrAudit.entries || [];
   state.hrAudit.byTier = state.hrAudit.byTier || { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} };
@@ -11288,7 +11290,8 @@ function renderHistory() {
       <button class="history-subnav-btn ${historyView==='rollup'?'active':''}" data-hist-view="rollup" onclick="switchHistoryView('rollup')">∑ ROLLUP</button>
       <button class="history-subnav-btn ${historyView==='picks'?'active':''}" data-hist-view="picks" onclick="switchHistoryView('picks')">$ MY BETS</button>
       <button class="history-subnav-btn ${historyView==='wnba'?'active':''}" data-hist-view="wnba" onclick="switchHistoryView('wnba')">★ WNBA BEST BETS</button>
-      ${historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
+      <button class="history-subnav-btn ${historyView==='wnbagames'?'active':''}" data-hist-view="wnbagames" onclick="switchHistoryView('wnbagames')">◈ WNBA GAME BETS</button>
+      ${historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'wnbagames' ? `<button class="btn sm" onclick="gradeWnbaGameBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
       <button class="btn sm" onclick="gradeAllBestBets()" style="margin-left:6px">⚡ GRADE ALL</button>`}
     </div>
   `;
@@ -11456,6 +11459,66 @@ function renderHistory() {
       + `<h3 class="rollup-section-title">ALL GRADED PROPS</h3>`
       + (entryRows || `<div class="empty" style="padding:20px"><div>No graded props yet. Tap ⚡ GRADE ALL after games finish.</div></div>`)
       + `<div class="rollup-footnote">Best bets and all props auto-capture when you load a WNBA slate, and grade against real box scores. Win/loss counts only REAL-line props; inferred-line props track projection error (MAE). Calibration sharpens with volume — aim for 30+ graded per slice before trusting it.</div>`;
+    return;
+  }
+
+  // WNBA GAME BETS view — team total / moneyline / spread tracker
+  if (historyView === 'wnbagames') {
+    const allBets = Object.values(state.wnbaGameBets || {}).sort((a, b) => (b.loggedAt || 0) - (a.loggedAt || 0));
+    if (allBets.length === 0) {
+      container.innerHTML = subnavHtml + `<div class="empty"><div class="empty-icon">◈</div><div>No WNBA game bets logged yet.<br><br>On a WNBA game's projection card, tap <b>+ LOG</b> on the total, moneyline, or spread.<br>They auto-grade against final scores after games finish.</div></div>`;
+      return;
+    }
+    const graded = allBets.filter(b => b.graded && (b.result === 'win' || b.result === 'loss'));
+    const wins = graded.filter(b => b.result === 'win').length;
+    const losses = graded.filter(b => b.result === 'loss').length;
+    const pending = allBets.filter(b => !b.graded).length;
+    const wr = (wins + losses) > 0 ? ((wins / (wins + losses)) * 100).toFixed(1) : '0.0';
+    const units = graded.reduce((s, b) => s + (b.result === 'win' ? (b.units || 1) : b.result === 'loss' ? -(b.units || 1) : 0), 0);
+    const byType = (t) => {
+      const g = graded.filter(b => b.type === t);
+      return `${g.filter(b => b.result === 'win').length}-${g.filter(b => b.result === 'loss').length}`;
+    };
+    const statsBar = `
+      <div class="bb-stats-grid">
+        <div class="bb-stat-card"><div class="bb-stat-label">RECORD</div><div class="bb-stat-value">${wins}-${losses}</div><div class="bb-stat-sub">${wr}% · ${pending} pending</div></div>
+        <div class="bb-stat-card"><div class="bb-stat-label">UNITS P/L</div><div class="bb-stat-value" style="color:${units >= 0 ? 'var(--accent)' : 'var(--danger)'}">${units >= 0 ? '+' : ''}${units.toFixed(2)}u</div><div class="bb-stat-sub">across ${graded.length} graded</div></div>
+        <div class="bb-stat-card"><div class="bb-stat-label">TOTALS</div><div class="bb-stat-value">${byType('total')}</div></div>
+        <div class="bb-stat-card"><div class="bb-stat-label">MONEYLINE</div><div class="bb-stat-value">${byType('moneyline')}</div></div>
+        <div class="bb-stat-card"><div class="bb-stat-label">SPREAD</div><div class="bb-stat-value">${byType('spread')}</div></div>
+      </div>`;
+    const row = (b) => {
+      const k = esc(`${b.date}_${b.gameId}_${b.type}`);
+      const col = b.result === 'win' ? 'var(--accent)' : b.result === 'loss' ? 'var(--danger)' : 'var(--dim)';
+      const resLabel = b.graded ? (b.result || 'pending').toUpperCase() : 'PENDING';
+      const finalStr = b.graded && b.finalAwayScore != null ? ` · final ${esc(b.away)} ${b.finalAwayScore}–${b.finalHomeScore} ${esc(b.home)}` : '';
+      const typeLabel = b.type === 'total' ? 'TOTAL' : b.type === 'moneyline' ? 'ML' : 'SPREAD';
+      const tierBadge = b.empTier ? (() => {
+        const c = { PLATINUM: '#8a8a95', GOLD: '#c9a45e', BRONZE: '#a87444' }[b.empTier] || 'var(--dim)';
+        return `<span style="font-size:8px;font-weight:800;letter-spacing:0.08em;color:#fff;background:${c};padding:1px 5px;border-radius:3px;margin-left:6px" title="Empirical ${esc(b.empSide||'')} · backtest ${b.empBacktestWR ?? '?'}% (n=${b.empBacktestN ?? '?'})">⬢ ${esc(b.empTier)}</span>`;
+      })() : '';
+      return `
+        <div class="glb-history-entry" style="border-left-color:${col}">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:600;color:var(--ink)">
+              <span style="font-size:9px;font-weight:700;color:var(--dim);letter-spacing:0.06em;margin-right:6px">${typeLabel}</span>
+              ${esc(b.pick)} ${b.tier ? `<span style="font-size:9px;color:var(--dim);margin-left:4px">${esc(String(b.tier).toUpperCase())}</span>` : ''}${tierBadge}
+            </span>
+            <span style="display:flex;gap:6px;align-items:center">
+              <span style="font-size:11px;font-weight:700;color:${col}">${resLabel}</span>
+              <button onclick="deleteWnbaGameBet('${k}')" title="delete" style="font-size:10px;color:var(--dim);background:transparent;border:0;cursor:pointer">✕</button>
+            </span>
+          </div>
+          <div style="font-size:10px;color:var(--dim);margin-top:3px">${esc(b.date)} · ${esc(b.away)} @ ${esc(b.home)} · ${b.units || 1}u${finalStr}</div>
+        </div>`;
+    };
+    const pendingBets = allBets.filter(b => !b.graded);
+    const gradedBets = allBets.filter(b => b.graded);
+    container.innerHTML = subnavHtml + statsBar
+      + `<h3 class="rollup-section-title">◈ WNBA GAME BETS${pendingBets.length ? ` · ${pendingBets.length} LIVE` : ''}</h3>`
+      + `<div class="rollup-tier-note">Team totals, moneylines, and spreads logged from WNBA game projections. Auto-graded against final scores.</div>`
+      + (pendingBets.length ? `<div style="font-size:10px;letter-spacing:0.1em;color:var(--accent);font-weight:600;margin:8px 0 4px">LIVE / UNGRADED</div>${pendingBets.map(row).join('')}` : '')
+      + (gradedBets.length ? `<div style="font-size:10px;letter-spacing:0.1em;color:var(--dim);font-weight:600;margin:12px 0 4px">GRADED</div>${gradedBets.map(row).join('')}` : '');
     return;
   }
 
@@ -13207,6 +13270,96 @@ function _clearHistoryBadgeIfShown() {
 // layer was REAL. Only props with a REAL book line count toward record/ROI;
 // inferred-line props still track MAE (projection accuracy) in shadow.
 
+// ====================================================================
+// WNBA GAME BETS — team total / moneyline / spread logging + auto-grading.
+// Grades against final team scores from /api/wnba/results (byGame), ALL-STAR-safe.
+// ====================================================================
+window.logWnbaGameBet = function(ctx) {
+  if (!ctx || !ctx.gameId || !ctx.pick || !ctx.type) return;
+  state.wnbaGameBets = state.wnbaGameBets || {};
+  const date = ctx.date || getTodayStr();
+  const key = `${date}_${ctx.gameId}_${ctx.type}`;
+  if (state.wnbaGameBets[key]) { if (typeof showToast === 'function') showToast('Already logged for this game'); return; }
+  state.wnbaGameBets[key] = {
+    date, gameId: ctx.gameId, type: ctx.type, pick: ctx.pick,
+    tier: ctx.tier || null, units: ctx.units || 1, home: ctx.home, away: ctx.away,
+    projTotal: ctx.projTotal ?? null, projSpread: ctx.projSpread ?? null, edge: ctx.edge ?? null,
+    empTier: ctx._empTier ?? null, empSide: ctx._empSide ?? null, empSignal: ctx._empSignal ?? null,
+    empProj: ctx._empProj ?? null, empProxy: ctx._empProxy ?? null,
+    empBacktestWR: ctx._empBacktestWR ?? null, empBacktestN: ctx._empBacktestN ?? null,
+    loggedAt: Date.now(), result: null, graded: false, finalHomeScore: null, finalAwayScore: null,
+  };
+  if (typeof saveState === 'function') saveState();
+  if (typeof showToast === 'function') showToast(`★ Logged: ${ctx.pick} (${ctx.units || 1}u)`);
+  if (typeof renderHistory === 'function') renderHistory();
+};
+
+function evaluateWnbaGameBet(bet, awayScore, homeScore) {
+  const total = awayScore + homeScore;
+  const margin = homeScore - awayScore;
+  switch (bet.type) {
+    case 'total': {
+      const m = bet.pick.match(/(OVER|UNDER)\s+([\d.]+)/i);
+      if (!m) return null;
+      const side = m[1].toUpperCase(); const line = parseFloat(m[2]);
+      if (total === line) return 'push';
+      return side === 'OVER' ? (total > line ? 'win' : 'loss') : (total < line ? 'win' : 'loss');
+    }
+    case 'moneyline': {
+      const m = bet.pick.match(/^([A-Z]{2,4})\s+ML/i);
+      if (!m) return null;
+      const team = m[1].toUpperCase(); const homeWon = homeScore > awayScore;
+      if (team === bet.home) return homeWon ? 'win' : 'loss';
+      if (team === bet.away) return !homeWon ? 'win' : 'loss';
+      return null;
+    }
+    case 'spread': {
+      const m = bet.pick.match(/^([A-Z]{2,4})\s+([-+][\d.]+)/i);
+      if (!m) return null;
+      const team = m[1].toUpperCase(); const line = parseFloat(m[2]);
+      const teamMargin = team === bet.home ? margin : -margin;
+      const adjusted = teamMargin + line;
+      if (adjusted === 0) return 'push';
+      return adjusted > 0 ? 'win' : 'loss';
+    }
+    default: return null;
+  }
+}
+
+window.gradeWnbaGameBets = async function(opts = {}) {
+  const silent = opts.silent;
+  state.wnbaGameBets = state.wnbaGameBets || {};
+  const today = getTodayStr();
+  const entries = Object.entries(state.wnbaGameBets).filter(([k, b]) => b.date <= today && !b.graded);
+  if (entries.length === 0) { if (!silent && typeof showToast === 'function') showToast('No pending game bets to grade'); return; }
+  const byDate = {};
+  entries.forEach(([k, b]) => { (byDate[b.date] = byDate[b.date] || []).push([k, b]); });
+  let graded = 0;
+  for (const date of Object.keys(byDate)) {
+    try {
+      const res = await fetch(`/api/wnba/results?date=${date}`);
+      const data = await res.json();
+      if (!data.ok || !data.byGame) continue;
+      for (const [key, bet] of byDate[date]) {
+        const g = data.byGame[bet.gameId];
+        if (!g || !g.final || g.homeScore == null || g.awayScore == null) continue;
+        const result = evaluateWnbaGameBet(bet, Number(g.awayScore), Number(g.homeScore));
+        if (result == null) continue;
+        state.wnbaGameBets[key] = { ...bet, result, graded: true,
+          finalHomeScore: Number(g.homeScore), finalAwayScore: Number(g.awayScore), gradedAt: Date.now() };
+        graded++;
+      }
+    } catch (err) { if (!silent) console.warn('[gradeWnbaGameBets]', date, err.message); }
+  }
+  if (graded > 0) { if (typeof saveState === 'function') saveState(); if (typeof renderHistory === 'function') renderHistory(); }
+  if (!silent && typeof showToast === 'function') showToast(graded > 0 ? `Graded ${graded} game bets` : 'No newly final games');
+};
+
+window.deleteWnbaGameBet = function(key) {
+  state.wnbaGameBets = state.wnbaGameBets || {};
+  if (state.wnbaGameBets[key]) { delete state.wnbaGameBets[key]; if (typeof saveState === 'function') saveState(); if (typeof renderHistory === 'function') renderHistory(); }
+};
+
 window.captureWnbaPredictions = function(data) {
   if (!data) return;
   // Capture the COMPLETE set: analyses (recommended plays) + passes + bestPlays.
@@ -13221,13 +13374,16 @@ window.captureWnbaPredictions = function(data) {
   state.wnbaPropHistory = state.wnbaPropHistory || {};
   const day = state.wnbaPropHistory[date] = state.wnbaPropHistory[date] || {};
 
-  // BEST BETS: mirror MLB's top-pick logging. A best bet is a player's single
-  // strongest actionable market — real book line, recommendation not PASS, and a
-  // meaningful edge. We pick the highest-finalEdge qualifying market per player.
+  // BEST BETS: mirror MLB's top-pick logging. Normally requires a real book line.
+  // PATH B: if the ENTIRE day's pool has no real lines, allow inferred props so best
+  // bets still flow — flagged inferredLine:true. Real lines always preferred.
+  const dayHasRealLine = pool.some(p => p.lineSource === 'provided');
   const bestByPlayer = {};
   for (const p of pool) {
     if (!p.player || !p.market) continue;
-    const actionable = (p.lineSource === 'provided')
+    const realLine = p.lineSource === 'provided';
+    const lineQualifies = dayHasRealLine ? realLine : true;
+    const actionable = lineQualifies
       && p.recommendation && p.recommendation !== 'PASS'
       && p.injuryStatus !== 'OUT';
     if (!actionable) continue;
@@ -13260,6 +13416,7 @@ window.captureWnbaPredictions = function(data) {
       lineSource: p.lineSource || 'inferred',
       recommendation: p.recommendation || null,
       isBestBet: bestBetKeys.has(key),
+      inferredLine: bestBetKeys.has(key) && (p.lineSource !== 'provided'),
       confidence: p.confidence ?? null,
       defenseReal: (p.dataCompleteness?.opposingDefense === 'REAL'),
       drivers: p.scores ? {
@@ -13294,10 +13451,13 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
   const day = state.wnbaPropHistory[date] = state.wnbaPropHistory[date] || {};
 
   // Strongest actionable market per player in THIS game = the best bet(s).
+  // PATH B: prefer real lines; if THIS game has none, allow inferred (flagged).
+  const gameHasRealLine = gamePool.some(p => p.lineSource === 'provided');
   const bestByPlayer = {};
   for (const p of gamePool) {
     if (!p.player || !p.market) continue;
-    const actionable = (p.lineSource === 'provided')
+    const lineQualifies = gameHasRealLine ? (p.lineSource === 'provided') : true;
+    const actionable = lineQualifies
       && p.recommendation && p.recommendation !== 'PASS'
       && p.injuryStatus !== 'OUT';
     if (!actionable) continue;
@@ -13332,6 +13492,7 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
       lineSource: p.lineSource || 'inferred',
       recommendation: p.recommendation || null,
       isBestBet: true,
+      inferredLine: (p.lineSource !== 'provided'),
       loggedFromAnalyze: true,
       reasonText,
       reasons,
@@ -13451,6 +13612,9 @@ async function autoGradeOnAppOpen() {
 
   try { if (typeof window.gradeWnbaProps === 'function') await window.gradeWnbaProps({ silent: true }); }
   catch(err) { console.warn('[autoGrade] wnba props failed:', err.message); }
+
+  try { if (typeof window.gradeWnbaGameBets === 'function') await window.gradeWnbaGameBets({ silent: true }); }
+  catch(err) { console.warn('[autoGrade] wnba game bets failed:', err.message); }
 
   // Compute newly-graded delta
   const afterCount = _countGradedBets();
@@ -13984,7 +14148,7 @@ async function autoGradeOnAppOpen() {
 
       ${topPick ? renderTopPickBanner(topPick) : ''}
 
-      ${game.gameLine ? renderGameLineBanner(game.gameLine, aw, hm) : ''}
+      ${game.gameLine ? renderGameLineBanner(game.gameLine, aw, hm, game.gameId) : ''}
 
       <div class="context-banner ctx-three-col" style="margin-top:14px">
         ${renderContextBlock('GAME TOTAL', game.total != null ? game.total : '—', game.total != null ? 'projected pace · O/U' : 'not provided')}
@@ -13998,7 +14162,7 @@ async function autoGradeOnAppOpen() {
   }
 
   // OUR MODEL — engine-projected total/spread/moneyline beside the book line.
-  function renderGameLineBanner(gl, aw, hm) {
+  function renderGameLineBanner(gl, aw, hm, gameId) {
     const fmtSpread = (s) => s == null ? '—' : (s === 0 ? "PICK'EM" : (s > 0 ? '+' : '') + s);
     const fmtAm = (a) => a == null ? '—' : (a > 0 ? '+' + a : '' + a);
     const edgeChip = (label, val, unit) => {
@@ -14049,9 +14213,56 @@ async function autoGradeOnAppOpen() {
               : bits[0];
             return `<div style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--text-primary)"><b>${esc(wt.favorite)}</b> has the edge: ${joined}.</div>`;
           })()}
-        </div>
-      </div>
-    `;
+          ${(() => {
+            const e = gl.empiricalTotal;
+            if (!e || !e.side) return '';
+            const ts = {
+              PLATINUM: { bg: 'linear-gradient(135deg,#e5e4e2,#b8b8c0)', fg: '#2a2a35' },
+              GOLD:     { bg: 'linear-gradient(135deg,#f0d27a,#c9a45e)', fg: '#3a2e10' },
+              BRONZE:   { bg: 'linear-gradient(135deg,#cd9b6a,#a87444)', fg: '#2e1c0c' },
+            }[e.tier] || { bg: 'var(--panel-2)', fg: 'var(--text-primary)' };
+            return `
+              <div style="margin-top:10px;border:1px solid var(--border-hairline, rgba(0,0,0,0.08));border-radius:8px;overflow:hidden">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:${ts.bg}">
+                  <span style="font-size:11px;font-weight:800;letter-spacing:0.1em;color:${ts.fg}">⬢ ${e.tier} · EMPIRICAL ${esc(e.side)}</span>
+                  <span style="font-size:11px;font-weight:700;color:${ts.fg};opacity:0.85">${e.backtestWR}% · n=${e.backtestN}</span>
+                </div>
+                <div style="padding:9px 12px;font-size:11px;color:var(--text-secondary, var(--dim));line-height:1.5">
+                  Model projects <b style="color:var(--text-primary)">${e.projTotal}</b> vs proxy line <b style="color:var(--text-primary)">${e.proxyLine}</b> — a <b style="color:var(--text-primary)">${e.signal > 0 ? '+' : ''}${e.signal}</b> ${esc(e.side)} signal.${e.side === 'UNDER' ? ` Both defenses stingy (${e.combDef}/g combined).` : ''}
+                  <span style="display:block;margin-top:3px;font-size:9px;font-style:italic;opacity:0.8">Backtested vs rolling league avg (proxy), 2022–26. Live edge vs a real book line may be smaller.</span>
+                </div>
+              </div>`;
+          })()}
+          <div style="font-size:8px;color:var(--text-secondary, var(--dim));font-style:italic;margin-top:6px">Spread &amp; ML: model has no proven edge (spread ~18-26% ATS, ML ~49% SU on 979 games) — shown for reference only.</div>
+          ${gameId ? (() => {
+            const emp = gl.empiricalTotal;
+            const projTotal = gl.projectedTotal;
+            const bookTotal = gl.book?.total;
+            let totalSide, totalLine, totalTier = null, empFields = {};
+            if (emp && emp.side) {
+              totalSide = emp.side;
+              totalLine = bookTotal != null ? bookTotal : emp.proxyLine;
+              totalTier = emp.tier;
+              empFields = { _empTier: emp.tier, _empSide: emp.side, _empSignal: emp.signal, _empProj: emp.projTotal, _empProxy: emp.proxyLine, _empBacktestWR: emp.backtestWR, _empBacktestN: emp.backtestN };
+            } else {
+              totalSide = (bookTotal != null && projTotal != null) ? (projTotal > bookTotal ? 'OVER' : 'UNDER') : 'OVER';
+              totalLine = bookTotal != null ? bookTotal : projTotal;
+            }
+            const totalPick = (totalLine != null) ? `${totalSide} ${totalLine}` : null;
+            const mlPick = favAbbr ? `${favAbbr} ML` : null;
+            const spreadLine = (gl.book && gl.book.spread != null) ? gl.book.spread : gl.spread;
+            const spreadTeam = (spreadLine != null && spreadLine <= 0) ? hm : aw;
+            const spreadVal = (spreadLine != null) ? (spreadTeam === hm ? spreadLine : -spreadLine) : null;
+            const spreadPick = (spreadVal != null) ? `${spreadTeam} ${spreadVal > 0 ? '+' : ''}${spreadVal}` : null;
+            const mk = (lbl, type, pick, tier, extra) => pick ? `<button class="btn sm" style="font-size:10px;padding:3px 9px" onclick='logWnbaGameBet(${esc(JSON.stringify({ gameId: String(gameId), type, pick, home: hm, away: aw, projTotal: projTotal ?? null, projSpread: gl.spread ?? null, tier: tier || (gl.confidence != null ? (gl.confidence >= 90 ? "strong" : "solid") : null), ...extra }))})'>+ LOG ${lbl}</button>` : '';
+            return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-top:0.5px solid var(--border-hairline, rgba(0,0,0,0.06));padding-top:10px;margin-top:8px">
+              ${mk(`TOTAL ${totalPick ? esc(totalPick) : ''}${totalTier ? ' ('+esc(totalTier)+')' : ''}`, 'total', totalPick, totalTier ? totalTier.toLowerCase() : null, { edge: gl.edges?.total ?? null, ...empFields })}
+              <span style="font-size:8px;color:var(--text-secondary, var(--dim));margin-left:4px">log your own:</span>
+              ${mk(`ML ${mlPick ? esc(mlPick) : ''}`, 'moneyline', mlPick, null, {})}
+              ${mk(`SPREAD ${spreadPick ? esc(spreadPick) : ''}`, 'spread', spreadPick, null, { edge: gl.edges?.spread ?? null })}
+            </div>`;
+          })() : ''}
+        </div>`;
   }
 
   function renderTopPickBanner(p) {
@@ -14440,6 +14651,38 @@ async function autoGradeOnAppOpen() {
       const bookLabel = (p.lineSource === 'provided')
         ? (p.lineBook ? `<span style="font-size:8px;color:var(--text-secondary, var(--dim));letter-spacing:0.04em;text-transform:uppercase" title="book line from ${esc(p.lineBook)}">${esc(p.lineBook)}</span>` : '<span style="font-size:8px;color:var(--accent, #c9a45e);letter-spacing:0.04em" title="real book line">BOOK</span>')
         : '<span style="font-size:8px;color:var(--text-secondary, var(--dim));opacity:0.7;letter-spacing:0.04em" title="no book line — model projection">MODEL</span>';
+      // Cold-form UNDER tier signal — prominence scales with tier. PLATINUM → full
+      // banner (like team totals); GOLD/BRONZE → left-bar strip. PRA shown as fallback.
+      const tierColors = {
+        PLATINUM: { bg: 'linear-gradient(135deg,#e5e4e2,#b8b8c0)', fg: '#2a2a35', bar: '#8a8a95', wash: 'linear-gradient(135deg,rgba(229,228,226,0.5),rgba(184,184,192,0.22))' },
+        GOLD:     { bg: 'linear-gradient(135deg,#f0d27a,#c9a45e)', fg: '#3a2e10', bar: '#c9a45e', wash: 'linear-gradient(135deg,rgba(240,210,122,0.42),rgba(201,164,94,0.18))' },
+        BRONZE:   { bg: 'linear-gradient(135deg,#cd9b6a,#a87444)', fg: '#2e1c0c', bar: '#a87444', wash: 'linear-gradient(135deg,rgba(205,155,106,0.34),rgba(168,116,68,0.15))' },
+      };
+      const sigBanner = (sig, label) => {
+        if (!sig || sig.side !== 'UNDER') return '';
+        const c = tierColors[sig.tier] || { bg: 'var(--panel-2)', fg: 'var(--text-primary)', bar: 'var(--dim)', wash: 'var(--panel-2)' };
+        const belowBar = !sig.meetsThreshold;
+        const pickStr = `UNDER ${p.line != null ? p.line : ''}${label ? ' ('+label+')' : ''}`.trim();
+        const barNote = belowBar ? 'below 70% bar' : 'meets 70% bar';
+        const tip = `${sig.tier} cold-form UNDER${label ? ' ('+label+')' : ''}. Recent ${sig.recent} vs ${sig.baseline} baseline (signal ${sig.signal}). Backtest ${sig.backtestWR}% (n=${sig.backtestN})${sig.sharpened ? ' · minutes-drop sharpening' : ''}. ${belowBar ? 'BELOW your 70% threshold — reference.' : 'Meets your 70% threshold.'} Proxy-grounded; confirming vs real book lines as live picks grade.`;
+        if (sig.tier === 'PLATINUM') {
+          return `
+            <div style="margin:4px 0 8px 24px;border:1px solid var(--border-hairline, rgba(0,0,0,0.08));border-radius:8px;overflow:hidden" title="${esc(tip)}">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:${c.bg}">
+                <span style="font-size:11px;font-weight:800;letter-spacing:0.1em;color:${c.fg}">⬢ ${sig.tier} · ${esc(pickStr)}</span>
+                <span style="font-size:11px;font-weight:700;color:${c.fg};opacity:0.85">${sig.backtestWR}%${sig.proxy ? ' · proxy' : ''}</span>
+              </div>
+              <div style="padding:6px 12px;font-size:10px;color:var(--text-secondary, var(--dim))">Recent <b style="color:var(--text-primary)">${sig.recent}</b> vs <b style="color:var(--text-primary)">${sig.baseline}</b> baseline (${sig.signal} cold)${sig.sharpened ? ' · role shrinking' : ''} · ${barNote}</div>
+            </div>`;
+        }
+        return `
+          <div style="margin:2px 0 7px 24px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:${c.wash};border-left:3px solid ${c.bar};border-radius:0 6px 6px 0;padding:5px 10px;opacity:${belowBar ? '0.78' : '1'}" title="${esc(tip)}">
+            <span style="font-size:10px;font-weight:800;letter-spacing:0.07em;color:${c.fg}">⬢ ${sig.tier}</span>
+            <span style="font-size:11px;font-weight:700;color:var(--text-primary)">${esc(pickStr)}</span>
+            <span style="font-size:10px;color:var(--text-secondary, var(--dim))">${sig.backtestWR}% hit · ${barNote}${sig.proxy ? ' · proxy' : ''}</span>
+          </div>`;
+      };
+      const sigTags = [sigBanner(p.propSignal, ''), (p.praSignal ? sigBanner(p.praSignal, 'PRA') : '')].filter(Boolean).join('');
       return `
         <div style="display:grid;grid-template-columns:14px 92px 1fr auto auto;align-items:baseline;gap:10px;padding:7px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
           ${star}
@@ -14451,6 +14694,7 @@ async function autoGradeOnAppOpen() {
           </span>
           <span style="font-size:12px;font-weight:600;color:${edgeColor};font-variant-numeric:tabular-nums;min-width:50px;text-align:right">${edgeStr}</span>
         </div>
+        ${sigTags}
       `;
     }).join('');
 
