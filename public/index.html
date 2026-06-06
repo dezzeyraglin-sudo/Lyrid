@@ -1563,179 +1563,6 @@
   .bbs-value.profit-neg{color:var(--danger)}
   .bbs-sub{font-size:9px;color:var(--dim);margin-top:2px;font-variant-numeric:tabular-nums}
 
-  /* =============== LYRID'S BEST TIER BANNERS (Drop #13) =============== */
-  /* Animated tier badges that appear when empirical strategies fire.
-     Tiers based on backtest WR:
-       PLATINUM (80%+):  OVER (81%), YRFI (87%)
-       GOLD     (70-79%): UNDER (70%)
-       SILVER   (65-69%): NRFI (66%), ML (66%)
-       BRONZE   reserved for future (55-64%)
-  */
-  @keyframes lyridShimmer {
-    0%   { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-  }
-  @keyframes lyridPulse {
-    0%, 100% { box-shadow: 0 0 0 0 var(--lyrid-glow); transform: scale(1); }
-    50%      { box-shadow: 0 0 20px 4px var(--lyrid-glow); transform: scale(1.015); }
-  }
-  @keyframes lyridSlideIn {
-    from { opacity: 0; transform: translateY(-8px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  .lyrid-best-banner {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 14px;
-    margin: 0 0 12px 0;
-    border-radius: 8px;
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
-    font-weight: 800;
-    font-size: 13px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #1a1a1a;
-    overflow: hidden;
-    animation: lyridSlideIn 0.4s ease-out, lyridPulse 2.4s ease-in-out infinite;
-    border: 1.5px solid var(--lyrid-border);
-  }
-
-  .lyrid-best-banner::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background: linear-gradient(
-      105deg,
-      transparent 25%,
-      var(--lyrid-shimmer) 50%,
-      transparent 75%
-    );
-    background-size: 200% 100%;
-    animation: lyridShimmer 3.2s linear infinite;
-    pointer-events: none;
-  }
-
-  .lyrid-best-icon {
-    font-size: 18px;
-    line-height: 1;
-    z-index: 1;
-    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.2));
-  }
-
-  .lyrid-best-text {
-    flex: 1;
-    z-index: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
-  .lyrid-best-title {
-    font-size: 13px;
-    font-weight: 900;
-    letter-spacing: 0.1em;
-  }
-
-  .lyrid-best-sub {
-    font-size: 9.5px;
-    font-weight: 700;
-    opacity: 0.78;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .lyrid-best-tier-badge {
-    z-index: 1;
-    background: rgba(0,0,0,0.18);
-    padding: 3px 9px;
-    border-radius: 999px;
-    font-size: 10.5px;
-    font-weight: 900;
-    letter-spacing: 0.12em;
-    color: #fff;
-    text-shadow: 0 1px 1px rgba(0,0,0,0.3);
-  }
-
-  /* PLATINUM — for 80%+ backtest WR */
-  .lyrid-best-platinum {
-    background: linear-gradient(135deg, #e8e9eb 0%, #c6c9cd 35%, #f5f6f8 50%, #b5b8bc 65%, #d8dadd 100%);
-    --lyrid-border: rgba(155, 158, 162, 0.6);
-    --lyrid-glow: rgba(180, 184, 190, 0.55);
-    --lyrid-shimmer: rgba(255, 255, 255, 0.55);
-    color: #1a1d22;
-  }
-  .lyrid-best-platinum .lyrid-best-tier-badge {
-    background: rgba(40, 44, 52, 0.85);
-  }
-
-  /* GOLD — for 70-79% backtest WR */
-  .lyrid-best-gold {
-    background: linear-gradient(135deg, #f6cb6a 0%, #d99e2e 30%, #fae192 50%, #c98a1c 70%, #e8b246 100%);
-    --lyrid-border: rgba(184, 134, 11, 0.7);
-    --lyrid-glow: rgba(230, 167, 31, 0.6);
-    --lyrid-shimmer: rgba(255, 245, 200, 0.55);
-    color: #3d2806;
-  }
-  .lyrid-best-gold .lyrid-best-tier-badge {
-    background: rgba(74, 49, 8, 0.85);
-  }
-
-  /* SILVER — for 65-69% backtest WR */
-  .lyrid-best-silver {
-    background: linear-gradient(135deg, #dee2e6 0%, #adb5bd 35%, #e9ecef 50%, #9ca3aa 65%, #ced4da 100%);
-    --lyrid-border: rgba(108, 117, 125, 0.55);
-    --lyrid-glow: rgba(150, 158, 167, 0.5);
-    --lyrid-shimmer: rgba(255, 255, 255, 0.45);
-    color: #1f2329;
-  }
-  .lyrid-best-silver .lyrid-best-tier-badge {
-    background: rgba(33, 37, 41, 0.85);
-  }
-
-  /* BRONZE — reserved for future tier */
-  .lyrid-best-bronze {
-    background: linear-gradient(135deg, #d4915a 0%, #a96332 35%, #e6a875 50%, #8f502a 70%, #c98152 100%);
-    --lyrid-border: rgba(133, 76, 38, 0.7);
-    --lyrid-glow: rgba(180, 110, 60, 0.55);
-    --lyrid-shimmer: rgba(255, 220, 180, 0.5);
-    color: #2a1608;
-  }
-  .lyrid-best-bronze .lyrid-best-tier-badge {
-    background: rgba(58, 30, 12, 0.85);
-  }
-
-  /* Compact variant for inline use inside existing bet rows */
-  .lyrid-best-banner.compact {
-    padding: 5px 9px;
-    font-size: 10.5px;
-    margin: 0;
-    border-radius: 6px;
-    animation: lyridSlideIn 0.4s ease-out;
-  }
-  .lyrid-best-banner.compact .lyrid-best-icon { font-size: 13px; }
-  .lyrid-best-banner.compact .lyrid-best-title { font-size: 10.5px; }
-  .lyrid-best-banner.compact .lyrid-best-sub { display: none; }
-  .lyrid-best-banner.compact .lyrid-best-tier-badge {
-    padding: 2px 6px;
-    font-size: 8.5px;
-  }
-
-  @media (max-width: 480px) {
-    .lyrid-best-banner {
-      padding: 9px 11px;
-      font-size: 11.5px;
-    }
-    .lyrid-best-icon { font-size: 16px; }
-    .lyrid-best-title { font-size: 11.5px; }
-    .lyrid-best-sub { font-size: 8.5px; }
-    .lyrid-best-tier-badge { font-size: 9.5px; padding: 2px 7px; }
-  }
-
   /* =============== GAME-LINE BET RECOMMENDATIONS PANEL =============== */
   .gamelines-panel{
     margin-top:12px;
@@ -3840,240 +3667,6 @@ window.setMlbEngine = function(eng) {
  *   - This means in 'prob' mode, the top pick is always a prop that the contact
  *     engine could score (H, R, HR, TB, RBI) — never a fantasy-score prop
  */
-// ====================================================================
-// (Drop #14 — June 5, 2026) SHARP HITS EMPIRICAL OVERRIDE
-//
-// Full audit on n=1,213 graded hitter best bets (April 18 - June 4) found:
-//   HRR prop overall: 497-544 (48% WR) — LOSING at -110 with time decay
-//      (latest chunk: 43% WR — actively bleeding)
-//   HITS prop overall: 90-68 (57% WR) — PROFITABLE
-//
-// Two HITS sub-segments are dramatically profitable:
-//   R hitter vs RHP, xwoba ≥ 0.60: 17-7 (71% WR) on n=24
-//   any hitter vs LHP, xwoba ≥ 0.45: 26-13 (67% WR) on n=39
-//   UNION (either rule fires): 43-20 (68% WR) on n=63
-//     Stability across thirds: 67% / 71% / 67%
-//     Wilson 95% CI: [56%, 78%]
-//
-// This function checks whether the hitter qualifies for "Sharp HITS" and,
-// if so, overrides the chosen ★ BEST prop to be the HITS prop instead of
-// whatever the engine picked (usually HRR).
-//
-// The override only fires when:
-//   1. A HITS prop exists in propRecs (not all matchups produce one)
-//   2. The hitter+matchup matches one of the two backtest-profitable cuts
-//   3. The HITS prop isn't fragility-eliminated
-//
-// Returns the chosen prop, or null if no override applies.
-// ====================================================================
-function applySharpHitsOverride(propRecs, hitterContext) {
-  if (!Array.isArray(propRecs) || propRecs.length === 0) return null;
-  if (!hitterContext) return null;
-
-  // Find a HITS prop in the list
-  const hitsProp = propRecs.find(p => p.key === 'H');
-  if (!hitsProp) return null;
-
-  // Don't override if fragility eliminated
-  if (hitsProp.fragility && hitsProp.fragility.tier === 'eliminated') return null;
-
-  // Pull the predictive features
-  const xwoba = typeof hitsProp.adjustedMaxXwoba === 'number'
-    ? hitsProp.adjustedMaxXwoba
-    : (hitterContext.adjustedMaxXwoba || 0);
-  const hand = hitterContext.hand || '';
-  const pitcherHand = hitterContext.pitcherHand || '';
-
-  // Rule 1: R hitter vs RHP, xwoba >= 0.60 (backtest 17-7 / 71%)
-  const rule1 = (hand === 'R' && pitcherHand === 'R' && xwoba >= 0.60);
-  // Rule 2: any hitter vs LHP, xwoba >= 0.45 (backtest 26-13 / 67%)
-  const rule2 = (pitcherHand === 'L' && xwoba >= 0.45);
-
-  if (!rule1 && !rule2) return null;
-
-  // Mark the HITS prop so it can be visually tagged downstream
-  hitsProp._sharpHits = true;
-  hitsProp._sharpHitsRule = rule1 ? 'R-vs-RHP-high-xwoba' : 'vs-LHP-mid-xwoba';
-  hitsProp._sharpHitsBacktestWR = 0.68;
-  hitsProp._sharpHitsBacktestN = 63;
-
-  return hitsProp;
-}
-
-// ====================================================================
-// (Drop #15 — June 5, 2026) EMPIRICAL UNDER ENGINE
-//
-// The audit that drove Drop #14 also exposed strong UNDER signals — places
-// where HRR/Fantasy goes UNDER more often than the OVER market price implies.
-// This helper detects those patterns and returns an UNDER recommendation
-// with tier classification matching Lyrid's Best.
-//
-// Full audit on n=1,213 graded hitter bets (April 18 - June 4):
-//
-// HRR UNDERs:
-//   STRONG: mult 0.95-1.05 + xwoba≥0.55 → 19-4 (83% WR) on n=23
-//     Thirds 86/71/89, CI [63%, 93%]
-//   STANDARD: mult 0.95-1.10 OR SCORCHING form → 68-41 (62% WR) on n=109
-//     Thirds 64/64/59, CI [53%, 71%]
-//
-// Fantasy Score (FS) UNDERs:
-//   FS_7 STRONG: elite/strong bp + mult 0.95-1.05 + xwoba≥0.55
-//     → 18-4 (82% WR) on n=22, thirds 86/71/88, CI [61%, 93%]
-//   FS_7 STANDARD: elite bp + mult 0.95-1.05 → 22-8 (73%) on n=30
-//     Thirds 90/60/70, CI [56%, 86%]
-//   FS_5 STANDARD: elite bp + mult 0.95-1.05 → 20-10 (67%) on n=30
-//
-// Why this works: the contextMultiplier 0.95-1.05 zone is where the engine
-// projects "neutral environment" — but the data shows hitters consistently
-// UNDER-perform their projections in this zone, especially when paired with
-// strong pitching environments (elite bullpen) and high baseline projections
-// (xwoba≥0.55, where the model expects more than the game delivers).
-//
-// Returns an object with side='UNDER', tier (PLATINUM/GOLD/SILVER/BRONZE),
-// rule description, backtest WR + n. Returns null if no UNDER signal fires.
-// ====================================================================
-function computeEmpiricalUnderProp(propRecs, hitterContext) {
-  if (!Array.isArray(propRecs) || propRecs.length === 0) return null;
-  if (!hitterContext) return null;
-
-  // Pull predictive features from the props/context
-  const hrrProp = propRecs.find(p => p.key === 'HRR');
-  const xwoba = (hitterContext.adjustedMaxXwoba || 0);
-  const contextMult = hitterContext.contextMultiplier;
-  const recentForm = hitterContext.recentFormLabel || '';
-  const bullpenTier = hitterContext.bullpenTier || '';
-  const hand = hitterContext.hand || '';
-
-  // contextMultiplier is the master gate — most rules require it to be set
-  if (contextMult == null) return null;
-  const mult = parseFloat(contextMult);
-  if (isNaN(mult)) return null;
-
-  // === HRR UNDER detection (only if HRR prop exists) ===
-  if (hrrProp && (!hrrProp.fragility || hrrProp.fragility.tier !== 'eliminated')) {
-    // STRONG HRR UNDER: mult 0.95-1.05 + xwoba >= 0.55 → 83% backtest
-    if (mult >= 0.95 && mult < 1.05 && xwoba >= 0.55) {
-      return {
-        side: 'UNDER',
-        propKey: 'HRR',
-        propLabel: 'HRR 1.5',
-        tier: 'STRONG',
-        lyridBestTier: 'platinum',
-        backtestWR: 0.83,
-        backtestN: 23,
-        rule: 'mult-neutral-high-xwoba',
-        units: 1.5,
-        reason: `Empirical HRR UNDER STRONG: neutral environment (mult ${mult.toFixed(2)}) suppresses high-projection hitter (xwOBA ${xwoba.toFixed(3)})`,
-        reasoningLines: [
-          `Context multiplier ${mult.toFixed(2)} (neutral zone 0.95-1.05)`,
-          `Hitter projection elevated (xwOBA ${xwoba.toFixed(3)} ≥ 0.55)`,
-          `Backtest: 19-4 (83% WR) on n=23, stable thirds 86/71/89, CI [63%, 93%]`
-        ]
-      };
-    }
-
-    // STANDARD HRR UNDER: mult 0.95-1.10 OR SCORCHING form → 62%
-    if ((mult >= 0.95 && mult < 1.10) || recentForm === 'SCORCHING') {
-      return {
-        side: 'UNDER',
-        propKey: 'HRR',
-        propLabel: 'HRR 1.5',
-        tier: 'STANDARD',
-        lyridBestTier: 'bronze',
-        backtestWR: 0.62,
-        backtestN: 109,
-        rule: mult >= 0.95 && mult < 1.10 ? 'mult-neutral-wide' : 'scorching-regression',
-        units: 1.0,
-        reason: recentForm === 'SCORCHING'
-          ? `Empirical HRR UNDER: regression candidate (SCORCHING recent form fades hard)`
-          : `Empirical HRR UNDER: neutral-to-mild environment (mult ${mult.toFixed(2)})`,
-        reasoningLines: [
-          mult >= 0.95 && mult < 1.10 ? `Context multiplier ${mult.toFixed(2)} (neutral-wide 0.95-1.10)` : `Recent form: SCORCHING (regression to mean)`,
-          `Backtest: 68-41 (62% WR) on n=109, stable thirds 64/64/59, CI [53%, 71%]`
-        ]
-      };
-    }
-  }
-
-  // === Fantasy Score UNDER detection ===
-  // These don't require a specific prop to exist; they're slate-level fades
-  // for PrizePicks Fantasy 6/8 and Underdog Fantasy 5/7 lines.
-
-  // FS_7 STRONG: elite/strong bp + mult 0.95-1.05 + xwoba≥0.55 → 82%
-  if (mult >= 0.95 && mult < 1.05 && xwoba >= 0.55
-      && (bullpenTier === 'elite' || bullpenTier === 'strong')) {
-    return {
-      side: 'UNDER',
-      propKey: 'PP_FS_7',
-      propLabel: 'FS 7',
-      tier: 'STRONG',
-      lyridBestTier: 'platinum',
-      backtestWR: 0.82,
-      backtestN: 22,
-      rule: 'elite-bullpen-neutral-high-xwoba',
-      units: 1.5,
-      reason: `Empirical FS UNDER 7 STRONG: ${bullpenTier} bullpen + neutral environment (mult ${mult.toFixed(2)}) + high projection (xwOBA ${xwoba.toFixed(3)})`,
-      reasoningLines: [
-        `Bullpen tier: ${bullpenTier} (suppresses late-game scoring)`,
-        `Context multiplier ${mult.toFixed(2)} (neutral zone 0.95-1.05)`,
-        `Hitter projection elevated (xwOBA ${xwoba.toFixed(3)} ≥ 0.55)`,
-        `Backtest: 18-4 (82% WR) on n=22, stable thirds 86/71/88, CI [61%, 93%]`
-      ]
-    };
-  }
-
-  // FS_7 STANDARD: elite bullpen + mult 0.95-1.05 → 73%
-  if (mult >= 0.95 && mult < 1.05 && bullpenTier === 'elite') {
-    return {
-      side: 'UNDER',
-      propKey: 'PP_FS_7',
-      propLabel: 'FS 7',
-      tier: 'STANDARD',
-      lyridBestTier: 'gold',
-      backtestWR: 0.73,
-      backtestN: 30,
-      rule: 'elite-bullpen-neutral',
-      units: 1.0,
-      reason: `Empirical FS UNDER 7: elite bullpen + neutral environment (mult ${mult.toFixed(2)})`,
-      reasoningLines: [
-        `Elite bullpen tier (top-shelf late-game suppression)`,
-        `Context multiplier ${mult.toFixed(2)} (neutral zone 0.95-1.05)`,
-        `Backtest: 22-8 (73% WR) on n=30, thirds 90/60/70, CI [56%, 86%]`
-      ]
-    };
-  }
-
-  // FS_5 STANDARD: elite bullpen + mult 0.95-1.05 → 67% (UD low line)
-  // Note: This overlaps with FS_7 STANDARD; the higher-conviction one wins above.
-  // Keeping this branch for completeness when xwoba is mid-tier.
-  if (mult >= 0.95 && mult < 1.05 && bullpenTier === 'elite' && xwoba < 0.55) {
-    return {
-      side: 'UNDER',
-      propKey: 'UD_FS_5',
-      propLabel: 'FS 5',
-      tier: 'STANDARD',
-      lyridBestTier: 'silver',
-      backtestWR: 0.67,
-      backtestN: 30,
-      rule: 'elite-bullpen-neutral-mid-xwoba',
-      units: 1.0,
-      reason: `Empirical FS UNDER 5: elite bullpen + neutral environment (mult ${mult.toFixed(2)})`,
-      reasoningLines: [
-        `Elite bullpen tier`,
-        `Context multiplier ${mult.toFixed(2)} (neutral zone 0.95-1.05)`,
-        `Backtest: 20-10 (67% WR) on n=30, thirds 80/60/60, CI [49%, 81%]`
-      ]
-    };
-  }
-
-  // NOTE: FS_7 NON_SWITCH rule was dropped in final review — it backtested
-  // 67% on a pre-filtered subset but regressed to 38% (5-8) when applied
-  // independently to all bets matching mult/hand criteria. The interaction
-  // with the other rules wasn't clean; volume comes at the cost of accuracy.
-
-  return null;
-}
-
 function applyMlbEngineRanking(propRecs, activeEngine) {
   if (!Array.isArray(propRecs) || propRecs.length === 0) return propRecs;
 
@@ -4133,33 +3726,10 @@ function applyMlbEngineRanking(propRecs, activeEngine) {
     topPropForEngine = scoreEligible.length > 0 ? scoreEligible[0] : byScore[0];
   }
 
-  // (Drop #14 — June 5, 2026) SHARP HITS OVERRIDE
-  //
-  // Before the engine picks, check if a HITS prop qualifies for the
-  // empirically-profitable Sharp HITS cut. If yes, force the HITS prop
-  // to be ★ BEST regardless of engine. This pre-empts the HRR-favoring
-  // tendency that drove the 48% live WR.
-  //
-  // The override is gated on fragility + hitter context. If the hitter
-  // context isn't available (passed via propRecs[0] metadata), the override
-  // is skipped and normal engine logic applies.
-  const hitterCtx = (propRecs[0] && {
-    hand: propRecs[0]._ctxHand,
-    pitcherHand: propRecs[0]._ctxPitcherHand,
-    adjustedMaxXwoba: propRecs[0]._ctxAdjustedMaxXwoba
-  }) || null;
-  const sharpHitsPick = applySharpHitsOverride(propRecs, hitterCtx);
-
-  // Update isBest based on the active engine's #1 pick OR Sharp HITS override
-  if (sharpHitsPick) {
-    propRecs.forEach(p => {
-      p.isBest = (p === sharpHitsPick);
-    });
-  } else {
-    propRecs.forEach(p => {
-      p.isBest = (topPropForEngine != null && p === topPropForEngine);
-    });
-  }
+  // Update isBest based on the active engine's #1 pick
+  propRecs.forEach(p => {
+    p.isBest = (topPropForEngine != null && p === topPropForEngine);
+  });
 
   return propRecs;
 }
@@ -4241,6 +3811,7 @@ function loadState() {
   state.tracking = state.tracking || {};
   state.bestBetHistory = state.bestBetHistory || {};
   state.wnbaPropHistory = state.wnbaPropHistory || {};
+  state.wnbaGameBets = state.wnbaGameBets || {};
   state.hrAudit = state.hrAudit || { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } };
   state.hrAudit.entries = state.hrAudit.entries || [];
   state.hrAudit.byTier = state.hrAudit.byTier || { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} };
@@ -4334,42 +3905,6 @@ function ordinalFrontend(n) {
 // When fired, the returned object can be merged into gl.total to override
 // the server's projection-vs-market recommendation.
 // ====================================================================
-// ====================================================================
-// (Drop #12 — June 5, 2026) LEAGUE ENVIRONMENT ROLLING-AVG HELPER
-//
-// Computes the league-wide 7-day rolling average total runs across ALL
-// graded games preceding the target date. This is the critical context
-// the empirical rules need — they're scoring-environment-dependent.
-//
-// Audit on n=473 graded games found:
-//   May 4-25: avg league total dropped to 7.55-8.29 (cold stretch)
-//   May 25-June 4: avg league total 9.60-9.65 (hot stretch)
-//
-// Without environment context, OVER rules get destroyed in cold weeks
-// (3rd of OVER fires lost during May 7-12) and UNDER/AWAY ML rules
-// underperform in hot weeks.
-//
-// Returns null if insufficient data (< 10 prior graded games).
-// ====================================================================
-function computeLeagueEnvironment(gameDate, lookbackDays = 7) {
-  if (!gameDate || !state.projectionAudit) return null;
-
-  const cutoffDate = new Date(gameDate);
-  cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
-  const cutoffStr = cutoffDate.toISOString().split('T')[0];
-
-  const totals = [];
-  for (const e of Object.values(state.projectionAudit)) {
-    if (!e.graded) continue;
-    if (typeof e.actualTotal !== 'number') continue;
-    if (e.date >= gameDate || e.date < cutoffStr) continue;
-    totals.push(e.actualTotal);
-  }
-
-  if (totals.length < 10) return null;
-  return totals.reduce((s, v) => s + v, 0) / totals.length;
-}
-
 function computeEmpiricalTotalStrategy(awayTeamAbbr, homeTeamAbbr, gameDate, marketTotal) {
   if (!awayTeamAbbr || !homeTeamAbbr || !state.projectionAudit) return null;
 
@@ -4420,9 +3955,6 @@ function computeEmpiricalTotalStrategy(awayTeamAbbr, homeTeamAbbr, gameDate, mar
   const empProj = awayProjRuns + homeProjRuns;
   const sampleSize = Math.min(awayScored.length, homeScored.length);
 
-  // (Drop #12 — June 5, 2026) Environment context for rule gating
-  const leagueEnv = computeLeagueEnvironment(gameDate, 7);
-
   const baseStats = {
     awayOff: +awayOff.toFixed(2),
     homeOff: +homeOff.toFixed(2),
@@ -4432,82 +3964,69 @@ function computeEmpiricalTotalStrategy(awayTeamAbbr, homeTeamAbbr, gameDate, mar
     empSum: +empSum.toFixed(2),
     empDef: +empDef.toFixed(2),
     empProj: +empProj.toFixed(2),
-    leagueEnv: leagueEnv != null ? +leagueEnv.toFixed(2) : null,
     sampleSize
   };
 
-  // (Drop #12 — June 5, 2026) OVER_STRONG with environment gate.
-  // Tightened thresholds and added env >= 8.75 requirement.
-  //
-  // Audit on FULL n=395 dataset (Apr 24 → Jun 4) found old rule
-  // (ms>=5.25, ed>=10) regressed to 23-15 (61%) because OVER fires
-  // got crushed in May 4-25 cold-scoring stretch (avg total dropped
-  // to 7.55-8.29 R/g, league-wide).
-  //
-  // New rule: ms>=5.25, ed>=10.5, AND leagueEnv >= 8.75
-  //   Backtest: 13-3 (81%) on n=16, thirds 80/80/83, CI [57%, 93%]
-  //   +13.2u profit at -110
-  if (maxSide >= 5.25 && empDef >= 10.5 && leagueEnv != null && leagueEnv >= 8.75) {
+  // OVER_STRONG: hot matchup + leaky pitching
+  if (maxSide >= 5.25 && empDef >= 10) {
     return {
       ...baseStats,
       side: 'OVER',
       tier: 'STRONG',
       units: 1.5,
       // Backtest WR — used as displayed probability. Override of normal CDF.
-      // FULL n=395 audit (Apr 24 - Jun 4): 13-3 (81%) on n=16 with env filter.
-      // Stable across all three time thirds: T1 80%, T2 80%, T3 83%.
-      // Wilson 95% CI: [57%, 93%].
-      probability: 0.81,
-      backtestWR: 0.81,
-      backtestN: 16,
-      reason: `Empirical OVER: matchup heat ${maxSide.toFixed(2)} R/g + leaky pitching (${empDef.toFixed(2)} R/g allowed) + hot scoring environment (${leagueEnv.toFixed(2)} R/g league 7-day avg)`,
+      // Fresh n=146 audit (June 5): 10-1 (91%) on n=11 — disclosed honestly;
+      // sample is small but stable across time thirds (T1 100%, T2 67%, T3 100%).
+      probability: 0.91,
+      backtestWR: 0.91,
+      backtestN: 11,
+      reason: `Empirical OVER: matchup heat ${maxSide.toFixed(2)} R/g + both pitching staffs leaky (combined ${empDef.toFixed(2)} R/g allowed)`,
       reasoningLines: [
         `Matchup heat: best-side projects ${maxSide.toFixed(2)} R/g (threshold ≥ 5.25)`,
-        `Combined leaky pitching: ${empDef.toFixed(2)} R/g allowed by both staffs (threshold ≥ 10.5)`,
-        `League scoring environment: ${leagueEnv.toFixed(2)} R/g 7-day rolling avg (threshold ≥ 8.75)`,
+        `Combined leaky pitching: ${empDef.toFixed(2)} R/g allowed by both staffs (threshold ≥ 10.0)`,
         `Team rolling (last ${sampleSize}): ${awayTeamAbbr} ${awayOff.toFixed(2)} scored / ${awayDef.toFixed(2)} allowed; ${homeTeamAbbr} ${homeOff.toFixed(2)} scored / ${homeDef.toFixed(2)} allowed`,
-        `Backtest (n=395, env-aware): 13-3 (81% WR) on n=16, stable thirds 80/80/83, +13.2u at -110`
+        `Backtest: 10-1 (91% WR) on n=11 across book lines 7.5-9.5, +12.2u at -110, stable thirds 100/67/100`
       ]
     };
   }
 
-  // (Drop #12 — June 5, 2026) UNDER_STRONG with environment gate.
+  // UNDER_STRONG: both offenses cold AND both pitching staffs strong
+  // (Drop #11 — June 5, 2026) Added both-defenses<4.5 filter.
   //
-  // Drop #11 UNDER rule (off<3.5, def<4.5) regressed on full n=395 dataset
-  // to 3-2 (60%) on only n=5 fires. Adding env filter and relaxing offense:
+  // Original Drop #8 UNDER rule (both offenses <3.5) backtested at 64% but
+  // showed time decay: T1 100%, T2 50%, T3 40%. Losing pattern: at least one
+  // team had weak defense (>4.0 R/g allowed), and those games went OVER even
+  // when offenses were cold — weak pitching cancels the cold-bat signal.
   //
-  // NEW rule: off<4.0, def<4.0, AND leagueEnv <= 8.5 (cold environment)
-  //   Backtest: 7-3 (70%) on n=10, thirds 67/67/75, CI [40%, 89%]
+  // Adding both-defenses<4.5 filter excludes 4 losers, keeps the 7 wins:
+  //   - off<3.5 alone: 8-5 (62%), thirds 100/50/40
+  //   - off<3.5 AND def<4.5: 7-2 (78%), thirds 100/67/67  ← shipping
   //
-  // The env filter is critical — UNDER only works when league is collectively
-  // running under (May 4-25 cold stretch). In a hot scoring environment,
-  // even cold-team-cold-team matchups go OVER 8.5.
-  if (awayOff < 4.0 && homeOff < 4.0 && awayDef < 4.0 && homeDef < 4.0
-      && leagueEnv != null && leagueEnv <= 8.5) {
+  // This would have prevented the June-4 SD@PHI UNDER loss (h_def was 3.08
+  // but a_def at 3.92 was borderline — actually this passes new gate, so it
+  // would still fire. But MIA@NYM 5/29 + MIA@TOR 5/25 + NYY@KC 5/26 losses
+  // ALL had at least one team with def >= 4.67 — those get filtered out.)
+  if (awayOff < 3.5 && homeOff < 3.5 && awayDef < 4.5 && homeDef < 4.5) {
     return {
       ...baseStats,
       side: 'UNDER',
       tier: 'STRONG',
       units: 1.5,
-      probability: 0.70,
-      backtestWR: 0.70,
-      backtestN: 10,
-      reason: `Empirical UNDER: both teams below-average offense (${awayOff.toFixed(2)}/${homeOff.toFixed(2)}) AND strong pitching (${awayDef.toFixed(2)}/${homeDef.toFixed(2)} R/g allowed) AND cold league environment (${leagueEnv.toFixed(2)} R/g 7-day avg)`,
+      probability: 0.78,
+      backtestWR: 0.78,
+      backtestN: 9,
+      reason: `Empirical UNDER: both offenses cold (away ${awayOff.toFixed(2)} R/g, home ${homeOff.toFixed(2)} R/g) + both pitching staffs strong (away allows ${awayDef.toFixed(2)}, home allows ${homeDef.toFixed(2)})`,
       reasoningLines: [
-        `Both offenses below 4.0 R/g (away ${awayOff.toFixed(2)}, home ${homeOff.toFixed(2)})`,
-        `Both pitching staffs below 4.0 R/g allowed (away ${awayDef.toFixed(2)}, home ${homeDef.toFixed(2)})`,
-        `League cold (${leagueEnv.toFixed(2)} R/g 7-day avg, threshold ≤ 8.5)`,
+        `Both offenses cold (away ${awayOff.toFixed(2)} R/g, home ${homeOff.toFixed(2)} R/g — threshold < 3.5)`,
+        `Both pitching staffs strong (away allows ${awayDef.toFixed(2)}, home allows ${homeDef.toFixed(2)} — threshold < 4.5)`,
         `Team rolling (last ${sampleSize}): combined ${empSum.toFixed(2)} R/g scored, ${empDef.toFixed(2)} R/g allowed`,
-        `Backtest (n=395, env-aware): 7-3 (70% WR) on n=10, stable thirds 67/67/75, +5.1u at -110`
+        `Backtest: 7-2 (78% WR) on n=9 — Drop #11 adds defense filter to original Drop #8 rule (was 8-5 / 62% with time decay 100/50/40)`
       ]
     };
   }
 
   return null;
 }
-
-// (deprecated UNDER block from Drop #11 removed in Drop #12; old rule
-//  off<3.5 + def<4.5 regressed to 60% on full n=473 dataset.)
 
 // ====================================================================
 // (Drop #9 — June 3, 2026) EMPIRICAL ML STRATEGY
@@ -4536,30 +4055,38 @@ function computeEmpiricalTotalStrategy(awayTeamAbbr, homeTeamAbbr, gameDate, mar
 // Returns null if no signal fires OR insufficient history (< 5 games per team).
 // ====================================================================
 function computeEmpiricalMLStrategy(awayTeamAbbr, homeTeamAbbr, gameDate) {
-  // (Drop #12 — June 5, 2026) ML STRATEGY RE-ENABLED with environment filter.
+  // (Drop #10 — June 5, 2026) ML STRATEGY DISABLED — RETURNS NULL.
   //
-  // History:
-  //   Drop #9 (June 3): shipped at 21-10 (68%) on n=31, regressed live to 59%
-  //   Drop #10 (June 5 AM): DISABLED entirely after audit showed signal decay
-  //   Drop #12 (June 5 PM): RE-ENABLED with env filter from n=473 audit
+  // Drop #9 shipped with backtest 21-10 (68%) on n=31. Live performance:
+  //   - June 3 backup audit on n=37: regressed to 22-15 (59%)
+  //   - Logged ML bets through June 4: 1-7 (12.5%) at -$5.92 + $-20 parlay
   //
-  // The root cause of Drop #9's regression: the empirical rolling-diff rule
-  // is COLD-environment-dependent. Full n=473 audit found:
-  //   env <= 8.5, sm >= 1.5, wm <= 0.5: 19-10 (66% WR) on n=29
-  //   Thirds 56%/67%/73% — improving over time, stable across all thirds
-  //   Wilson 95% CI: [47%, 80%]
+  // Fresh n=146 audit (June 5) reveals SIGNAL DECAY:
+  //   - First time-third: 78% WR
+  //   - Middle third: 70% WR
+  //   - Last third: 33-44% WR across most rule variations
   //
-  // Why this works: in cold scoring, run-differential gaps matter more
-  // (fewer runs to spread around — the better team's marginal edge
-  // converts to wins). In hot scoring, anyone can put up 8 runs and a
-  // stronger team's edge gets washed out.
-  if (!awayTeamAbbr || !homeTeamAbbr || !state.projectionAudit) return null;
+  // Root cause: the early backtest period (May 19-26) had league-wide home
+  // WR of 35-47% — anomalous away-favoring stretch. The empirical rolling-
+  // differential rule fit to that environment. As scoring normalized back
+  // to ~50% home WR (May 30 onward), the rule's edge collapsed.
+  //
+  // I cannot find a stable 68%+ rule on the current dataset. Best stable
+  // candidates (60-65% across thirds) hit n<20, too small for confidence.
+  // Honest move: turn the strategy OFF until we either:
+  //   (a) accumulate 60+ days of post-anomaly data, or
+  //   (b) rebuild on a different feature set (run-line implied prob,
+  //       pitcher-day rolling, opposing-bullpen quality)
+  //
+  // When disabled, gl.moneyline falls back to the server's homeWinProb-based
+  // recommendation, which the model probability calibration shows has 52%
+  // baseline accuracy. Not great, but better than a rule actively losing.
+  return null;
 
-  // Environment gate — only fire ML when league is cold
-  const leagueEnv = computeLeagueEnvironment(gameDate, 7);
-  if (leagueEnv == null || leagueEnv > 8.5) {
-    return null;  // Hot env → server's homeWinProb stands
-  }
+  // === DISABLED CODE BELOW — kept for reference / future re-enable ===
+  // (unreachable due to early return above; preserved to make re-enabling
+  // a one-line change rather than a re-implementation)
+  if (!awayTeamAbbr || !homeTeamAbbr || !state.projectionAudit) return null;
 
   // Collect each team's last 15 graded games (excluding the current game's date)
   const awayScored = [];
@@ -4610,127 +4137,50 @@ function computeEmpiricalMLStrategy(awayTeamAbbr, homeTeamAbbr, gameDate) {
     homeDef: +homeDef.toFixed(2),
     awayDiff: +awayDiff.toFixed(2),
     homeDiff: +homeDiff.toFixed(2),
-    leagueEnv: +leagueEnv.toFixed(2),
     sampleSize
   };
 
-  // (Drop #12 — June 5, 2026) Thresholds slightly relaxed:
-  //   weaker team's diff cap: 0 → 0.5 (was over-tight)
-  // Full n=473 audit found this expands sample 19→29 without losing edge.
-  // STRONG: stronger team's diff >= 1.5 AND weaker team's diff <= 0.5
-  if (homeDiff >= 1.5 && awayDiff <= 0.5) {
+  // STRONG: stronger team's diff >= 1.5 AND weaker team's diff <= 0
+  // Direction determined by which team is stronger.
+  if (homeDiff >= 1.5 && awayDiff <= 0) {
     return {
       ...baseStats,
       side: 'HOME',
       tier: 'STRONG',
       units: 1.5,
-      probability: 0.66,
-      backtestWR: 0.66,
-      backtestN: 29,
-      reason: `Empirical HOME ML: home run-differential ${homeDiff.toFixed(2)} vs away ${awayDiff.toFixed(2)} + cold scoring environment (${leagueEnv.toFixed(2)} R/g)`,
+      probability: 0.68,
+      backtestWR: 0.68,
+      backtestN: 31,
+      reason: `Empirical HOME ML: home run-differential ${homeDiff.toFixed(2)} vs away ${awayDiff.toFixed(2)} (strong vs sub-average)`,
       reasoningLines: [
         `Home rolling diff: ${homeDiff.toFixed(2)} R/g (threshold ≥ 1.5)`,
-        `Away rolling diff: ${awayDiff.toFixed(2)} R/g (threshold ≤ 0.5)`,
-        `League cold (${leagueEnv.toFixed(2)} R/g 7-day avg, threshold ≤ 8.5)`,
+        `Away rolling diff: ${awayDiff.toFixed(2)} R/g (threshold ≤ 0)`,
         `Team rolling (last ${sampleSize}): ${homeTeamAbbr} ${homeOff.toFixed(2)} scored / ${homeDef.toFixed(2)} allowed; ${awayTeamAbbr} ${awayOff.toFixed(2)} scored / ${awayDef.toFixed(2)} allowed`,
-        `Backtest (n=473, env-aware): 19-10 (66% WR) on n=29, thirds 56/67/73, +10.9u at -110`
+        `Backtest: 21-10 (68% WR) on n=31, +9.1u at flat -110, stable across time thirds`
       ]
     };
   }
 
-  if (awayDiff >= 1.5 && homeDiff <= 0.5) {
+  if (awayDiff >= 1.5 && homeDiff <= 0) {
     return {
       ...baseStats,
       side: 'AWAY',
       tier: 'STRONG',
       units: 1.5,
-      probability: 0.66,
-      backtestWR: 0.66,
-      backtestN: 29,
-      reason: `Empirical AWAY ML: away run-differential ${awayDiff.toFixed(2)} vs home ${homeDiff.toFixed(2)} + cold scoring environment (${leagueEnv.toFixed(2)} R/g)`,
+      probability: 0.68,
+      backtestWR: 0.68,
+      backtestN: 31,
+      reason: `Empirical AWAY ML: away run-differential ${awayDiff.toFixed(2)} vs home ${homeDiff.toFixed(2)} (strong vs sub-average)`,
       reasoningLines: [
         `Away rolling diff: ${awayDiff.toFixed(2)} R/g (threshold ≥ 1.5)`,
-        `Home rolling diff: ${homeDiff.toFixed(2)} R/g (threshold ≤ 0.5)`,
-        `League cold (${leagueEnv.toFixed(2)} R/g 7-day avg, threshold ≤ 8.5)`,
+        `Home rolling diff: ${homeDiff.toFixed(2)} R/g (threshold ≤ 0)`,
         `Team rolling (last ${sampleSize}): ${awayTeamAbbr} ${awayOff.toFixed(2)} scored / ${awayDef.toFixed(2)} allowed; ${homeTeamAbbr} ${homeOff.toFixed(2)} scored / ${homeDef.toFixed(2)} allowed`,
-        `Backtest (n=473, env-aware): 19-10 (66% WR) on n=29, thirds 56/67/73, +10.9u at -110`
+        `Backtest: 21-10 (68% WR) on n=31, +9.1u at flat -110, stable across time thirds`
       ]
     };
   }
 
   return null;
-}
-
-// ====================================================================
-// (Drop #13 — June 5, 2026) LYRID'S BEST tier banner builder
-//
-// Returns HTML for an animated tier banner when an empirical strategy fires.
-// Tier is derived from backtest WR:
-//   PLATINUM (80%+): OVER_STRONG (81%), YRFI_STRONG (87%)
-//   GOLD     (70-79%): UNDER_STRONG (70%)
-//   SILVER   (65-69%): NRFI_STRONG (66%), ML_STRONG (66%)
-//   BRONZE   reserved for future tiers in 55-64% band
-//
-// `opts.kind` controls layout:
-//   'full' (default) — large banner with subtitle, used above bet card
-//   'compact' — slim inline pill, used inside dense bet rows
-// ====================================================================
-function buildLyridBestBanner(backtestWR, backtestN, opts = {}) {
-  if (backtestWR == null || isNaN(backtestWR)) return '';
-  const wrPct = Math.round(backtestWR * 100);
-
-  let tier, icon;
-  if (wrPct >= 80) {
-    tier = 'platinum';
-    icon = '✦';
-  } else if (wrPct >= 70) {
-    tier = 'gold';
-    icon = '★';
-  } else if (wrPct >= 65) {
-    tier = 'silver';
-    icon = '◆';
-  } else if (wrPct >= 55) {
-    tier = 'bronze';
-    icon = '◇';
-  } else {
-    return '';  // Below 55% — no banner
-  }
-
-  // (Drop #15 — June 5, 2026) Allow custom label so UNDER fades render
-  // as "LYRID UNDER · FS 7" etc. instead of generic "LYRID'S BEST".
-  const title = opts.label || "LYRID'S BEST";
-  const tierLabel = tier.toUpperCase();
-  const sub = backtestN
-    ? `${wrPct}% BACKTEST · n=${backtestN}`
-    : `${wrPct}% BACKTEST`;
-
-  const isCompact = opts.kind === 'compact';
-  const cls = `lyrid-best-banner lyrid-best-${tier}${isCompact ? ' compact' : ''}`;
-  // Escape any special chars in tooltip text for safe HTML attribute embedding
-  const tooltip = opts.tooltip
-    ? ` title="${String(opts.tooltip).replace(/"/g, '&quot;').replace(/\n/g, '&#10;')}"`
-    : '';
-
-  if (isCompact) {
-    return `
-      <div class="${cls}"${tooltip}>
-        <span class="lyrid-best-icon">${icon}</span>
-        <span class="lyrid-best-text"><span class="lyrid-best-title">${title}</span></span>
-        <span class="lyrid-best-tier-badge">${tierLabel}</span>
-      </div>
-    `;
-  }
-
-  return `
-    <div class="${cls}"${tooltip}>
-      <span class="lyrid-best-icon">${icon}</span>
-      <span class="lyrid-best-text">
-        <span class="lyrid-best-title">${title}</span>
-        <span class="lyrid-best-sub">${sub}</span>
-      </span>
-      <span class="lyrid-best-tier-badge">${tierLabel}</span>
-    </div>
-  `;
 }
 
 // Classify a probability (0-1) into a visual tier for styling
@@ -6110,28 +5560,7 @@ function renderAnalysis(data) {
           // probRank in place. The active engine drives the ★ BEST badge;
           // the inactive engine's rank shows as a small secondary chip.
           if (m.propRecs && m.propRecs.length > 0) {
-            // (Drop #14 — June 5, 2026) Stamp hitter context onto each prop
-            // so the Sharp HITS override can read it inside applyMlbEngineRanking
-            // without restructuring the function signature.
-            const _ctxPitcherHand = s.pitcher?.hand || '';
-            m.propRecs.forEach(p => {
-              p._ctxHand = m.hand || '';
-              p._ctxPitcherHand = _ctxPitcherHand;
-              p._ctxAdjustedMaxXwoba = p.adjustedMaxXwoba || m.adjustedMaxXwoba || 0;
-            });
             applyMlbEngineRanking(m.propRecs, state.mlbEngine);
-
-            // (Drop #15 — June 5, 2026) Empirical UNDER engine.
-            // Computes whether this hitter qualifies for a HRR UNDER or
-            // Fantasy Score UNDER recommendation based on backtest patterns.
-            // Result is stamped onto the matchup for downstream rendering.
-            m._empUnderRec = computeEmpiricalUnderProp(m.propRecs, {
-              adjustedMaxXwoba: m.adjustedMaxXwoba ? parseFloat(m.adjustedMaxXwoba) : 0,
-              contextMultiplier: m.cappedContextMultiplier || m.contextMultiplier,
-              recentFormLabel: m.recentFormLabel || m.recentForm?.label,
-              bullpenTier: m.bullpenTier || s.pitcher?.bullpenTier,
-              hand: m.hand
-            });
           }
 
           // =========================================================
@@ -6222,7 +5651,6 @@ function renderAnalysis(data) {
                       ${p.isUnderRecommendation ? `<span class="pp-under-badge" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:${p.underTier === 'STRONG' ? '#7f1d1d' : '#b91c1c'};color:#fff;font-size:8px;font-weight:700;padding:1px 6px;border-radius:100px;letter-spacing:0.08em;white-space:nowrap;${p.underTier === 'STRONG' ? 'box-shadow:0 0 0 1.5px #fbbf24' : ''}" title="${p.underTier === 'STRONG' ? 'STRONG' : 'STANDARD'} UNDER recommendation&#10;&#10;Fade audit returned HIGH RISK on this hitter (fade score ${m._fadeScore || '?'}).&#10;The hitter is structurally unlikely to clear this line.&#10;&#10;${p.underTier === 'STRONG' ? 'STRONG UNDER trigger: ' + (p.underReason || 'highest-confidence under signal') + '&#10;Live hit rate: 78% (n=9, small sample, still validating)&#10;Recommended sizing: 1.5x normal UNDER&#10;&#10;' : ''}Backtested under hit rate: ${p.underHitRate}% (n=${p.underSampleSize})&#10;Validated against live HRR fade-engine data through May 31, 2026.&#10;&#10;This is a backtested rate against actual game outcomes — not an engine probability.">${p.underTier === 'STRONG' ? '⏬⏬ STRONG UNDER' : '⏬ BET UNDER'} ${p.underHitRate}%</span>` : ''}
                       ${p.isSkipRecommendation ? `<span class="pp-skip-badge" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#6b7280;color:#fff;font-size:8px;font-weight:700;padding:1px 6px;border-radius:100px;letter-spacing:0.08em;white-space:nowrap" title="SKIP recommendation\n\nFade audit returned HIGH RISK on this pick (fade score ${m._fadeScore || '?'}).\nUnlike HRR/HITS props where backtested under hit rates are validated (73% / 67%), the under hit rate for ${p.key} props has NOT been validated — recommending an UNDER bet would be guessing.\n\nThe engine considered and rejected this pick. Recommendation: SKIP entirely, do not bet either direction.\n\nReason: ${p.skipReason}">⊘ SKIP</span>` : ''}
                       ${p.platform ? `<span class="pp-platform ${p.platform}">${p.platform}</span>` : ''}
-                      ${p._sharpHits ? `<span class="pp-sharp-hits" style="background:linear-gradient(135deg,#e8e9eb 0%,#c6c9cd 35%,#f5f6f8 50%,#b5b8bc 65%,#d8dadd 100%);color:#1a1d22;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.1em;margin-right:4px;border:1px solid rgba(155,158,162,0.6);text-shadow:0 0 1px rgba(255,255,255,0.5)" title="Lyrid's Sharp HITS&#10;&#10;Empirical override: backtest 43-20 (68% WR) on n=63 graded bets&#10;Rule: ${p._sharpHitsRule === 'R-vs-RHP-high-xwoba' ? 'R hitter vs RHP, xwOBA ≥ 0.60' : 'any hitter vs LHP, xwOBA ≥ 0.45'}&#10;Wilson 95% CI: [56%, 78%]&#10;Stable across time thirds: 67/71/67">✦ SHARP</span>` : ''}
                       <span class="pp-key">${p.label}</span>
                       ${p.probability != null ? `<span class="pp-prob ${probTier(p.probability, p.probabilityBaseline)}" title="Per-game probability: ${(p.probability*100).toFixed(1)}% (baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(1) : '?'}%${p.probabilityPerPa != null ? ', per-PA rate ' + (p.probabilityPerPa*100).toFixed(1) + '%' : ''}${p.expectedPa != null ? ', expected PA ' + p.expectedPa.toFixed(1) : ''})">${(p.probability*100).toFixed(0)}%</span>` : ''}
                       ${secondaryRankChip}
@@ -6333,7 +5761,6 @@ function renderAnalysis(data) {
 
           return `
             <div class="match ${m.tier}${m.isTopPick?' top-pick':''}${m.hrChance?' has-hr-chance':''}">
-              ${m._empUnderRec ? `<div style="padding:10px 12px 0">${buildLyridBestBanner(m._empUnderRec.backtestWR, m._empUnderRec.backtestN, { kind: 'compact', label: 'LYRID UNDER · ' + m._empUnderRec.propLabel, tooltip: m._empUnderRec.reasoningLines.join(' · ') })}</div>` : ''}
               <div class="match-head">
                 <div class="match-hitter">
                   ${m.isTopPick ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}
@@ -8011,21 +7438,13 @@ function renderAnalysis(data) {
         const probHtml = rec.probability != null
           ? `<span class="glb-prob ${probTier(rec.probability)}">${(rec.probability*100).toFixed(0)}%</span>`
           : '<span class="glb-prob"></span>';
-        // (Drop #13 — June 5, 2026) Compact Lyrid's Best banner appears
-        // BELOW the row when this individual bet had an empirical strategy fire.
-        const empBanner = (rec._empStrategyFired && rec._empBacktestWR != null)
-          ? `<div style="margin-top:4px">${buildLyridBestBanner(rec._empBacktestWR, rec._empBacktestN, { kind: 'compact' })}</div>`
-          : '';
         return `
-          <div>
-            <div class="glb-row ${pass ? 'glb-pass' : `glb-${rec.tier.toLowerCase()}`} ${isBest ? 'glb-best-row' : ''}">
-              <span class="glb-type">${typeName}</span>
-              <span class="glb-tier">${rec.tier}</span>
-              <span class="glb-pick">${rec.pick || 'No play'}</span>
-              ${probHtml}
-              ${rec.price ? `<span class="glb-price">${rec.price > 0 ? '+' : ''}${rec.price}</span>` : '<span class="glb-price"></span>'}
-            </div>
-            ${empBanner}
+          <div class="glb-row ${pass ? 'glb-pass' : `glb-${rec.tier.toLowerCase()}`} ${isBest ? 'glb-best-row' : ''}">
+            <span class="glb-type">${typeName}</span>
+            <span class="glb-tier">${rec.tier}</span>
+            <span class="glb-pick">${rec.pick || 'No play'}</span>
+            ${probHtml}
+            ${rec.price ? `<span class="glb-price">${rec.price > 0 ? '+' : ''}${rec.price}</span>` : '<span class="glb-price"></span>'}
           </div>
         `;
       };
@@ -8042,16 +7461,6 @@ function renderAnalysis(data) {
             <span class="glb-disclaimer">Based on projection vs market divergence</span>
           </div>
           <div class="glb-best">
-            ${(() => {
-              // (Drop #13 — June 5, 2026) Lyrid's Best banner when empirical
-              // strategy fired on the overallBest pick (total or moneyline).
-              const t = gl.overallBest.type;
-              const rec = t === 'total' ? gl.total : t === 'moneyline' ? gl.moneyline : null;
-              if (rec && rec._empStrategyFired && rec._empBacktestWR != null) {
-                return buildLyridBestBanner(rec._empBacktestWR, rec._empBacktestN);
-              }
-              return '';
-            })()}
             <div class="glb-best-label">★ BEST PLAY · ${gl.overallBest.tier}</div>
             <div class="glb-best-pick">${typeLabel} · <b>${gl.overallBest.pick}</b>${gl.overallBest.price ? ` <span class="glb-best-price">${gl.overallBest.price > 0 ? '+' : ''}${gl.overallBest.price}</span>` : ''}${gl.overallBest.units ? ` <span class="glb-best-units">${gl.overallBest.units}u</span>` : ''}${gl.overallBest.probability != null ? ` <span class="glb-best-prob ${probTier(gl.overallBest.probability)}" title="Model probability this bet wins">${(gl.overallBest.probability*100).toFixed(0)}%</span>` : ''}</div>
             <ul class="glb-best-reasons">
@@ -8169,15 +7578,6 @@ function renderAnalysis(data) {
             <div class="yrfi-empty">○ <b>NO PLAY</b> — projection within ±3% of 57% baseline. Market priced fair.</div>
           ` : `
             <div class="yrfi-best">
-              ${(() => {
-                // (Drop #13 — June 5, 2026) Lyrid's Best banner when empirical
-                // strategy fired. probabilitySource === 'backtest' means a Drop
-                // #7/#10/#12 rule overrode the model with a backtested edge.
-                if (fi.recommendation._probabilitySource === 'backtest' && fi.recommendation.probability != null) {
-                  return buildLyridBestBanner(fi.recommendation.probability, null);
-                }
-                return '';
-              })()}
               <div class="yrfi-best-label">★ RECOMMENDATION · ${fi.recommendation.tier}</div>
               <div class="yrfi-best-pick">
                 <b>${fi.recommendation.side}</b>
@@ -9703,11 +9103,6 @@ function logBestBets(data) {
         pitcherHand: sideData.pitcher?.hand,
         tier: m.tier,
         isTopPick: true,
-        // (Drop #14 — June 5, 2026) Sharp HITS empirical override audit fields
-        _sharpHits: bestBet._sharpHits || false,
-        _sharpHitsRule: bestBet._sharpHitsRule || null,
-        _sharpHitsBacktestWR: bestBet._sharpHitsBacktestWR || null,
-        _sharpHitsBacktestN: bestBet._sharpHitsBacktestN || null,
         isDeepVerified: true,   // flag so we know this is premium
         // (Phase 1 — May 29, 2026) Fade tier + score for validation tracking
         fadeTier: m._fadeTier || 'normal',
@@ -11288,7 +10683,8 @@ function renderHistory() {
       <button class="history-subnav-btn ${historyView==='rollup'?'active':''}" data-hist-view="rollup" onclick="switchHistoryView('rollup')">∑ ROLLUP</button>
       <button class="history-subnav-btn ${historyView==='picks'?'active':''}" data-hist-view="picks" onclick="switchHistoryView('picks')">$ MY BETS</button>
       <button class="history-subnav-btn ${historyView==='wnba'?'active':''}" data-hist-view="wnba" onclick="switchHistoryView('wnba')">★ WNBA BEST BETS</button>
-      ${historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
+      <button class="history-subnav-btn ${historyView==='wnbagames'?'active':''}" data-hist-view="wnbagames" onclick="switchHistoryView('wnbagames')">◈ WNBA GAME BETS</button>
+      ${historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'wnbagames' ? `<button class="btn sm" onclick="gradeWnbaGameBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
       <button class="btn sm" onclick="gradeAllBestBets()" style="margin-left:6px">⚡ GRADE ALL</button>`}
     </div>
   `;
@@ -11412,6 +10808,7 @@ function renderHistory() {
             <span style="font-weight:600;color:var(--ink)">
               ${e.tier ? `<span style="font-size:9px;font-weight:700;color:${tierColor};letter-spacing:0.06em;margin-right:6px">${esc(e.tier.toUpperCase())}</span>` : ''}
               ${esc(e.player)} <span style="font-weight:400;color:var(--dim);font-size:11px">${esc(e.market)}</span>
+              ${e.inferredLine ? `<span style="font-size:8px;font-weight:700;color:#92400e;background:#fef3c7;padding:1px 5px;border-radius:3px;letter-spacing:0.04em;margin-left:6px" title="No real book line was available — graded against the engine's inferred line">INFERRED</span>` : ''}
               <span style="font-size:10px;color:var(--accent);margin-left:6px">→ view card</span>
             </span>
             <span style="font-size:11px;font-weight:700;color:${col}">${resLabel}</span>
@@ -11426,7 +10823,7 @@ function renderHistory() {
 
     const bestBetsSection = bestBets.length > 0 ? `
       <h3 class="rollup-section-title">★ BEST BETS${bestBetsPending.length ? ` · ${bestBetsPending.length} LIVE` : ''}</h3>
-      <div class="rollup-tier-note">The model's highest-conviction actionable pick per player (real book line, recommended, not PASS). Auto-logged on slate load, graded after games finish.</div>
+      <div class="rollup-tier-note">The model's highest-conviction actionable pick per player. Real book lines preferred; when a day has no real lines, the top inferred-line pick is used instead (tagged INFERRED). Auto-logged on slate load, graded after games finish.</div>
       ${bestBetsPending.length ? `<div style="font-size:10px;letter-spacing:0.1em;color:var(--accent);font-weight:600;margin:8px 0 4px">LIVE / UNGRADED</div>${bestBetsPending.slice(0, 20).map(bestBetRow).join('')}` : ''}
       ${bestBetsGraded.length ? `<div style="font-size:10px;letter-spacing:0.1em;color:var(--dim);font-weight:600;margin:12px 0 4px">GRADED</div>${bestBetsGraded.slice(0, 30).map(bestBetRow).join('')}` : ''}
     ` : `<h3 class="rollup-section-title">★ BEST BETS</h3><div class="empty" style="padding:20px"><div>No best bets logged yet.<br><br>Best bets auto-log when you load a WNBA slate — the model's strongest actionable pick per player (real book line, recommended). They grade automatically after games finish.</div></div>`;
@@ -11456,6 +10853,64 @@ function renderHistory() {
       + `<h3 class="rollup-section-title">ALL GRADED PROPS</h3>`
       + (entryRows || `<div class="empty" style="padding:20px"><div>No graded props yet. Tap ⚡ GRADE ALL after games finish.</div></div>`)
       + `<div class="rollup-footnote">Best bets and all props auto-capture when you load a WNBA slate, and grade against real box scores. Win/loss counts only REAL-line props; inferred-line props track projection error (MAE). Calibration sharpens with volume — aim for 30+ graded per slice before trusting it.</div>`;
+    return;
+  }
+
+  // WNBA GAME BETS view — team total / moneyline / spread tracker
+  if (historyView === 'wnbagames') {
+    const allBets = Object.values(state.wnbaGameBets || {}).sort((a, b) => (b.loggedAt || 0) - (a.loggedAt || 0));
+    if (allBets.length === 0) {
+      container.innerHTML = subnavHtml + `<div class="empty"><div class="empty-icon">◈</div><div>No WNBA game bets logged yet.<br><br>On a WNBA game's projection card, tap <b>+ LOG</b> on the total, moneyline, or spread.<br>They auto-grade against final scores after games finish.</div></div>`;
+      return;
+    }
+    const graded = allBets.filter(b => b.graded && (b.result === 'win' || b.result === 'loss'));
+    const wins = graded.filter(b => b.result === 'win').length;
+    const losses = graded.filter(b => b.result === 'loss').length;
+    const pending = allBets.filter(b => !b.graded).length;
+    const pushes = allBets.filter(b => b.result === 'push').length;
+    const wr = (wins + losses) > 0 ? ((wins / (wins + losses)) * 100).toFixed(1) : '0.0';
+    const units = graded.reduce((s, b) => s + (b.result === 'win' ? (b.units || 1) : b.result === 'loss' ? -(b.units || 1) : 0), 0);
+    const byType = (t) => {
+      const g = graded.filter(b => b.type === t);
+      const w = g.filter(b => b.result === 'win').length, l = g.filter(b => b.result === 'loss').length;
+      return `${w}-${l}`;
+    };
+    const statsBar = `
+      <div class="bb-stats-grid">
+        <div class="bb-stat-card"><div class="bb-stat-label">RECORD</div><div class="bb-stat-value">${wins}-${losses}</div><div class="bb-stat-sub">${wr}% · ${pending} pending</div></div>
+        <div class="bb-stat-card"><div class="bb-stat-label">UNITS P/L</div><div class="bb-stat-value" style="color:${units >= 0 ? 'var(--accent)' : 'var(--danger)'}">${units >= 0 ? '+' : ''}${units.toFixed(2)}u</div><div class="bb-stat-sub">across ${graded.length} graded</div></div>
+        <div class="bb-stat-card"><div class="bb-stat-label">TOTALS</div><div class="bb-stat-value">${byType('total')}</div></div>
+        <div class="bb-stat-card"><div class="bb-stat-label">MONEYLINE</div><div class="bb-stat-value">${byType('moneyline')}</div></div>
+        <div class="bb-stat-card"><div class="bb-stat-label">SPREAD</div><div class="bb-stat-value">${byType('spread')}</div></div>
+      </div>`;
+    const row = (b) => {
+      const k = esc(`${b.date}_${b.gameId}_${b.type}`);
+      const col = b.result === 'win' ? 'var(--accent)' : b.result === 'loss' ? 'var(--danger)' : 'var(--dim)';
+      const resLabel = b.graded ? (b.result || 'pending').toUpperCase() : 'PENDING';
+      const finalStr = b.graded && b.finalAwayScore != null ? ` · final ${esc(b.away)} ${b.finalAwayScore}–${b.finalHomeScore} ${esc(b.home)}` : '';
+      const typeLabel = b.type === 'total' ? 'TOTAL' : b.type === 'moneyline' ? 'ML' : 'SPREAD';
+      return `
+        <div class="glb-history-entry" style="border-left-color:${col}">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:600;color:var(--ink)">
+              <span style="font-size:9px;font-weight:700;color:var(--dim);letter-spacing:0.06em;margin-right:6px">${typeLabel}</span>
+              ${esc(b.pick)} ${b.tier ? `<span style="font-size:9px;color:var(--dim);margin-left:4px">${esc(b.tier.toUpperCase())}</span>` : ''}
+            </span>
+            <span style="display:flex;gap:6px;align-items:center">
+              <span style="font-size:11px;font-weight:700;color:${col}">${resLabel}</span>
+              <button onclick="deleteWnbaGameBet('${k}')" title="delete" style="font-size:10px;color:var(--dim);background:transparent;border:0;cursor:pointer">✕</button>
+            </span>
+          </div>
+          <div style="font-size:10px;color:var(--dim);margin-top:3px">${esc(b.date)} · ${esc(b.away)} @ ${esc(b.home)} · ${b.units || 1}u${finalStr}</div>
+        </div>`;
+    };
+    const pendingBets = allBets.filter(b => !b.graded);
+    const gradedBets = allBets.filter(b => b.graded);
+    container.innerHTML = subnavHtml + statsBar
+      + `<h3 class="rollup-section-title">◈ WNBA GAME BETS${pendingBets.length ? ` · ${pendingBets.length} LIVE` : ''}</h3>`
+      + `<div class="rollup-tier-note">Team totals, moneylines, and spreads you've logged from WNBA game projections. Auto-graded against final scores.</div>`
+      + (pendingBets.length ? `<div style="font-size:10px;letter-spacing:0.1em;color:var(--accent);font-weight:600;margin:8px 0 4px">LIVE / UNGRADED</div>${pendingBets.map(row).join('')}` : '')
+      + (gradedBets.length ? `<div style="font-size:10px;letter-spacing:0.1em;color:var(--dim);font-weight:600;margin:12px 0 4px">GRADED</div>${gradedBets.map(row).join('')}` : '');
     return;
   }
 
@@ -13026,7 +12481,7 @@ function saveNotes() {
 function confirmReset() {
   if (!confirm('Reset ALL data?')) return;
   if (!confirm('Are you sure? Cannot be undone.')) return;
-  state = { picks:{}, banned:{pitchers:[],hitters:[],teams:[]}, notes:'', currentDate:getTodayStr(), researchTags:{}, tracking:{}, bestBetHistory:{}, hrAudit: { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } }, gameLineBets: {}, firstInningBets: {}, projectionAudit: {}, wnbaPropHistory: {}, secretFilter: { enabled: false } };
+  state = { picks:{}, banned:{pitchers:[],hitters:[],teams:[]}, notes:'', currentDate:getTodayStr(), researchTags:{}, tracking:{}, bestBetHistory:{}, hrAudit: { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } }, gameLineBets: {}, firstInningBets: {}, projectionAudit: {}, wnbaPropHistory: {}, wnbaGameBets: {}, secretFilter: { enabled: false } };
   saveState();
   location.reload();
 }
@@ -13222,12 +12677,20 @@ window.captureWnbaPredictions = function(data) {
   const day = state.wnbaPropHistory[date] = state.wnbaPropHistory[date] || {};
 
   // BEST BETS: mirror MLB's top-pick logging. A best bet is a player's single
-  // strongest actionable market — real book line, recommendation not PASS, and a
-  // meaningful edge. We pick the highest-finalEdge qualifying market per player.
+  // strongest actionable market. Normally requires a real book line ('provided').
+  // PATH B: if the ENTIRE day's pool has no real lines (e.g. ALL-STAR tier with no
+  // manual lines entered), fall back to allowing inferred-line props so best bets
+  // still flow — flagged inferredLine:true so the record can distinguish them.
+  // Real lines are always preferred: the fallback only activates when zero real
+  // lines exist that day.
+  const dayHasRealLine = pool.some(p => p.lineSource === 'provided');
   const bestByPlayer = {};
   for (const p of pool) {
     if (!p.player || !p.market) continue;
-    const actionable = (p.lineSource === 'provided')
+    const realLine = p.lineSource === 'provided';
+    // Real-line-only when the day has real lines; otherwise inferred is allowed.
+    const lineQualifies = dayHasRealLine ? realLine : true;
+    const actionable = lineQualifies
       && p.recommendation && p.recommendation !== 'PASS'
       && p.injuryStatus !== 'OUT';
     if (!actionable) continue;
@@ -13260,6 +12723,7 @@ window.captureWnbaPredictions = function(data) {
       lineSource: p.lineSource || 'inferred',
       recommendation: p.recommendation || null,
       isBestBet: bestBetKeys.has(key),
+      inferredLine: bestBetKeys.has(key) && (p.lineSource !== 'provided'),
       confidence: p.confidence ?? null,
       defenseReal: (p.dataCompleteness?.opposingDefense === 'REAL'),
       drivers: p.scores ? {
@@ -13274,6 +12738,98 @@ window.captureWnbaPredictions = function(data) {
     added++;
   });
   if (added > 0) saveState();
+};
+
+// ====================================================================
+// WNBA GAME BETS — team total / moneyline / spread logging + auto-grading.
+// Mirrors the MLB gameLineBets system. Grades against final team scores from
+// /api/wnba/results (byGame), which works on ALL-STAR (no GOAT gate).
+// ====================================================================
+window.logWnbaGameBet = function(ctx) {
+  if (!ctx || !ctx.gameId || !ctx.pick || !ctx.type) return;
+  state.wnbaGameBets = state.wnbaGameBets || {};
+  const date = ctx.date || getTodayStr();
+  const key = `${date}_${ctx.gameId}_${ctx.type}`;
+  if (state.wnbaGameBets[key]) { showToast('Already logged for this game'); return; }
+  state.wnbaGameBets[key] = {
+    date, gameId: ctx.gameId, type: ctx.type,    // 'total' | 'moneyline' | 'spread'
+    pick: ctx.pick,                              // e.g. "OVER 163.5", "CHI ML", "CHI -3.5"
+    tier: ctx.tier || null, units: ctx.units || 1,
+    home: ctx.home, away: ctx.away,
+    projTotal: ctx.projTotal ?? null, projSpread: ctx.projSpread ?? null,
+    edge: ctx.edge ?? null,
+    loggedAt: Date.now(),
+    result: null, graded: false, finalHomeScore: null, finalAwayScore: null,
+  };
+  saveState();
+  showToast(`★ Logged: ${ctx.pick} (${ctx.units || 1}u)`);
+  if (typeof renderHistory === 'function') renderHistory();
+};
+
+function evaluateWnbaGameBet(bet, awayScore, homeScore) {
+  const total = awayScore + homeScore;
+  const margin = homeScore - awayScore;   // positive = home won by this much
+  switch (bet.type) {
+    case 'total': {
+      const m = bet.pick.match(/(OVER|UNDER)\s+([\d.]+)/i);
+      if (!m) return null;
+      const side = m[1].toUpperCase(); const line = parseFloat(m[2]);
+      if (total === line) return 'push';
+      return side === 'OVER' ? (total > line ? 'win' : 'loss') : (total < line ? 'win' : 'loss');
+    }
+    case 'moneyline': {
+      const m = bet.pick.match(/^([A-Z]{2,4})\s+ML/i);
+      if (!m) return null;
+      const team = m[1].toUpperCase(); const homeWon = homeScore > awayScore;
+      if (team === bet.home) return homeWon ? 'win' : 'loss';
+      if (team === bet.away) return !homeWon ? 'win' : 'loss';
+      return null;
+    }
+    case 'spread': {
+      const m = bet.pick.match(/^([A-Z]{2,4})\s+([-+][\d.]+)/i);
+      if (!m) return null;
+      const team = m[1].toUpperCase(); const line = parseFloat(m[2]);
+      const teamMargin = team === bet.home ? margin : -margin;
+      const adjusted = teamMargin + line;
+      if (adjusted === 0) return 'push';
+      return adjusted > 0 ? 'win' : 'loss';
+    }
+    default: return null;
+  }
+}
+
+window.gradeWnbaGameBets = async function(opts = {}) {
+  const silent = opts.silent;
+  state.wnbaGameBets = state.wnbaGameBets || {};
+  const today = getTodayStr();
+  const entries = Object.entries(state.wnbaGameBets).filter(([k, b]) => b.date <= today && !b.graded);
+  if (entries.length === 0) { if (!silent) showToast('No pending game bets to grade'); return; }
+  const byDate = {};
+  entries.forEach(([k, b]) => { (byDate[b.date] = byDate[b.date] || []).push([k, b]); });
+  let graded = 0;
+  for (const date of Object.keys(byDate)) {
+    try {
+      const res = await fetch(`/api/wnba/results?date=${date}`);
+      const data = await res.json();
+      if (!data.ok || !data.byGame) continue;
+      for (const [key, bet] of byDate[date]) {
+        const g = data.byGame[bet.gameId];
+        if (!g || !g.final || g.homeScore == null || g.awayScore == null) continue;
+        const result = evaluateWnbaGameBet(bet, Number(g.awayScore), Number(g.homeScore));
+        if (result == null) continue;
+        state.wnbaGameBets[key] = { ...bet, result, graded: true,
+          finalHomeScore: Number(g.homeScore), finalAwayScore: Number(g.awayScore), gradedAt: Date.now() };
+        graded++;
+      }
+    } catch (err) { if (!silent) console.warn('[gradeWnbaGameBets]', date, err.message); }
+  }
+  if (graded > 0) { saveState(); if (typeof renderHistory === 'function') renderHistory(); }
+  if (!silent) showToast(graded > 0 ? `Graded ${graded} game bets` : 'No newly final games');
+};
+
+window.deleteWnbaGameBet = function(key) {
+  state.wnbaGameBets = state.wnbaGameBets || {};
+  if (state.wnbaGameBets[key]) { delete state.wnbaGameBets[key]; saveState(); if (typeof renderHistory === 'function') renderHistory(); }
 };
 
 // Log best bets for ONE game on the Analyze click (mirrors MLB's logBestBets,
@@ -13294,10 +12850,14 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
   const day = state.wnbaPropHistory[date] = state.wnbaPropHistory[date] || {};
 
   // Strongest actionable market per player in THIS game = the best bet(s).
+  // PATH B: prefer real lines; if THIS game has none, allow inferred so best bets
+  // still flow (flagged inferredLine).
+  const gameHasRealLine = gamePool.some(p => p.lineSource === 'provided');
   const bestByPlayer = {};
   for (const p of gamePool) {
     if (!p.player || !p.market) continue;
-    const actionable = (p.lineSource === 'provided')
+    const lineQualifies = gameHasRealLine ? (p.lineSource === 'provided') : true;
+    const actionable = lineQualifies
       && p.recommendation && p.recommendation !== 'PASS'
       && p.injuryStatus !== 'OUT';
     if (!actionable) continue;
@@ -13332,6 +12892,7 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
       lineSource: p.lineSource || 'inferred',
       recommendation: p.recommendation || null,
       isBestBet: true,
+      inferredLine: (p.lineSource !== 'provided'),
       loggedFromAnalyze: true,
       reasonText,
       reasons,
@@ -13451,6 +13012,9 @@ async function autoGradeOnAppOpen() {
 
   try { if (typeof window.gradeWnbaProps === 'function') await window.gradeWnbaProps({ silent: true }); }
   catch(err) { console.warn('[autoGrade] wnba props failed:', err.message); }
+
+  try { if (typeof window.gradeWnbaGameBets === 'function') await window.gradeWnbaGameBets({ silent: true }); }
+  catch(err) { console.warn('[autoGrade] wnba game bets failed:', err.message); }
 
   // Compute newly-graded delta
   const afterCount = _countGradedBets();
@@ -13984,7 +13548,7 @@ async function autoGradeOnAppOpen() {
 
       ${topPick ? renderTopPickBanner(topPick) : ''}
 
-      ${game.gameLine ? renderGameLineBanner(game.gameLine, aw, hm) : ''}
+      ${game.gameLine ? renderGameLineBanner(game.gameLine, aw, hm, game.gameId) : ''}
 
       <div class="context-banner ctx-three-col" style="margin-top:14px">
         ${renderContextBlock('GAME TOTAL', game.total != null ? game.total : '—', game.total != null ? 'projected pace · O/U' : 'not provided')}
@@ -13998,7 +13562,7 @@ async function autoGradeOnAppOpen() {
   }
 
   // OUR MODEL — engine-projected total/spread/moneyline beside the book line.
-  function renderGameLineBanner(gl, aw, hm) {
+  function renderGameLineBanner(gl, aw, hm, gameId) {
     const fmtSpread = (s) => s == null ? '—' : (s === 0 ? "PICK'EM" : (s > 0 ? '+' : '') + s);
     const fmtAm = (a) => a == null ? '—' : (a > 0 ? '+' + a : '' + a);
     const edgeChip = (label, val, unit) => {
@@ -14049,6 +13613,28 @@ async function autoGradeOnAppOpen() {
               : bits[0];
             return `<div style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--text-primary)"><b>${esc(wt.favorite)}</b> has the edge: ${joined}.</div>`;
           })()}
+          ${gameId ? (() => {
+            // Build the pick strings. Total: lean vs book line if present, else OVER proj.
+            const projTotal = gl.projectedTotal;
+            const bookTotal = book?.total;
+            const totalSide = (bookTotal != null && projTotal != null)
+              ? (projTotal > bookTotal ? 'OVER' : 'UNDER') : 'OVER';
+            const totalLine = bookTotal != null ? bookTotal : projTotal;
+            const totalPick = (totalLine != null) ? `${totalSide} ${totalLine}` : null;
+            // ML: the model's favorite.
+            const mlPick = favAbbr ? `${favAbbr} ML` : null;
+            // Spread: home projected spread (book spread if present).
+            const spreadLine = (book && book.spread != null) ? book.spread : gl.spread;
+            const spreadTeam = (spreadLine != null && spreadLine <= 0) ? hm : aw;
+            const spreadVal = (spreadLine != null) ? (spreadTeam === hm ? spreadLine : -spreadLine) : null;
+            const spreadPick = (spreadVal != null) ? `${spreadTeam} ${spreadVal > 0 ? '+' : ''}${spreadVal}` : null;
+            const mk = (label, type, pick, extra) => pick ? `<button class="btn sm" style="font-size:10px;padding:3px 9px" onclick='logWnbaGameBet(${esc(JSON.stringify({ gameId: String(gameId), type, pick, home: hm, away: aw, projTotal: projTotal ?? null, projSpread: gl.spread ?? null, tier: gl.confidence != null ? (gl.confidence >= 90 ? "strong" : "solid") : null, ...extra }))})'>+ LOG ${label}</button>` : '';
+            return `<div style="display:flex;gap:6px;flex-wrap:wrap;border-top:0.5px solid var(--border-hairline, rgba(0,0,0,0.06));padding-top:10px;margin-top:2px">
+              ${mk(`TOTAL ${totalPick ? esc(totalPick) : ''}`, 'total', totalPick, { edge: gl.edges?.total ?? null })}
+              ${mk(`ML ${mlPick ? esc(mlPick) : ''}`, 'moneyline', mlPick, {})}
+              ${mk(`SPREAD ${spreadPick ? esc(spreadPick) : ''}`, 'spread', spreadPick, { edge: gl.edges?.spread ?? null })}
+            </div>`;
+          })() : ''}
         </div>
       </div>
     `;

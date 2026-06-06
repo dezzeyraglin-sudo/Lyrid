@@ -13,7 +13,7 @@
 // endpoint only supplies the ground truth. Requires BDL_API_KEY + GOAT tier for
 // the stats endpoint; degrades to an empty map otherwise (history stays pending).
 
-import { fetchWnbaPlayerStats, isBdlConfigured } from '../_lib/wnba/bdlFeed.js';
+import { fetchWnbaPlayerStats, fetchWnbaGameScores, isBdlConfigured } from '../_lib/wnba/bdlFeed.js';
 
 export default async function handler(req, res) {
   const url = new URL(req.url, 'http://localhost');
@@ -22,14 +22,20 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: 'date=YYYY-MM-DD required' });
   }
   try {
-    const stats = await fetchWnbaPlayerStats(date, { noCache: true });
+    const [stats, scores] = await Promise.all([
+      fetchWnbaPlayerStats(date, { noCache: true }),
+      fetchWnbaGameScores(date, { noCache: true }),
+    ]);
     return res.status(200).json({
       ok: true,
       date,
       keyConfigured: isBdlConfigured(),
       byPlayer: stats.byPlayer,
       playerCount: Object.keys(stats.byPlayer).length,
+      byGame: scores.byGame,          // final team scores (works on ALL-STAR)
+      byMatchup: scores.byMatchup,
       audit: stats._audit,
+      scoresAudit: scores._audit,
     });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });

@@ -215,6 +215,41 @@ export async function fetchWnbaProps(dateYmd, opts = {}) {
  * Live box scores for in-progress games → quick score map for the UI.
  * @returns { byMatchup: { "AWAY@HOME": { home, away, homeScore, awayScore, status, period, clock } } }
  */
+/**
+ * Fetch FINAL team scores for a date, for grading WNBA game-line bets (total /
+ * moneyline / spread). Uses /games, which works on ALL-STAR (no player_stats /
+ * GOAT gate). Returns games keyed by matchup AND by gameId, with finished flag.
+ *
+ *   { byGame: { "<gameId>": { home, away, homeScore, awayScore, final } },
+ *     byMatchup: { "AWAY@HOME": {...same...} }, _audit }
+ */
+export async function fetchWnbaGameScores(dateYmd, opts = {}) {
+  if (!isBdlConfigured()) return { byGame: {}, byMatchup: {}, _audit: { keyPresent: false } };
+  const cacheKey = `bdl:scores:${dateYmd}`;
+  if (!opts.noCache) { const c = cacheGet(cacheKey); if (c) return c; }
+
+  const games = await bdlGet('/games', { 'dates': [dateYmd], per_page: 100 });
+  if (games.status !== 200) {
+    return { byGame: {}, byMatchup: {}, _audit: { keyPresent: true, httpStatus: games.status, warnings: [`games HTTP ${games.status}`] } };
+  }
+  const byGame = {}, byMatchup = {};
+  for (const g of (games.body?.data || [])) {
+    const home = g.home_team?.abbreviation || g.home_team_abbr;
+    const away = g.visitor_team?.abbreviation || g.away_team_abbr;
+    if (!home || !away) continue;
+    const s = String(g.status || '').toLowerCase();
+    const final = (s === 'post' || s.includes('final') || s === 'f');
+    const homeScore = g.home_score ?? g.home_team_score ?? null;
+    const awayScore = g.away_score ?? g.visitor_team_score ?? null;
+    const rec = { gameId: String(g.id), home, away, homeScore, awayScore, final, status: g.status || null };
+    byGame[String(g.id)] = rec;
+    byMatchup[`${away}@${home}`] = rec;
+  }
+  const result = { byGame, byMatchup, _audit: { keyPresent: true, httpStatus: 200, games: Object.keys(byGame).length } };
+  cacheSet(cacheKey, result);
+  return result;
+}
+
 export async function fetchWnbaLiveScores(opts = {}) {
   if (!isBdlConfigured()) return { byMatchup: {}, _audit: { keyPresent: false } };
   const cacheKey = 'bdl:live';
