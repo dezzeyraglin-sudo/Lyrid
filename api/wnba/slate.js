@@ -801,6 +801,11 @@ async function buildAndRunAnalysis({
       lineBook: lineMeta?.vendor || null,
       propSignal,   // cold-form UNDER tier (or null) for THIS market
       praSignal,    // cold-form UNDER tier (or null) for PRA — fallback when reb/ast not offered
+      // Diagnostic: how many game-log rows the bbref scrape returned for this player,
+      // and the raw cold-form signal magnitude (recent3 − baseline10) for this market.
+      // _recentGames === 0 across the slate => scrape is empty (signal can never fire);
+      // _recentGames ~8-10 with propSignal null => logs fine, just no cold player tonight.
+      _recentGames: (recentForm?.games?.length ?? 0),
       lineOdds: lineMeta ? { over: lineMeta.overOdds, under: lineMeta.underOdds } : null,
       lineUpdatedAt: lineMeta?.updatedAt || null,
       shadowMode: WNBA_SHADOW_MODE,
