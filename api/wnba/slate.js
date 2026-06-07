@@ -63,10 +63,10 @@ import { externalCoverageSignal, externalFoulRate, externalPaceSignal } from "..
 import { buildAuditEntry } from "../_lib/basketball/basketballAudit.js";
 import { getGamesForDate, getTodaysGames } from "../_lib/wnba/wnbaSchedule.js";
 import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
-import { aggregateRecentForm } from "../_lib/wnba/wnbaGameLog.js";
+import { aggregateRecentForm, aggregateFromGames } from "../_lib/wnba/wnbaGameLog.js";
 import { getAllTeamStats } from "../_lib/wnba/wnbaTeamData.js";
 import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
-import { fetchWnbaProps, fetchWnbaSeasonGames } from "../_lib/wnba/bdlFeed.js";
+import { fetchWnbaProps, fetchWnbaSeasonGames, fetchWnbaPlayerSeasonLogs } from "../_lib/wnba/bdlFeed.js";
 import { buildEmpiricalTotals } from "../_lib/wnba/wnbaEmpiricalTotals.js";
 import { evaluatePropSignal } from "../_lib/wnba/wnbaPropSignal.js";
 
@@ -230,6 +230,18 @@ async function generateSlate(opts = {}) {
   const bdlPropMeta = bdlProps.propMeta || {};
   const bdlPropsAvailable = Object.keys(bdlPropLines).length > 0;
 
+  // STEP 2e: Season-wide player game logs from BDL (replaces the bbref scrape,
+  // which Sports-Reference 429-blocks from Vercel's shared IPs). Fetched ONCE per
+  // slate, cached per season, name-keyed. Feeds cold-form recentForm below.
+  let bdlPlayerLogs = { byName: {} };
+  try {
+    bdlPlayerLogs = await fetchWnbaPlayerSeasonLogs(season);
+    const a = bdlPlayerLogs._audit || {};
+    if (a.warnings?.length) warnings.push(...a.warnings.map(w => `BDL logs: ${w}`));
+  } catch (err) {
+    warnings.push(`BDL player logs fetch failed: ${err.message}`);
+  }
+
   // OPPOSING DEFENSE table (pts/reb/ast allowed by position, last 10G). Built once
   // per slate from box scores (ALL-STAR /stats). Cached in Supabase. Fail-safe:
   // on any error this is an empty table and the engine stays neutral (DEF 50).
@@ -363,8 +375,15 @@ async function generateSlate(opts = {}) {
       ];
 
       for (const { player, isHome, opponent, team, v2Roster, v2OpponentRoster } of allPlayers) {
-        // Get recent form once per player (cached for subsequent market calls)
-        const recentFormPromise = aggregateRecentForm(player.id, 10, 'points', season).catch(() => null);
+        // Recent form STRICTLY from BDL box scores (bbref is SR-429'd on Vercel).
+        // Name-keyed (same normalization as the prop-line join); exclude the slate
+        // date and later so there's no same-day leakage. Computed once per player.
+        const _logKey = normPlayerName(player.name);
+        const _bdlGames = ((bdlPlayerLogs.byName?.[_logKey]?.games) || [])
+          .filter(g => !g.date || g.date < date);
+        const recentFormPromise = Promise.resolve(
+          _bdlGames.length ? aggregateFromGames(_bdlGames, 10, 'points') : null
+        );
 
         for (const market of markets) {
           tasks.push(
@@ -491,6 +510,13 @@ async function generateSlate(opts = {}) {
         available: bdlPropsAvailable,
         lineCount: Object.keys(bdlPropLines).length,
         audit: bdlProps?._audit || null,
+      },
+      // BDL season player-logs marker (cold-form recentForm source). players>0 with
+      // statsEndpoint '/player_stats' => feed live; 0 with a warning => endpoint/tier.
+      bdlPlayerLogs: {
+        version: 'bdl-logs-v1',
+        players: Object.keys(bdlPlayerLogs.byName || {}).length,
+        audit: bdlPlayerLogs?._audit || null,
       },
       v2: v2Summary
     }

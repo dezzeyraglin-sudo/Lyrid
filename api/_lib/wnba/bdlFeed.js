@@ -333,6 +333,99 @@ export async function fetchWnbaSeasonGames(season, opts = {}) {
   return result;
 }
 
+// Normalize a player name for cross-source joins (BDL box-score names vs the
+// slate's player.name). Mirrors slate.js normPlayerName.
+function normNameBdl(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\b(jr|sr|ii|iii|iv)\b\.?/g, '')
+    .replace(/[^a-z0-9 ]/g, '')
+    .replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Season-wide player box scores from /player_stats (cursor-paginated), grouped by
+ * NORMALIZED player name → games[] (newest-first). Replaces the bbref game-log
+ * scrape, which Sports-Reference hard-429s from Vercel's shared IPs. Cached per
+ * season. On GOAT set BDL_MIN_GAP_MS=0 so the pages don't serialize behind a 1s gap.
+ *
+ * Each game matches the shape aggregateRecentForm/propSignal expect:
+ *   { date, minutes, points, rebounds, assists, threes, fgm, fga, ftm, fta,
+ *     turnovers, pra, pa, pr, ra }
+ *
+ * @returns {Promise<{ byName: Object, _audit: Object }>}
+ */
+export async function fetchWnbaPlayerSeasonLogs(season, opts = {}) {
+  if (!isBdlConfigured()) return { byName: {}, _audit: { keyPresent: false } };
+  const cacheKey = `bdl:playerlogs:${season}`;
+  if (!opts.noCache) { const c = cacheGet(cacheKey); if (c) return c; }
+
+  // game_id -> date, so rows that only carry a game id can still be dated/sorted.
+  const gameDate = {};
+  try {
+    const sg = await fetchWnbaSeasonGames(season);
+    for (const g of (sg.games || [])) gameDate[String(g.id)] = g.date;
+  } catch (_) { /* non-fatal: rows usually carry their own date */ }
+
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+  const parseMin = (v) => {
+    if (v == null || v === '') return 0;
+    const s = String(v);
+    if (s.includes(':')) { const [m, sec] = s.split(':').map(Number); return Number.isFinite(m) ? Number((m + (Number(sec) || 0) / 60).toFixed(2)) : 0; }
+    const n = Number(s); return Number.isFinite(n) ? n : 0;
+  };
+
+  const byName = {};
+  const warnings = [];
+  let cursor = null, pages = 0, rows = 0, endpoint = null;
+  while (pages < 80) {
+    const params = { 'seasons[]': season, per_page: 100 };
+    if (cursor != null) params.cursor = cursor;
+    const st = await fetchStatsRows(params);
+    endpoint = st.path || endpoint;
+    if (st.status === 401) { warnings.push(`player_stats 401 — GOAT tier required (${st.path})`); break; }
+    if (st.status !== 200) { warnings.push(`player_stats HTTP ${st.status} (${st.path})`); break; }
+    for (const r of (st.body?.data || [])) {
+      const name = playerName(r) || playerName({ player: r.player });
+      if (!name) continue;
+      const gid = String(r.game?.id ?? r.game_id ?? '');
+      const date = ((r.game?.date || r.date || gameDate[gid] || '')).slice(0, 10) || null;
+      const minutes = parseMin(r.min ?? r.minutes);
+      const points = num(r.pts ?? r.points);
+      const rebounds = num(r.reb ?? r.rebounds ?? r.total_rebounds);
+      const assists = num(r.ast ?? r.assists);
+      const threes = num(r.fg3m ?? r.three_pointers_made ?? r.fg3);
+      const didPlay = minutes > 0 || points != null || rebounds != null;
+      if (!didPlay) continue;   // drop DNPs so they don't poison cold-form
+      const p = points ?? 0, rb = rebounds ?? 0, as = assists ?? 0;
+      const key = normNameBdl(name);
+      (byName[key] = byName[key] || { name, games: [] }).games.push({
+        date, minutes,
+        points: p, rebounds: rb, assists: as, threes: threes ?? 0,
+        fgm: num(r.fgm ?? r.field_goals_made) ?? 0, fga: num(r.fga ?? r.field_goals_attempted) ?? 0,
+        ftm: num(r.ftm ?? r.free_throws_made) ?? 0, fta: num(r.fta ?? r.free_throws_attempted) ?? 0,
+        turnovers: num(r.turnover ?? r.turnovers ?? r.tov) ?? 0,
+        pra: p + rb + as, pa: p + as, pr: p + rb, ra: rb + as,
+      });
+      rows++;
+    }
+    cursor = st.body?.meta?.next_cursor;
+    pages++;
+    if (cursor == null) break;
+  }
+
+  // newest-first per player
+  for (const k of Object.keys(byName)) {
+    byName[k].games.sort((a, b) => (a.date && b.date) ? (a.date < b.date ? 1 : a.date > b.date ? -1 : 0) : 0);
+  }
+
+  const result = { byName, _audit: { keyPresent: true, season, statsEndpoint: endpoint,
+    players: Object.keys(byName).length, rows, pages, warnings } };
+  cacheSet(cacheKey, result);
+  return result;
+}
+
 export async function fetchWnbaLiveScores(opts = {}) {
   if (!isBdlConfigured()) return { byMatchup: {}, _audit: { keyPresent: false } };
   const cacheKey = 'bdl:live';

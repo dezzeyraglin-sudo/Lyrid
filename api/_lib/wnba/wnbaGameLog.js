@@ -235,6 +235,65 @@ export async function aggregateRecentForm(playerId, n = 10, market = 'points', s
   };
 }
 
+/**
+ * Aggregate recent form from a PRE-FETCHED games array (newest-first), with the
+ * exact return shape of aggregateRecentForm. Used when game logs come from a
+ * source other than the per-player bbref fetch (e.g. BDL season logs), so the
+ * slate/propSignal path is unchanged.
+ *
+ * @param {Array<Object>} allGames - newest-first; each { minutes, points,
+ *        rebounds, assists, threes, fgm, fga, ftm, fta, turnovers, pra, pa, pr }
+ * @param {number} n - window
+ * @param {string} market
+ * @returns {Object|null}
+ */
+export function aggregateFromGames(allGames, n = 10, market = 'points') {
+  const games = (allGames || []).slice(0, n);
+  if (games.length === 0) return null;
+
+  const totals = { games: games.length, minutes: 0, points: 0, rebounds: 0, assists: 0,
+    threes: 0, fgm: 0, fga: 0, ftm: 0, fta: 0, turnovers: 0 };
+  for (const g of games) {
+    totals.minutes += g.minutes || 0;
+    totals.points += g.points || 0;
+    totals.rebounds += g.rebounds || 0;
+    totals.assists += g.assists || 0;
+    totals.threes += g.threes || 0;
+    totals.fgm += g.fgm || 0;
+    totals.fga += g.fga || 0;
+    totals.ftm += g.ftm || 0;
+    totals.fta += g.fta || 0;
+    totals.turnovers += g.turnovers || 0;
+  }
+
+  const minutesArr = games.map(g => g.minutes || 0);
+  const minutesMean = totals.minutes / games.length;
+  const minutesVar = minutesArr.reduce((s, m) => s + (m - minutesMean) ** 2, 0) / games.length;
+  const minutesCv = minutesMean > 0 ? Math.sqrt(minutesVar) / minutesMean : 0;
+
+  const marketKey = String(market).toLowerCase();
+  let recentAvg;
+  if (marketKey.includes('rebound')) recentAvg = totals.rebounds / games.length;
+  else if (marketKey.includes('assist')) recentAvg = totals.assists / games.length;
+  else if (marketKey.includes('three') || marketKey.includes('3pm')) recentAvg = totals.threes / games.length;
+  else if (marketKey.includes('pra')) recentAvg = (totals.points + totals.rebounds + totals.assists) / games.length;
+  else if (marketKey === 'pa') recentAvg = (totals.points + totals.assists) / games.length;
+  else if (marketKey === 'pr') recentAvg = (totals.points + totals.rebounds) / games.length;
+  else recentAvg = totals.points / games.length;
+
+  return {
+    gamesUsed: games.length,
+    recentAvg: Number(recentAvg.toFixed(2)),
+    minutesAvg: Number(minutesMean.toFixed(2)),
+    minutesCv: Number(minutesCv.toFixed(3)),
+    last5Avg: gamesAvg(games.slice(0, 5), marketKey),
+    last10Avg: gamesAvg(games.slice(0, 10), marketKey),
+    minutesLast5: gamesAvg(games.slice(0, 5), 'minutes'),
+    totals,
+    games
+  };
+}
+
 function gamesAvg(games, key) {
   if (games.length === 0) return 0;
   let total = 0;
