@@ -4295,8 +4295,17 @@ function loadState() {
   }
 }
 function saveState() {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-  catch(e) { showToast('Save failed', true); }
+  try {
+    // Don't persist state.raw — it's the full live slate (games + analyses + 198
+    // players of season logs), re-fetched on every load. Serializing it pushed the
+    // blob past the ~5MB localStorage quota, so setItem threw, the catch swallowed it,
+    // and every freshly logged pick/game-bet was silently dropped (never persisted →
+    // History reads empty after the next load). Everything durable still saves.
+    const { raw, ...persist } = state;
+    localStorage.setItem(LS_KEY, JSON.stringify(persist));
+  } catch (e) {
+    showToast('Save failed — storage full', true);
+  }
 }
 
 function showToast(msg, danger) {
