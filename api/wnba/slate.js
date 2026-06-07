@@ -1254,6 +1254,43 @@ async function readBody(req) {
   });
 }
 
+// ── ONE-SHOT bbref DIAGNOSTIC (opt-in via ?bbrefProbe=1) ──────────────────────
+// Fetches a known WNBA game-log page directly from THIS environment (i.e. Vercel)
+// and reports exactly what basketball-reference returns here: HTTP status, size,
+// page title, whether the wnba_pgl_basic table is present, and any block/challenge
+// markers. This is the instrument for "game logs empty in prod but fine locally" —
+// it shows whether bbref serves Vercel a 200+table, a 403/429, or a bot-challenge
+// interstitial. Zero overhead unless the param is set.
+async function runBbrefProbe() {
+  const url = 'https://www.basketball-reference.com/wnba/players/p/plumke01w/gamelog/2026';
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+  };
+  const started = Date.now();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const r = await fetch(url, { headers, signal: controller.signal });
+    const text = await r.text().catch(() => '');
+    clearTimeout(timer);
+    const titleMatch = text.match(/<title>([^<]*)<\/title>/i);
+    return {
+      url,
+      httpStatus: r.status,
+      ms: Date.now() - started,
+      bytes: text.length,
+      hasGamelogTable: text.includes('wnba_pgl_basic'),
+      title: titleMatch ? titleMatch[1].trim().slice(0, 120) : null,
+      blockMarkers: ['just a moment', 'cloudflare', 'rate limited', 'access denied', 'captcha', 'enable javascript', '403 forbidden']
+        .filter(m => text.toLowerCase().includes(m)),
+    };
+  } catch (err) {
+    return { url, error: err.name === 'AbortError' ? 'timeout (8s)' : err.message, ms: Date.now() - started };
+  }
+}
+
 export default async function handler(req, res) {
   if (!WNBA_ENABLED) {
     return res.status(503).json({ ok: false, error: "WNBA endpoint disabled (WNBA_ENABLED=false)" });
@@ -1273,6 +1310,9 @@ export default async function handler(req, res) {
 
   try {
     const body = await readBody(req);
+    // Opt-in bbref diagnostic: ?bbrefProbe=1 attaches a one-shot live fetch result.
+    const wantBbrefProbe = /[?&]bbrefProbe=1\b/.test(req.url || '');
+    const bbrefProbe = wantBbrefProbe ? await runBbrefProbe() : undefined;
 
     // GET request (or POST with empty body): generate today's slate with defaults
     if (req.method === 'GET' || Object.keys(body).length === 0) {
@@ -1282,6 +1322,7 @@ export default async function handler(req, res) {
         generatedAt: new Date().toISOString(),
         shadowMode: WNBA_SHADOW_MODE,
         v2ProjectionsEnabled: WNBA_V2_PROJECTIONS,
+        ...(bbrefProbe ? { bbrefProbe } : {}),
         ...slate
       });
     }
@@ -1300,6 +1341,7 @@ export default async function handler(req, res) {
       generatedAt: new Date().toISOString(),
       shadowMode: WNBA_SHADOW_MODE,
       v2ProjectionsEnabled: WNBA_V2_PROJECTIONS,
+      ...(bbrefProbe ? { bbrefProbe } : {}),
       ...slate
     });
   } catch (err) {
