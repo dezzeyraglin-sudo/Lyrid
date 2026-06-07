@@ -806,6 +806,7 @@ async function buildAndRunAnalysis({
       // _recentGames === 0 across the slate => scrape is empty (signal can never fire);
       // _recentGames ~8-10 with propSignal null => logs fine, just no cold player tonight.
       _recentGames: (recentForm?.games?.length ?? 0),
+      _playerId: player.id ?? null,   // diag: what gets passed to aggregateRecentForm (must be a bbref slug like "plumke01w")
       lineOdds: lineMeta ? { over: lineMeta.overOdds, under: lineMeta.underOdds } : null,
       lineUpdatedAt: lineMeta?.updatedAt || null,
       shadowMode: WNBA_SHADOW_MODE,
