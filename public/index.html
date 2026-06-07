@@ -1725,6 +1725,25 @@
     font-size: 8.5px;
   }
 
+  /* (Drop #16 — June 7, 2026) HR-Trap warning badge — appears when NRFI got demoted
+     for being in an HR-friendly park where the rule's true edge is unreliable. */
+  .hr-trap-warning {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 50%, #fcd34d 100%);
+    color: #78350f;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    padding: 5px 9px;
+    border-radius: 5px;
+    border: 1px solid rgba(180, 83, 9, 0.4);
+    text-transform: uppercase;
+    margin: 0 0 10px 0;
+    line-height: 1.3;
+  }
+
   @media (max-width: 480px) {
     .lyrid-best-banner {
       padding: 9px 11px;
@@ -4370,6 +4389,59 @@ function computeLeagueEnvironment(gameDate, lookbackDays = 7) {
 
   if (totals.length < 10) return null;
   return totals.reduce((s, v) => s + v, 0) / totals.length;
+}
+
+// ====================================================================
+// (Drop #16 — June 7, 2026) HR-TRAP DETECTOR FOR FIRST-INNING NRFI BETS
+//
+// Audit on n=20 graded NRFI rule fires (Drop #10: proj >= 9.5, model <= 0.60):
+//   Baseline: 13-7 (65% WR)
+//
+// Split by park HR conditions (read from hrAudit criteria text):
+//   park <+10% HR AND home != COL: 9-2 (82% WR) on n=11 ← KEEP STRONG
+//   park ≥+10% HR OR home == COL:  4-5 (44% WR) on n=9  ← DEMOTE
+//
+// Coors Field is uniquely brutal (40% NRFI WR on n=5) — altitude causes
+// early-inning damage the projTotal model doesn't capture. The model
+// thinks projTotal=12 just means "more runs late," but reality is HRs
+// come in the 1st as often as the 6th at Coors.
+//
+// Returns { trap: true, reason: '...' } when an HR-trap is detected,
+// { trap: false } otherwise. Caller demotes NRFI tier STRONG → SLIGHT
+// and suppresses the LYRID'S BEST banner.
+// ====================================================================
+function detectFirstInningHrTrap(gamePk, homeTeamAbbr) {
+  // Coors Field is the clearest single-park signal.
+  if (homeTeamAbbr === 'COL') {
+    return { trap: true, reason: 'Coors Field altitude bias (NRFI 40% on n=5)' };
+  }
+
+  // Check hrAudit criteria text for park boost ≥ +10% HR on any hitter in this game.
+  // The criteria field encodes park + weather + wind into strings like
+  // "Yankee Stadium (+17% HR)" or "Hot (93°F) + wind ↗ (+12% HR)".
+  if (!state.hrAudit || !Array.isArray(state.hrAudit.entries)) {
+    return { trap: false };
+  }
+  const gameEntries = state.hrAudit.entries.filter(e => e.gamePk === gamePk);
+  let maxParkBoost = 0;
+  let maxLabel = '';
+  for (const e of gameEntries) {
+    if (!Array.isArray(e.criteria)) continue;
+    for (const c of e.criteria) {
+      const m = String(c).match(/\(\+(\d+)% HR\)/);
+      if (m) {
+        const v = parseInt(m[1], 10);
+        if (v > maxParkBoost) {
+          maxParkBoost = v;
+          maxLabel = c;
+        }
+      }
+    }
+  }
+  if (maxParkBoost >= 10) {
+    return { trap: true, reason: `HR-friendly conditions: ${maxLabel}` };
+  }
+  return { trap: false };
 }
 
 function computeEmpiricalTotalStrategy(awayTeamAbbr, homeTeamAbbr, gameDate, marketTotal) {
@@ -8122,6 +8194,32 @@ function renderAnalysis(data) {
     let firstInningHtml = '';
     const fi = data.firstInning;
     if (fi) {
+      // (Drop #16 — June 7, 2026) HR-TRAP DEMOTION for first-inning NRFI bets.
+      //
+      // The Drop #10 NRFI rule (proj >= 9.5, model <= 0.60) backtested 13-7
+      // (65%) on n=20 — but losses cluster in HR-friendly parks. Split:
+      //   park <+10% AND home != COL: 9-2 (82%) on n=11  ← keep STRONG
+      //   park ≥+10% OR home == COL:  4-5 (44%) on n=9   ← demote
+      //
+      // On detection: tier STRONG → SLIGHT, no LYRID'S BEST banner, but the
+      // pick stays visible with a yellow "HR-TRAP" warning showing why.
+      // The user still sees the call; LYRID's name just isn't on it.
+      if (fi.recommendation.side === 'NRFI'
+          && fi.recommendation.tier === 'STRONG'
+          && fi.recommendation._probabilitySource === 'backtest') {
+        const trapCheck = detectFirstInningHrTrap(data.gamePk, data.homeTeam?.abbreviation);
+        if (trapCheck.trap) {
+          fi.recommendation._hrTrap = true;
+          fi.recommendation._hrTrapReason = trapCheck.reason;
+          fi.recommendation._originalTierBeforeTrap = fi.recommendation.tier;
+          fi.recommendation._originalUnitsBeforeTrap = fi.recommendation.units;
+          fi.recommendation.tier = 'SLIGHT';
+          fi.recommendation.units = 0.5;
+          fi.recommendation._strategyReason = (fi.recommendation._strategyReason || '')
+            + ` | HR-TRAP demotion: ${trapCheck.reason} (NRFI 44% in trap zone on n=9 vs 82% clean on n=11)`;
+        }
+      }
+
       const tierClass = fi.recommendation.tier.toLowerCase();
       const isPass = fi.recommendation.tier === 'PASS';
       // (Drop #7 hotfix — June 3, 2026) Guard against null probability rendering as 0.0%
@@ -8152,7 +8250,11 @@ function renderAnalysis(data) {
         _originalProb: fi.recommendation._originalProb || null,
         _strategyReason: fi.recommendation._strategyReason || null,
         _directionMatch: fi.recommendation._directionMatch,
-        _probabilitySource: fi.recommendation._probabilitySource || null
+        _probabilitySource: fi.recommendation._probabilitySource || null,
+        // (Drop #16 — June 7, 2026) HR-trap demotion audit fields
+        _hrTrap: fi.recommendation._hrTrap || false,
+        _hrTrapReason: fi.recommendation._hrTrapReason || null,
+        _originalTierBeforeTrap: fi.recommendation._originalTierBeforeTrap || null
       }).replace(/'/g, '&#39;');
 
       firstInningHtml = `
@@ -8175,6 +8277,12 @@ function renderAnalysis(data) {
                 // (Drop #13 — June 5, 2026) Lyrid's Best banner when empirical
                 // strategy fired. probabilitySource === 'backtest' means a Drop
                 // #7/#10/#12 rule overrode the model with a backtested edge.
+                // (Drop #16 — June 7, 2026) HR-TRAP suppresses the banner —
+                // tier got demoted because the matchup is in an HR-friendly
+                // park where the rule's edge collapses (44% vs 82% clean).
+                if (fi.recommendation._hrTrap) {
+                  return `<div class="hr-trap-warning" title="${(fi.recommendation._hrTrapReason || '').replace(/"/g, '&quot;')}">⚠ HR-TRAP · TIER DEMOTED · ${fi.recommendation._hrTrapReason || ''}</div>`;
+                }
                 if (fi.recommendation._probabilitySource === 'backtest' && fi.recommendation.probability != null) {
                   return buildLyridBestBanner(fi.recommendation.probability, null);
                 }
