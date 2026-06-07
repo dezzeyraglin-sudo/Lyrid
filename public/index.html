@@ -14623,6 +14623,47 @@ async function autoGradeOnAppOpen() {
       || (sc.finalEdge >= 70 ? 'HIGH CONF' : sc.finalEdge >= 55 ? 'MED CONF' : 'LOW CONF');
     const confClass = /HIGH/i.test(conf) ? 'high' : /MED/i.test(conf) ? 'med' : 'low';
 
+    // Plain-language reason for ONE market's lean — picks the 1-2 most salient
+    // real drivers (cold-form signal, recent form, defense matchup, teammate-out
+    // boost, minutes stability) and falls back to a proj-vs-line statement.
+    const wnbaMarketReason = (p, proj, edge) => {
+      const c = p.playerContext || {};
+      const m = p.multipliers || {};
+      const dc2 = p.dataCompleteness || {};
+      const n2 = (v) => (v != null && Number.isFinite(Number(v))) ? Number(v) : null;
+      const bits = [];
+      if (p.propSignal && p.propSignal.side === 'UNDER') {
+        const sg = p.propSignal;
+        bits.push(`cold form — last 3 ≈ <b style="color:var(--text-primary)">${sg.recent}</b> vs <b style="color:var(--text-primary)">${sg.baseline}</b> baseline${sg.sharpened ? ', minutes shrinking' : ''}`);
+      } else {
+        const se = n2(c.seasonAvg), l5 = n2(c.last5Avg);
+        if (se != null && l5 != null && se > 0) {
+          const dp = (l5 - se) / se;
+          if (dp >= 0.10) bits.push(`hot — last 5 <b style="color:var(--text-primary)">${l5.toFixed(1)}</b> over <b>${se.toFixed(1)}</b> season`);
+          else if (dp <= -0.10) bits.push(`cooling — last 5 <b style="color:var(--text-primary)">${l5.toFixed(1)}</b> under <b>${se.toFixed(1)}</b> season`);
+        }
+      }
+      if (dc2.opposingDefense === 'REAL' && n2(m.matchup_opposingDefense) != null) {
+        const dm = n2(m.matchup_opposingDefense);
+        if (dm > 1.03) bits.push(`soft ${esc(p.opponent || '')} defense for ${esc(p.market)}`);
+        else if (dm < 0.97) bits.push(`tough ${esc(p.opponent || '')} defense for ${esc(p.market)}`);
+      }
+      if (p.benefitsFrom && Array.isArray(p.benefitsFrom.out) && p.benefitsFrom.out.length) {
+        bits.push(`+${p.benefitsFrom.minGain} proj min (${esc(p.benefitsFrom.out.join(', '))} out)`);
+      }
+      if (!bits.length && n2(c.minutesCv) != null) {
+        if (n2(c.minutesCv) <= 0.15) bits.push('locked minutes role');
+        else if (n2(c.minutesCv) >= 0.30) bits.push('swingy minutes — volatile');
+      }
+      const out = bits.filter(Boolean).slice(0, 2).join(' · ');
+      if (out) return out;
+      if (proj && proj.projection != null && p.line != null && edge != null && Number.isFinite(edge)) {
+        if (Math.abs(edge) < 0.5) return 'projection sits on the line — no clear edge';
+        return `model projects ${edge > 0 ? 'above' : 'below'} the line by <b style="color:var(--text-primary)">${Math.abs(edge).toFixed(1)}</b>`;
+      }
+      return '';
+    };
+
     // Per-market rows — projection dominant, edge colored, line + band secondary.
     const marketRows = props.map((p, i) => {
       const proj = getProjectionForProp(p);
@@ -14683,16 +14724,33 @@ async function autoGradeOnAppOpen() {
           </div>`;
       };
       const sigTags = [sigBanner(p.propSignal, ''), (p.praSignal ? sigBanner(p.praSignal, 'PRA') : '')].filter(Boolean).join('');
+      // Clear lean: cold-form UNDER signal wins; else edge past a 0.5 threshold; else no edge.
+      const _projN = (proj.projection != null && Number.isFinite(Number(proj.projection))) ? Number(proj.projection) : null;
+      const _lineN = (p.line != null && Number.isFinite(Number(p.line))) ? Number(p.line) : null;
+      const _edge = (_projN != null && _lineN != null) ? (_projN - _lineN) : (p.edge ?? null);
+      const _ea = _edge != null && Number.isFinite(_edge) ? Math.abs(_edge) : null;
+      let _leanTxt, _leanColor, _leanBg;
+      if (p.propSignal && p.propSignal.side === 'UNDER') {
+        _leanTxt = `LEAN UNDER${_ea != null ? ' ' + _ea.toFixed(1) : ''}`; _leanColor = '#7f1d1d'; _leanBg = '#fee2e2';
+      } else if (p.recommendation === 'PASS' || _ea == null || _ea < 0.5) {
+        _leanTxt = 'NO EDGE'; _leanColor = 'var(--text-secondary, var(--dim))'; _leanBg = 'var(--panel-2, rgba(0,0,0,0.05))';
+      } else if (_edge > 0) {
+        _leanTxt = `LEAN OVER ${_ea.toFixed(1)}`; _leanColor = '#14532d'; _leanBg = '#dcfce7';
+      } else {
+        _leanTxt = `LEAN UNDER ${_ea.toFixed(1)}`; _leanColor = '#7f1d1d'; _leanBg = '#fee2e2';
+      }
+      const _hasBook = p.lineSource === 'provided';
+      const _bookTag = _hasBook ? (p.lineBook ? esc(p.lineBook) : 'BOOK') : 'MODEL';
+      const _reason = wnbaMarketReason(p, proj, _edge);
       return `
-        <div style="display:grid;grid-template-columns:14px 92px 1fr auto auto;align-items:baseline;gap:10px;padding:7px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
-          ${star}
-          <span style="font-size:11px;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.07em;font-weight:600">${esc(p.market)}</span>
-          <span style="font-size:11px;color:var(--text-secondary, var(--dim))">line <b style="color:var(--text-primary);font-weight:600">${p.line}</b> ${bookLabel}</span>
-          <span style="display:flex;align-items:baseline;gap:8px;justify-content:flex-end">
-            <span style="font-size:18px;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${isOut ? 'OUT' : projStr}</span>
-            ${bandStr}
-          </span>
-          <span style="font-size:12px;font-weight:600;color:${edgeColor};font-variant-numeric:tabular-nums;min-width:50px;text-align:right">${edgeStr}</span>
+        <div style="padding:9px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
+          <div style="display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap">
+            <span style="min-width:74px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-primary)">${i === 0 ? '<span style="color:var(--accent, #c9a45e)" title="strongest edge for this player">★</span> ' : ''}${esc(p.market)}</span>
+            <span style="font-size:12px;color:var(--text-secondary, var(--dim))" title="what the tool projects this player finishes with">Tool <b style="font-size:16px;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${isOut ? 'OUT' : (_projN != null ? _projN.toFixed(1) : '—')}</b></span>
+            <span style="font-size:12px;color:var(--text-secondary, var(--dim))" title="${_hasBook ? 'real sportsbook line' : 'no book line — engine-inferred'}">${_hasBook ? 'Book' : 'Model line'} <b style="font-size:16px;color:var(--text-primary);font-variant-numeric:tabular-nums">${_lineN != null ? _lineN : '—'}</b> <span style="font-size:8px;text-transform:uppercase;letter-spacing:0.04em;opacity:0.85">${_bookTag}</span></span>
+            <span style="margin-left:auto;font-size:10px;font-weight:800;letter-spacing:0.04em;color:${_leanColor};background:${_leanBg};padding:3px 9px;border-radius:100px;white-space:nowrap" title="tool lean vs the line (gap between projection and line)">${esc(_leanTxt)}</span>
+          </div>
+          ${_reason ? `<div style="margin-top:5px;font-size:11px;line-height:1.5;color:var(--text-secondary, var(--dim))">${_reason}</div>` : ''}
         </div>
         ${sigTags}
       `;
@@ -14822,7 +14880,7 @@ async function autoGradeOnAppOpen() {
         </div>
 
         <div class="prop-recs">
-          <div class="prop-rec-label">PROP PROJECTIONS · MODEL vs LINE</div>
+          <div class="prop-rec-label">POINTS · REBOUNDS · ASSISTS — TOOL PROJECTION vs BOOK LINE</div>
           ${marketRows}
         </div>
 
