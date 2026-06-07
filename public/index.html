@@ -3661,6 +3661,16 @@
 
       renderSignedIn(session, currentMe);
       authReady = true;
+      // (Drop #20 — June 7, 2026) Hydrate audit stores from server now that we
+      // have a valid session. This ensures empirical strategies fire on every
+      // device, not just the one that locally accumulated history.
+      try {
+        if (window.LyridAuditSync) {
+          LyridAuditSync.hydrate({ full: false });
+        }
+      } catch (err) {
+        console.warn('[lyrid-auth] audit hydrate failed:', err.message);
+      }
     } catch (err) {
       console.warn('[lyrid-auth] refreshAuthState failed:', err.message);
       setAuthState('signed-out');
@@ -4593,6 +4603,261 @@ function saveState() {
   try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
   catch(e) { showToast('Save failed', true); }
 }
+
+// ============================================================================
+// (Drop #20 — June 7, 2026) CROSS-DEVICE AUDIT SYNC
+//
+// Empirical strategies (Drop #12 totals/ML, Drop #16 HR-trap, Drop #17/18 HR
+// tiers, Drop #14/15 prop overrides) all read from state.projectionAudit and
+// state.hrAudit. Those used to live only in browser localStorage, so devices
+// without accumulated history couldn't fire the strategies — same user, same
+// game, PLATINUM on mobile / NO PLAY on desktop.
+//
+// This module syncs both audit stores through the server (Supabase) so every
+// device has the same corpus.
+//
+//   On auth ready  → /api/audit/load (full hydrate first time, incremental after)
+//   On grade/log   → /api/audit/sync (push only the changed entries)
+//
+// The sync is best-effort. If the server is unreachable, the local state still
+// works — just with the device-local subset. We never block UI on sync.
+// ============================================================================
+const LyridAuditSync = (function() {
+  const WATERMARK_KEY = 'lyrid_audit_watermark_v1';
+  let isHydrating = false;
+  let lastFullLoad = 0;
+  // Track which keys we've successfully pushed so we don't repeat-push unchanged rows.
+  // Map: key → JSON.stringify of the entry at last successful push.
+  const projectionPushedHash = new Map();
+  const hrPushedHash = new Map();
+  // Coalesce many small writes into a single network call
+  let pendingProjection = new Set();
+  let pendingHr = new Set();
+  let flushTimer = null;
+  const FLUSH_DELAY_MS = 1500;
+
+  function getWatermark() {
+    try { return localStorage.getItem(WATERMARK_KEY) || null; } catch(_) { return null; }
+  }
+  function setWatermark(w) {
+    try { if (w) localStorage.setItem(WATERMARK_KEY, w); } catch(_) {}
+  }
+
+  // -------------------------------------------------------------------------
+  // Hydrate from server. Merges server data INTO local state. Server is the
+  // source of truth for any key both stores have — local writes that haven't
+  // been pushed yet are preserved because we union, not overwrite.
+  // -------------------------------------------------------------------------
+  async function hydrate(options = {}) {
+    if (isHydrating) return;
+    isHydrating = true;
+    try {
+      const watermark = options.full ? null : getWatermark();
+      const url = '/api/audit/load' + (watermark ? `?since=${encodeURIComponent(watermark)}` : '');
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) {
+        if (res.status === 401) {
+          // Not signed in or session expired — fail quietly, fall back to local only
+          return;
+        }
+        console.warn('[audit-sync] hydrate failed:', res.status);
+        return;
+      }
+      const payload = await res.json();
+      if (!payload || payload.ok !== true) return;
+
+      // Merge projectionAudit — server wins on conflict ONLY if its entry
+      // is more complete (graded=true beats graded=false). Otherwise union.
+      state.projectionAudit = state.projectionAudit || {};
+      for (const [key, srv] of Object.entries(payload.projectionAudit || {})) {
+        const local = state.projectionAudit[key];
+        if (!local) {
+          state.projectionAudit[key] = srv;
+        } else if (srv.graded && !local.graded) {
+          state.projectionAudit[key] = { ...local, ...srv };
+        } else if (local.graded && !srv.graded) {
+          // local is more complete — leave alone, but we'll push it later
+        } else {
+          // Both graded or both ungraded — server wins
+          state.projectionAudit[key] = { ...local, ...srv };
+        }
+        // Track that this server entry matches what we have, so we don't re-push it
+        projectionPushedHash.set(key, hashOf(state.projectionAudit[key]));
+      }
+
+      // Merge hrAudit.entries — by id, server wins on graded beats not
+      state.hrAudit = state.hrAudit || { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } };
+      state.hrAudit.entries = state.hrAudit.entries || [];
+      const byId = new Map();
+      for (const e of state.hrAudit.entries) byId.set(e.id, e);
+      for (const srv of (payload.hrAudit?.entries || [])) {
+        const local = byId.get(srv.id);
+        if (!local) {
+          state.hrAudit.entries.push(srv);
+          byId.set(srv.id, srv);
+        } else if (srv.graded && !local.graded) {
+          Object.assign(local, srv);
+        } else if (!srv.graded && local.graded) {
+          // local more complete; skip
+        } else {
+          Object.assign(local, srv);
+        }
+        hrPushedHash.set(srv.id, hashOf(byId.get(srv.id)));
+      }
+
+      // byTier rollup is computed on the fly elsewhere; just take server's snapshot
+      // as a starting point (will be recomputed when more games grade)
+      if (payload.hrAudit?.byTier) {
+        state.hrAudit.byTier = payload.hrAudit.byTier;
+      }
+
+      if (payload.watermark) setWatermark(payload.watermark);
+      lastFullLoad = Date.now();
+      saveState();
+
+      // Refresh any visible HR Picks view that depends on the data
+      try { if (typeof renderHrPicksView === 'function' && window.hrPicksVisible) renderHrPicksView(); } catch(_) {}
+
+      if (payload.counts) {
+        console.info('[audit-sync] hydrated', payload.counts);
+      }
+    } catch (err) {
+      console.warn('[audit-sync] hydrate error:', err.message);
+    } finally {
+      isHydrating = false;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Mark entries dirty (called by saveState shims). Flushes are debounced.
+  // -------------------------------------------------------------------------
+  function markProjectionDirty(key) {
+    if (!key) return;
+    pendingProjection.add(key);
+    scheduleFlush();
+  }
+  function markHrDirty(id) {
+    if (!id) return;
+    pendingHr.add(id);
+    scheduleFlush();
+  }
+  function scheduleFlush() {
+    if (flushTimer) return;
+    flushTimer = setTimeout(() => { flushTimer = null; flush(); }, FLUSH_DELAY_MS);
+  }
+
+  // -------------------------------------------------------------------------
+  // Flush pending changes to server. Only sends entries whose hash has changed
+  // since last successful push, so we don't waste bandwidth.
+  // -------------------------------------------------------------------------
+  async function flush() {
+    const pa = state.projectionAudit || {};
+    const ha = (state.hrAudit && state.hrAudit.entries) || [];
+
+    const projectionAudit = [];
+    for (const key of pendingProjection) {
+      const v = pa[key];
+      if (!v) continue;
+      const h = hashOf(v);
+      if (projectionPushedHash.get(key) === h) continue;
+      projectionAudit.push({
+        auditKey: key,
+        gamePk: v.gamePk,
+        date: v.date,
+        awayTeam: v.awayTeam,
+        homeTeam: v.homeTeam,
+        projTotal: v.projTotal,
+        actualTotal: v.actualTotal,
+        actualAwayRuns: v.actualAwayRuns,
+        actualHomeRuns: v.actualHomeRuns,
+        homeWinProb: v.homeWinProb,
+        graded: !!v.graded,
+        raw: v
+      });
+    }
+    pendingProjection.clear();
+
+    const byId = new Map();
+    for (const e of ha) byId.set(e.id, e);
+    const hrAudit = [];
+    for (const id of pendingHr) {
+      const e = byId.get(id);
+      if (!e) continue;
+      const h = hashOf(e);
+      if (hrPushedHash.get(id) === h) continue;
+      hrAudit.push(e);
+    }
+    pendingHr.clear();
+
+    if (projectionAudit.length === 0 && hrAudit.length === 0) return;
+
+    try {
+      const res = await fetch('/api/audit/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({ projectionAudit, hrAudit })
+      });
+      if (!res.ok) {
+        if (res.status === 401) return;  // signed out; pending will retry on next save
+        console.warn('[audit-sync] flush failed:', res.status);
+        return;
+      }
+      // Mark successfully-pushed entries as in-sync
+      for (const p of projectionAudit) {
+        const v = pa[p.auditKey];
+        if (v) projectionPushedHash.set(p.auditKey, hashOf(v));
+      }
+      for (const e of hrAudit) {
+        hrPushedHash.set(e.id, hashOf(e));
+      }
+    } catch (err) {
+      console.warn('[audit-sync] flush error:', err.message);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Stable JSON hash — order-insensitive over keys
+  // -------------------------------------------------------------------------
+  function hashOf(obj) {
+    try {
+      const seen = new WeakSet();
+      const stable = (v) => {
+        if (v === null || typeof v !== 'object') return v;
+        if (seen.has(v)) return null;
+        seen.add(v);
+        if (Array.isArray(v)) return v.map(stable);
+        const out = {};
+        for (const k of Object.keys(v).sort()) out[k] = stable(v[k]);
+        return out;
+      };
+      return JSON.stringify(stable(obj));
+    } catch(_) { return Math.random().toString(36); }
+  }
+
+  return {
+    hydrate,
+    markProjectionDirty,
+    markHrDirty,
+    flush,
+    // For debugging from devtools
+    _state: () => ({ pendingProjection: pendingProjection.size, pendingHr: pendingHr.size, lastFullLoad })
+  };
+})();
+
+// Make available for hooks below
+window.LyridAuditSync = LyridAuditSync;
+
+// (Drop #20) Flush any pending audit pushes when the page is about to unload,
+// and re-hydrate when the tab regains focus (other device may have pushed).
+window.addEventListener('beforeunload', () => {
+  try { LyridAuditSync.flush(); } catch(_) {}
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    try { LyridAuditSync.hydrate({ full: false }); } catch(_) {}
+  }
+});
 
 function showToast(msg, danger) {
   const t = document.getElementById('toast');
@@ -6027,6 +6292,8 @@ function logHrChanceEntry(e) {
     loggedAt: Date.now()
   });
   saveState();
+  // (Drop #20) Push this entry to server for cross-device sync
+  try { LyridAuditSync.markHrDirty(entryId); } catch(_) {}
 }
 
 async function auditHrChances() {
@@ -6052,6 +6319,8 @@ async function auditHrChances() {
         if (entry.actualHR) state.hrAudit.byTier[tier].hits++;
         else state.hrAudit.byTier[tier].misses++;
       }
+      // (Drop #20) Push graded entry to server
+      try { LyridAuditSync.markHrDirty(entry.id); } catch(_) {}
     } catch(err) {
       console.error('HR audit failed for', entry.id, err);
     }
@@ -11143,6 +11412,8 @@ function captureProjection(data) {
 
   state.projectionAudit[key] = entry;
   saveState();
+  // (Drop #20) Push to server for cross-device sync
+  try { LyridAuditSync.markProjectionDirty(key); } catch(_) {}
 }
 
 /**
@@ -11182,6 +11453,8 @@ async function gradeProjectionAudit() {
         gradedAt: Date.now()
       };
       graded++;
+      // (Drop #20) Push graded projection to server
+      try { LyridAuditSync.markProjectionDirty(key); } catch(_) {}
     } catch (err) {
       console.warn('Projection grading failed:', err.message);
     }
