@@ -1563,6 +1563,252 @@
   .bbs-value.profit-neg{color:var(--danger)}
   .bbs-sub{font-size:9px;color:var(--dim);margin-top:2px;font-variant-numeric:tabular-nums}
 
+  /* (Drop #19 — June 7, 2026) ELITE HR ALERT — TOP-OF-PAGE HIJACK
+     Fires when empirical HR tier system finds an ELITE candidate
+     (Barrel ≥ 15% + HR/9 ≥ 2.0, 54.5% backtest hit rate).
+     ~0.5 fires per slate so it MUST grab attention when present. */
+  @keyframes eliteAlertEnter {
+    0%   { opacity: 0; transform: translateY(-30px) scale(0.92); }
+    60%  { opacity: 1; transform: translateY(8px) scale(1.02); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes eliteOrbit {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  @keyframes eliteGlow {
+    0%, 100% {
+      opacity: 0.6;
+      box-shadow:
+        0 0 30px rgba(155, 93, 229, 0.7),
+        0 0 60px rgba(6, 214, 160, 0.5),
+        0 0 100px rgba(255, 107, 107, 0.3),
+        inset 0 0 30px rgba(255, 209, 102, 0.15);
+    }
+    50% {
+      opacity: 1;
+      box-shadow:
+        0 0 50px rgba(155, 93, 229, 1),
+        0 0 90px rgba(6, 214, 160, 0.8),
+        0 0 140px rgba(255, 107, 107, 0.5),
+        inset 0 0 50px rgba(255, 209, 102, 0.25);
+    }
+  }
+  @keyframes eliteShimmer {
+    0%   { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+  }
+  @keyframes eliteIconSpin {
+    0%   { transform: scale(1) rotate(0deg); text-shadow: 0 0 8px rgba(255,255,255,0.8); }
+    50%  { transform: scale(1.25) rotate(180deg); text-shadow: 0 0 24px rgba(255,255,255,1), 0 0 40px rgba(155,93,229,0.8); }
+    100% { transform: scale(1) rotate(360deg); text-shadow: 0 0 8px rgba(255,255,255,0.8); }
+  }
+  @keyframes eliteBadgePulse {
+    0%, 100% { transform: scale(1); opacity: 0.95; }
+    50%      { transform: scale(1.05); opacity: 1; }
+  }
+
+  .elite-hr-alert-wrap {
+    margin: 16px 0 24px 0;
+  }
+  .elite-hr-alert {
+    position: relative;
+    margin: 12px 0;
+    padding: 22px 24px;
+    border-radius: 14px;
+    overflow: hidden;
+    background:
+      linear-gradient(135deg,
+        rgba(255, 107, 107, 0.08) 0%,
+        rgba(255, 209, 102, 0.08) 20%,
+        rgba(6, 214, 160, 0.08) 40%,
+        rgba(17, 138, 178, 0.08) 60%,
+        rgba(155, 93, 229, 0.08) 80%,
+        rgba(255, 107, 107, 0.08) 100%),
+      #0a0d14;
+    background-size: 300% 100%;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    animation:
+      eliteAlertEnter 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+      eliteGlow 2.4s ease-in-out infinite,
+      eliteShimmer 8s linear infinite;
+    z-index: 5;
+  }
+  .elite-hr-alert::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 14px;
+    padding: 2px;
+    background: linear-gradient(135deg, #ff6b6b 0%, #ffd166 20%, #06d6a0 40%, #118ab2 60%, #9b5de5 80%, #ff6b6b 100%);
+    background-size: 200% 100%;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    animation: eliteShimmer 4s linear infinite;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .eha-orbit {
+    position: absolute;
+    top: 50%;
+    right: -40px;
+    width: 200px;
+    height: 200px;
+    margin-top: -100px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg,
+      transparent 0deg,
+      rgba(155, 93, 229, 0.4) 60deg,
+      transparent 120deg,
+      rgba(6, 214, 160, 0.4) 180deg,
+      transparent 240deg,
+      rgba(255, 209, 102, 0.4) 300deg,
+      transparent 360deg);
+    animation: eliteOrbit 8s linear infinite;
+    filter: blur(20px);
+    opacity: 0.7;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .eha-glow {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at top left,
+      rgba(155, 93, 229, 0.2) 0%,
+      transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .eha-content {
+    position: relative;
+    z-index: 2;
+  }
+  .eha-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .eha-icon {
+    font-size: 32px;
+    line-height: 1;
+    color: #fff;
+    animation: eliteIconSpin 3s ease-in-out infinite;
+    display: inline-block;
+  }
+  .eha-title {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+    font-size: 18px;
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    text-shadow:
+      0 0 12px rgba(155, 93, 229, 0.8),
+      0 0 24px rgba(6, 214, 160, 0.5);
+  }
+  .eha-badge {
+    margin-left: auto;
+    padding: 5px 12px;
+    border-radius: 100px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(230,230,255,0.85) 100%);
+    color: #1a1d22;
+    font-size: 10.5px;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    animation: eliteBadgePulse 2s ease-in-out infinite;
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
+    white-space: nowrap;
+  }
+  .eha-hitter {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    line-height: 1.2;
+  }
+  .eha-hand {
+    font-size: 14px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.7);
+    margin-left: 6px;
+    letter-spacing: 0;
+  }
+  .eha-team {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 209, 102, 0.95);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 4px;
+    text-shadow: none;
+  }
+  .eha-stats {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    padding: 12px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  .eha-stat {
+    flex: 1;
+    min-width: 80px;
+  }
+  .eha-stat-label {
+    display: block;
+    font-size: 9.5px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .eha-stat-val {
+    display: block;
+    font-size: 18px;
+    font-weight: 800;
+    color: #06d6a0;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 8px rgba(6, 214, 160, 0.5);
+  }
+  .eha-pitcher {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.78);
+    margin-bottom: 6px;
+  }
+  .eha-pitcher b {
+    color: #fff;
+    font-weight: 700;
+  }
+  .eha-meta {
+    font-size: 10.5px;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 0.04em;
+    font-style: italic;
+  }
+  @media (max-width: 480px) {
+    .elite-hr-alert {
+      padding: 18px 16px;
+      margin: 10px 0;
+    }
+    .eha-icon { font-size: 26px; }
+    .eha-title { font-size: 15px; letter-spacing: 0.1em; }
+    .eha-badge { font-size: 9.5px; padding: 4px 10px; }
+    .eha-hitter { font-size: 22px; }
+    .eha-stat-val { font-size: 16px; }
+    .eha-orbit { width: 150px; height: 150px; margin-top: -75px; right: -50px; }
+  }
+
   /* =============== LYRID'S BEST TIER BANNERS (Drop #13) =============== */
   /* Animated tier badges that appear when empirical strategies fire.
      Tiers based on backtest WR:
@@ -2179,6 +2425,55 @@
     color:#0a0d0a;
     animation:hr-pulse 1.4s ease-in-out infinite;
     box-shadow:0 0 8px rgba(255,122,61,0.5);
+  }
+  /* (Drop #17 — June 7, 2026) Empirical HR tier visuals.
+     The badge gets BOTH the legacy class (elite/strong/solid for layout
+     compatibility) AND an emp-* class for the new look. emp-* overrides.
+     (Drop #18 — June 7, 2026) ELITE tier added above PLATINUM. */
+  .hr-badge.emp-elite{
+    background:linear-gradient(135deg, #ff6b6b 0%, #ffd166 20%, #06d6a0 40%, #118ab2 60%, #9b5de5 80%, #ff6b6b 100%);
+    background-size:200% 100%;
+    color:#fff;
+    border:1.5px solid rgba(255,255,255,0.85);
+    animation:hr-pulse-elite 1.2s ease-in-out infinite, hr-elite-shimmer 3s linear infinite;
+    box-shadow:0 0 14px rgba(155,93,229,0.7), 0 0 28px rgba(6,214,160,0.3);
+    text-shadow:0 1px 2px rgba(0,0,0,0.6);
+    font-weight:900;
+  }
+  @keyframes hr-elite-shimmer{
+    0%{background-position:0% 0}
+    100%{background-position:200% 0}
+  }
+  @keyframes hr-pulse-elite{
+    0%,100%{box-shadow:0 0 14px rgba(155,93,229,0.7), 0 0 28px rgba(6,214,160,0.3); transform:scale(1)}
+    50%{box-shadow:0 0 22px rgba(155,93,229,1), 0 0 40px rgba(6,214,160,0.6); transform:scale(1.04)}
+  }
+  .hr-badge.emp-platinum{
+    background:linear-gradient(135deg, #e8e9eb 0%, #c6c9cd 35%, #f5f6f8 50%, #b5b8bc 65%, #d8dadd 100%);
+    color:#1a1d22;
+    border:1.5px solid rgba(155,158,162,0.7);
+    animation:hr-pulse-platinum 1.6s ease-in-out infinite;
+    box-shadow:0 0 10px rgba(180,184,190,0.55);
+  }
+  .hr-badge.emp-gold{
+    background:linear-gradient(135deg, #f6cb6a 0%, #d99e2e 35%, #fae192 50%, #c98a1c 70%, #e8b246 100%);
+    color:#3d2806;
+    border:1px solid rgba(184,134,11,0.7);
+    box-shadow:0 0 8px rgba(230,167,31,0.5);
+  }
+  .hr-badge.emp-silver{
+    background:linear-gradient(135deg, #dee2e6 0%, #adb5bd 35%, #e9ecef 50%, #9ca3aa 65%, #ced4da 100%);
+    color:#1f2329;
+    border:1px solid rgba(108,117,125,0.6);
+  }
+  .hr-badge.emp-bronze{
+    background:linear-gradient(135deg, #d4915a 0%, #a96332 35%, #e6a875 50%, #8f502a 70%, #c98152 100%);
+    color:#2a1608;
+    border:1px solid rgba(133,76,38,0.6);
+  }
+  @keyframes hr-pulse-platinum{
+    0%,100%{box-shadow:0 0 10px rgba(180,184,190,0.55)}
+    50%{box-shadow:0 0 20px rgba(180,184,190,0.95)}
   }
   .hr-badge.strong{
     background:rgba(255,122,61,0.2);
@@ -4295,17 +4590,8 @@ function loadState() {
   }
 }
 function saveState() {
-  try {
-    // Don't persist state.raw — it's the full live slate (games + analyses + 198
-    // players of season logs), re-fetched on every load. Serializing it pushed the
-    // blob past the ~5MB localStorage quota, so setItem threw, the catch swallowed it,
-    // and every freshly logged pick/game-bet was silently dropped (never persisted →
-    // History reads empty after the next load). Everything durable still saves.
-    const { raw, ...persist } = state;
-    localStorage.setItem(LS_KEY, JSON.stringify(persist));
-  } catch (e) {
-    showToast('Save failed — storage full', true);
-  }
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+  catch(e) { showToast('Save failed', true); }
 }
 
 function showToast(msg, danger) {
@@ -5728,6 +6014,14 @@ function logHrChanceEntry(e) {
     hrTier: e.hrTier,
     hrScore: e.hrScore,
     criteria: e.criteria,
+    // (Drop #17 — June 7, 2026) Empirical tier persistence
+    empiricalTier: e.empiricalTier || null,
+    empiricalTierLabel: e.empiricalTierLabel || null,
+    empiricalBacktestRate: e.empiricalBacktestRate || null,
+    empiricalBacktestN: e.empiricalBacktestN || null,
+    _empBarrel: e._empBarrel || null,
+    _empHrPer9: e._empHrPer9 || null,
+    _empParkBoost: e._empParkBoost || null,
     actualHR: null,
     graded: false,
     loggedAt: Date.now()
@@ -5772,11 +6066,28 @@ function getHrAuditStats() {
   const graded = entries.filter(e => e.graded);
   const hits = graded.filter(e => e.actualHR).length;
   const total = graded.length;
+  // (Drop #17 — June 7, 2026) Empirical tier rollup
+  // (Drop #18 — June 7, 2026) Added ELITE tier above PLATINUM
+  const byEmpTier = {
+    elite:    { hits: 0, misses: 0 },
+    platinum: { hits: 0, misses: 0 },
+    gold:     { hits: 0, misses: 0 },
+    silver:   { hits: 0, misses: 0 },
+    bronze:   { hits: 0, misses: 0 }
+  };
+  for (const e of graded) {
+    const t = e.empiricalTier;
+    if (t && byEmpTier[t]) {
+      if (e.actualHR) byEmpTier[t].hits++;
+      else byEmpTier[t].misses++;
+    }
+  }
   return {
     total,
     hits,
     hitRate: total > 0 ? (hits / total) : null,
-    byTier: state.hrAudit.byTier
+    byTier: state.hrAudit.byTier,
+    byEmpTier
   };
 }
 
@@ -5890,11 +6201,11 @@ function renderHrPicksView() {
           <div class="hras-lbl">OVERALL HR HIT</div>
           <div class="hras-pct">${audit.hitRate !== null ? (audit.hitRate*100).toFixed(1)+'%' : '—'}</div>
         </div>
-        ${['elite','strong','solid'].map(tier => {
-          const t = audit.byTier[tier] || {hits:0,misses:0};
+        ${['elite','platinum','gold','silver','bronze'].map(tier => {
+          const t = audit.byEmpTier[tier] || {hits:0,misses:0};
           const total = t.hits + t.misses;
           const pct = total > 0 ? ((t.hits/total)*100).toFixed(1)+'%' : '—';
-          const emoji = tier === 'elite' ? '💣' : tier === 'strong' ? '🎯' : '⚡';
+          const emoji = tier === 'elite' ? '✧' : tier === 'platinum' ? '✦' : tier === 'gold' ? '★' : tier === 'silver' ? '◆' : '◇';
           return `
             <div class="hr-audit-stat">
               <div class="hras-val">${t.hits}/${total}</div>
@@ -6444,13 +6755,23 @@ function renderAnalysis(data) {
                     const perPaNote = usePerGame && hc.projectedHrPerPa != null
                       ? ` · ${(hc.projectedHrPerPa * 100).toFixed(1)}% per-PA`
                       : '';
+                    // (Drop #17 — June 7, 2026) Empirical tier class + tooltip
+                    const empClass = hc.empiricalTier ? ` emp-${hc.empiricalTier}` : '';
+                    const empTooltip = hc.empiricalTier ? [
+                      `EMPIRICAL ${hc.empiricalTierLabel}`,
+                      hc.empiricalBacktestRate ? `${(hc.empiricalBacktestRate*100).toFixed(0)}% backtest HR rate (n=${hc.empiricalBacktestN})` : null,
+                      hc._empBarrel ? `Barrel% ${hc._empBarrel.toFixed(1)}%` : null,
+                      hc._empHrPer9 ? `Pitcher HR/9 ${hc._empHrPer9.toFixed(2)}` : null,
+                      hc._empParkBoost ? `Park ${hc._empParkBoost > 0 ? '+' : ''}${hc._empParkBoost.toFixed(0)}% HR` : null
+                    ].filter(Boolean).join(' · ') : '';
                     const tooltipBits = [
                       `HR ${label}`,
                       displayPct ? `${displayPct} ${probSource}` : 'projected',
                       hc.expectedPaForHrTier ? `${hc.expectedPaForHrTier.toFixed(1)} expected PA` : null,
-                      hc.score ? `Score ${hc.score}` : null
+                      hc.score ? `Score ${hc.score}` : null,
+                      empTooltip
                     ].filter(Boolean).join(' · ') + perPaNote;
-                    return `<span class="hr-badge ${tier}" title="${tooltipBits}">${hc.emoji || ''} HR ${label}${displayPct ? ` <span class="hr-rate">${displayPct}</span>` : ''}${hc.score ? ` <span class="hr-rate" style="opacity:0.85; font-variant-numeric: tabular-nums; padding-left:2px; border-left:1px solid currentColor; margin-left:4px">${hc.score}</span>` : ''}</span>`;
+                    return `<span class="hr-badge ${tier}${empClass}" title="${tooltipBits}">${hc.emoji || ''} HR ${label}${displayPct ? ` <span class="hr-rate">${displayPct}</span>` : ''}${hc.score ? ` <span class="hr-rate" style="opacity:0.85; font-variant-numeric: tabular-nums; padding-left:2px; border-left:1px solid currentColor; margin-left:4px">${hc.score}</span>` : ''}</span>`;
                   })(m.hrChance) : ''}
                   ${m.hitter}<span class="hand">${m.hand || ''}</span>
                   ${hasActionableSituational ? `<button class="deep-dive-btn" onclick='openDeepDive(${deepDiveCtx})' title="Situational splits">◎ DEEP DIVE</button>` : ''}
@@ -8552,7 +8873,88 @@ function renderAnalysis(data) {
     </div>
   ` : '';
 
+  // (Drop #19 — June 7, 2026) ELITE HR ALERT — TOP-OF-ANALYSIS HIJACK
+  //
+  // When the empirical HR tier system finds an ELITE-tier candidate
+  // (Barrel ≥ 15% + Pitcher HR/9 ≥ 2.0 — backtest 54.5% on n=11),
+  // we surface it at the VERY TOP of the analysis with a dramatic
+  // animated banner. ELITE fires ~0.5 times per slate, so when it
+  // does, it's the moment of the night and should be impossible to miss.
+  const eliteHrAlerts = (() => {
+    const alerts = [];
+    for (const key of ['awayVsHome', 'homeVsAway']) {
+      const s = data[key];
+      if (!s || !s.mismatches) continue;
+      for (const m of s.mismatches) {
+        if (m.hrChance && m.hrChance.empiricalTier === 'elite') {
+          alerts.push({
+            hitter: m.hitter,
+            hand: m.hand || '',
+            team: s.hitTeam || '',
+            opponent: s.oppTeam || '',
+            pitcher: s.pitcher?.name || '',
+            pitcherHand: s.pitcher?.hand || '',
+            barrel: m.hrChance._empBarrel,
+            hr9: m.hrChance._empHrPer9,
+            parkBoost: m.hrChance._empParkBoost,
+            perGameProb: m.hrChance.projectedHrPerGame,
+            score: m.hrChance.score,
+            criteria: m.hrChance.criteria || []
+          });
+        }
+      }
+    }
+    return alerts;
+  })();
+
+  const eliteAlertHtml = eliteHrAlerts.length > 0
+    ? `<div class="elite-hr-alert-wrap">
+        ${eliteHrAlerts.map(a => `
+          <div class="elite-hr-alert">
+            <div class="eha-orbit"></div>
+            <div class="eha-glow"></div>
+            <div class="eha-content">
+              <div class="eha-header">
+                <span class="eha-icon">✧</span>
+                <span class="eha-title">ELITE HR ALERT</span>
+                <span class="eha-badge">54% BACKTEST · n=11</span>
+              </div>
+              <div class="eha-hitter">
+                ${a.hitter}<span class="eha-hand">${a.hand}</span>
+                <span class="eha-team">${a.team} vs ${a.opponent}</span>
+              </div>
+              <div class="eha-stats">
+                <div class="eha-stat">
+                  <span class="eha-stat-label">Barrel%</span>
+                  <span class="eha-stat-val">${a.barrel != null ? a.barrel.toFixed(1) + '%' : '—'}</span>
+                </div>
+                <div class="eha-stat">
+                  <span class="eha-stat-label">Pitcher HR/9</span>
+                  <span class="eha-stat-val">${a.hr9 != null ? a.hr9.toFixed(2) : '—'}</span>
+                </div>
+                ${a.parkBoost ? `<div class="eha-stat">
+                  <span class="eha-stat-label">Park</span>
+                  <span class="eha-stat-val">+${a.parkBoost.toFixed(0)}%</span>
+                </div>` : ''}
+                ${a.perGameProb != null ? `<div class="eha-stat">
+                  <span class="eha-stat-label">P(HR≥1)</span>
+                  <span class="eha-stat-val">${(a.perGameProb * 100).toFixed(1)}%</span>
+                </div>` : ''}
+              </div>
+              <div class="eha-pitcher">
+                vs <b>${a.pitcher}</b>${a.pitcherHand ? ' (' + a.pitcherHand + 'HP)' : ''}
+              </div>
+              <div class="eha-meta">
+                Barrel ≥ 15% AND HR/9 ≥ 2.0 — 54.5% HR rate · CI [28%, 79%]
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>`
+    : '';
+
   container.innerHTML = `
+    ${eliteAlertHtml}
     <h2 style="margin-top:24px">${gameLabel} · Mismatches <span class="count">${data.gameTime}${data.venue?' · '+data.venue:''}</span>${deepToggleInline}</h2>
     ${deepBanner}
     ${projectionHtml}
@@ -9786,7 +10188,15 @@ function logBestBets(data) {
           team: side.hitTeam, opponent: side.oppTeam,
           pitcherName: sideData.pitcher?.name,
           hrTier: m.hrChance.tier, hrScore: m.hrChance.score,
-          criteria: m.hrChance.criteria
+          criteria: m.hrChance.criteria,
+          // (Drop #17 — June 7, 2026) Empirical tier audit fields
+          empiricalTier: m.hrChance.empiricalTier || null,
+          empiricalTierLabel: m.hrChance.empiricalTierLabel || null,
+          empiricalBacktestRate: m.hrChance.empiricalBacktestRate || null,
+          empiricalBacktestN: m.hrChance.empiricalBacktestN || null,
+          _empBarrel: m.hrChance._empBarrel || null,
+          _empHrPer9: m.hrChance._empHrPer9 || null,
+          _empParkBoost: m.hrChance._empParkBoost || null
         });
       }
     }

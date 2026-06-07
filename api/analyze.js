@@ -1071,6 +1071,116 @@ export default async function handler(req, res) {
               audit.tierLabelPerGame = perGameLabel;
             }
 
+            // (Drop #17 — June 7, 2026) EMPIRICAL HR TIER OVERRIDE
+            // (Drop #18 — June 7, 2026) Split PLATINUM into ELITE + PLATINUM.
+            //
+            // Full audit on n=1,854 graded HR audit entries (April 23 - May 25):
+            //
+            //   ELITE ✧    : Barrel ≥ 15% AND HR/9 ≥ 2.0
+            //                → 54.5% HR rate, 6/11, CI [28%, 79%]
+            //                → thirds 33/67/60 (improving)
+            //                → ~0.5 fires/slate
+            //
+            //   PLATINUM ✦ : Barrel ≥ 15% AND HR/9 1.8-2.0 (leftover from
+            //                original PLATINUM after ELITE carved out)
+            //                → 28.6% HR rate, 2/7, CI [8%, 64%]
+            //                → small subset, watch in production
+            //                → ~0.3 fires/slate
+            //
+            //   GOLD ★     : Barrel ≥ 12% AND HR/9 ≥ 1.8
+            //                OR Barrel ≥ 15% AND park boost ≥ +10%
+            //                → 22.4% HR rate, 13/58, CI [14%, 35%]
+            //                → ~2.4 fires/slate
+            //
+            //   SILVER ◆   : Barrel ≥ 10% AND (HR/9 ≥ 1.5 OR park ≥ +10%)
+            //                OR Barrel ≥ 12% AND HR/9 ≥ 1.5
+            //                → 13.6% HR rate, 26/191, CI [9%, 19%]
+            //                → ~8 fires/slate
+            //
+            //   BRONZE ◇   : per-game tier solid+ (legacy fallback)
+            //                → 11.9% HR rate, 71/598
+            //
+            // Replaces existing elite/strong/solid tiers entirely.
+            // _lib/hrEmpirical.js is not modified — override happens after the
+            // fact. Original per-PA/per-game tiers stay on audit as
+            // _legacyTier/_legacyTierPerGame for diagnostic.
+            if (audit) {
+              const _b = (barrel != null) ? parseFloat(barrel) : 0;
+              const _hr9 = (pitcherHrPer9 != null) ? parseFloat(pitcherHrPer9) : 0;
+              const _parkBoost = (parkHrMult != null) ? (parseFloat(parkHrMult) - 1) * 100 : 0;
+
+              // Preserve legacy tiers for diagnostic
+              audit._legacyTier = audit.tier;
+              audit._legacyTierLabel = audit.tierLabel;
+              audit._legacyTierPerGame = audit.tierPerGame;
+              audit._legacyTierLabelPerGame = audit.tierLabelPerGame;
+
+              audit._empBarrel = _b;
+              audit._empHrPer9 = _hr9;
+              audit._empParkBoost = _parkBoost;
+
+              let empTier = null;
+              let empLabel = null;
+              let empBacktestRate = null;
+              let empBacktestN = null;
+
+              // ELITE ✧ : extreme barrel + very vulnerable pitcher (54.5%)
+              if (_b >= 15 && _hr9 >= 2.0) {
+                empTier = 'elite';
+                empLabel = 'ELITE';
+                empBacktestRate = 0.545;
+                empBacktestN = 11;
+              // PLATINUM ✦ : extreme barrel + vulnerable pitcher (28.6%, watch)
+              } else if (_b >= 15 && _hr9 >= 1.8) {
+                empTier = 'platinum';
+                empLabel = 'PLATINUM';
+                empBacktestRate = 0.286;
+                empBacktestN = 7;
+              // GOLD ★ : strong barrel + vulnerable pitcher OR strong barrel + park boost
+              } else if ((_b >= 12 && _hr9 >= 1.8) || (_b >= 15 && _parkBoost >= 10)) {
+                empTier = 'gold';
+                empLabel = 'GOLD';
+                empBacktestRate = 0.224;
+                empBacktestN = 58;
+              // SILVER ◆ : above-avg barrel + (vulnerable pitcher OR favorable park)
+              } else if ((_b >= 10 && (_hr9 >= 1.5 || _parkBoost >= 10))
+                         || (_b >= 12 && _hr9 >= 1.5)) {
+                empTier = 'silver';
+                empLabel = 'SILVER';
+                empBacktestRate = 0.136;
+                empBacktestN = 191;
+              // BRONZE ◇ : any positive signal (legacy fallback)
+              } else if (audit._legacyTierPerGame === 'solid'
+                         || audit._legacyTierPerGame === 'strong'
+                         || audit._legacyTierPerGame === 'elite'
+                         || audit._legacyTier === 'solid'
+                         || audit._legacyTier === 'strong'
+                         || audit._legacyTier === 'elite') {
+                empTier = 'bronze';
+                empLabel = 'BRONZE';
+                empBacktestRate = 0.119;
+                empBacktestN = 598;
+              }
+
+              // Map empirical tier → existing 'elite/strong/solid' enum so
+              // downstream code (badges, filters, lineup gating) keeps working.
+              let mappedLegacyTier = null;
+              if (empTier === 'elite') mappedLegacyTier = 'elite';
+              else if (empTier === 'platinum') mappedLegacyTier = 'elite';
+              else if (empTier === 'gold') mappedLegacyTier = 'elite';
+              else if (empTier === 'silver') mappedLegacyTier = 'strong';
+              else if (empTier === 'bronze') mappedLegacyTier = 'solid';
+
+              audit.tier = mappedLegacyTier;
+              audit.tierLabel = empLabel;
+              audit.tierPerGame = mappedLegacyTier;
+              audit.tierLabelPerGame = empLabel;
+              audit.empiricalTier = empTier;
+              audit.empiricalTierLabel = empLabel;
+              audit.empiricalBacktestRate = empBacktestRate;
+              audit.empiricalBacktestN = empBacktestN;
+            }
+
             return {
               hrChance: audit.tier ? audit : null,  // null below SOLID — preserves existing badge gating
               hrAudit: audit  // always populated — used by per-side digest for diagnostic
