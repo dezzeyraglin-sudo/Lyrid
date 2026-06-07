@@ -856,7 +856,11 @@ async function buildAndRunAnalysis({
         minutesCv: playerWithRecent.minutesCv ?? null,
         last5Avg: playerWithRecent.last5Avg ?? null,
         last10Avg: playerWithRecent.last10Avg ?? null,
-        seasonAvg: player.seasonAvg ?? null,
+        // Market-specific season avg (matches last5/last10's market). player.seasonAvg
+        // is points-only, which made rebounds/assists rows compare against the points
+        // average ("last 5 1.8 under 11.8 season"). Use the per-market value the engine
+        // already derived; fall back to points only if it's missing.
+        seasonAvg: playerWithRecent.seasonAvg ?? player.seasonAvg ?? null,
         fgPctRecent: playerWithRecent.fgPctRecent ?? null,
         primaryCreator: player.primaryCreator ?? false,
         gamesPlayed: player.gamesPlayed ?? null,

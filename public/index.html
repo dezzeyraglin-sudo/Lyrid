@@ -13746,7 +13746,10 @@ async function autoGradeOnAppOpen() {
         // Re-render analysis view with the same selected game
         const data = state.raw;
         const game = (data.games || []).find(g => g.gameId === state.selectedGameId);
-        const passes = (data.passes || []).filter(p => p.gameId === state.selectedGameId);
+        // Cards must show every market (P/R/A). The slate splits each player's
+        // markets across data.analyses (edge) and data.passes (PASS), so reading
+        // passes alone left only the PASS markets on the card. Union both lists.
+        const passes = [...(data.analyses || []), ...(data.passes || [])].filter(p => p.gameId === state.selectedGameId);
         const container = document.getElementById('wnbaAnalysisContainer');
         if (container && game) container.innerHTML = renderWnbaAnalysis(game, passes);
       }
@@ -14087,7 +14090,9 @@ async function autoGradeOnAppOpen() {
     const data = state.raw;
     if (!data) return;
     const game = (data.games || []).find(g => g.gameId === gameId);
-    const passes = (data.passes || []).filter(p => p.gameId === gameId);
+    // Union edge (analyses) + PASS markets so the card shows all of a player's
+    // markets (points/rebounds/assists), not just the PASS subset.
+    const passes = [...(data.analyses || []), ...(data.passes || [])].filter(p => p.gameId === gameId);
     const container = document.getElementById('wnbaAnalysisContainer');
     if (!container || !game) return;
 
@@ -14557,6 +14562,38 @@ async function autoGradeOnAppOpen() {
     return `Tops this game on ${edgeTxt} \u2014 ${why}.`;
   }
 
+  // Normal CDF via erf (Abramowitz-Stegun 7.1.26) for the PP-line probability tool.
+  function _erf(x){const t=1/(1+0.3275911*Math.abs(x));const y=1-(((((1.061405429*t-1.453152027)*t+1.421413741)*t-0.284496736)*t+0.254829592)*t)*Math.exp(-x*x);return x>=0?y:-y;}
+  function _normCdf(z){return 0.5*(1+_erf(z/Math.SQRT2));}
+
+  // Recompute lean + hit probability for a user-entered PrizePicks line (standard or
+  // demon). Mean = engine projection; spread = the floor/ceiling band (treated as a
+  // ~10th–90th pct interval), with a per-market CV fallback when no band exists. PP
+  // lines (esp. demons) sit above the book line and aren't in any feed, so this judges
+  // the pick against the exact number being tapped. Half-point lines need no continuity
+  // correction. In-memory only; resets on re-render.
+  window.wnbaRecalc = function(el){
+    const out = el.parentElement && el.parentElement.querySelector('.wnba-ppline-out');
+    if (!out) return;
+    const v = parseFloat(el.value);
+    const proj = parseFloat(el.dataset.proj);
+    if (!Number.isFinite(v) || !Number.isFinite(proj)) { out.textContent = ''; return; }
+    const floor = parseFloat(el.dataset.floor), ceil = parseFloat(el.dataset.ceil);
+    const mkt = String(el.dataset.mkt || '').toLowerCase();
+    let sigma = (Number.isFinite(floor) && Number.isFinite(ceil) && ceil > floor) ? (ceil - floor) / 2.5631 : NaN;
+    if (!Number.isFinite(sigma) || sigma <= 0) {
+      const cv = mkt.includes('assist') ? 0.55 : mkt.includes('rebound') ? 0.45 : mkt.includes('pra') ? 0.32 : mkt.includes('three') ? 0.70 : 0.34;
+      sigma = proj * cv;
+    }
+    sigma = Math.max(sigma, 0.6);
+    const pUnder = _normCdf((v - proj) / sigma);
+    let lean, p, color;
+    if (pUnder > 0.45 && pUnder < 0.55) { lean = 'TOSS-UP'; p = Math.round(Math.max(pUnder, 1 - pUnder) * 100); color = 'var(--text-secondary, var(--dim))'; }
+    else if (pUnder >= 0.55) { lean = 'UNDER'; p = Math.round(pUnder * 100); color = '#7f1d1d'; }
+    else { lean = 'OVER'; p = Math.round((1 - pUnder) * 100); color = '#14532d'; }
+    out.innerHTML = `&rarr; <b style="color:${color}">${lean}</b>${lean !== 'TOSS-UP' ? ` &middot; <b style="color:${color}">${p}%</b> to land ${lean.toLowerCase()}` : ` &middot; ${p}%`} <span style="opacity:0.7">(proj ${proj.toFixed(1)})</span>`;
+  };
+
   function renderWnbaPlayerCard(propsForPlayer) {
     // Rank this player's markets by edge; strongest first (gets the ★).
     const props = [...propsForPlayer].sort((a, b) => (b.scores?.finalEdge ?? 0) - (a.scores?.finalEdge ?? 0));
@@ -14742,6 +14779,18 @@ async function autoGradeOnAppOpen() {
       const _hasBook = p.lineSource === 'provided';
       const _bookTag = _hasBook ? (p.lineBook ? esc(p.lineBook) : 'BOOK') : 'MODEL';
       const _reason = wnbaMarketReason(p, proj, _edge);
+      // PrizePicks line tool: type the standard/demon number you're tapping and get the
+      // lean + hit probability vs THAT line (PP lines, esp. demons, sit above the book
+      // line and aren't in any feed). Skipped when OUT or no projection to anchor on.
+      const _ppInput = (isOut || _projN == null) ? '' : `
+          <div style="margin-top:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:10px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.05em">Check PP line</span>
+            <input type="number" inputmode="decimal" step="0.5" placeholder="${_lineN != null ? _lineN : 'line'}"
+              data-proj="${_projN}" data-floor="${(proj.floor != null && Number.isFinite(Number(proj.floor))) ? proj.floor : ''}" data-ceil="${(proj.ceiling != null && Number.isFinite(Number(proj.ceiling))) ? proj.ceiling : ''}" data-mkt="${esc(p.market)}"
+              oninput="wnbaRecalc(this)" onclick="event.stopPropagation()"
+              style="width:64px;font-size:13px;padding:3px 7px;border:1px solid var(--border-hairline, rgba(0,0,0,0.18));border-radius:7px;background:transparent;color:var(--text-primary);font-variant-numeric:tabular-nums" />
+            <span class="wnba-ppline-out" style="font-size:11px;color:var(--text-secondary, var(--dim))"></span>
+          </div>`;
       return `
         <div style="padding:9px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
           <div style="display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap">
@@ -14751,6 +14800,7 @@ async function autoGradeOnAppOpen() {
             <span style="margin-left:auto;font-size:10px;font-weight:800;letter-spacing:0.04em;color:${_leanColor};background:${_leanBg};padding:3px 9px;border-radius:100px;white-space:nowrap" title="tool lean vs the line (gap between projection and line)">${esc(_leanTxt)}</span>
           </div>
           ${_reason ? `<div style="margin-top:5px;font-size:11px;line-height:1.5;color:var(--text-secondary, var(--dim))">${_reason}</div>` : ''}
+          ${_ppInput}
         </div>
         ${sigTags}
       `;
@@ -14822,7 +14872,7 @@ async function autoGradeOnAppOpen() {
         <div style="margin-top:10px">
           <div style="font-size:9px;letter-spacing:0.1em;color:var(--text-secondary,var(--dim));font-weight:700;margin-bottom:5px">PLAYER PROFILE</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 16px">
-            ${profileRows.map(([k, v, cls]) => `<div style="display:flex;justify-content:space-between;font-size:11px;border-bottom:0.5px solid var(--border-hairline,rgba(0,0,0,0.05));padding:2px 0"><span style="color:var(--text-secondary,var(--dim))">${esc(k)}</span><b style="color:${cls === 'pos' ? '#14532d' : cls === 'neg' ? '#7f1d1d' : 'var(--text-primary)'};font-variant-numeric:tabular-nums">${esc(v)}</b></div>`).join('')}
+            ${profileRows.map(([k, v, cls]) => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:11px;border-bottom:0.5px solid var(--border-hairline,rgba(0,0,0,0.05));padding:2px 0"><span style="color:var(--text-secondary,var(--dim))">${esc(k)}</span><b style="color:${cls === 'pos' ? '#14532d' : cls === 'neg' ? '#7f1d1d' : 'var(--text-primary)'};font-variant-numeric:tabular-nums;white-space:nowrap">${esc(v)}</b></div>`).join('')}
           </div>
         </div>` : ''}
       ${formRow ? `
