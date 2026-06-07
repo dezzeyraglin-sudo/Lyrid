@@ -482,6 +482,16 @@ async function generateSlate(opts = {}) {
         proxyLine: empiricalTotals?.proxyLine ?? null,
         audit: empiricalTotals?._audit || null,
       },
+      // BDL player-prop marker: distinguishes "no key/401 (tier)" vs "games but
+      // zero prop rows (BDL carried none)" vs "rows present but names didn't join"
+      // (lineCount>0 but few props end up 'provided'). The feed is otherwise silent
+      // on a 0-row success, so this is the single field that tells the three apart.
+      bdlProps: {
+        version: 'bdl-props-v1',
+        available: bdlPropsAvailable,
+        lineCount: Object.keys(bdlPropLines).length,
+        audit: bdlProps?._audit || null,
+      },
       v2: v2Summary
     }
   };
@@ -629,15 +639,32 @@ async function buildAndRunAnalysis({
       } : {})
     };
 
-    // Look up line: caller can provide per-prop lines via gameLines.propLines[playerName_market]
+    // Look up line: caller can provide per-prop lines via gameLines.propLines[playerName_market].
+    // Exact match first; if that misses, retry on a NORMALIZED name. BDL's player names and
+    // Basketball Reference's differ in punctuation/diacritics/casing (e.g. "A'ja Wilson" vs
+    // "A'Ja Wilson"), and an exact-string miss silently forces the line to 'inferred' — which
+    // collapses the engine edge to ~0 and drops the pick from Best Bets.
     const propLineKey = `${player.name}_${market}`;
-    const explicitLine = gameLines.propLines?.[propLineKey];
+    let explicitLine = gameLines.propLines?.[propLineKey];
+    let matchedKey = propLineKey;
+    if (!Number.isFinite(Number(explicitLine)) && gameLines.propLines) {
+      const wantName = normPlayerName(player.name);
+      for (const k of Object.keys(gameLines.propLines)) {
+        const us = k.lastIndexOf('_');
+        if (us < 0 || k.slice(us + 1) !== market) continue;
+        if (normPlayerName(k.slice(0, us)) === wantName) {
+          explicitLine = gameLines.propLines[k];
+          matchedKey = k;
+          break;
+        }
+      }
+    }
     const hasRealLine = Number.isFinite(Number(explicitLine));
     const line = hasRealLine ? Number(explicitLine) : inferLineFromPlayer(player, market);
     // 'provided' = a real book/prop line (caller or BDL); 'inferred' = engine guess.
     const propLineSource = hasRealLine ? 'provided' : 'inferred';
     // Book/vendor for a real line (e.g. "fanduel"), surfaced to the card.
-    const lineMeta = hasRealLine ? (gameLines.propMeta?.[propLineKey] || null) : null;
+    const lineMeta = hasRealLine ? (gameLines.propMeta?.[matchedKey] || gameLines.propMeta?.[propLineKey] || null) : null;
 
     const input = {
       player: playerWithRecent,
@@ -1151,6 +1178,19 @@ function pickGamesAvgForMarket(games, market) {
  *
  * Real prop lines from PrizePicks/Underdog should always be preferred.
  */
+// Normalize a player name for robust prop-line joins. BDL prop keys are built from
+// BallDontLie's player names while player.name now comes from Basketball Reference;
+// punctuation, diacritics, generational suffixes, and casing differ, which silently
+// fails an exact key match and forces every line to 'inferred'. Strip to a core form.
+function normPlayerName(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')    // strip accents
+    .toLowerCase()
+    .replace(/\b(jr|sr|ii|iii|iv)\b\.?/g, '')            // drop generational suffixes
+    .replace(/[^a-z0-9 ]/g, '')                          // drop apostrophes/punctuation
+    .replace(/\s+/g, ' ').trim();
+}
+
 function inferLineFromPlayer(player, market) {
   const m = String(market).toLowerCase();
   const seasonAvg = Number(player.seasonAvg) || 0;
