@@ -90,17 +90,41 @@ async function bdlGet(path, params = {}, base = BDL_BASE, opts = {}) {
   return res;
 }
 
+// WNBA box scores live on /player_stats for GOAT (the backtest spec confirmed
+// /stats is a 404 for WNBA, which is why fetchWnbaPlayerStats returned empty and
+// grading silently never ran). Resolve the working endpoint ONCE per cold start —
+// try /player_stats first, fall back to /stats — and remember which answered 200.
+let _statsEndpoint = null;
+async function fetchStatsRows(params) {
+  const candidates = _statsEndpoint ? [_statsEndpoint] : ['/player_stats', '/stats'];
+  let last = { status: 0, body: '', path: candidates[candidates.length - 1] };
+  for (const path of candidates) {
+    const r = await bdlGet(path, params);
+    if (r.status === 200) { _statsEndpoint = path; return { ...r, path }; }
+    if (r.status === 401) return { ...r, path };   // tier gate — don't fall through
+    last = { ...r, path };                          // 404/other → try the next candidate
+  }
+  return last;
+}
+
 // Map common BDL prop market labels → our internal market keys.
 function normalizeMarket(label) {
   const s = String(label || '').toLowerCase().trim();
   // Reject exotic/derived markets (first-N-min, quarter/half, double-double, etc.)
   // so they don't pollute the standard full-game lines our engine projects.
-  if (/first|min|_q[1-4]|quarter|half|double|odd|even|streak|margin/.test(s)) return null;
-  // Combined first (so "pts+reb+ast" doesn't match plain points).
+  if (/first|min|_q[1-4]|quarter|half|double|triple|odd|even|streak|margin/.test(s)) return null;
+  // Combined PRA first (so "pts+reb+ast" doesn't match plain points).
   if (s === 'pra' || (s.includes('pts') && s.includes('reb') && s.includes('ast'))
       || (s.includes('points') && s.includes('rebounds') && s.includes('assists'))) return 'pra';
-  if (s.includes('rebound')) return 'rebounds';
-  if (s.includes('assist')) return 'assists';
+  // Reject 2-way combos (points_assists, rebounds_assists, points_rebounds, etc.)
+  // BEFORE the singular checks below — otherwise "points_assists" (a ~20-30 line)
+  // matches `includes('assist')` and OVERWRITES the real single-stat assists line
+  // (~5). This was the bug that made assists/rebounds show points-scale lines.
+  const parts = [s.includes('point') || s.includes('pts'), s.includes('rebound') || s === 'reb',
+                 s.includes('assist') || s === 'ast'].filter(Boolean).length;
+  if (parts >= 2) return null;   // any multi-stat combo that isn't the full PRA → skip
+  if (s.includes('rebound') || s === 'reb' || s === 'trb') return 'rebounds';
+  if (s.includes('assist') || s === 'ast') return 'assists';
   if (s.includes('three') || s.includes('3pt') || s.includes('3-pt') || s.includes('3pm')) return 'threes';
   if (s === 'points' || s === 'pts' || (s.includes('point') && !s.includes('_'))) return 'points';
   return null;   // unknown/exotic — skip rather than invent a market key
@@ -183,7 +207,13 @@ export async function fetchWnbaProps(dateYmd, opts = {}) {
       const name = idToName[row.player_id] || (row.player_name) || null;
       const market = normalizeMarket(row.prop_type || row.market?.type || row.type);
       const line = Number(row.line_value ?? row.line ?? row.value);
-      if (name && market && Number.isFinite(line)) {
+      // Sanity bounds: reject physically implausible lines (BDL occasionally returns
+      // garbage, e.g. a 14.5 "assists" line — no WNBA player is remotely near that).
+      // These ceilings sit well above any real line but below combo/typo values.
+      const MARKET_MAX = { points: 45, rebounds: 22, assists: 13, threes: 9, pra: 70 };
+      const withinBounds = market && Number.isFinite(line) && line > 0
+        && line <= (MARKET_MAX[market] ?? 70);
+      if (name && market && withinBounds) {
         const key = `${name}_${market}`;
         const vendor = String(row.vendor || row.book || '').toLowerCase();
         // Vendor preference: PrizePicks/Underdog aren't carried by BDL, so among
@@ -373,9 +403,9 @@ export async function fetchWnbaPlayerStats(dateYmd, opts = {}) {
   // Pull box lines per game (stats endpoint paginates; one page covers a game's
   // ~24 players at per_page=100).
   for (const gid of gameIds) {
-    const st = await bdlGet('/stats', { 'game_ids': [gid], per_page: 100 });
-    if (st.status === 401) { warnings.push('stats 401 — GOAT tier/trial required'); break; }
-    if (st.status !== 200) { warnings.push(`stats game ${gid} HTTP ${st.status}`); continue; }
+    const st = await fetchStatsRows({ 'game_ids': [gid], per_page: 100 });
+    if (st.status === 401) { warnings.push(`player_stats 401 — GOAT tier/trial required (${st.path})`); break; }
+    if (st.status !== 200) { warnings.push(`stats game ${gid} HTTP ${st.status} (${st.path})`); continue; }
     for (const row of (st.body?.data || [])) {
       const name = playerName(row) || playerName({ player: row.player });
       if (!name) continue;
@@ -396,7 +426,7 @@ export async function fetchWnbaPlayerStats(dateYmd, opts = {}) {
     }
   }
   const result = { byPlayer, _audit: { keyPresent: true, httpStatus: 200,
-    gamesFound: gameIds.length, playerRows: rows, warnings } };
+    gamesFound: gameIds.length, playerRows: rows, statsEndpoint: _statsEndpoint, warnings } };
   cacheSet(cacheKey, result);
   return result;
 }
