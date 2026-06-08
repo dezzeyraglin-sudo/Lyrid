@@ -4772,6 +4772,8 @@ const LyridAuditSync = (function() {
         actualHomeRuns: v.actualHomeRuns,
         homeWinProb: v.homeWinProb,
         graded: !!v.graded,
+        // (Drop #22 — June 7, 2026) Per-inning data for server-side storage
+        innings: Array.isArray(v.innings) ? v.innings : null,
         raw: v
       });
     }
@@ -11478,6 +11480,39 @@ async function gradeProjectionAudit() {
       const total = away + home;
       const winner = home > away ? entry.homeTeam : away > home ? entry.awayTeam : null;
 
+      // (Drop #22 — June 7, 2026) PER-INNING DATA CAPTURE
+      //
+      // /api/game-state returns final totals only. The MLB Stats API feed
+      // (the same endpoint we use for YRFI/NRFI grading) returns the full
+      // linescore.innings[] array with runs and hits per side per inning.
+      // We fetch it in parallel to enrich the audit row with per-inning data.
+      //
+      // This is purely data capture — no rules consume it yet. Once we have
+      // ~250+ graded games with per-inning detail, Drop #23+ can build
+      // F5/F3/late-inning empirical rules with real backtests instead of
+      // speculation. Falls back silently if the feed call fails (we still
+      // grade the projection, just without inning detail).
+      let innings = null;
+      try {
+        const feedRes = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${entry.gamePk}/feed/live`);
+        if (feedRes.ok) {
+          const feed = await feedRes.json();
+          const rawInnings = feed?.liveData?.linescore?.innings;
+          if (Array.isArray(rawInnings) && rawInnings.length > 0) {
+            innings = rawInnings.map(i => ({
+              num: i.num,
+              awayRuns: i.away?.runs ?? null,
+              homeRuns: i.home?.runs ?? null,
+              awayHits: i.away?.hits ?? null,
+              homeHits: i.home?.hits ?? null
+            }));
+          }
+        }
+      } catch (innErr) {
+        // Soft failure — innings data is bonus, projection still grades
+        console.warn(`[drop22] inning capture failed for ${entry.gamePk}:`, innErr.message);
+      }
+
       state.projectionAudit[key] = {
         ...entry,
         actualAwayRuns: away,
@@ -11486,7 +11521,9 @@ async function gradeProjectionAudit() {
         winner,
         isFinal: true,
         graded: true,
-        gradedAt: Date.now()
+        gradedAt: Date.now(),
+        // (Drop #22) Per-inning detail — null if MLB feed unavailable at grade time
+        innings: innings || entry.innings || null
       };
       graded++;
       // (Drop #20) Push graded projection to server
@@ -11499,6 +11536,79 @@ async function gradeProjectionAudit() {
   saveState();
   showToast(`Graded ${graded} projection${graded !== 1 ? 's' : ''}`);
   renderHistory();
+}
+
+/**
+ * (Drop #22 — June 7, 2026) BACKFILL PER-INNING DATA ON HISTORICAL GAMES
+ *
+ * Loops through every already-graded projection audit entry that doesn't
+ * have inning data yet, fetches the MLB feed, and patches the row. Pushes
+ * each update to Supabase via LyridAuditSync. Idempotent — skips entries
+ * that already have innings populated.
+ *
+ * Why this exists: Drop #22 starts capturing per-inning data going forward,
+ * but the user has 252 already-graded games sitting in the audit with only
+ * final totals. The MLB Stats API has every gamePk's linescore available
+ * indefinitely, so we can backfill the lot in one pass. This gives us
+ * ~3 weeks of head-start data instead of waiting for new games to grade.
+ *
+ * Rate-limited at 2 requests/sec to be friendly to statsapi.mlb.com.
+ * Run once per user (data syncs across devices via Drop #20).
+ */
+async function backfillInningData() {
+  const entries = Object.entries(state.projectionAudit)
+    .filter(([_, e]) => e.graded && !e.innings && e.gamePk);
+  if (entries.length === 0) {
+    showToast('No historical games need backfill — all graded entries have inning data');
+    return;
+  }
+  const proceed = confirm(`Backfill per-inning data on ${entries.length} graded games?\n\nThis fetches one MLB feed per game (~2/sec, ${Math.ceil(entries.length / 2)}s total).\nResults push to Supabase so all your devices see them.`);
+  if (!proceed) return;
+
+  showToast(`Backfilling ${entries.length} games...`);
+  let filled = 0;
+  let failed = 0;
+  const startTs = Date.now();
+
+  for (let i = 0; i < entries.length; i++) {
+    const [key, entry] = entries[i];
+    try {
+      const res = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${entry.gamePk}/feed/live`);
+      if (!res.ok) { failed++; continue; }
+      const feed = await res.json();
+      const rawInnings = feed?.liveData?.linescore?.innings;
+      if (!Array.isArray(rawInnings) || rawInnings.length === 0) { failed++; continue; }
+
+      const innings = rawInnings.map(i => ({
+        num: i.num,
+        awayRuns: i.away?.runs ?? null,
+        homeRuns: i.home?.runs ?? null,
+        awayHits: i.away?.hits ?? null,
+        homeHits: i.home?.hits ?? null
+      }));
+
+      state.projectionAudit[key] = { ...entry, innings };
+      filled++;
+
+      // Push to server in real-time so the backfill propagates to all devices
+      try { LyridAuditSync.markProjectionDirty(key); } catch(_) {}
+
+      // Progress toast every 25 games
+      if ((i + 1) % 25 === 0) {
+        showToast(`Backfilled ${filled}/${entries.length}...`);
+      }
+    } catch (err) {
+      console.warn(`[backfill] failed for ${entry.gamePk}:`, err.message);
+      failed++;
+    }
+    // ~2 req/sec
+    if (i < entries.length - 1) await new Promise(r => setTimeout(r, 500));
+  }
+
+  saveState();
+  const elapsed = Math.round((Date.now() - startTs) / 1000);
+  showToast(`Backfill complete: ${filled} filled, ${failed} failed (${elapsed}s)`);
+  if (typeof renderHistory === 'function') renderHistory();
 }
 
 /**
@@ -12127,7 +12237,7 @@ function renderHistory() {
       <button class="history-subnav-btn ${historyView==='picks'?'active':''}" data-hist-view="picks" onclick="switchHistoryView('picks')">$ MY BETS</button>
       <button class="history-subnav-btn ${historyView==='wnba'?'active':''}" data-hist-view="wnba" onclick="switchHistoryView('wnba')">★ WNBA BEST BETS</button>
       <button class="history-subnav-btn ${historyView==='wnbagames'?'active':''}" data-hist-view="wnbagames" onclick="switchHistoryView('wnbagames')">◈ WNBA GAME BETS</button>
-      ${historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'wnbagames' ? `<button class="btn sm" onclick="gradeWnbaGameBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
+      ${historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'wnbagames' ? `<button class="btn sm" onclick="gradeWnbaGameBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="backfillInningData()" style="margin-left:6px" title="Fetch per-inning data for already-graded games (one-time backfill)">⊕ BACKFILL INNINGS</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
       <button class="btn sm" onclick="gradeAllBestBets()" style="margin-left:6px">⚡ GRADE ALL</button>`}
     </div>
   `;

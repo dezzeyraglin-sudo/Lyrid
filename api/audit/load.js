@@ -125,6 +125,8 @@ export default async function handler(req, res) {
     merged.actualHomeRuns = intOrUndef(r.actual_home_runs);
     merged.homeWinProb = numOrUndef(r.home_win_prob);
     merged.graded = !!r.graded;
+    // (Drop #22 — June 7, 2026) Per-inning runs/hits array
+    if (Array.isArray(r.innings)) merged.innings = r.innings;
     projectionAudit[r.audit_key] = merged;
   }
 

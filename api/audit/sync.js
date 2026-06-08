@@ -116,7 +116,9 @@ export default async function handler(req, res) {
         actual_home_runs: intOrNull(p.actualHomeRuns),
         home_win_prob: numOrNull(p.homeWinProb),
         graded: Boolean(p.graded),
-        raw: p.raw || null
+        raw: p.raw || null,
+        // (Drop #22 — June 7, 2026) Per-inning runs/hits array
+        innings: Array.isArray(p.innings) ? p.innings : null
       }));
 
     if (rows.length > 0) {
