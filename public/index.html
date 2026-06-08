@@ -6287,6 +6287,10 @@ function logHrChanceEntry(e) {
     _empBarrel: e._empBarrel || null,
     _empHrPer9: e._empHrPer9 || null,
     _empParkBoost: e._empParkBoost || null,
+    // (Drop #21 — June 7, 2026) Sample-size audit fields
+    _empSeasonPa: e._empSeasonPa || null,
+    _empSampleTier: e._empSampleTier || null,
+    _empSampleDemoted: e._empSampleDemoted || null,
     actualHR: null,
     graded: false,
     loggedAt: Date.now()
@@ -6788,13 +6792,29 @@ function renderAnalysis(data) {
             // Computes whether this hitter qualifies for a HRR UNDER or
             // Fantasy Score UNDER recommendation based on backtest patterns.
             // Result is stamped onto the matchup for downstream rendering.
-            m._empUnderRec = computeEmpiricalUnderProp(m.propRecs, {
-              adjustedMaxXwoba: m.adjustedMaxXwoba ? parseFloat(m.adjustedMaxXwoba) : 0,
-              contextMultiplier: m.cappedContextMultiplier || m.contextMultiplier,
-              recentFormLabel: m.recentFormLabel || m.recentForm?.label,
-              bullpenTier: m.bullpenTier || s.pitcher?.bullpenTier,
-              hand: m.hand
-            });
+            //
+            // (Drop #21 — June 7, 2026) HR-TIER CONFLICT RESOLUTION
+            // The UNDER engine and HR tier classifier can fire on the SAME
+            // hitter and tell the user opposite things ("LYRID UNDER HRR"
+            // + "HR ELITE 34%" both visible on Eric Haase 6/7). When the HR
+            // tier hits ELITE or PLATINUM, the over has materially elevated
+            // EV (single swing wins HRR by 1.5). Suppress UNDER in that case.
+            // GOLD-tier HR fires (22% backtest) and below don't suppress —
+            // they're not strong enough to override the UNDER signal.
+            const _hrEmpTier = m.hrChance && m.hrChance.empiricalTier;
+            const _hrSuppressesUnder = (_hrEmpTier === 'elite' || _hrEmpTier === 'platinum');
+            if (_hrSuppressesUnder) {
+              m._empUnderRec = null;
+              m._empUnderSuppressedBy = _hrEmpTier;
+            } else {
+              m._empUnderRec = computeEmpiricalUnderProp(m.propRecs, {
+                adjustedMaxXwoba: m.adjustedMaxXwoba ? parseFloat(m.adjustedMaxXwoba) : 0,
+                contextMultiplier: m.cappedContextMultiplier || m.contextMultiplier,
+                recentFormLabel: m.recentFormLabel || m.recentForm?.label,
+                bullpenTier: m.bullpenTier || s.pitcher?.bullpenTier,
+                hand: m.hand
+              });
+            }
           }
 
           // =========================================================
@@ -7025,13 +7045,16 @@ function renderAnalysis(data) {
                       ? ` · ${(hc.projectedHrPerPa * 100).toFixed(1)}% per-PA`
                       : '';
                     // (Drop #17 — June 7, 2026) Empirical tier class + tooltip
+                    // (Drop #21 — June 7, 2026) Sample-size demotion indicator
                     const empClass = hc.empiricalTier ? ` emp-${hc.empiricalTier}` : '';
+                    const _isDemoted = !!hc._empSampleDemoted;
                     const empTooltip = hc.empiricalTier ? [
                       `EMPIRICAL ${hc.empiricalTierLabel}`,
                       hc.empiricalBacktestRate ? `${(hc.empiricalBacktestRate*100).toFixed(0)}% backtest HR rate (n=${hc.empiricalBacktestN})` : null,
                       hc._empBarrel ? `Barrel% ${hc._empBarrel.toFixed(1)}%` : null,
                       hc._empHrPer9 ? `Pitcher HR/9 ${hc._empHrPer9.toFixed(2)}` : null,
-                      hc._empParkBoost ? `Park ${hc._empParkBoost > 0 ? '+' : ''}${hc._empParkBoost.toFixed(0)}% HR` : null
+                      hc._empParkBoost ? `Park ${hc._empParkBoost > 0 ? '+' : ''}${hc._empParkBoost.toFixed(0)}% HR` : null,
+                      _isDemoted ? `⚠ ${hc._empSampleDemoted}` : null
                     ].filter(Boolean).join(' · ') : '';
                     const tooltipBits = [
                       `HR ${label}`,
@@ -7040,7 +7063,11 @@ function renderAnalysis(data) {
                       hc.score ? `Score ${hc.score}` : null,
                       empTooltip
                     ].filter(Boolean).join(' · ') + perPaNote;
-                    return `<span class="hr-badge ${tier}${empClass}" title="${tooltipBits}">${hc.emoji || ''} HR ${label}${displayPct ? ` <span class="hr-rate">${displayPct}</span>` : ''}${hc.score ? ` <span class="hr-rate" style="opacity:0.85; font-variant-numeric: tabular-nums; padding-left:2px; border-left:1px solid currentColor; margin-left:4px">${hc.score}</span>` : ''}</span>`;
+                    // (Drop #21) When tier was demoted for thin data, suffix the badge with a small ⚠ chip
+                    const thinChip = _isDemoted
+                      ? `<span class="hr-rate" style="opacity:0.85; font-size:0.85em; padding-left:2px; margin-left:4px; color:#b45309" title="${hc._empSampleDemoted}">⚠</span>`
+                      : '';
+                    return `<span class="hr-badge ${tier}${empClass}" title="${tooltipBits}">${hc.emoji || ''} HR ${label}${displayPct ? ` <span class="hr-rate">${displayPct}</span>` : ''}${hc.score ? ` <span class="hr-rate" style="opacity:0.85; font-variant-numeric: tabular-nums; padding-left:2px; border-left:1px solid currentColor; margin-left:4px">${hc.score}</span>` : ''}${thinChip}</span>`;
                   })(m.hrChance) : ''}
                   ${m.hitter}<span class="hand">${m.hand || ''}</span>
                   ${hasActionableSituational ? `<button class="deep-dive-btn" onclick='openDeepDive(${deepDiveCtx})' title="Situational splits">◎ DEEP DIVE</button>` : ''}
@@ -9155,7 +9182,12 @@ function renderAnalysis(data) {
       const s = data[key];
       if (!s || !s.mismatches) continue;
       for (const m of s.mismatches) {
-        if (m.hrChance && m.hrChance.empiricalTier === 'elite') {
+        // (Drop #21 — June 7, 2026) Belt-and-suspenders: even if a hitter
+        // somehow reaches ELITE, never raise the top-of-page rainbow alert
+        // when their sample size triggered a demotion warning. The demotion
+        // logic should prevent reaching ELITE on thin data, but if it does,
+        // we don't want to spotlight a noisy pick.
+        if (m.hrChance && m.hrChance.empiricalTier === 'elite' && !m.hrChance._empSampleDemoted) {
           alerts.push({
             hitter: m.hitter,
             hand: m.hand || '',
@@ -10465,7 +10497,11 @@ function logBestBets(data) {
           empiricalBacktestN: m.hrChance.empiricalBacktestN || null,
           _empBarrel: m.hrChance._empBarrel || null,
           _empHrPer9: m.hrChance._empHrPer9 || null,
-          _empParkBoost: m.hrChance._empParkBoost || null
+          _empParkBoost: m.hrChance._empParkBoost || null,
+          // (Drop #21 — June 7, 2026) Sample-size audit fields
+          _empSeasonPa: m.hrChance._empSeasonPa || null,
+          _empSampleTier: m.hrChance._empSampleTier || null,
+          _empSampleDemoted: m.hrChance._empSampleDemoted || null
         });
       }
     }

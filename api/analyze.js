@@ -1108,6 +1108,14 @@ export default async function handler(req, res) {
               const _b = (barrel != null) ? parseFloat(barrel) : 0;
               const _hr9 = (pitcherHrPer9 != null) ? parseFloat(pitcherHrPer9) : 0;
               const _parkBoost = (parkHrMult != null) ? (parseFloat(parkHrMult) - 1) * 100 : 0;
+              // (Drop #21 — June 7, 2026) Sample-size gate.
+              // Barrel% requires ~50 batted balls to stabilize, which means
+              // roughly 150-200 PA in season. Below 100 PA the rate is too
+              // noisy to trust for empirical tier classification — small-
+              // sample hitters get demoted one tier. Below 30 PA: no empirical
+              // tier at all (fall through to legacy bronze if available).
+              const _pa = (seasonPa != null) ? parseInt(seasonPa, 10) : 0;
+              const _sampleTier = _pa >= 100 ? 'full' : (_pa >= 30 ? 'thin' : 'insufficient');
 
               // Preserve legacy tiers for diagnostic
               audit._legacyTier = audit.tier;
@@ -1118,6 +1126,8 @@ export default async function handler(req, res) {
               audit._empBarrel = _b;
               audit._empHrPer9 = _hr9;
               audit._empParkBoost = _parkBoost;
+              audit._empSeasonPa = _pa;
+              audit._empSampleTier = _sampleTier;
 
               let empTier = null;
               let empLabel = null;
@@ -1160,6 +1170,55 @@ export default async function handler(req, res) {
                 empLabel = 'BRONZE';
                 empBacktestRate = 0.119;
                 empBacktestN = 598;
+              }
+
+              // (Drop #21 — June 7, 2026) SAMPLE-SIZE DEMOTION
+              //
+              // Barrel% is the master signal in our tier classifier, but it
+              // doesn't stabilize until ~150-200 PA. Eric Haase on 6/7 showed
+              // ELITE 34.2% off Barrel 21.9% — but only 47 PA backing it.
+              // Statcast noise can swing that ±5% on small samples.
+              //
+              // Rule: < 30 PA blocks empirical tier entirely (fall to legacy
+              // bronze if available, else null). 30-99 PA demotes by one
+              // step. ≥ 100 PA: no demotion.
+              //
+              // We also stamp _empSampleDemoted on the audit so the UI can
+              // show an INSUFFICIENT/THIN DATA chip in the badge tooltip.
+              const _tierLadder = ['bronze', 'silver', 'gold', 'platinum', 'elite'];
+              if (empTier && _sampleTier === 'insufficient') {
+                audit._empSampleDemoted = `< 30 PA — empirical tier suppressed (was ${empLabel})`;
+                empTier = null;
+                empLabel = null;
+                empBacktestRate = null;
+                empBacktestN = null;
+                // Bronze fallback if legacy tier present (matches existing branch above)
+                if (audit._legacyTierPerGame === 'solid'
+                    || audit._legacyTierPerGame === 'strong'
+                    || audit._legacyTierPerGame === 'elite'
+                    || audit._legacyTier === 'solid'
+                    || audit._legacyTier === 'strong'
+                    || audit._legacyTier === 'elite') {
+                  empTier = 'bronze';
+                  empLabel = 'BRONZE';
+                  empBacktestRate = 0.119;
+                  empBacktestN = 598;
+                }
+              } else if (empTier && _sampleTier === 'thin') {
+                const idx = _tierLadder.indexOf(empTier);
+                if (idx > 0) {
+                  const demotedTier = _tierLadder[idx - 1];
+                  audit._empSampleDemoted = `Thin data (${_pa} PA) — demoted ${empLabel} → ${demotedTier.toUpperCase()}`;
+                  empTier = demotedTier;
+                  empLabel = demotedTier.toUpperCase();
+                  // Backtest rates per tier (matching the classifier branches above)
+                  switch (empTier) {
+                    case 'platinum': empBacktestRate = 0.286; empBacktestN = 7;  break;
+                    case 'gold':     empBacktestRate = 0.224; empBacktestN = 58; break;
+                    case 'silver':   empBacktestRate = 0.136; empBacktestN = 191; break;
+                    case 'bronze':   empBacktestRate = 0.119; empBacktestN = 598; break;
+                  }
+                }
               }
 
               // Map empirical tier → existing 'elite/strong/solid' enum so
