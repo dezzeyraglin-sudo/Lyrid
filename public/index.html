@@ -4595,6 +4595,126 @@ function classifyInverseMarketSignal(projTotal, marketTotal) {
   return null;
 }
 
+// ====================================================================
+// (Drop #27 — June 8, 2026) LIVE F5 SIGNAL ENGINE
+//
+// Inning-data audit on n=267 graded games (avg 9 innings each) revealed
+// strong predictive relationships between F5 (runs through 5 innings)
+// and final game total. This is the FIRST Lyrid engine designed for
+// LIVE betting — surfaces when the user can hit a sportsbook live
+// UNDER/OVER market before books fully reprice.
+//
+// PRIMARY SIGNAL (n=32, time-thirds 100/90/92):
+//   F5 ≤ 2 → final goes UNDER 8.5 at 94%
+//     avg final total: 4.94 (vs typical 8.5 line)
+//     UNDER 7.5 hits 84%, UNDER 6.5 hits 72%
+//
+// MIRROR SIGNAL (n=25, monotonic):
+//   F5 ≥ 7 → final goes OVER 8.5 at 84%
+//     F5 = 8 → OVER 8.5 at 92% (n=13)
+//
+// CROSS-SIGNAL — the strongest theoretical setup (n=9, 100%):
+//   Pre-game projTotal ≥ 9.5 AND F5 ≤ 2 → UNDER projection at 100%
+//     avg final: 3.56 vs avg projected: 10.23 (catastrophic model miss
+//     that the live game tape confirms in real time)
+//
+// PARK ADJUSTMENTS (innings 6-9 deviation from league baseline 3.64):
+//   Significantly LOW (boost UNDER edge):  SD -1.46, ATL -1.42, NYY -0.94,
+//                                          SEA -0.77, MIN -0.64, ARI -0.56
+//   Significantly HIGH (reduce UNDER edge / boost OVER edge):
+//                                          COL +2.86, TB +1.86, TOR +1.58,
+//                                          LAD +1.11
+//
+// HONEST CAVEATS:
+//   - n=32 PRIMARY cohort is solid but not enormous. Wilson lower at 80%.
+//   - Live books DO reprice after 5th inning ends. The edge is in the
+//     30-60 second window before they update, OR on soft live markets
+//     (PrizePicks/UD live props are slowest).
+//   - Park adjustments come from n=8-13 per park each — directionally
+//     correct, magnitude uncertain.
+//   - The 100% Cross-Signal on n=9 is the most exciting finding but
+//     ALSO the smallest sample. Treat as supporting confirmation, not
+//     a standalone bet.
+// ====================================================================
+
+const LIVE_PARK_LATE_ADJUSTMENTS = {
+  // home team abbreviation → avg innings 6-9 runs deviation from league (3.64)
+  // Negative = late-inning suppression park. Positive = late-inning boost park.
+  // From n=267 graded games inning-data audit (Drop #27).
+  'SD':  -1.46,  'ATL': -1.42,  'NYY': -0.94,  'SEA': -0.77,
+  'MIN': -0.64,  'ARI': -0.56,  'PHI': -0.46,  'DET': -0.31,
+  'MIA': -0.08,  'BAL': -0.09,  'BOS': -0.08,  'CHC': -0.00,
+  'HOU': +0.03,  'TEX': -0.04,  'STL': +0.11,  'CIN': +0.25,
+  'LAA': +0.25,  'KC':  +0.48,  'MIL': +0.46,  'WSH': +0.47,
+  'LAD': +1.11,  'TOR': +1.58,  'TB':  +1.86,  'COL': +2.86
+};
+
+function classifyLiveF5Signal(f5Runs, projTotal, homePark) {
+  // Returns null if no actionable signal, otherwise tier object.
+  if (typeof f5Runs !== 'number' || !isFinite(f5Runs)) return null;
+
+  // Park adjustment: late-inning park boost subtracts from the UNDER edge,
+  // suppression boost adds to it. Magnitude small (~0.5 runs typical) but
+  // worth flagging in the tooltip.
+  const parkLateAdj = LIVE_PARK_LATE_ADJUSTMENTS[homePark] || 0;
+  const parkWarning = Math.abs(parkLateAdj) >= 0.5
+    ? (parkLateAdj > 0
+        ? `⚠ ${homePark} park averages +${parkLateAdj.toFixed(1)} late runs vs baseline — UNDER edge slightly reduced`
+        : `✓ ${homePark} park averages ${parkLateAdj.toFixed(1)} late runs vs baseline — UNDER edge boosted`)
+    : null;
+
+  // PRIMARY UNDER signal — F5 ≤ 2
+  if (f5Runs <= 2) {
+    // Sub-tier: if pre-game model said HIGH and F5 says LOW, this is the
+    // strongest historical setup (n=9, 100% UNDER projection)
+    const crossSignal = typeof projTotal === 'number' && projTotal >= 9.5;
+    return {
+      tier: 'platinum',
+      side: 'UNDER',
+      f5Runs: f5Runs,
+      reasoning: `Only ${f5Runs} run${f5Runs === 1 ? '' : 's'} scored through 5 innings. Historical audit: when F5 ≤ 2, games average 4.94 final runs and UNDER 8.5 hits 94%.`,
+      backtestWR: 0.94,
+      backtestN: 32,
+      wilsonLow: 0.80,
+      wilsonHigh: 0.98,
+      avgFinal: 4.94,
+      under75WR: 0.84,
+      under65WR: 0.72,
+      timeStability: '100/90/92 across thirds',
+      crossSignal: crossSignal,
+      crossSignalNote: crossSignal
+        ? `MAX CONVICTION: pre-game model projected ${projTotal.toFixed(1)} but game says ${f5Runs} through 5. Historical n=9 with this exact setup → 9/9 UNDER projection, avg final 3.56 vs avg projected 10.23.`
+        : null,
+      parkAdjustment: parkLateAdj,
+      parkWarning: parkWarning,
+      actionWindow: 'Live UNDER bet — best edge in 30-60 sec window after inning 5 ends, before books reprice. Soft markets (PP/UD live props) hold edge longer.'
+    };
+  }
+
+  // MIRROR OVER signal — F5 ≥ 7
+  if (f5Runs >= 7) {
+    const isExtreme = f5Runs >= 8;
+    return {
+      tier: isExtreme ? 'platinum' : 'gold',
+      side: 'OVER',
+      f5Runs: f5Runs,
+      reasoning: `${f5Runs} runs already through 5 innings. Historical audit: F5 ≥ 7 → OVER 8.5 hits 84% (n=25); F5 ≥ 8 → OVER 8.5 hits 92% (n=13).`,
+      backtestWR: isExtreme ? 0.92 : 0.84,
+      backtestN: isExtreme ? 13 : 25,
+      wilsonLow: isExtreme ? 0.67 : 0.65,
+      wilsonHigh: isExtreme ? 0.99 : 0.94,
+      avgFinal: isExtreme ? 11.0 : 10.5,
+      timeStability: 'monotonic relationship holds across full audit window',
+      parkAdjustment: parkLateAdj,
+      parkWarning: parkWarning,
+      actionWindow: 'Live OVER bet — books reprice fast on high-scoring games. PP/UD live OVER props softer than mainline books.'
+    };
+  }
+
+  // MID-RANGE (F5 = 3-6) — informational only, no actionable tier
+  return null;
+}
+
 // (Drop #25 — June 8, 2026) DELETED: computeEmpiricalUnderProp
 // Removed as part of fade engine cleanup. Drop #22 audit showed:
 //   - 0 picks ever triggered high_fade tier in production (n=210 graded)
@@ -6652,6 +6772,24 @@ function renderAnalysis(data) {
   fetchLiveScore(data.gamePk).then(live => {
     if (live) updateLiveScoreDisplay(data.gamePk, live);
   }).catch(() => {});
+
+  // (Drop #27 — June 8, 2026) Kick off F5 live tracking. Polls every 60s
+  // until the F5 panel unmounts or the game finalizes. Passes projTotal
+  // and homePark so the F5 classifier can compute the cross-signal
+  // (model HIGH + F5 LOW = max conviction UNDER) and park adjustments.
+  //
+  // Only poll today's games — historical analysis viewing shouldn't hammer
+  // the MLB API for finished games.
+  if (data.gamePk && data.projection?.projTotal != null) {
+    const gameDate = data.gameDateET || getTodayStr();
+    const today = getTodayStr();
+    if (gameDate === today) {
+      const _projTotal = parseFloat(data.projection.projTotal);
+      const _homePark = data.homeTeam?.abbreviation || '';
+      // Defer slightly so the DOM container is mounted
+      setTimeout(() => startLiveF5Polling(data.gamePk, _projTotal, _homePark), 100);
+    }
+  }
 
   const sideHtml = (key, label) => {
     const s = data[key];
@@ -8927,6 +9065,7 @@ function renderAnalysis(data) {
           ${marketPanel}
         </div>
         <div id="liveScore_${data.gamePk}" class="live-score-bar hidden"></div>
+        <div id="liveF5_${data.gamePk}" class="hidden"></div>
         ${envAuditHtml}
         ${divergenceHtml}
         ${gameLinesHtml}
@@ -11412,6 +11551,208 @@ function updateLiveScoreDisplay(gamePk, live) {
       `;
     }
   }
+}
+
+// ====================================================================
+// (Drop #27 — June 8, 2026) LIVE F5 PANEL — fetches innings + renders tier
+// ====================================================================
+
+// In-memory cache of live inning data — 25-second freshness.
+// Slightly slower than liveScoreCache to be polite to MLB Stats API.
+const liveInningsCache = new Map();
+
+async function fetchLiveInnings(gamePk) {
+  if (!gamePk) return null;
+  const cached = liveInningsCache.get(gamePk);
+  if (cached && Date.now() - cached.fetchedAt < 25000) return cached.data;
+  try {
+    const res = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`);
+    if (!res.ok) return null;
+    const feed = await res.json();
+    const rawInnings = feed?.liveData?.linescore?.innings;
+    const currentInning = feed?.liveData?.linescore?.currentInning;
+    const inningState = feed?.liveData?.linescore?.inningState;  // 'Top', 'Middle', 'Bottom', 'End'
+    const isFinal = feed?.gameData?.status?.abstractGameState === 'Final';
+    if (!Array.isArray(rawInnings)) return null;
+    const innings = rawInnings.map(i => ({
+      num: i.num,
+      awayRuns: i.away?.runs ?? null,
+      homeRuns: i.home?.runs ?? null,
+      awayHits: i.away?.hits ?? null,
+      homeHits: i.home?.hits ?? null
+    }));
+    const data = { innings, currentInning, inningState, isFinal };
+    liveInningsCache.set(gamePk, { data, fetchedAt: Date.now() });
+    return data;
+  } catch (err) {
+    console.warn(`[drop27] live innings fetch failed for ${gamePk}:`, err.message);
+    return null;
+  }
+}
+
+// Track which games we've already polled live so we don't double-poll.
+const liveF5Polling = new Map();  // gamePk → { intervalId, projTotal, homePark }
+
+function startLiveF5Polling(gamePk, projTotal, homePark) {
+  if (!gamePk || liveF5Polling.has(gamePk)) return;
+  // Initial fetch + render
+  pollLiveF5(gamePk, projTotal, homePark);
+  // Poll every 60 seconds while panel is mounted
+  const intervalId = setInterval(() => {
+    if (!document.getElementById(`liveF5_${gamePk}`)) {
+      clearInterval(intervalId);
+      liveF5Polling.delete(gamePk);
+      return;
+    }
+    pollLiveF5(gamePk, projTotal, homePark);
+  }, 60000);
+  liveF5Polling.set(gamePk, { intervalId, projTotal, homePark });
+}
+
+async function pollLiveF5(gamePk, projTotal, homePark) {
+  const data = await fetchLiveInnings(gamePk);
+  if (!data) return;
+  renderLiveF5Panel(gamePk, data, projTotal, homePark);
+  // Stop polling when final
+  if (data.isFinal) {
+    const entry = liveF5Polling.get(gamePk);
+    if (entry) {
+      clearInterval(entry.intervalId);
+      liveF5Polling.delete(gamePk);
+    }
+  }
+}
+
+function renderLiveF5Panel(gamePk, liveData, projTotal, homePark) {
+  const el = document.getElementById(`liveF5_${gamePk}`);
+  if (!el) return;
+
+  const innings = liveData.innings || [];
+  const currentInn = liveData.currentInning || 0;
+  const inningState = liveData.inningState || '';
+  const isFinal = liveData.isFinal;
+
+  // Game hasn't started or no innings yet — hide
+  if (innings.length === 0 || currentInn === 0) {
+    el.classList.add('hidden');
+    return;
+  }
+
+  // Compute current running totals
+  const totalRuns = innings.reduce(
+    (s, i) => s + (i.awayRuns || 0) + (i.homeRuns || 0), 0
+  );
+  const completedInnings = innings.filter(i => i.awayRuns !== null && i.homeRuns !== null).length;
+
+  // F5 only meaningful once we're through 5 (or it's an established F5 lock)
+  // We start showing PROGRESS toward F5 from inning 3 onward so users see the
+  // signal building. Tier only fires once F5 is complete.
+  if (currentInn < 3) {
+    el.classList.add('hidden');
+    return;
+  }
+
+  // Sum runs through 5 (or as far as available if F5 isn't complete yet)
+  const f5Runs = innings.slice(0, 5).reduce(
+    (s, i) => s + (i.awayRuns || 0) + (i.homeRuns || 0), 0
+  );
+  const f5Complete = innings.length >= 5 &&
+    innings[4].awayRuns !== null && innings[4].homeRuns !== null &&
+    (currentInn >= 6 || (currentInn === 5 && inningState === 'End'));
+
+  // Compute the tier (only if F5 is complete)
+  const signal = f5Complete ? classifyLiveF5Signal(f5Runs, projTotal, homePark) : null;
+
+  // Format inning-by-inning runs for visual scoreboard
+  const inningCells = innings.slice(0, 9).map((i, idx) => {
+    const runs = (i.awayRuns || 0) + (i.homeRuns || 0);
+    const done = i.awayRuns !== null && i.homeRuns !== null;
+    const isCurrent = idx + 1 === currentInn && !done;
+    let cellBg = 'transparent';
+    let cellColor = 'var(--text-secondary, #6b7280)';
+    if (done) {
+      cellBg = runs === 0 ? 'rgba(34,197,94,0.10)' : (runs >= 3 ? 'rgba(220,38,38,0.15)' : 'rgba(0,0,0,0.04)');
+      cellColor = runs === 0 ? '#15803d' : (runs >= 3 ? '#991b1b' : 'var(--text-primary)');
+    }
+    if (isCurrent) {
+      cellBg = 'rgba(59,130,246,0.15)';
+      cellColor = '#1e3a8a';
+    }
+    return `<div style="display:flex;flex-direction:column;align-items:center;min-width:24px;padding:2px 4px;border-radius:3px;background:${cellBg}"><span style="font-size:9px;color:var(--text-secondary, #9ca3af)">${idx + 1}</span><span style="font-size:13px;font-weight:600;color:${cellColor};font-variant-numeric:tabular-nums">${done ? runs : (isCurrent ? '·' : '—')}</span></div>`;
+  }).join('');
+
+  // Build the panel
+  let panelHtml = '';
+
+  if (signal) {
+    // F5 complete + signal fires — show tier badge
+    const isPlat = signal.tier === 'platinum';
+    const isUnder = signal.side === 'UNDER';
+    const wr = (signal.backtestWR * 100).toFixed(0);
+    const bg = isPlat
+      ? (isUnder ? 'linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%)' : 'linear-gradient(135deg,#7f1d1d 0%,#dc2626 100%)')
+      : (isUnder ? 'rgba(59,130,246,0.15)' : 'rgba(220,38,38,0.12)');
+    const fg = isPlat ? '#fff' : (isUnder ? '#1e3a8a' : '#991b1b');
+    const icon = isPlat ? '✦' : '★';
+    const tierLabel = isPlat ? 'PLATINUM' : 'GOLD';
+    const tooltip = [
+      `LIVE F5 SIGNAL — ${tierLabel} ${signal.side}`,
+      '',
+      signal.reasoning,
+      '',
+      `Audit: ${(signal.backtestWR * 100).toFixed(0)}% on n=${signal.backtestN}`,
+      `Wilson 95% CI: [${(signal.wilsonLow * 100).toFixed(0)}%, ${(signal.wilsonHigh * 100).toFixed(0)}%]`,
+      `Time stability: ${signal.timeStability}`,
+      `Historical avg final: ${signal.avgFinal.toFixed(1)}`,
+      signal.under75WR ? `UNDER 7.5 hits ${(signal.under75WR * 100).toFixed(0)}%, UNDER 6.5 hits ${(signal.under65WR * 100).toFixed(0)}%` : '',
+      signal.crossSignal ? `\n${signal.crossSignalNote}` : '',
+      signal.parkWarning ? `\n${signal.parkWarning}` : '',
+      '',
+      signal.actionWindow
+    ].filter(Boolean).join('&#10;');
+
+    const crossBadge = signal.crossSignal
+      ? `<span style="display:inline-block;margin-left:6px;background:rgba(255,255,255,0.25);color:#fff;font-size:8.5px;font-weight:700;padding:2px 6px;border-radius:100px;letter-spacing:0.08em">⚡ MAX CONVICTION</span>`
+      : '';
+    const parkChip = signal.parkWarning
+      ? `<div style="font-size:10px;color:var(--text-secondary, #6b7280);margin-top:4px;font-style:italic">${signal.parkWarning}</div>`
+      : '';
+
+    panelHtml = `
+      <div style="border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:10px 12px;margin-top:10px;background:rgba(248,250,252,0.5)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+          <div style="font-size:10px;color:var(--text-secondary, #6b7280);text-transform:uppercase;letter-spacing:0.08em;font-weight:600">⚡ LIVE F5 SIGNAL</div>
+          <span style="background:${bg};color:${fg};padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;cursor:help" title="${tooltip}">${icon} F5=${f5Runs} · ${signal.side} · ${tierLabel} · ${wr}% (n=${signal.backtestN})${crossBadge}</span>
+        </div>
+        <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:flex-end;margin-bottom:4px">${inningCells}</div>
+        ${parkChip}
+        <div style="font-size:10px;color:var(--text-secondary, #6b7280);margin-top:6px">${signal.actionWindow}</div>
+      </div>
+    `;
+  } else {
+    // No tier fires — show progress only, no recommendation
+    let progressNote = '';
+    if (f5Complete) {
+      progressNote = `F5 = ${f5Runs} runs · mid-range (3-6), no actionable F5 lean. Watch for further development.`;
+    } else if (currentInn >= 3) {
+      const sumThroughInn = innings.slice(0, currentInn - (inningState === 'End' || inningState === 'Middle' ? 0 : 1))
+        .reduce((s, i) => s + (i.awayRuns || 0) + (i.homeRuns || 0), 0);
+      progressNote = `Through ${completedInnings} inning${completedInnings === 1 ? '' : 's'}: ${sumThroughInn} runs · F5 signal pending (need inning 5 to complete)`;
+    }
+    panelHtml = `
+      <div style="border:1px solid rgba(0,0,0,0.06);border-radius:8px;padding:10px 12px;margin-top:10px;background:rgba(248,250,252,0.3)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
+          <div style="font-size:10px;color:var(--text-secondary, #6b7280);text-transform:uppercase;letter-spacing:0.08em;font-weight:600">⚡ LIVE F5 TRACKER</div>
+          ${isFinal ? '<span style="font-size:10px;color:var(--text-secondary, #6b7280)">final</span>' : `<span style="font-size:10px;color:#3b82f6">Inning ${currentInn}${inningState ? ' · ' + inningState : ''}</span>`}
+        </div>
+        <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:flex-end;margin-bottom:4px">${inningCells}</div>
+        <div style="font-size:10px;color:var(--text-secondary, #6b7280);margin-top:6px;font-style:italic">${progressNote}</div>
+      </div>
+    `;
+  }
+
+  el.innerHTML = panelHtml;
+  el.classList.remove('hidden');
 }
 
 function captureProjection(data) {
