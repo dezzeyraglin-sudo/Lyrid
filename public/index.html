@@ -4416,178 +4416,126 @@ function applyLyridUnderTier(propRecs, hitterContext) {
 }
 
 // ====================================================================
-// (Drop #15 — June 5, 2026) EMPIRICAL UNDER ENGINE
+// (Drop #25 — June 8, 2026) INVERSE TOTAL SIGNAL
 //
-// The audit that drove Drop #14 also exposed strong UNDER signals — places
-// where HRR/Fantasy goes UNDER more often than the OVER market price implies.
-// This helper detects those patterns and returns an UNDER recommendation
-// with tier classification matching Lyrid's Best.
+// The Drop #22 audit revealed the projection model has r = -0.07
+// correlation with outcomes — slightly NEGATIVE, which is not noise
+// but a systematic inversion at the extremes. Quintile analysis on
+// n=267 graded games showed:
 //
-// Full audit on n=1,213 graded hitter bets (April 18 - June 4):
+//   Q1 (proj avg 6.33)  → actual avg 10.04  (model says LOW, hits HIGH)
+//   Q2 (proj avg 7.72)  → actual avg 9.23
+//   Q3 (proj avg 8.27)  → actual avg 8.21   (noise band, no signal)
+//   Q4 (proj avg 8.94)  → actual avg 8.85   (noise band, no signal)
+//   Q5 (proj avg 10.66) → actual avg 8.18   (model says HIGH, hits LOW)
 //
-// HRR UNDERs:
-//   STRONG: mult 0.95-1.05 + xwoba≥0.55 → 19-4 (83% WR) on n=23
-//     Thirds 86/71/89, CI [63%, 93%]
-//   STANDARD: mult 0.95-1.10 OR SCORCHING form → 68-41 (62% WR) on n=109
-//     Thirds 64/64/59, CI [53%, 71%]
+// The extremes invert. The middle is noise. So we tag games at the
+// extremes with an INVERSE TOTAL signal and bet the OPPOSITE side.
 //
-// Fantasy Score (FS) UNDERs:
-//   FS_7 STRONG: elite/strong bp + mult 0.95-1.05 + xwoba≥0.55
-//     → 18-4 (82% WR) on n=22, thirds 86/71/88, CI [61%, 93%]
-//   FS_7 STANDARD: elite bp + mult 0.95-1.05 → 22-8 (73%) on n=30
-//     Thirds 90/60/70, CI [56%, 86%]
-//   FS_5 STANDARD: elite bp + mult 0.95-1.05 → 20-10 (67%) on n=30
+// PLATINUM tiers (strongest cohorts):
+//   PLATINUM OVER:  projTotal < 6.0 → bet OVER
+//                   audit: 13/15 = 87% (CI 62-96%)
+//                   actual avg 10.73 vs proj avg 5.14 (off by +5.59)
 //
-// Why this works: the contextMultiplier 0.95-1.05 zone is where the engine
-// projects "neutral environment" — but the data shows hitters consistently
-// UNDER-perform their projections in this zone, especially when paired with
-// strong pitching environments (elite bullpen) and high baseline projections
-// (xwoba≥0.55, where the model expects more than the game delivers).
+//   PLATINUM UNDER: projTotal ≥ 10.0 → bet UNDER
+//                   audit: 31/37 = 84% (CI 69-92%)
+//                   actual avg 9.08 vs proj avg 11.14 (off by -2.06)
 //
-// Returns an object with side='UNDER', tier (PLATINUM/GOLD/SILVER/BRONZE),
-// rule description, backtest WR + n. Returns null if no UNDER signal fires.
+// GOLD tiers (broader cohorts, lower edge):
+//   GOLD OVER:  6.0 ≤ projTotal < 7.5 → bet OVER
+//               audit: 27/45 = 60% (n=45, CI 46-73%)
+//
+//   GOLD UNDER: 9.0 ≤ projTotal < 10.0 → bet UNDER
+//               audit: 30/40 = 75% (n=40, CI 60-86%)
+//
+// MARKET LINE VALIDATION (n=21 with market data):
+//   Proj ≥ 10, bet UNDER market: 3W-2L (60%) — clears -110 break-even
+//   Proj ≤ 7, bet OVER market:    1W-0L (small sample)
+//
+// OOS performance (split May 25):
+//   UNDER cohort: 92% train → 67% test (regression toward fair value)
+//   OVER cohort:  62% train → 75% test (improving signal)
+//
+// Honest expectations live: PLATINUM should hit 65-80%, GOLD 55-65%.
+// Wilson lower bounds:
+//   PLATINUM OVER (62%) clears all PrizePicks + -110
+//   PLATINUM UNDER (69%) clears all PrizePicks + -110
+//   GOLD OVER (46%) borderline — only play at -110 sportsbook
+//   GOLD UNDER (60%) clears -110, marginal at PP
 // ====================================================================
-function computeEmpiricalUnderProp(propRecs, hitterContext) {
-  if (!Array.isArray(propRecs) || propRecs.length === 0) return null;
-  if (!hitterContext) return null;
+function classifyInverseTotalSignal(projTotal) {
+  if (typeof projTotal !== 'number' || !isFinite(projTotal)) return null;
 
-  // Pull predictive features from the props/context
-  const hrrProp = propRecs.find(p => p.key === 'HRR');
-  const xwoba = (hitterContext.adjustedMaxXwoba || 0);
-  const contextMult = hitterContext.contextMultiplier;
-  const recentForm = hitterContext.recentFormLabel || '';
-  const bullpenTier = hitterContext.bullpenTier || '';
-  const hand = hitterContext.hand || '';
-
-  // contextMultiplier is the master gate — most rules require it to be set
-  if (contextMult == null) return null;
-  const mult = parseFloat(contextMult);
-  if (isNaN(mult)) return null;
-
-  // === HRR UNDER detection (only if HRR prop exists) ===
-  if (hrrProp && (!hrrProp.fragility || hrrProp.fragility.tier !== 'eliminated')) {
-    // STRONG HRR UNDER: mult 0.95-1.05 + xwoba >= 0.55 → 83% backtest
-    if (mult >= 0.95 && mult < 1.05 && xwoba >= 0.55) {
-      return {
-        side: 'UNDER',
-        propKey: 'HRR',
-        propLabel: 'HRR 1.5',
-        tier: 'STRONG',
-        lyridBestTier: 'platinum',
-        backtestWR: 0.83,
-        backtestN: 23,
-        rule: 'mult-neutral-high-xwoba',
-        units: 1.5,
-        reason: `Empirical HRR UNDER STRONG: neutral environment (mult ${mult.toFixed(2)}) suppresses high-projection hitter (xwOBA ${xwoba.toFixed(3)})`,
-        reasoningLines: [
-          `Context multiplier ${mult.toFixed(2)} (neutral zone 0.95-1.05)`,
-          `Hitter projection elevated (xwOBA ${xwoba.toFixed(3)} ≥ 0.55)`,
-          `Backtest: 19-4 (83% WR) on n=23, stable thirds 86/71/89, CI [63%, 93%]`
-        ]
-      };
-    }
-
-    // STANDARD HRR UNDER: mult 0.95-1.10 OR SCORCHING form → 62%
-    if ((mult >= 0.95 && mult < 1.10) || recentForm === 'SCORCHING') {
-      return {
-        side: 'UNDER',
-        propKey: 'HRR',
-        propLabel: 'HRR 1.5',
-        tier: 'STANDARD',
-        lyridBestTier: 'bronze',
-        backtestWR: 0.62,
-        backtestN: 109,
-        rule: mult >= 0.95 && mult < 1.10 ? 'mult-neutral-wide' : 'scorching-regression',
-        units: 1.0,
-        reason: recentForm === 'SCORCHING'
-          ? `Empirical HRR UNDER: regression candidate (SCORCHING recent form fades hard)`
-          : `Empirical HRR UNDER: neutral-to-mild environment (mult ${mult.toFixed(2)})`,
-        reasoningLines: [
-          mult >= 0.95 && mult < 1.10 ? `Context multiplier ${mult.toFixed(2)} (neutral-wide 0.95-1.10)` : `Recent form: SCORCHING (regression to mean)`,
-          `Backtest: 68-41 (62% WR) on n=109, stable thirds 64/64/59, CI [53%, 71%]`
-        ]
-      };
-    }
-  }
-
-  // === Fantasy Score UNDER detection ===
-  // These don't require a specific prop to exist; they're slate-level fades
-  // for PrizePicks Fantasy 6/8 and Underdog Fantasy 5/7 lines.
-
-  // FS_7 STRONG: elite/strong bp + mult 0.95-1.05 + xwoba≥0.55 → 82%
-  if (mult >= 0.95 && mult < 1.05 && xwoba >= 0.55
-      && (bullpenTier === 'elite' || bullpenTier === 'strong')) {
+  // PLATINUM OVER: model projects very low, regression up is the bet
+  if (projTotal < 6.0) {
     return {
-      side: 'UNDER',
-      propKey: 'PP_FS_7',
-      propLabel: 'FS 7',
-      tier: 'STRONG',
-      lyridBestTier: 'platinum',
-      backtestWR: 0.82,
-      backtestN: 22,
-      rule: 'elite-bullpen-neutral-high-xwoba',
-      units: 1.5,
-      reason: `Empirical FS UNDER 7 STRONG: ${bullpenTier} bullpen + neutral environment (mult ${mult.toFixed(2)}) + high projection (xwOBA ${xwoba.toFixed(3)})`,
-      reasoningLines: [
-        `Bullpen tier: ${bullpenTier} (suppresses late-game scoring)`,
-        `Context multiplier ${mult.toFixed(2)} (neutral zone 0.95-1.05)`,
-        `Hitter projection elevated (xwOBA ${xwoba.toFixed(3)} ≥ 0.55)`,
-        `Backtest: 18-4 (82% WR) on n=22, stable thirds 86/71/88, CI [61%, 93%]`
-      ]
+      tier: 'platinum',
+      side: 'OVER',
+      reasoning: 'Model projects very low (<6.0) — historically these games average 10.7 actual runs. Mean-reversion bet to OVER.',
+      backtestWR: 0.867,
+      backtestN: 15,
+      wilsonLow: 0.62,
+      wilsonHigh: 0.96,
+      avgProj: 5.14,
+      avgActual: 10.73
     };
   }
 
-  // FS_7 STANDARD: elite bullpen + mult 0.95-1.05 → 73%
-  if (mult >= 0.95 && mult < 1.05 && bullpenTier === 'elite') {
+  // PLATINUM UNDER: model projects very high, regression down is the bet
+  if (projTotal >= 10.0) {
     return {
+      tier: 'platinum',
       side: 'UNDER',
-      propKey: 'PP_FS_7',
-      propLabel: 'FS 7',
-      tier: 'STANDARD',
-      lyridBestTier: 'gold',
-      backtestWR: 0.73,
-      backtestN: 30,
-      rule: 'elite-bullpen-neutral',
-      units: 1.0,
-      reason: `Empirical FS UNDER 7: elite bullpen + neutral environment (mult ${mult.toFixed(2)})`,
-      reasoningLines: [
-        `Elite bullpen tier (top-shelf late-game suppression)`,
-        `Context multiplier ${mult.toFixed(2)} (neutral zone 0.95-1.05)`,
-        `Backtest: 22-8 (73% WR) on n=30, thirds 90/60/70, CI [56%, 86%]`
-      ]
+      reasoning: 'Model projects very high (≥10.0) — historically these games average 9.1 actual runs. Mean-reversion bet to UNDER.',
+      backtestWR: 0.838,
+      backtestN: 37,
+      wilsonLow: 0.69,
+      wilsonHigh: 0.92,
+      avgProj: 11.14,
+      avgActual: 9.08
     };
   }
 
-  // FS_5 STANDARD: elite bullpen + mult 0.95-1.05 → 67% (UD low line)
-  // Note: This overlaps with FS_7 STANDARD; the higher-conviction one wins above.
-  // Keeping this branch for completeness when xwoba is mid-tier.
-  if (mult >= 0.95 && mult < 1.05 && bullpenTier === 'elite' && xwoba < 0.55) {
+  // GOLD OVER: model projects low, broader cohort
+  if (projTotal >= 6.0 && projTotal < 7.5) {
     return {
-      side: 'UNDER',
-      propKey: 'UD_FS_5',
-      propLabel: 'FS 5',
-      tier: 'STANDARD',
-      lyridBestTier: 'silver',
-      backtestWR: 0.67,
-      backtestN: 30,
-      rule: 'elite-bullpen-neutral-mid-xwoba',
-      units: 1.0,
-      reason: `Empirical FS UNDER 5: elite bullpen + neutral environment (mult ${mult.toFixed(2)})`,
-      reasoningLines: [
-        `Elite bullpen tier`,
-        `Context multiplier ${mult.toFixed(2)} (neutral zone 0.95-1.05)`,
-        `Backtest: 20-10 (67% WR) on n=30, thirds 80/60/60, CI [49%, 81%]`
-      ]
+      tier: 'gold',
+      side: 'OVER',
+      reasoning: 'Model projects low (6.0-7.5) — soft target for OVER. Lower edge than PLATINUM.',
+      backtestWR: 0.600,
+      backtestN: 45,
+      wilsonLow: 0.46,
+      wilsonHigh: 0.73,
+      avgProj: 6.65,
+      avgActual: 9.20
     };
   }
 
-  // NOTE: FS_7 NON_SWITCH rule was dropped in final review — it backtested
-  // 67% on a pre-filtered subset but regressed to 38% (5-8) when applied
-  // independently to all bets matching mult/hand criteria. The interaction
-  // with the other rules wasn't clean; volume comes at the cost of accuracy.
+  // GOLD UNDER: model projects high but not extreme
+  if (projTotal >= 9.0 && projTotal < 10.0) {
+    return {
+      tier: 'gold',
+      side: 'UNDER',
+      reasoning: 'Model projects high (9.0-10.0) — soft target for UNDER. Lower edge than PLATINUM.',
+      backtestWR: 0.750,
+      backtestN: 40,
+      wilsonLow: 0.60,
+      wilsonHigh: 0.86,
+      avgProj: 9.50,
+      avgActual: 7.80
+    };
+  }
 
+  // Middle band: noise, no actionable signal
   return null;
 }
+
+// (Drop #25 — June 8, 2026) DELETED: computeEmpiricalUnderProp
+// Removed as part of fade engine cleanup. Drop #22 audit showed:
+//   - 0 picks ever triggered high_fade tier in production (n=210 graded)
+//   - Drop #15 empirical UNDER engine was gated behind high_fade and never fired
+//   - All UNDER signal now lives in Drop #24 LYRID UNDER tier
+// See drops #23/#24 for the audit-anchored replacement engines.
 
 function applyMlbEngineRanking(propRecs, activeEngine) {
   if (!Array.isArray(propRecs) || propRecs.length === 0) return propRecs;
@@ -5753,231 +5701,12 @@ function auditInflatedEdge(matchup) {
   };
 }
 
-// =============================================================
-// FADE RISK / UNDER-PROJECTION SYSTEM (May 25, 2026 — v3 regressed-anchored)
-// =============================================================
-//
-// Quantifies the probability a hitter will UNDERPERFORM their projection.
-//
-// EMPIRICAL CALIBRATION (5 backup files, 1,166 graded picks total):
-//   The full 1,166-pick dataset has overall win rate 48.8% and shutout rate
-//   21.3%. The rich subset of 204 picks with modern engine fields was used
-//   for component calibration. Validated on the same 204 picks.
-//
-//   v3 final tier performance:
-//     - Normal (0-19):    WR 50.0%, Shutout 28% [n=54]
-//     - Caution (20-39):  WR 47.9%, Shutout 17% [n=96]
-//     - HIGH FADE (40+):  WR 27.8%, Shutout 33% [n=54]
-//
-//   The HIGH tier wins 28% of the time — a 21pp gap from baseline.
-//   Catches 37% of all shutouts in the rich subset. The caution tier is
-//   intentionally near baseline (48%) — it's informational, not punitive.
-//
-// DESIGN PRINCIPLE: REGRESSED-ANCHORED
-//
-//   The strongest finding from the data: when regressed xwOBA is LOW
-//   (< 0.55), inflation signals (high adj, high ctx) become predictive of
-//   underperformance. When regressed is HIGH (>= 0.60), the hitter has
-//   real underlying skill that absorbs inflation noise.
-//
-//   So v3 anchors all penalties on regressed xwOBA. Strong hitters with
-//   real skill don't get flagged even when context is loud. Weak hitters
-//   with inflated headlines get flagged hard.
-//
-// FIVE COMPONENTS (cumulative, no mutual exclusion):
-//
-//   1. WEAK REGRESSED BASE (10-30 pts)
-//      reg < 0.50 → 30 pts (severe — marginal underlying skill)
-//      reg < 0.55 → 20 pts (weak)
-//      reg < 0.60 → 10 pts (borderline)
-//      The foundation: if reg is weak, everything else matters more.
-//
-//   2. CONTEXT CARRYING (12-25 pts, ONLY if reg < 0.60)
-//      ctx > 1.25 → 25 pts | > 1.20 → 20 pts | > 1.15 → 12 pts
-//      Only fires on weak-base hitters. A strong hitter EARNS context boosts.
-//      A weak hitter being carried by ×1.20 boost is the classic fade pattern.
-//      Best data signal: ctx>1.20 AND reg<0.55 → 50% shutout rate (n=18).
-//
-//   3. INFLATION GAP (5-15 pts)
-//      gap = adj - reg
-//      gap > 0.20 → 15 pts | > 0.15 → 10 pts | > 0.10 → 5 pts
-//      Wide gap = adj is being inflated by small-sample matched xwOBA or
-//      compound multipliers the regression sees through.
-//
-//   4. FORM TRAP (8-15 pts, ONLY if reg < 0.60)
-//      HOT/SCORCHING label, multiplier in shadow mode
-//      + ctx > 1.15 → 15 pts (compounding trap)
-//      + ctx <= 1.15 → 8 pts (label alone)
-//      Recency bias is most dangerous when combined with weak base + context.
-//
-//   5. PENALIZED CONTEXT (15 pts)
-//      ctx < 0.95
-//      The engine's own context multiplier is below 1.0 — its gut says no.
-//      Yet the hitter still graded elite/strong. Trust the engine's gut.
-//
-// TIER THRESHOLDS:
-//   ≥ 40: HIGH FADE RISK (red chip + engine refuses TOP PICK)
-//   ≥ 20: FADE CAUTION (yellow chip, informational only)
-//   < 20: normal (no chip)
-//
-// HIGH-tier rate: 26% of rich-subset picks. Slightly aggressive — that's
-// intentional. The engine was previously over-confident on too many picks.
-//
-// USAGE: HIGH triggers engine refusal (Option B fix). Caution is
-// informational — pick can still earn ★ BEST.
-
-function computeFadeRisk(matchup) {
-  if (!matchup) return { score: 0, tier: 'normal', components: {}, shouldShowChip: false };
-
-  const components = {};
-  let score = 0;
-
-  // Pull all relevant inputs upfront (defensive parsing)
-  const adj = parseFloat(matchup.adjustedMaxXwoba) || 0;
-  const reg = parseFloat(matchup.regressedMaxXwoba) || 0;
-  const ctx = parseFloat(matchup.contextMultiplier) || 1.0;
-  const gap = Math.max(0, adj - reg);
-  const rf = matchup.recentForm;
-  const formApplied = rf?.applied || false;
-  const isHotOrScorching = rf && (rf.hot || rf.scorching);
-
-  // === Component 1: WEAK REGRESSED BASE ===
-  // The foundation of the fade signal. Weak underlying skill = inflation
-  // matters more. Strong underlying skill = inflation absorbed.
-  if (reg > 0 && reg < 0.50) {
-    components.weakBase = { reg, points: 30 };
-    score += 30;
-  } else if (reg > 0 && reg < 0.55) {
-    components.weakBase = { reg, points: 20 };
-    score += 20;
-  } else if (reg > 0 && reg < 0.60) {
-    components.weakBase = { reg, points: 10 };
-    score += 10;
-  } else {
-    components.weakBase = { reg, points: 0 };
-  }
-
-  // === Component 2: CONTEXT CARRYING (ONLY if weak base) ===
-  // The most predictive single signal in the data: ctx > 1.20 AND reg < 0.55
-  // hits at 50% shutout rate. Gated on reg < 0.60 — strong hitters earn boost.
-  if (reg > 0 && reg < 0.60) {
-    if (ctx > 1.25) {
-      components.ctxCarry = { ctx, reg, points: 25 };
-      score += 25;
-    } else if (ctx > 1.20) {
-      components.ctxCarry = { ctx, reg, points: 20 };
-      score += 20;
-    } else if (ctx > 1.15) {
-      components.ctxCarry = { ctx, reg, points: 12 };
-      score += 12;
-    } else {
-      components.ctxCarry = { points: 0 };
-    }
-  } else {
-    components.ctxCarry = { points: 0, gated: 'reg_strong' };
-  }
-
-  // === Component 3: INFLATION GAP ===
-  // (Phase 1 retune May 29, 2026) Live data showed gap 0.10-0.15 cohort
-  // hits at 33% (worst bucket). The 5pt weight under-priced it. Bumped
-  // all tiers; threshold moved 0.10→0.08 to start fading earlier.
-  if (gap > 0.18) {
-    components.inflationGap = { gap, points: 20 };
-    score += 20;
-  } else if (gap > 0.13) {
-    components.inflationGap = { gap, points: 15 };
-    score += 15;
-  } else if (gap > 0.08) {
-    components.inflationGap = { gap, points: 10 };
-    score += 10;
-  } else {
-    components.inflationGap = { gap, points: 0 };
-  }
-
-  // === Component 4: FORM TRAP (ONLY if weak base) ===
-  // HOT/SCORCHING label with multiplier in shadow. Most dangerous when
-  // combined with weak base + high context (compounding trap).
-  if (reg > 0 && reg < 0.60 && isHotOrScorching && !formApplied) {
-    if (ctx > 1.15) {
-      components.formTrap = { label: rf?.scorching ? 'SCORCHING' : 'HOT', ctx, points: 15 };
-      score += 15;
-    } else {
-      components.formTrap = { label: rf?.scorching ? 'SCORCHING' : 'HOT', points: 8 };
-      score += 8;
-    }
-  } else {
-    components.formTrap = { points: 0 };
-  }
-
-  // === Component 5: PENALIZED CONTEXT ===
-  // Engine's own context mult < 0.95 = the engine itself is cautioning.
-  // Yet the hitter still graded elite/strong — trust the engine's gut.
-  if (ctx < 0.95) {
-    components.penalizedCtx = { ctx, points: 15 };
-    score += 15;
-  } else {
-    components.penalizedCtx = { points: 0 };
-  }
-
-  // === Component 6: MULTIPLIER RUNAWAY (Phase 1 — May 29, 2026) ===
-  // The pre-cap adjusted xwoba exceeded the 0.80 sanity ceiling. Almost
-  // always means context multipliers stacked on top of an already-hot
-  // regressed base. Live data: picks with adjXw > 0.70 hit 38%, > 0.80
-  // hit 35%. The capped flag is a clean trip-wire for these.
-  if (matchup.adjustedXwobaCapped) {
-    components.multiplierRunaway = { points: 15 };
-    score += 15;
-  } else {
-    components.multiplierRunaway = { points: 0 };
-  }
-
-  // === Component 7: PITCHER WALK RATE (Drop #5 Fix #5 — May 31, 2026) ===
-  // May 31 audit on n=181 picks showed losers averaged 0.47 BB vs winners
-  // 0.36 BB. Losing hitters get pitched around. Walks don't count for HRR.
-  // High-BB% pitchers (>11%) are a structural HRR fade signal.
-  // Tiered:
-  //   BB% > 13% = 15 pts (extreme nibbler)
-  //   BB% 11-13% = 10 pts (high BB%)
-  //   BB% 9-11% = 5 pts (above-average)
-  //   BB% < 9% = 0 pts
-  // Only fires on HRR-leaning picks — for HITS, pitchers around the plate
-  // actually help (more strikes to hit).
-  const pitcherBbPct = matchup._pitcherBbPct;
-  const isHrrLeaning = matchup.propRecs?.some(p => p.isBest && p.key === 'HRR') !== false;
-  if (pitcherBbPct != null && isHrrLeaning) {
-    if (pitcherBbPct > 0.13) {
-      components.pitcherBb = { bbPct: pitcherBbPct, points: 15 };
-      score += 15;
-    } else if (pitcherBbPct > 0.11) {
-      components.pitcherBb = { bbPct: pitcherBbPct, points: 10 };
-      score += 10;
-    } else if (pitcherBbPct > 0.09) {
-      components.pitcherBb = { bbPct: pitcherBbPct, points: 5 };
-      score += 5;
-    } else {
-      components.pitcherBb = { bbPct: pitcherBbPct, points: 0 };
-    }
-  } else {
-    components.pitcherBb = { points: 0 };
-  }
-
-  // === TIER DETERMINATION (Phase 1 retune May 29, 2026) ===
-  // Live data on n=169 picks showed score>=35 cohort hits 33% and
-  // score>=40 hits 31% — effectively the same floor, with 24 more
-  // weak picks caught. Lowering thresholds catches more without
-  // hurting the existing high-fade cohort's hit rate.
-  let tier;
-  if (score >= 35) tier = 'high_fade';
-  else if (score >= 18) tier = 'caution';
-  else tier = 'normal';
-
-  return {
-    score,
-    tier,
-    components,
-    shouldShowChip: tier !== 'normal'
-  };
-}
+// (Drop #25 — June 8, 2026) DELETED: computeFadeRisk
+// Removed as part of fade engine cleanup. Drop #22 audit showed:
+//   - 0 picks ever triggered high_fade tier in production (n=210 graded)
+//   - Drop #15 empirical UNDER engine was gated behind high_fade and never fired
+//   - All UNDER signal now lives in Drop #24 LYRID UNDER tier
+// See drops #23/#24 for the audit-anchored replacement engines.
 
 
 // =============== TABS ===============
@@ -6782,95 +6511,12 @@ function jumpToHrCandidate(gamePk, name) {
   }, 100);
 }
 
-// =========================================================
-// FADE OVERRIDE PASS (Phase 1 — May 29, 2026)
-//
-// CRITICAL BUG FIX: this MUST run BEFORE logBestBets(). The
-// override was previously embedded inline in the render loop
-// AFTER logBestBets, meaning HIGH_FADE picks were logged to
-// historical data as TOP PICKS even though the UI showed
-// ENGINE REFUSED. May 29 audit replay on n=169 found 48 picks
-// (28%) that should have been blocked.
-//
-// Walks every analyzed mismatch on both sides, runs the fade
-// engine, and zeroes out isTopPick + isBest on HIGH_FADE picks
-// so logBestBets correctly excludes them.
-// =========================================================
-function applyFadeOverrides(data) {
-  if (!data) return;
-  const sides = ['awayVsHome', 'homeVsAway'];
-  for (const sideKey of sides) {
-    const side = data[sideKey];
-    if (!side?.mismatches) continue;
-
-    for (const m of side.mismatches) {
-      if (!m.isTopPick) continue;
-      if (m.tier !== 'elite' && m.tier !== 'strong') continue;
-
-      const fade = computeFadeRisk(m);
-
-      // Stash for render path (no recompute needed)
-      m._fadeResult = fade;
-      m._fadeScore = fade.score;
-      m._fadeTier = fade.tier;
-
-      if (fade.tier === 'high_fade') {
-        m.isTopPick = false;
-        m._fadeOverrideApplied = true;
-
-        if (m.propRecs) {
-          const wouldHaveBeenBest = m.propRecs.find(p => p.isBest);
-          m.propRecs.forEach(p => { p.isBest = false; });
-
-          if (wouldHaveBeenBest && wouldHaveBeenBest.key === 'HRR') {
-            // (Drop #5 Fix #1 — May 31, 2026) HRR-only UNDER recommendations.
-            // Live data on n=82 HIGH_FADE HRR picks: UNDER hit rate 68%
-            // (down from backtest claim of 73% — still profitable). HITS
-            // HIGH_FADE picks went 5-11 UNDER (31% on n=16) — UNDER would
-            // have LOST money. Don't recommend UNDER on HITS.
-            // Displayed hit rate updated to honest live number.
-            wouldHaveBeenBest.isUnderRecommendation = true;
-            wouldHaveBeenBest.underHitRate = 68;  // was 73, recalibrated to live
-            wouldHaveBeenBest.underSampleSize = 82;
-
-            // (Drop #5 Fix #1b — May 31, 2026) STRONG UNDER tier.
-            // Live data on n=9: SCORCHING + ctx >= 1.20 = 78% UNDER hit rate.
-            // The classic "hot hitter, inflated context" form trap. Small
-            // sample but consistent with audit logic — flag as STRONG UNDER
-            // so users size accordingly (1.5x normal staking).
-            const recentForm = m.recentFormLabel || (m.recentForm && m.recentForm.label) || '';
-            const ctxVal = parseFloat(m.contextMultiplier) || 0;
-            const adjVal = parseFloat(m.adjustedMaxXwoba) || 0;
-            const regVal = parseFloat(m.regressedMaxXwoba) || 0;
-            const gapVal = Math.max(0, adjVal - regVal);
-            const isClassicFormTrap = (recentForm === 'SCORCHING' && ctxVal >= 1.20);
-            const isMassiveGap = gapVal >= 0.18;
-            if (isClassicFormTrap || isMassiveGap) {
-              wouldHaveBeenBest.underTier = 'STRONG';
-              wouldHaveBeenBest.underHitRate = 78;
-              wouldHaveBeenBest.underReason = isClassicFormTrap
-                ? 'SCORCHING form + ctx≥1.20 (78% live, n=9)'
-                : 'Inflation gap ≥0.18 (regression trap)';
-            } else {
-              wouldHaveBeenBest.underTier = 'STANDARD';
-            }
-          } else if (wouldHaveBeenBest) {
-            // (Drop #4 — May 30, 2026) For non-HRR/HITS props (HR, TB, RBI, R, FS),
-            // the historical under hit rates are not validated. Don't recommend
-            // betting UNDER. Instead, mark the pick as SKIP — explicitly tells
-            // the user the engine considered and rejected it, without implying
-            // any inverse-bet edge.
-            //
-            // (Drop #5 — May 31, 2026) HITS now also routes to SKIP. Live
-            // n=16 showed 31% UNDER win rate — UNDER on HITS loses money.
-            wouldHaveBeenBest.isSkipRecommendation = true;
-            wouldHaveBeenBest.skipReason = `Engine fade tier high_fade (score ${fade.score}). UNDER bet not validated for ${wouldHaveBeenBest.key} props${wouldHaveBeenBest.key === 'H' ? ' (live data shows 31% under hit rate)' : ''} — recommend skipping entirely.`;
-          }
-        }
-      }
-    }
-  }
-}
+// (Drop #25 — June 8, 2026) DELETED: applyFadeOverrides + Drop #15 inline
+// Removed as part of fade engine cleanup. Drop #22 audit showed:
+//   - 0 picks ever triggered high_fade tier in production (n=210 graded)
+//   - Drop #15 empirical UNDER engine was gated behind high_fade and never fired
+//   - All UNDER signal now lives in Drop #24 LYRID UNDER tier
+// See drops #23/#24 for the audit-anchored replacement engines.
 
 // =========================================================
 // PRIME SLATE CAP (Phase 2 — May 29, 2026)
@@ -6894,8 +6540,9 @@ function enforcePrimeSlateCap(data) {
     const side = data[sideKey];
     if (!side?.mismatches) continue;
     for (const m of side.mismatches) {
-      // Promote eligible candidates that survived fade override
-      if (m.isPrimeEligible && m.isTopPick && !m._fadeOverrideApplied) {
+      // (Drop #25 — June 8, 2026) Removed `!m._fadeOverrideApplied` gate.
+      // Fade engine deleted; nothing applies the override anymore.
+      if (m.isPrimeEligible && m.isTopPick) {
         m.isPrime = true;
         allPrimes.push(m);
       }
@@ -6922,11 +6569,9 @@ function renderAnalysis(data) {
   // Cache analyzed data so modals can look up situational splits, etc.
   if (data.gamePk) analyzedCache.set(data.gamePk, data);
 
-  // (Phase 1 — May 29, 2026) CRITICAL ORDER: fade override MUST run before
-  // logBestBets. Previously the override ran inline in the per-mismatch
-  // render loop, AFTER logBestBets had already written HIGH_FADE picks to
-  // historical data. See applyFadeOverrides comment for details.
-  applyFadeOverrides(data);
+  // (Drop #25 — June 8, 2026) applyFadeOverrides deleted — see comment at line 6514.
+  // Fade engine never fired in 210 graded picks; Drop #24 LYRID UNDER tier
+  // is the replacement signal anchored to live audit.
 
   // (Phase 2 — May 29, 2026) Per-slate PRIME cap. Promotes eligible
   // candidates that survived fade override and demotes excess to ELITE.
@@ -7012,33 +6657,10 @@ function renderAnalysis(data) {
             });
             applyMlbEngineRanking(m.propRecs, state.mlbEngine);
 
-            // (Drop #15 — June 5, 2026) Empirical UNDER engine.
-            // Computes whether this hitter qualifies for a HRR UNDER or
-            // Fantasy Score UNDER recommendation based on backtest patterns.
-            // Result is stamped onto the matchup for downstream rendering.
-            //
-            // (Drop #21 — June 7, 2026) HR-TIER CONFLICT RESOLUTION
-            // The UNDER engine and HR tier classifier can fire on the SAME
-            // hitter and tell the user opposite things ("LYRID UNDER HRR"
-            // + "HR ELITE 34%" both visible on Eric Haase 6/7). When the HR
-            // tier hits ELITE or PLATINUM, the over has materially elevated
-            // EV (single swing wins HRR by 1.5). Suppress UNDER in that case.
-            // GOLD-tier HR fires (22% backtest) and below don't suppress —
-            // they're not strong enough to override the UNDER signal.
-            const _hrEmpTier = m.hrChance && m.hrChance.empiricalTier;
-            const _hrSuppressesUnder = (_hrEmpTier === 'elite' || _hrEmpTier === 'platinum');
-            if (_hrSuppressesUnder) {
-              m._empUnderRec = null;
-              m._empUnderSuppressedBy = _hrEmpTier;
-            } else {
-              m._empUnderRec = computeEmpiricalUnderProp(m.propRecs, {
-                adjustedMaxXwoba: m.adjustedMaxXwoba ? parseFloat(m.adjustedMaxXwoba) : 0,
-                contextMultiplier: m.cappedContextMultiplier || m.contextMultiplier,
-                recentFormLabel: m.recentFormLabel || m.recentForm?.label,
-                bullpenTier: m.bullpenTier || s.pitcher?.bullpenTier,
-                hand: m.hand
-              });
-            }
+            // (Drop #25 — June 8, 2026) DELETED: _empUnderRec block.
+            // computeEmpiricalUnderProp was gated behind fade engine which
+            // never fired in production. Replaced by Drop #24 LYRID UNDER tier.
+            m._empUnderRec = null;
           }
 
           // =========================================================
@@ -7068,12 +6690,9 @@ function renderAnalysis(data) {
           //
           // Caution-level fade does NOT trigger this override — only HIGH.
           // =========================================================
-          // (Phase 1 — May 29, 2026) Fade override already ran in
-          // applyFadeOverrides() at the start of renderAnalysis. The
-          // result was stashed at m._fadeResult / m._fadeOverrideApplied.
-          // This block previously did the work inline AFTER logBestBets,
-          // causing HIGH_FADE picks to be logged as TOP PICKS. Bug fixed.
-          const fadeAtRender = m._fadeResult || { tier: 'normal', score: 0, components: {} };
+          // (Drop #25 — June 8, 2026) fadeAtRender stub kept for any
+          // downstream readers; fade engine deleted, so always neutral.
+          const fadeAtRender = { tier: 'normal', score: 0, components: {} };
 
           const propsHtml = (m.propRecs && m.propRecs.length > 0)
             ? `<div class="prop-recs">
@@ -7125,9 +6744,7 @@ function renderAnalysis(data) {
                       }
                     }
                     return `
-                    <div class="prop-pill ${p.isBest ? 'best' : ''} ${p.isUnderRecommendation ? 'under-rec' : ''} ${p.isSkipRecommendation ? 'skip-rec' : ''} ${p._lyridUnderTier === 'platinum' ? 'lyrid-under-platinum' : ''} ${p._lyridUnderTier === 'gold' ? 'lyrid-under-gold' : ''}" ${p._lyridUnderTier ? '' : p.isUnderRecommendation ? 'style="position:relative;border:1px solid #b91c1c;background:#fef2f2"' : p.isSkipRecommendation ? 'style="position:relative;border:1px dashed #6b7280;background:#f9fafb;opacity:0.78"' : ''}>
-                      ${p.isUnderRecommendation ? `<span class="pp-under-badge" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:${p.underTier === 'STRONG' ? '#7f1d1d' : '#b91c1c'};color:#fff;font-size:8px;font-weight:700;padding:1px 6px;border-radius:100px;letter-spacing:0.08em;white-space:nowrap;${p.underTier === 'STRONG' ? 'box-shadow:0 0 0 1.5px #fbbf24' : ''}" title="${p.underTier === 'STRONG' ? 'STRONG' : 'STANDARD'} UNDER recommendation&#10;&#10;Fade audit returned HIGH RISK on this hitter (fade score ${m._fadeScore || '?'}).&#10;The hitter is structurally unlikely to clear this line.&#10;&#10;${p.underTier === 'STRONG' ? 'STRONG UNDER trigger: ' + (p.underReason || 'highest-confidence under signal') + '&#10;Live hit rate: 78% (n=9, small sample, still validating)&#10;Recommended sizing: 1.5x normal UNDER&#10;&#10;' : ''}Backtested under hit rate: ${p.underHitRate}% (n=${p.underSampleSize})&#10;Validated against live HRR fade-engine data through May 31, 2026.&#10;&#10;This is a backtested rate against actual game outcomes — not an engine probability.">${p.underTier === 'STRONG' ? '⏬⏬ STRONG UNDER' : '⏬ BET UNDER'} ${p.underHitRate}%</span>` : ''}
-                      ${p.isSkipRecommendation ? `<span class="pp-skip-badge" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#6b7280;color:#fff;font-size:8px;font-weight:700;padding:1px 6px;border-radius:100px;letter-spacing:0.08em;white-space:nowrap" title="SKIP recommendation\n\nFade audit returned HIGH RISK on this pick (fade score ${m._fadeScore || '?'}).\nUnlike HRR/HITS props where backtested under hit rates are validated (73% / 67%), the under hit rate for ${p.key} props has NOT been validated — recommending an UNDER bet would be guessing.\n\nThe engine considered and rejected this pick. Recommendation: SKIP entirely, do not bet either direction.\n\nReason: ${p.skipReason}">⊘ SKIP</span>` : ''}
+                    <div class="prop-pill ${p.isBest ? 'best' : ''} ${p._lyridUnderTier === 'platinum' ? 'lyrid-under-platinum' : ''} ${p._lyridUnderTier === 'gold' ? 'lyrid-under-gold' : ''}">
                       ${p.platform ? `<span class="pp-platform ${p.platform}">${p.platform}</span>` : ''}
                       ${p._sharpHits ? `<span class="pp-sharp-hits" style="background:linear-gradient(135deg,#e8e9eb 0%,#c6c9cd 35%,#f5f6f8 50%,#b5b8bc 65%,#d8dadd 100%);color:#1a1d22;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.1em;margin-right:4px;border:1px solid rgba(155,158,162,0.6);text-shadow:0 0 1px rgba(255,255,255,0.5)" title="Lyrid's Sharp HITS&#10;&#10;Empirical override: backtest 43-20 (68% WR) on n=63 graded bets&#10;Rule: ${p._sharpHitsRule === 'R-vs-RHP-high-xwoba' ? 'R hitter vs RHP, xwOBA ≥ 0.60' : 'any hitter vs LHP, xwOBA ≥ 0.45'}&#10;Wilson 95% CI: [56%, 78%]&#10;Stable across time thirds: 67/71/67">✦ SHARP</span>` : ''}
                       ${p._hardHitTier ? `<span class="pp-hard-hit" style="background:linear-gradient(135deg,#fef3c7 0%,#fbbf24 35%,#fde68a 50%,#f59e0b 65%,#fcd34d 100%);color:#451a03;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(180,83,9,0.6);text-shadow:0 0 1px rgba(255,255,255,0.4)" title="LYRID HARD-HIT TIER&#10;&#10;Live audit (Drop #23): ${p._hardHitBacktestW}W-${p._hardHitBacktestL}L = ${(p._hardHitBacktestWR*100).toFixed(0)}% on n=${p._hardHitBacktestN}&#10;Filter: HITS prop where hitter season hard-hit % ≥ 45&#10;Wilson 95% CI: [${(p._hardHitWilsonLow*100).toFixed(0)}%, ${(p._hardHitWilsonHigh*100).toFixed(0)}%]&#10;Time stability: 75/75/75 across thirds&#10;Out-of-sample: 75% train (n=4), 75% test (n=8)&#10;&#10;⚠ Small sample — true WR could be 47-91%. Bet sized accordingly.">◆ HARD-HIT</span>` : ''}
@@ -7174,10 +6791,6 @@ function renderAnalysis(data) {
                           ? '<span style="color:#1e3a8a;font-weight:700">FADE — bet UNDER 1.5 (PLATINUM · 67% live WR · n=30 · hot-streak regression)</span>'
                         : p._lyridUnderTier === 'gold'
                           ? '<span style="color:#854d0e;font-weight:700">FADE — bet UNDER 1.5 (GOLD · 59% live WR · n=22 · L-hitter vs sharp pen)</span>'
-                        : p.isUnderRecommendation
-                          ? '<span style="color:#991b1b;font-weight:600">' + (p.underTier === 'STRONG' ? 'STRONG UNDER — ' + (p.underReason || '78% live, n=9') : 'UNDER projected — 68% under historically (n=82, May 31)') + '</span>'
-                        : p.isSkipRecommendation
-                          ? '<span style="color:#374151;font-weight:600">Engine refused — under bet not validated for ' + p.key + ' props. Skip entirely.</span>'
                         : p.reason
                       }</span>
                     </div>
@@ -7288,7 +6901,7 @@ function renderAnalysis(data) {
               <div class="match-head">
                 <div class="match-hitter">
                   ${m.isTopPick ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}
-                  ${m._fadeOverrideApplied ? '<span class="engine-refused-tag" style="background:#fee2e2;color:#991b1b;font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.04em;font-weight:700" title="Engine declined to recommend this hitter as a TOP PICK because the fade audit fired HIGH RISK. Underlying signals suggest underperformance is more likely than the tier label implies. All stats still display; no prop earns the ★ BEST badge.">ENGINE REFUSED</span>' : ''}
+                  <!-- Drop 25: ENGINE REFUSED chip removed -->
                   ${m.hrChance && data.deepMode ? (function renderHrBadge(hc) {
                     // PER-GAME TIER DISPLAY (May 23, 2026 — Item 7)
                     //
@@ -7363,26 +6976,7 @@ function renderAnalysis(data) {
                     const textColor = audit.severity === 'high' ? '#991b1b' : '#92400e';
                     return `<span class="inflated-edge-chip" style="background:${bgColor};color:${textColor};font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.04em;font-weight:700;cursor:help" title="${tooltip}">⚠ INFLATED EDGE</span>`;
                   })()}
-                  ${(function fadeChip() {
-                    // Fade chip — surfaces hitters likely to underperform.
-                    // Only on elite/strong tier picks (where it matters most).
-                    if (m.tier !== 'elite' && m.tier !== 'strong') return '';
-                    const fade = computeFadeRisk(m);
-                    if (!fade.shouldShowChip) return '';
-                    // Build tooltip listing each scoring component that contributed
-                    const lines = [];
-                    Object.entries(fade.components).forEach(([k, v]) => {
-                      if (v.points && v.points > 0) {
-                        lines.push(`• ${k}: +${v.points} pts`);
-                      }
-                    });
-                    const tooltipText = `FADE RISK — score ${fade.score}/150 (${fade.tier === 'high_fade' ? 'HIGH RISK' : 'CAUTION'})\n\nBacktested on 204 graded picks (May 2026):\n• Normal: 47.6% hit rate, 19% shutout rate (n=145)\n• Caution: 31.1% hit rate, 33% shutout rate (n=45)\n• High fade: 35.7% hit rate, 43% shutout rate (n=14)\n\nHIGH FADE triggers engine refusal — TOP PICK and ★ BEST are stripped.\nCAUTION is informational — pick can still earn BEST.\n\nFiring components:\n${lines.join('\n')}\n\nConsider: smaller stake or skip.`.replace(/"/g, '&quot;');
-                    const isHigh = fade.tier === 'high_fade';
-                    const bgFade = isHigh ? '#fecaca' : '#fef9c3';
-                    const txtFade = isHigh ? '#7f1d1d' : '#854d0e';
-                    const label = isHigh ? '⏬ HIGH FADE RISK' : '⏬ FADE CAUTION';
-                    return `<span class="fade-risk-chip" style="background:${bgFade};color:${txtFade};font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.04em;font-weight:700;cursor:help" title="${tooltipText}">${label}</span>`;
-                  })()}
+                  ${''/* Drop 25: Fade chip removed */}
                   <div class="tier-badge ${m.isPrime ? 'prime' : m.tier}" ${m.isPrime ? `title="PRIME tier — top ${MAX_PRIME_PER_SLATE} picks of the day.&#10;Validated 70% WR on similar criteria (n=27, May 19-28 audit).&#10;&#10;Regressed xwoba: ${m.regressedMaxXwoba}&#10;Context mult: ${m.contextMultiplier}&#10;Inflation gap: ${(parseFloat(m.adjustedMaxXwoba) - parseFloat(m.regressedMaxXwoba || 0)).toFixed(3)}&#10;PRIME score: ${m.primeScore}&#10;Fragility: ${m.fragility?.level || 'solid'}"` : ''}>${m.isPrime ? `PRIME #${m._primeRank || ''}` : m.tier.toUpperCase()}</div>
                 </div>
               </div>
@@ -8528,7 +8122,32 @@ function renderAnalysis(data) {
           </div>
         </div>
         <div class="pp-total-line">
-          Proj Total: <b>${proj.projTotal}</b>
+          ${(() => {
+            // (Drop #25 — June 8, 2026) Replaced raw projTotal display with
+            // inverse signal lean. The raw projection number had r=-0.07
+            // correlation with outcomes (Drop #22 audit) — the number itself
+            // is misleading. The DIRECTION of extreme projections is what
+            // has signal: inverted, the extremes are 84-87% accurate.
+            const inv = classifyInverseTotalSignal(proj.projTotal);
+            if (!inv) {
+              // Middle band — no actionable signal
+              return `<span style="color:var(--dim);font-size:11px">Total projection: no actionable lean (mid-range)</span>`;
+            }
+            const wr = (inv.backtestWR * 100).toFixed(0);
+            const isPlat = inv.tier === 'platinum';
+            const isOver = inv.side === 'OVER';
+            const bg = isPlat
+              ? (isOver ? 'linear-gradient(135deg,#065f46 0%,#10b981 50%,#059669 100%)' : 'linear-gradient(135deg,#1e3a8a 0%,#3b82f6 50%,#1d4ed8 100%)')
+              : (isOver ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)');
+            const fg = isPlat ? '#fff' : (isOver ? '#065f46' : '#1e3a8a');
+            const border = isPlat
+              ? (isOver ? '#065f46' : '#1e3a8a')
+              : (isOver ? 'rgba(16,185,129,0.4)' : 'rgba(59,130,246,0.4)');
+            const tooltip = `LYRID INVERSE TOTAL — ${inv.tier.toUpperCase()} ${inv.side}&#10;&#10;${inv.reasoning}&#10;&#10;Live audit (n=${inv.backtestN}): ${wr}% — Wilson CI [${(inv.wilsonLow*100).toFixed(0)}%, ${(inv.wilsonHigh*100).toFixed(0)}%]&#10;Historical avg: actual ${inv.avgActual.toFixed(1)} vs proj ${inv.avgProj.toFixed(1)}&#10;&#10;⚠ Bet OPPOSITE the model's projection. Raw projTotal hidden because r=-0.07 with outcomes — only the inversion has edge.`;
+            const icon = isPlat ? '✦' : '★';
+            const tierLabel = isPlat ? 'PLATINUM' : 'GOLD';
+            return `<span style="background:${bg};color:${fg};border:1px solid ${border};padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.05em;cursor:help" title="${tooltip}">${icon} INVERSE ${inv.side} · ${tierLabel} · ${wr}% (n=${inv.backtestN})</span>`;
+          })()}
           · Winner: <span class="pwp-val" style="color:var(--accent);font-weight:700">${proj.projWinner === 'home' ? homeName : awayName}</span>
         </div>
         ${projReasonsHtml}
@@ -9281,12 +8900,10 @@ function renderAnalysis(data) {
   }
 
   function fadeRejectsTopPick(topPick, sideData) {
-    if (!topPick) return false;
-    if (topPick.tier !== 'elite' && topPick.tier !== 'strong') return false;
-    const full = findMatchup(sideData, topPick.hitterId);
-    if (!full) return false;
-    const fade = computeFadeRisk(full);
-    return fade.tier === 'high_fade';
+    // (Drop #25 — June 8, 2026) Fade engine deleted; nothing rejects picks anymore.
+    // The audit-anchored Drop #24 LYRID UNDER tier is now the replacement for the
+    // "should we skip this pick" signal.
+    return false;
   }
 
   // Apply override: if a top pick is rejected by fade, treat as no pick.
@@ -10823,9 +10440,7 @@ function logBestBets(data) {
         _lyridUnderN: bestBet._lyridUnderN || null,
         _lyridUnderRule: bestBet._lyridUnderRule || null,
         isDeepVerified: true,   // flag so we know this is premium
-        // (Phase 1 — May 29, 2026) Fade tier + score for validation tracking
-        fadeTier: m._fadeTier || 'normal',
-        fadeScore: m._fadeScore || 0,
+        // (Drop #25 — June 8, 2026) fadeTier/fadeScore removed — fade engine deleted.
         // (Phase 1 — May 29, 2026) Capped flag — was the multiplier
         // stack about to produce a nonsense value?
         adjustedXwobaCapped: m.adjustedXwobaCapped || false,
@@ -11635,7 +11250,32 @@ function gradeProjectionFromLiveData(gamePk, liveData) {
       gradedAt: Date.now(),
       lyridLean,
       lyridLeanGrade,
-      lyridEdgeRuns
+      lyridEdgeRuns,
+      // (Drop #25 — June 8, 2026) Grade the inverse total signal.
+      // If inverse said OVER and actual > projTotal → inverse WIN.
+      // If inverse said UNDER and actual < projTotal → inverse WIN.
+      // (We're betting against the model's own projection.)
+      _inverseTotalGrade: (() => {
+        if (!entry._inverseTotalSide) return null;
+        if (entry._inverseTotalSide === 'OVER') {
+          return actualTotal > entry.projTotal ? 'win' : (actualTotal < entry.projTotal ? 'loss' : 'push');
+        }
+        if (entry._inverseTotalSide === 'UNDER') {
+          return actualTotal < entry.projTotal ? 'win' : (actualTotal > entry.projTotal ? 'loss' : 'push');
+        }
+        return null;
+      })(),
+      // Also grade vs market line if available — that's the real bet
+      _inverseTotalMarketGrade: (() => {
+        if (!entry._inverseTotalSide || entry.marketTotal == null) return null;
+        if (entry._inverseTotalSide === 'OVER') {
+          return actualTotal > entry.marketTotal ? 'win' : (actualTotal < entry.marketTotal ? 'loss' : 'push');
+        }
+        if (entry._inverseTotalSide === 'UNDER') {
+          return actualTotal < entry.marketTotal ? 'win' : (actualTotal > entry.marketTotal ? 'loss' : 'push');
+        }
+        return null;
+      })()
     };
     saveState();
     return;
@@ -11700,6 +11340,10 @@ function captureProjection(data) {
   const existing = state.projectionAudit[key];
   // Don't overwrite if already graded (actuals locked in)
   if (existing?.graded) return;
+  const _projTotal = +parseFloat(data.projection.projTotal);
+  // (Drop #25 — June 8, 2026) Classify inverse signal at capture time
+  // so the grader can measure live WR on the inverted bet.
+  const _inv = classifyInverseTotalSignal(_projTotal);
   const entry = {
     date,
     gamePk: data.gamePk,
@@ -11708,7 +11352,7 @@ function captureProjection(data) {
     homeTeam: data.homeTeam?.abbreviation || '',
     projAwayRuns: +parseFloat(data.projection.projAwayRuns),
     projHomeRuns: +parseFloat(data.projection.projHomeRuns),
-    projTotal: +parseFloat(data.projection.projTotal),
+    projTotal: _projTotal,
     homeWinProb: +parseFloat(data.projection.homeWinProb) / 100,  // decimal
     projWinner: parseFloat(data.projection.homeWinProb) >= 50 ? data.homeTeam?.abbreviation : data.awayTeam?.abbreviation,
     marketTotal: data.odds?.total ?? null,
@@ -11716,6 +11360,11 @@ function captureProjection(data) {
     favoriteML: data.odds?.favoriteML ?? null,
     favorite: data.odds?.favorite ?? null,
     deepMode: data.deepMode || false,
+    // (Drop #25 — June 8, 2026) Inverse Total signal classification
+    _inverseTotalTier: _inv ? _inv.tier : null,    // 'platinum' | 'gold' | null
+    _inverseTotalSide: _inv ? _inv.side : null,    // 'OVER' | 'UNDER' | null
+    _inverseTotalWR: _inv ? _inv.backtestWR : null,
+    _inverseTotalN: _inv ? _inv.backtestN : null,
     // Fields filled in on grading:
     actualAwayRuns: existing?.actualAwayRuns ?? null,
     actualHomeRuns: existing?.actualHomeRuns ?? null,
@@ -15433,10 +15082,31 @@ async function autoGradeOnAppOpen() {
           <span class="mode-indicator deep" style="background:rgba(201,164,94,0.15);color:var(--accent, #c9a45e)">${gl.confidence != null ? gl.confidence + ' CONF' : 'MODEL'}</span>
         </div>
         <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
-          <div style="display:flex;align-items:baseline;gap:18px;flex-wrap:wrap">
-            <span style="font-size:11px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">Proj Total</span>
-            <span style="font-size:22px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums">${gl.projectedTotal}</span>
-            <span style="font-size:11px;color:var(--text-secondary, var(--dim))">${esc(aw)} <b style="color:var(--text-primary)">${gl.awayTotal}</b> · ${esc(hm)} <b style="color:var(--text-primary)">${gl.homeTotal}</b></span>
+          <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
+            <span style="font-size:11px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">Inverse Total Lean</span>
+            ${(() => {
+              // (Drop #25 — June 8, 2026) Removed raw projectedTotal display.
+              // The DIRECTION at extremes inverts (84-87% audit). Show that instead.
+              const inv = classifyInverseTotalSignal(gl.projectedTotal);
+              if (!inv) {
+                return `<span style="font-size:13px;color:var(--text-secondary, var(--dim));font-style:italic">no actionable lean — projection in mid-range (6.0-9.0 noise band)</span>`;
+              }
+              const wr = (inv.backtestWR * 100).toFixed(0);
+              const isPlat = inv.tier === 'platinum';
+              const isOver = inv.side === 'OVER';
+              const bg = isPlat
+                ? (isOver ? 'linear-gradient(135deg,#065f46 0%,#10b981 50%,#059669 100%)' : 'linear-gradient(135deg,#1e3a8a 0%,#3b82f6 50%,#1d4ed8 100%)')
+                : (isOver ? 'rgba(16,185,129,0.12)' : 'rgba(59,130,246,0.12)');
+              const fg = isPlat ? '#fff' : (isOver ? '#065f46' : '#1e3a8a');
+              const border = isPlat
+                ? (isOver ? '#065f46' : '#1e3a8a')
+                : (isOver ? 'rgba(16,185,129,0.4)' : 'rgba(59,130,246,0.4)');
+              const tooltip = `LYRID INVERSE TOTAL — ${inv.tier.toUpperCase()} ${inv.side}&#10;&#10;${inv.reasoning}&#10;&#10;Live audit (n=${inv.backtestN}): ${wr}% — Wilson CI [${(inv.wilsonLow*100).toFixed(0)}%, ${(inv.wilsonHigh*100).toFixed(0)}%]&#10;Historical avg: actual ${inv.avgActual.toFixed(1)} vs proj ${inv.avgProj.toFixed(1)}&#10;&#10;⚠ Bet OPPOSITE the model's projection. The raw projTotal number had r=-0.07 with outcomes; only the directional inversion at extremes has edge.`;
+              const icon = isPlat ? '✦' : '★';
+              const tierLabel = isPlat ? 'PLATINUM' : 'GOLD';
+              return `<span style="background:${bg};color:${fg};border:1px solid ${border};padding:5px 12px;border-radius:6px;font-size:13px;font-weight:700;letter-spacing:0.04em;cursor:help" title="${tooltip}">${icon} ${inv.side} · ${tierLabel} · ${wr}% (n=${inv.backtestN})</span>`;
+            })()}
+            <span style="font-size:10px;color:var(--text-secondary, var(--dim))">${esc(aw)} <b style="color:var(--text-primary)">${gl.awayTotal}</b> · ${esc(hm)} <b style="color:var(--text-primary)">${gl.homeTotal}</b></span>
           </div>
           <div style="display:flex;align-items:baseline;gap:18px;flex-wrap:wrap">
             <span style="font-size:11px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">Proj Spread</span>
