@@ -978,6 +978,29 @@
   .ev-chip.ev-warn{
     background:rgba(220,38,38,0.12);color:#991b1b;border-color:rgba(220,38,38,0.35);
   }
+  /* (Drop #24 — June 8, 2026) LYRID UNDER tier badges */
+  .pp-lyrid-under{
+    display:inline-block;animation:lyridUnderPulse 3.2s ease-in-out infinite;
+  }
+  .pp-lyrid-under.platinum{
+    box-shadow:0 0 6px rgba(59,130,246,0.55);
+  }
+  .pp-lyrid-under.gold{
+    box-shadow:0 0 6px rgba(202,138,4,0.5);
+  }
+  @keyframes lyridUnderPulse{
+    0%,100%{filter:brightness(1.0)}
+    50%{filter:brightness(1.15)}
+  }
+  /* Subtle row tint when UNDER tier fires, so the FADE is visually obvious */
+  .prop-pill.lyrid-under-platinum{
+    background:linear-gradient(90deg,rgba(59,130,246,0.06) 0%,rgba(59,130,246,0.02) 100%);
+    border-left:3px solid #3b82f6;
+  }
+  .prop-pill.lyrid-under-gold{
+    background:linear-gradient(90deg,rgba(202,138,4,0.06) 0%,rgba(202,138,4,0.02) 100%);
+    border-left:3px solid #ca8a04;
+  }
   @media(max-width:480px){
     .ev-chip{font-size:8px;padding:1px 5px}
     .pp-reason{display:none}
@@ -4299,7 +4322,100 @@ function applyHardHitTier(propRecs) {
   return hitsProp;
 }
 
-// ====================================================================================
+// ====================================================================
+// (Drop #24 — June 8, 2026) LYRID UNDER ENGINE — REGRESSION-TO-MEAN TIER
+//
+// This is the FIRST Lyrid engine that actively recommends FADING the
+// model's own OVER pick. Strategic insight from the Drop #23 audit:
+//
+//   When the OVER engine is wrong, it's not random — it's wrong on
+//   SPECIFIC cohorts that systematically regress to the mean. Identifying
+//   those cohorts and shorting them is the inverse of the OVER edge.
+//
+// Audit (n=210 graded picks, May 19 - June 7):
+//   - The full engine inverted hits 54.3% UNDER (barely beats -110)
+//   - HRR + SCORCHING recent form: UNDER hits 66.7% on n=30
+//     Thirds 70/70/60, OOS 67%/67% (train/test split May 25)
+//     21 unique players, no concentration risk
+//   - HRR + L-hitter + (bullpen edge OR scorching), excl SCORCHING:
+//     UNDER hits 59.1% on n=22, Thirds 57/57/63, OOS 60%/58%
+//
+// The mechanism is intuitive: when recentFormMultiplier inflates the
+// projection because a hitter is on a hot streak (SCORCHING), the OVER
+// engine recommends. But hot streaks regress in baseball faster than
+// the multiplier accounts for. So that specific cohort becomes a
+// regression-to-mean UNDER bet.
+//
+// TIERS:
+//   PLATINUM UNDER ✦ : HRR + recentFormLabel == 'SCORCHING'
+//                      → 67% live UNDER WR on n=30
+//                      → Clears PP 2/3/4/5/6 and -110 with margin
+//                      → ~2.0 fires per qualifying slate
+//
+//   GOLD UNDER ★     : HRR + L-hitter + (bullpen edge OR SCORCHING)
+//                      → 59.1% live UNDER WR on n=22 (PLATINUM excluded)
+//                      → Clears PP 2/3-pick by thin margin, comfortably
+//                        clears -110, marginal at PP 4-pick
+//                      → ~1.5 fires per qualifying slate
+//
+// PrizePicks EV (parlay math with these WRs):
+//   2-pick (3x): PLAT+PLAT +33.5%, PLAT+GOLD +27.1%, GOLD+GOLD +21.0%
+//   3-pick (5x): 3x PLAT +48.4%, mix +34-41%, 3x GOLD +28.0%
+//   4-pick (10x): 4x PLAT +97.9%, 4x GOLD +62.6%
+//   5-pick (20x): 5x PLAT +164%, 5x GOLD +106%
+//
+// SAMPLE SIZE WARNING:
+//   PLATINUM Wilson lower bound is 49% (n=30) — could regress to ~50-60%
+//   GOLD Wilson lower bound is 39% (n=22) — sub-break-even possible
+//   First 30-50 live picks per tier will tell us if the edge holds.
+//
+// This engine COMPLEMENTS the existing Drop #15 empirical UNDER engine
+// (computeEmpiricalUnderProp) which is xwoba-based. They target
+// different signals; both can fire on the same pick.
+// ====================================================================
+function applyLyridUnderTier(propRecs, hitterContext) {
+  if (!Array.isArray(propRecs) || propRecs.length === 0) return null;
+  if (!hitterContext) return null;
+
+  const hrrProp = propRecs.find(p => p.key === 'HRR');
+  if (!hrrProp) return null;
+  // Don't fire if fragility already eliminated the pick
+  if (hrrProp.fragility && hrrProp.fragility.tier === 'eliminated') return null;
+
+  const formLabel = hitterContext.recentFormLabel || '';
+  const hand = (hitterContext.hand || '').toUpperCase();
+  const reason = (hrrProp.reason || '').toLowerCase();
+  const hasBpEdge = reason.includes('bullpen edge');
+
+  // PLATINUM UNDER: HRR + SCORCHING form (the regression-to-mean cohort)
+  if (formLabel === 'SCORCHING') {
+    hrrProp._lyridUnderTier = 'platinum';
+    hrrProp._lyridUnderRule = 'HRR + SCORCHING form — regression to mean';
+    hrrProp._lyridUnderWR = 0.667;
+    hrrProp._lyridUnderN = 30;
+    hrrProp._lyridUnderWilsonLow = 0.49;
+    hrrProp._lyridUnderWilsonHigh = 0.81;
+    hrrProp._lyridUnderThirds = '70/70/60';
+    return hrrProp;
+  }
+
+  // GOLD UNDER: HRR + L hitter + (bp edge OR scorching, but PLATINUM already caught scorching)
+  // So effective GOLD = HRR + L + bp edge
+  if (hand === 'L' && hasBpEdge) {
+    hrrProp._lyridUnderTier = 'gold';
+    hrrProp._lyridUnderRule = 'HRR + L-hitter + bullpen edge — soft target';
+    hrrProp._lyridUnderWR = 0.591;
+    hrrProp._lyridUnderN = 22;
+    hrrProp._lyridUnderWilsonLow = 0.39;
+    hrrProp._lyridUnderWilsonHigh = 0.77;
+    hrrProp._lyridUnderThirds = '57/57/63';
+    return hrrProp;
+  }
+
+  return null;
+}
+
+// ====================================================================
 // (Drop #15 — June 5, 2026) EMPIRICAL UNDER ENGINE
 //
 // The audit that drove Drop #14 also exposed strong UNDER signals — places
@@ -4545,7 +4661,9 @@ function applyMlbEngineRanking(propRecs, activeEngine) {
   const hitterCtx = (propRecs[0] && {
     hand: propRecs[0]._ctxHand,
     pitcherHand: propRecs[0]._ctxPitcherHand,
-    adjustedMaxXwoba: propRecs[0]._ctxAdjustedMaxXwoba
+    adjustedMaxXwoba: propRecs[0]._ctxAdjustedMaxXwoba,
+    // (Drop #24 — June 8, 2026) Recent form for UNDER tier classifier
+    recentFormLabel: propRecs[0]._ctxRecentFormLabel
   }) || null;
   const sharpHitsPick = applySharpHitsOverride(propRecs, hitterCtx);
   // (Drop #23 — June 8, 2026) HARD-HIT tier is independent of Sharp HITS.
@@ -4553,15 +4671,34 @@ function applyMlbEngineRanking(propRecs, activeEngine) {
   // Both engines can fire on the same prop; HARD-HIT takes precedence for
   // 'isBest' marking because its live audit hit rate is higher.
   const hardHitPick = applyHardHitTier(propRecs);
+  // (Drop #24 — June 8, 2026) Lyrid UNDER tier (regression-to-mean) — fires
+  // on HRR prop when SCORCHING form or L+bp-edge. Stamps metadata that the
+  // UI uses to render the prop as UNDER recommended instead of OVER.
+  const lyridUnderPick = applyLyridUnderTier(propRecs, hitterCtx);
 
-  // Update isBest based on tier priority: HARD-HIT > Sharp HITS > engine top
+  // isBest priority:
+  //   1. HARD-HIT (HITS prop, 75% live WR) — strongest confirmed cohort
+  //   2. Lyrid UNDER PLATINUM (HRR prop, 67% live WR) — strongest fade
+  //   3. Sharp HITS override
+  //   4. Engine top pick
+  // Note: HARD-HIT and Lyrid UNDER act on DIFFERENT props (HITS vs HRR),
+  // so they don't conflict on the same row. The tier order resolves
+  // multi-prop ties.
   if (hardHitPick) {
     propRecs.forEach(p => {
       p.isBest = (p === hardHitPick);
     });
+  } else if (lyridUnderPick && lyridUnderPick._lyridUnderTier === 'platinum') {
+    propRecs.forEach(p => {
+      p.isBest = (p === lyridUnderPick);
+    });
   } else if (sharpHitsPick) {
     propRecs.forEach(p => {
       p.isBest = (p === sharpHitsPick);
+    });
+  } else if (lyridUnderPick && lyridUnderPick._lyridUnderTier === 'gold') {
+    propRecs.forEach(p => {
+      p.isBest = (p === lyridUnderPick);
     });
   } else {
     propRecs.forEach(p => {
@@ -6870,6 +7007,8 @@ function renderAnalysis(data) {
               p._ctxHand = m.hand || '';
               p._ctxPitcherHand = _ctxPitcherHand;
               p._ctxAdjustedMaxXwoba = p.adjustedMaxXwoba || m.adjustedMaxXwoba || 0;
+              // (Drop #24 — June 8, 2026) Recent form needed by Lyrid UNDER tier
+              p._ctxRecentFormLabel = m.recentFormLabel || m.recentForm?.label || '';
             });
             applyMlbEngineRanking(m.propRecs, state.mlbEngine);
 
@@ -6986,12 +7125,14 @@ function renderAnalysis(data) {
                       }
                     }
                     return `
-                    <div class="prop-pill ${p.isBest ? 'best' : ''} ${p.isUnderRecommendation ? 'under-rec' : ''} ${p.isSkipRecommendation ? 'skip-rec' : ''}" ${p.isUnderRecommendation ? 'style="position:relative;border:1px solid #b91c1c;background:#fef2f2"' : p.isSkipRecommendation ? 'style="position:relative;border:1px dashed #6b7280;background:#f9fafb;opacity:0.78"' : ''}>
+                    <div class="prop-pill ${p.isBest ? 'best' : ''} ${p.isUnderRecommendation ? 'under-rec' : ''} ${p.isSkipRecommendation ? 'skip-rec' : ''} ${p._lyridUnderTier === 'platinum' ? 'lyrid-under-platinum' : ''} ${p._lyridUnderTier === 'gold' ? 'lyrid-under-gold' : ''}" ${p._lyridUnderTier ? '' : p.isUnderRecommendation ? 'style="position:relative;border:1px solid #b91c1c;background:#fef2f2"' : p.isSkipRecommendation ? 'style="position:relative;border:1px dashed #6b7280;background:#f9fafb;opacity:0.78"' : ''}>
                       ${p.isUnderRecommendation ? `<span class="pp-under-badge" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:${p.underTier === 'STRONG' ? '#7f1d1d' : '#b91c1c'};color:#fff;font-size:8px;font-weight:700;padding:1px 6px;border-radius:100px;letter-spacing:0.08em;white-space:nowrap;${p.underTier === 'STRONG' ? 'box-shadow:0 0 0 1.5px #fbbf24' : ''}" title="${p.underTier === 'STRONG' ? 'STRONG' : 'STANDARD'} UNDER recommendation&#10;&#10;Fade audit returned HIGH RISK on this hitter (fade score ${m._fadeScore || '?'}).&#10;The hitter is structurally unlikely to clear this line.&#10;&#10;${p.underTier === 'STRONG' ? 'STRONG UNDER trigger: ' + (p.underReason || 'highest-confidence under signal') + '&#10;Live hit rate: 78% (n=9, small sample, still validating)&#10;Recommended sizing: 1.5x normal UNDER&#10;&#10;' : ''}Backtested under hit rate: ${p.underHitRate}% (n=${p.underSampleSize})&#10;Validated against live HRR fade-engine data through May 31, 2026.&#10;&#10;This is a backtested rate against actual game outcomes — not an engine probability.">${p.underTier === 'STRONG' ? '⏬⏬ STRONG UNDER' : '⏬ BET UNDER'} ${p.underHitRate}%</span>` : ''}
                       ${p.isSkipRecommendation ? `<span class="pp-skip-badge" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#6b7280;color:#fff;font-size:8px;font-weight:700;padding:1px 6px;border-radius:100px;letter-spacing:0.08em;white-space:nowrap" title="SKIP recommendation\n\nFade audit returned HIGH RISK on this pick (fade score ${m._fadeScore || '?'}).\nUnlike HRR/HITS props where backtested under hit rates are validated (73% / 67%), the under hit rate for ${p.key} props has NOT been validated — recommending an UNDER bet would be guessing.\n\nThe engine considered and rejected this pick. Recommendation: SKIP entirely, do not bet either direction.\n\nReason: ${p.skipReason}">⊘ SKIP</span>` : ''}
                       ${p.platform ? `<span class="pp-platform ${p.platform}">${p.platform}</span>` : ''}
                       ${p._sharpHits ? `<span class="pp-sharp-hits" style="background:linear-gradient(135deg,#e8e9eb 0%,#c6c9cd 35%,#f5f6f8 50%,#b5b8bc 65%,#d8dadd 100%);color:#1a1d22;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.1em;margin-right:4px;border:1px solid rgba(155,158,162,0.6);text-shadow:0 0 1px rgba(255,255,255,0.5)" title="Lyrid's Sharp HITS&#10;&#10;Empirical override: backtest 43-20 (68% WR) on n=63 graded bets&#10;Rule: ${p._sharpHitsRule === 'R-vs-RHP-high-xwoba' ? 'R hitter vs RHP, xwOBA ≥ 0.60' : 'any hitter vs LHP, xwOBA ≥ 0.45'}&#10;Wilson 95% CI: [56%, 78%]&#10;Stable across time thirds: 67/71/67">✦ SHARP</span>` : ''}
                       ${p._hardHitTier ? `<span class="pp-hard-hit" style="background:linear-gradient(135deg,#fef3c7 0%,#fbbf24 35%,#fde68a 50%,#f59e0b 65%,#fcd34d 100%);color:#451a03;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(180,83,9,0.6);text-shadow:0 0 1px rgba(255,255,255,0.4)" title="LYRID HARD-HIT TIER&#10;&#10;Live audit (Drop #23): ${p._hardHitBacktestW}W-${p._hardHitBacktestL}L = ${(p._hardHitBacktestWR*100).toFixed(0)}% on n=${p._hardHitBacktestN}&#10;Filter: HITS prop where hitter season hard-hit % ≥ 45&#10;Wilson 95% CI: [${(p._hardHitWilsonLow*100).toFixed(0)}%, ${(p._hardHitWilsonHigh*100).toFixed(0)}%]&#10;Time stability: 75/75/75 across thirds&#10;Out-of-sample: 75% train (n=4), 75% test (n=8)&#10;&#10;⚠ Small sample — true WR could be 47-91%. Bet sized accordingly.">◆ HARD-HIT</span>` : ''}
+                      ${p._lyridUnderTier === 'platinum' ? `<span class="pp-lyrid-under platinum" style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 35%,#60a5fa 50%,#2563eb 65%,#1d4ed8 100%);color:#fff;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(30,58,138,0.7);text-shadow:0 1px 1px rgba(0,0,0,0.4)" title="LYRID UNDER · PLATINUM&#10;&#10;FADE THE OVER — bet UNDER 1.5 H+R+RBI instead&#10;&#10;Live audit: 20W-10L = 67% on n=30&#10;Filter: HRR pick + recentFormLabel = SCORCHING&#10;Mechanism: hot streak regression — hitter's recent form inflates projection, mean-reversion is the bet&#10;Wilson 95% CI: [49%, 81%]&#10;Time thirds: 70/70/60&#10;OOS: 67% train (n=18), 67% test (n=12)&#10;&#10;PrizePicks EV at 67%:&#10;  2-pick: +33.5%&#10;  3-pick: +48.4%&#10;  4-pick: +97.9%&#10;  5-pick: +164%&#10;&#10;⚠ n=30 is small — Wilson lower bound 49%. Size bets accordingly.">✦ UNDER · PLATINUM</span>` : ''}
+                      ${p._lyridUnderTier === 'gold' ? `<span class="pp-lyrid-under gold" style="background:linear-gradient(135deg,#854d0e 0%,#ca8a04 35%,#fbbf24 50%,#a16207 65%,#92400e 100%);color:#fff;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(133,77,14,0.7);text-shadow:0 1px 1px rgba(0,0,0,0.4)" title="LYRID UNDER · GOLD&#10;&#10;FADE THE OVER — bet UNDER 1.5 H+R+RBI instead&#10;&#10;Live audit: 13W-9L = 59% on n=22&#10;Filter: HRR + L-hitter + bullpen edge&#10;Wilson 95% CI: [39%, 77%]&#10;Time thirds: 57/57/63&#10;OOS: 60% train (n=10), 58% test (n=12)&#10;&#10;PrizePicks EV at 59%:&#10;  2-pick: +5.0% (thin)&#10;  3-pick: +3.6% (thin)&#10;  4-pick: +20.7%&#10;&#10;⚠ n=22 is small — Wilson lower bound 39%. Marginal at PP 2/3-pick.">★ UNDER · GOLD</span>` : ''}
                       <span class="pp-key">${p.label}</span>
                       ${p.probability != null ? `<span class="pp-prob ${probTier(p.probability, p.probabilityBaseline)}" title="Per-game probability: ${(p.probability*100).toFixed(1)}% (baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(1) : '?'}%${p.probabilityPerPa != null ? ', per-PA rate ' + (p.probabilityPerPa*100).toFixed(1) + '%' : ''}${p.expectedPa != null ? ', expected PA ' + p.expectedPa.toFixed(1) : ''})">${(p.probability*100).toFixed(0)}%</span>` : ''}
                       ${secondaryRankChip}
@@ -7004,25 +7145,41 @@ function renderAnalysis(data) {
                         // Three tiers based on cohort the pick belongs to:
                         //
                         //   HARD-HIT (75%, n=12):   clears -110, PP 2/3/4/5/6
+                        //   UNDER PLATINUM (67%, n=30): clears all PP + -110 (UNDER side)
+                        //   UNDER GOLD (59%, n=22): clears -110 + thin PP 2/3 edge (UNDER side)
                         //   HITS broad (55%, n=40): clears -110 only
-                        //   HRR broad (43.5%, n=170): clears nothing
+                        //   HRR broad (43.5%, n=170): clears nothing on OVER (but UNDER tier flips it)
                         //
                         // Honest labeling avoids the "78% backtest = win money"
                         // failure mode that turned up in the audit.
                         let evRow = '';
                         if (p._hardHitTier) {
                           evRow = `<span class="ev-chip ev-good" title="LYRID HARD-HIT cohort live WR: 75% (9-3, n=12). Clears every PP power-play structure and sportsbook -110 with margin.&#10;&#10;Wilson lower bound: 47% — n=12 is small. Treat as +EV but size bets accordingly.">✓ +EV: -110, PP 2-6</span>`;
+                        } else if (p._lyridUnderTier === 'platinum') {
+                          evRow = `<span class="ev-chip ev-good" title="LYRID UNDER PLATINUM cohort live WR: 67% (20-10, n=30) on the UNDER side.&#10;&#10;Clears every PP power-play and sportsbook -110.&#10;&#10;⚠ Bet the UNDER 1.5 H+R+RBI, NOT the OVER. The engine flagged this hitter's OVER because of hot-streak form, but that cohort regresses to the mean.&#10;&#10;Wilson lower bound: 49% — n=30 is small.">✓ +EV UNDER: all PP, -110</span>`;
+                        } else if (p._lyridUnderTier === 'gold') {
+                          evRow = `<span class="ev-chip ev-borderline" title="LYRID UNDER GOLD cohort live WR: 59% (13-9, n=22) on the UNDER side.&#10;&#10;Clears -110 sportsbook comfortably. Thin edge on PP 2/3-pick. Marginal on PP 4-pick.&#10;&#10;⚠ Bet the UNDER 1.5 H+R+RBI, NOT the OVER.&#10;&#10;Wilson lower bound: 39% — caution at PP, but solid -110 play.">~ +EV UNDER: -110, thin PP</span>`;
                         } else if (p.key === 'H') {
                           evRow = `<span class="ev-chip ev-borderline" title="HITS broad cohort live WR: 55% (22-18, n=40). Clears -110 sportsbook (52.4%) but NOT PrizePicks (needs 56-58%/leg).&#10;&#10;Look for HARD-HIT badge on this pick for confirmed +EV at PP.">~ -110 only</span>`;
                         } else if (p.key === 'HRR') {
                           const isMultiPathway = (p.reason || '').toLowerCase().includes('multiple pathways');
                           if (isMultiPathway) {
-                            evRow = `<span class="ev-chip ev-warn" title="HRR Multiple-pathways cohort live WR: 43.5% (74-96, n=170).&#10;&#10;Does NOT clear -110 (need 52.4%) or PrizePicks (need 56-58%/leg).&#10;&#10;Use for slate research only. Avoid actively betting this cohort until filter is sharpened.">⚠ -EV all markets</span>`;
+                            evRow = `<span class="ev-chip ev-warn" title="HRR Multiple-pathways cohort live WR on the OVER: 43.5% (74-96, n=170).&#10;&#10;OVER does NOT clear -110 (need 52.4%) or PrizePicks (need 56-58%/leg).&#10;&#10;UNDER side of this cohort hits 56.5% — but check for PLATINUM/GOLD UNDER badge to confirm sharper edge.">⚠ OVER -EV all markets</span>`;
                           }
                         }
                         return evRow;
                       })()}
-                      <span class="pp-reason">${p.isUnderRecommendation ? '<span style="color:#991b1b;font-weight:600">' + (p.underTier === 'STRONG' ? 'STRONG UNDER — ' + (p.underReason || '78% live, n=9') : 'UNDER projected — 68% under historically (n=82, May 31)') + '</span>' : p.isSkipRecommendation ? '<span style="color:#374151;font-weight:600">Engine refused — under bet not validated for ' + p.key + ' props. Skip entirely.</span>' : p.reason}</span>
+                      <span class="pp-reason">${
+                        p._lyridUnderTier === 'platinum'
+                          ? '<span style="color:#1e3a8a;font-weight:700">FADE — bet UNDER 1.5 (PLATINUM · 67% live WR · n=30 · hot-streak regression)</span>'
+                        : p._lyridUnderTier === 'gold'
+                          ? '<span style="color:#854d0e;font-weight:700">FADE — bet UNDER 1.5 (GOLD · 59% live WR · n=22 · L-hitter vs sharp pen)</span>'
+                        : p.isUnderRecommendation
+                          ? '<span style="color:#991b1b;font-weight:600">' + (p.underTier === 'STRONG' ? 'STRONG UNDER — ' + (p.underReason || '78% live, n=9') : 'UNDER projected — 68% under historically (n=82, May 31)') + '</span>'
+                        : p.isSkipRecommendation
+                          ? '<span style="color:#374151;font-weight:600">Engine refused — under bet not validated for ' + p.key + ' props. Skip entirely.</span>'
+                        : p.reason
+                      }</span>
                     </div>
                   `;
                   }).join('')}
@@ -10657,6 +10814,14 @@ function logBestBets(data) {
         _hardHitTier: bestBet._hardHitTier || false,
         _hardHitBacktestWR: bestBet._hardHitBacktestWR || null,
         _hardHitBacktestN: bestBet._hardHitBacktestN || null,
+        // (Drop #24 — June 8, 2026) Lyrid UNDER tier audit fields
+        // _lyridUnderTier: 'platinum' | 'gold' | undefined
+        // Picks with this set are recommended on the UNDER side; the
+        // grader inverts win/loss accordingly.
+        _lyridUnderTier: bestBet._lyridUnderTier || null,
+        _lyridUnderWR: bestBet._lyridUnderWR || null,
+        _lyridUnderN: bestBet._lyridUnderN || null,
+        _lyridUnderRule: bestBet._lyridUnderRule || null,
         isDeepVerified: true,   // flag so we know this is premium
         // (Phase 1 — May 29, 2026) Fade tier + score for validation tracking
         fadeTier: m._fadeTier || 'normal',
@@ -13805,6 +13970,26 @@ async function gradeBestBet(date, id) {
       e.result = data.outcomes[e.propKey] ? 'win' : 'loss';
     } else {
       e.result = gradeLine(data.line, e.propKey);
+    }
+    // (Drop #24 — June 8, 2026) UNDER tier picks need result INVERTED.
+    // The pick was logged with _lyridUnderTier='platinum'|'gold' meaning
+    // we recommended the UNDER, not the OVER. The grading above measures
+    // whether the OVER hit (e.g. H+R+RBI >= 2). If OVER hit, UNDER lost;
+    // if OVER missed, UNDER won. So we flip the result for downstream
+    // win-rate auditing.
+    //
+    // Also stamp _recommendedSide so the audit always knows which way
+    // the pick was meant to be played, even if the inversion logic
+    // changes in future drops.
+    if (e._lyridUnderTier) {
+      e._recommendedSide = 'UNDER';
+      if (e.result === 'win') {
+        e.result = 'loss';
+      } else if (e.result === 'loss') {
+        e.result = 'win';
+      }
+    } else {
+      e._recommendedSide = 'OVER';
     }
     e.graded = true;
     saveState();
