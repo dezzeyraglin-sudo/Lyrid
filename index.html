@@ -4530,6 +4530,71 @@ function classifyInverseTotalSignal(projTotal) {
   return null;
 }
 
+// ====================================================================
+// (Drop #26 — June 8, 2026) INVERSE MARKET SIGNAL
+//
+// Drop #25 anchored on the model's raw projection extremes. The audit
+// today revealed two problems with that approach:
+//
+//   1. Post-recalibration the model rarely produces extreme projections.
+//      Today's slate (n=8) had std 0.61 vs historical 1.61 — no game
+//      hit the proj<6.0 or proj≥10.0 thresholds.
+//   2. The Drop #25 audit measured "model wrong against itself" — the
+//      actual betting target is the MARKET line, not the model.
+//
+// New framing: signal lives in model-vs-market DISAGREEMENT, not in
+// extreme model projections per se.
+//
+// Audit (n=21 games with both market line AND graded actual):
+//
+//   Model OVER market by ≥ 2.5: 3W-0L UNDER → 100% (Wilson [44%, 100%])
+//   Model OVER market by 1.0-2.5: 3W-4L UNDER → 43% (Wilson [16%, 75%])
+//   Model UNDER market by ≥ 0.5: only 3 cases, too small
+//
+// IMPORTANT CAVEATS shipped with this engine:
+//
+//   - The n=3 PLATINUM hits are ALL from May 22 — single-date concentration
+//   - May 22 was pre-recalibration; the recalibrated model rarely produces
+//     gaps that large anymore
+//   - We're shipping this knowing the live fire rate may be very low (0-1
+//     per slate, possibly less). The audit data may not generalize to
+//     post-recalibration model output.
+//   - This is a "ship and observe" engine, not a "ship and bet aggressively"
+//     engine. Size bets conservatively.
+//   - GOLD tier (gap 1.0-2.5) IS NOT SHIPPED because audit shows it loses
+//     (3/7 = 43% UNDER hit, below -110 break-even).
+//
+// Going forward (Drop #27 candidate): accumulate market line data on every
+// game, re-audit after 50+ post-recalibration graded games, decide if
+// PLATINUM survives and if any UNDER-direction (market > model) tier emerges.
+// ====================================================================
+function classifyInverseMarketSignal(projTotal, marketTotal) {
+  if (typeof projTotal !== 'number' || !isFinite(projTotal)) return null;
+  if (typeof marketTotal !== 'number' || !isFinite(marketTotal)) return null;
+
+  const gap = projTotal - marketTotal;
+
+  // PLATINUM UNDER: model OVER market by ≥ 2.5 → bet UNDER market line
+  if (gap >= 2.5) {
+    return {
+      tier: 'platinum',
+      side: 'UNDER',
+      gap: gap,
+      reasoning: 'Model projects ≥2.5 runs HIGHER than market line. Historical audit: when model strongly disagrees OVER, market is more accurate and game lands UNDER.',
+      backtestWR: 1.000,
+      backtestN: 3,
+      wilsonLow: 0.44,
+      wilsonHigh: 1.00,
+      sampleWarning: 'n=3 ALL from May 22 (pre-recalibration). True WR could be 44-100%. Treat as observational signal; size bets conservatively.'
+    };
+  }
+
+  // No other tiers ship in Drop #26. GOLD-equivalent cohort (gap 1.0-2.5)
+  // audited at 43% — actively losing. UNDER-direction (mkt > model) has
+  // n=3 — too small to classify. Both will be revisited after more data.
+  return null;
+}
+
 // (Drop #25 — June 8, 2026) DELETED: computeEmpiricalUnderProp
 // Removed as part of fade engine cleanup. Drop #22 audit showed:
 //   - 0 picks ever triggered high_fade tier in production (n=210 graded)
@@ -8123,30 +8188,37 @@ function renderAnalysis(data) {
         </div>
         <div class="pp-total-line">
           ${(() => {
-            // (Drop #25 — June 8, 2026) Replaced raw projTotal display with
-            // inverse signal lean. The raw projection number had r=-0.07
-            // correlation with outcomes (Drop #22 audit) — the number itself
-            // is misleading. The DIRECTION of extreme projections is what
-            // has signal: inverted, the extremes are 84-87% accurate.
-            const inv = classifyInverseTotalSignal(proj.projTotal);
-            if (!inv) {
-              // Middle band — no actionable signal
-              return `<span style="color:var(--dim);font-size:11px">Total projection: no actionable lean (mid-range)</span>`;
+            // (Drop #26 — June 8, 2026) Replaced inverse-projection display
+            // with inverse-MARKET display. The earlier engine measured
+            // "model wrong vs itself" — the real edge is "model disagrees
+            // with market line." Today's audit (n=21 with market data)
+            // shows the disagreement IS the signal.
+            //
+            // Three display cases:
+            //   1. Market line missing → show raw model gap (no badge)
+            //   2. Disagreement triggers PLATINUM tier → show badge + warning
+            //   3. Otherwise → show informational "Model X · Market Y · gap Z"
+            //
+            // The Drop #25 classifyInverseTotalSignal is kept for backward
+            // compat but no longer drives the UI.
+            const marketTotal = odds && odds.hasOdds ? odds.total : null;
+            if (typeof marketTotal !== 'number') {
+              return `<span style="color:var(--dim);font-size:11px">Model total: <b style="color:var(--text-primary,#1e293b)">${proj.projTotal}</b> · no market line</span>`;
             }
-            const wr = (inv.backtestWR * 100).toFixed(0);
-            const isPlat = inv.tier === 'platinum';
-            const isOver = inv.side === 'OVER';
-            const bg = isPlat
-              ? (isOver ? 'linear-gradient(135deg,#065f46 0%,#10b981 50%,#059669 100%)' : 'linear-gradient(135deg,#1e3a8a 0%,#3b82f6 50%,#1d4ed8 100%)')
-              : (isOver ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)');
-            const fg = isPlat ? '#fff' : (isOver ? '#065f46' : '#1e3a8a');
-            const border = isPlat
-              ? (isOver ? '#065f46' : '#1e3a8a')
-              : (isOver ? 'rgba(16,185,129,0.4)' : 'rgba(59,130,246,0.4)');
-            const tooltip = `LYRID INVERSE TOTAL — ${inv.tier.toUpperCase()} ${inv.side}&#10;&#10;${inv.reasoning}&#10;&#10;Live audit (n=${inv.backtestN}): ${wr}% — Wilson CI [${(inv.wilsonLow*100).toFixed(0)}%, ${(inv.wilsonHigh*100).toFixed(0)}%]&#10;Historical avg: actual ${inv.avgActual.toFixed(1)} vs proj ${inv.avgProj.toFixed(1)}&#10;&#10;⚠ Bet OPPOSITE the model's projection. Raw projTotal hidden because r=-0.07 with outcomes — only the inversion has edge.`;
-            const icon = isPlat ? '✦' : '★';
-            const tierLabel = isPlat ? 'PLATINUM' : 'GOLD';
-            return `<span style="background:${bg};color:${fg};border:1px solid ${border};padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.05em;cursor:help" title="${tooltip}">${icon} INVERSE ${inv.side} · ${tierLabel} · ${wr}% (n=${inv.backtestN})</span>`;
+            const gap = proj.projTotal - marketTotal;
+            const inv = classifyInverseMarketSignal(proj.projTotal, marketTotal);
+            if (inv) {
+              // PLATINUM UNDER tier fires
+              const wr = (inv.backtestWR * 100).toFixed(0);
+              const tooltip = `LYRID INVERSE MARKET — PLATINUM UNDER&#10;&#10;${inv.reasoning}&#10;&#10;Audit: ${inv.backtestN === 3 ? '3W-0L = 100%' : (wr + '%')} on n=${inv.backtestN}&#10;Wilson 95% CI: [${(inv.wilsonLow*100).toFixed(0)}%, ${(inv.wilsonHigh*100).toFixed(0)}%]&#10;&#10;⚠ ${inv.sampleWarning}&#10;&#10;Model: ${proj.projTotal} · Market: ${marketTotal} · Gap: +${gap.toFixed(1)}&#10;&#10;Recommendation: bet UNDER ${marketTotal}. Size conservatively (tiny sample).`;
+              return `<span style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 50%,#1d4ed8 100%);color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.05em;cursor:help" title="${tooltip}">✦ INVERSE MARKET · UNDER ${marketTotal} · n=${inv.backtestN}</span>`;
+            }
+            // Informational display — no tier fires but show the disagreement
+            const gapAbs = Math.abs(gap);
+            const gapClass = gapAbs >= 1.5 ? 'large' : (gapAbs >= 0.5 ? 'mod' : 'small');
+            const gapColor = gapAbs >= 1.5 ? '#7f1d1d' : (gapAbs >= 0.5 ? '#854d0e' : 'var(--dim)');
+            const sign = gap >= 0 ? '+' : '';
+            return `<span style="color:var(--dim);font-size:11px">Model <b style="color:var(--text-primary,#1e293b)">${proj.projTotal}</b> · Market <b style="color:var(--text-primary,#1e293b)">${marketTotal}</b> · gap <b style="color:${gapColor}">${sign}${gap.toFixed(1)}</b></span>`;
           })()}
           · Winner: <span class="pwp-val" style="color:var(--accent);font-weight:700">${proj.projWinner === 'home' ? homeName : awayName}</span>
         </div>
@@ -11275,6 +11347,16 @@ function gradeProjectionFromLiveData(gamePk, liveData) {
           return actualTotal < entry.marketTotal ? 'win' : (actualTotal > entry.marketTotal ? 'loss' : 'push');
         }
         return null;
+      })(),
+      // (Drop #26 — June 8, 2026) Grade the inverse-MARKET signal.
+      // PLATINUM tier says bet UNDER market when model >> market by ≥2.5.
+      // Win = actual < market, loss = actual > market, push = exact.
+      _inverseMarketGrade: (() => {
+        if (!entry._inverseMarketSide || entry.marketTotal == null) return null;
+        if (entry._inverseMarketSide === 'UNDER') {
+          return actualTotal < entry.marketTotal ? 'win' : (actualTotal > entry.marketTotal ? 'loss' : 'push');
+        }
+        return null;
       })()
     };
     saveState();
@@ -11341,9 +11423,14 @@ function captureProjection(data) {
   // Don't overwrite if already graded (actuals locked in)
   if (existing?.graded) return;
   const _projTotal = +parseFloat(data.projection.projTotal);
-  // (Drop #25 — June 8, 2026) Classify inverse signal at capture time
-  // so the grader can measure live WR on the inverted bet.
+  const _marketTotal = data.odds?.total ?? null;
+  // (Drop #25 — June 8, 2026) Classify inverse-projection signal at capture time
   const _inv = classifyInverseTotalSignal(_projTotal);
+  // (Drop #26 — June 8, 2026) Classify inverse-MARKET signal — the actual
+  // engine going forward. Only fires when both projTotal and marketTotal exist.
+  const _invMkt = typeof _marketTotal === 'number'
+    ? classifyInverseMarketSignal(_projTotal, _marketTotal)
+    : null;
   const entry = {
     date,
     gamePk: data.gamePk,
@@ -11365,6 +11452,14 @@ function captureProjection(data) {
     _inverseTotalSide: _inv ? _inv.side : null,    // 'OVER' | 'UNDER' | null
     _inverseTotalWR: _inv ? _inv.backtestWR : null,
     _inverseTotalN: _inv ? _inv.backtestN : null,
+    // (Drop #26 — June 8, 2026) Inverse MARKET signal — primary engine forward.
+    // Also stamp the raw gap so we can audit the full model-vs-market distribution
+    // even when no tier fires (any historical re-audit can recompute thresholds).
+    _marketGap: typeof _marketTotal === 'number' ? +(_projTotal - _marketTotal).toFixed(2) : null,
+    _inverseMarketTier: _invMkt ? _invMkt.tier : null,   // 'platinum' | null
+    _inverseMarketSide: _invMkt ? _invMkt.side : null,   // 'UNDER' | null (no OVER tier yet)
+    _inverseMarketWR: _invMkt ? _invMkt.backtestWR : null,
+    _inverseMarketN: _invMkt ? _invMkt.backtestN : null,
     // Fields filled in on grading:
     actualAwayRuns: existing?.actualAwayRuns ?? null,
     actualHomeRuns: existing?.actualHomeRuns ?? null,
@@ -15083,28 +15178,24 @@ async function autoGradeOnAppOpen() {
         </div>
         <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
           <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
-            <span style="font-size:11px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">Inverse Total Lean</span>
+            <span style="font-size:11px;color:var(--text-secondary, var(--dim));text-transform:uppercase;letter-spacing:0.08em">Model vs Market</span>
             ${(() => {
-              // (Drop #25 — June 8, 2026) Removed raw projectedTotal display.
-              // The DIRECTION at extremes inverts (84-87% audit). Show that instead.
-              const inv = classifyInverseTotalSignal(gl.projectedTotal);
-              if (!inv) {
-                return `<span style="font-size:13px;color:var(--text-secondary, var(--dim));font-style:italic">no actionable lean — projection in mid-range (6.0-9.0 noise band)</span>`;
+              // (Drop #26 — June 8, 2026) Inverse-MARKET display.
+              // Pulls market total from book.total when available.
+              const marketTotal = book && typeof book.total === 'number' ? book.total : null;
+              if (marketTotal == null) {
+                return `<span style="font-size:13px;color:var(--text-secondary, var(--dim))">Model <b style="color:var(--text-primary)">${gl.projectedTotal}</b> · no market line captured</span>`;
               }
-              const wr = (inv.backtestWR * 100).toFixed(0);
-              const isPlat = inv.tier === 'platinum';
-              const isOver = inv.side === 'OVER';
-              const bg = isPlat
-                ? (isOver ? 'linear-gradient(135deg,#065f46 0%,#10b981 50%,#059669 100%)' : 'linear-gradient(135deg,#1e3a8a 0%,#3b82f6 50%,#1d4ed8 100%)')
-                : (isOver ? 'rgba(16,185,129,0.12)' : 'rgba(59,130,246,0.12)');
-              const fg = isPlat ? '#fff' : (isOver ? '#065f46' : '#1e3a8a');
-              const border = isPlat
-                ? (isOver ? '#065f46' : '#1e3a8a')
-                : (isOver ? 'rgba(16,185,129,0.4)' : 'rgba(59,130,246,0.4)');
-              const tooltip = `LYRID INVERSE TOTAL — ${inv.tier.toUpperCase()} ${inv.side}&#10;&#10;${inv.reasoning}&#10;&#10;Live audit (n=${inv.backtestN}): ${wr}% — Wilson CI [${(inv.wilsonLow*100).toFixed(0)}%, ${(inv.wilsonHigh*100).toFixed(0)}%]&#10;Historical avg: actual ${inv.avgActual.toFixed(1)} vs proj ${inv.avgProj.toFixed(1)}&#10;&#10;⚠ Bet OPPOSITE the model's projection. The raw projTotal number had r=-0.07 with outcomes; only the directional inversion at extremes has edge.`;
-              const icon = isPlat ? '✦' : '★';
-              const tierLabel = isPlat ? 'PLATINUM' : 'GOLD';
-              return `<span style="background:${bg};color:${fg};border:1px solid ${border};padding:5px 12px;border-radius:6px;font-size:13px;font-weight:700;letter-spacing:0.04em;cursor:help" title="${tooltip}">${icon} ${inv.side} · ${tierLabel} · ${wr}% (n=${inv.backtestN})</span>`;
+              const inv = classifyInverseMarketSignal(gl.projectedTotal, marketTotal);
+              const gap = gl.projectedTotal - marketTotal;
+              if (inv) {
+                const wr = (inv.backtestWR * 100).toFixed(0);
+                const tooltip = `LYRID INVERSE MARKET — PLATINUM UNDER&#10;&#10;${inv.reasoning}&#10;&#10;Audit: 3W-0L (100%) on n=3&#10;Wilson 95% CI: [44%, 100%]&#10;&#10;⚠ ${inv.sampleWarning}&#10;&#10;Model: ${gl.projectedTotal} · Market: ${marketTotal} · Gap: +${gap.toFixed(1)}&#10;&#10;Recommendation: bet UNDER ${marketTotal}. Size conservatively (tiny sample).`;
+                return `<span style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 50%,#1d4ed8 100%);color:#fff;padding:5px 12px;border-radius:6px;font-size:13px;font-weight:700;letter-spacing:0.04em;cursor:help" title="${tooltip}">✦ INVERSE MARKET · UNDER ${marketTotal} · n=3</span>`;
+              }
+              const sign = gap >= 0 ? '+' : '';
+              const gapColor = Math.abs(gap) >= 1.5 ? '#7f1d1d' : (Math.abs(gap) >= 0.5 ? '#854d0e' : 'var(--text-secondary)');
+              return `<span style="font-size:13px;color:var(--text-secondary)">Model <b style="color:var(--text-primary)">${gl.projectedTotal}</b> · Market <b style="color:var(--text-primary)">${marketTotal}</b> · gap <b style="color:${gapColor}">${sign}${gap.toFixed(1)}</b></span>`;
             })()}
             <span style="font-size:10px;color:var(--text-secondary, var(--dim))">${esc(aw)} <b style="color:var(--text-primary)">${gl.awayTotal}</b> · ${esc(hm)} <b style="color:var(--text-primary)">${gl.homeTotal}</b></span>
           </div>
