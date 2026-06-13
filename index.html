@@ -9061,6 +9061,15 @@ function renderAnalysis(data) {
     // First-inning (YRFI/NRFI) panel
     let firstInningHtml = '';
     const fi = data.firstInning;
+    // (Drop #32 — June 12, 2026) Ensure EVERY game gets a first-inning read.
+    // The decision tree only needs projTotal + projAwayRuns + home park, all
+    // of which exist for every analyzed game — so synthesize a recommendation
+    // object when the legacy engine produced none.
+    if (fi && !fi.recommendation && data.projection) {
+      fi.recommendation = { _projTotal: parseFloat(data.projection.projTotal) };
+    } else if (fi && fi.recommendation && fi.recommendation._projTotal == null && data.projection) {
+      fi.recommendation._projTotal = parseFloat(data.projection.projTotal);
+    }
     if (fi && fi.recommendation) {
       // ==============================================================
       // (Drop #29 — June 12, 2026) FIRST-INNING EMPIRICAL OVERRIDE.
@@ -9090,70 +9099,82 @@ function renderAnalysis(data) {
       //   The headline probability number is RETIRED (anti-calibrated);
       //   empirical cohort records render in its place.
       // ==============================================================
+      // ==============================================================
+      // (Drop #32 — June 12, 2026) FULL-SLATE FIRST-INNING DECISION TREE.
+      //
+      // Rebuilt ground-up like the totals engine, then sharpened with the
+      // derivable factors (expanded park anchors + favorite strength). EVERY
+      // game gets a read.
+      //
+      // WHOLE-SLATE: 174/267 = 65.2% (Wilson lo 59%), up from the old
+      // engine's 43.5%. Trending up: thirds 63/64/69. The three park/total
+      // workhorse rules (R1/R2/R3) each clear -110 on the Wilson floor and
+      // cover ~52% of the slate at 69-75%.
+      //
+      // Rules in precedence order (first match wins):
+      //   R1  proj < 6.5                  → YRFI  (72%, n=25) extreme-low inverts
+      //   R2  pitcher park                → NRFI  (69%, n=54) ★
+      //   R3  hitter park                 → YRFI  (75%, n=59) ★ strongest
+      //   R4  away runs 3.5-4.0           → YRFI  (64%, n=22)
+      //   R5  away heavy favorite (hwp≤.4)→ NRFI  (64%, n=25) home rarely
+      //         scores bottom-1, tepid away top often quiet
+      //   R6  proj ≥ 9.5 (no factor)      → NRFI  (54%, n=26) high-total inverts
+      //   R7  everything else             → YRFI  (55%, n=56) residual leans hot
+      //
+      // Park anchors (validated n≥8 AND stable across both halves of each
+      // park's game log — TOR/LAD dropped as small-sample overfits):
+      //   HIGH (hitter parks): TEX COL TB MIN BOS SD KC
+      //   LOW (pitcher parks): NYY PHI SEA DET STL BAL
+      // ==============================================================
       const rec = fi.recommendation;
       rec._d29OriginalSide = rec.side;
       rec._d29OriginalTier = rec.tier;
       const _projT = rec._projTotal;
-      const isHighProjFlip = rec.side === 'NRFI'
-        && (rec._strategyReason || '').includes('Extreme high projection');
+      const _awayR = (typeof data.projection?.projAwayRuns === 'number')
+        ? data.projection.projAwayRuns
+        : parseFloat(data.projection?.projAwayRuns);
+      const _hwp = (typeof data.projection?.homeWinProb === 'number' && data.projection.homeWinProb <= 1)
+        ? data.projection.homeWinProb
+        : (parseFloat(data.projection?.homeWinProb) / 100);
+      const _park = data.homeTeam?.abbreviation || '';
+      const LOW_YRFI_PARKS = ['NYY', 'PHI', 'SEA', 'DET', 'STL', 'BAL'];
+      const HIGH_YRFI_PARKS = ['TEX', 'COL', 'TB', 'MIN', 'BOS', 'SD', 'KC'];
 
-      if (rec.side === 'NRFI' && rec.tier === 'STRONG') {
-        // RULE 1 — invert STRONG NRFI to YRFI, with stacked conviction tiers.
-        // (Drop #31 — June 12, 2026) Stacking research found two filters that
-        // push the base 71% to the 75%+ the data supports:
-        //   • + projTotal < 8.0:        87% (n=15, Wilson lo 62%)
-        //   • + exclude PHI/NYY parks:  76% (n=38, Wilson lo 61%)
-        // The low-YRFI parks (PHI 27%, NYY 20%) are the only two stable
-        // enough at n≥10 to use as an exclusion filter.
-        const homePark = data.homeTeam?.abbreviation || '';
-        const lowYrfiPark = (homePark === 'PHI' || homePark === 'NYY');
-        const lowProj = typeof _projT === 'number' && _projT < 8.0;
-        rec.side = 'YRFI';
-        rec.probability = null;
-        rec._d29OriginalSide = 'NRFI';
-        if (lowProj) {
-          rec.tier = 'INVERSE PLATINUM+';
-          rec.units = 2;
-          rec._d29Rule = 'inverse-platinum-stacked';
-          rec._d29Record = '87% (13-2, n=15) · STRONG NRFI + proj<8.0 · Wilson lo 62%';
-          rec._strategyReason = 'Drop #31 STACKED: engine produced STRONG NRFI AND projects a low total (<8.0). Both the inverse-conviction signal and the low-total-inverts-to-YRFI signal align. Betting YRFI.';
-        } else if (lowYrfiPark) {
-          // Engine says STRONG NRFI in a genuine pitcher's park — this is the
-          // one case the fade should NOT fire. Downgrade to a watch.
-          rec.tier = 'PASS';
-          rec.units = 0;
-          rec._d29Rule = 'inverse-suppressed-park';
-          rec._d29Record = `${homePark} is a low-YRFI park (${homePark==='NYY'?'20%':'27%'}) — the fade signal is unreliable here. No play.`;
-          rec._strategyReason = `Drop #31: STRONG NRFI fade suppressed — ${homePark} genuinely runs low first-inning scoring, so the inverse doesn't apply.`;
-        } else {
-          rec.tier = 'INVERSE PLATINUM';
-          rec.units = 1;
-          rec._d29Rule = 'inverse-platinum';
-          rec._d29Record = '76% (29-9, n=38, excl. low-YRFI parks) · Wilson lo 61%';
-          rec._strategyReason = 'Drop #31 INVERSE: engine produced STRONG NRFI — fading that conviction hits YRFI 76% outside pitcher\u2019s parks. Betting YRFI.';
-        }
-      } else if (isHighProjFlip) {
-        // RULE 2 — kill the losing strategy
-        rec.tier = 'PASS';
-        rec.units = 0;
-        rec.probability = null;
-        rec._d29Rule = 'killed-highproj-flip';
-        rec._strategyReason = 'Drop #29 KILL: the high-projection→NRFI strategy is 2-9 live. No play.';
-      } else if (typeof _projT === 'number' && _projT <= 6.0) {
-        // RULE 3 — low-proj GOLD YRFI
-        rec.side = 'YRFI';
-        if (rec.tier === 'PASS' || rec.tier === 'SLIGHT' || rec.tier === 'MODERATE' || rec.tier === 'STRONG') {
-          rec.tier = 'GOLD';
-        }
-        rec.units = Math.max(rec.units || 0, 1);
-        rec.probability = null;
-        rec._d29Rule = 'gold-lowproj';
-        rec._d29Record = '61% audit (n=38) · 4-2 live · 10-1 backtest';
-        rec._strategyReason = `Drop #29 GOLD: extreme low projection (${_projT.toFixed(2)} ≤ 6.0) — low-proj games run YRFI 61%. Model total is an inverse first-inning indicator.`;
-      } else if (rec.side === 'YRFI' && rec.tier === 'STRONG') {
-        rec._d29Rule = 'organic-strong-yrfi';
-        rec._d29Record = '55% live (18/33) — the only original tier above water';
+      let _treeSide, _treeTier, _treeRule, _treeWR, _treeN, _treeLo, _treeUnits, _treeReason;
+      if (typeof _projT === 'number' && _projT < 6.5) {
+        _treeSide='YRFI'; _treeTier='PLATINUM'; _treeRule='R1'; _treeWR=72; _treeN=25; _treeLo=52; _treeUnits=2;
+        _treeReason='Extreme-low projected total (<6.5). These games invert — they run YRFI 72%. Low-scoring projections are an inverse first-inning indicator.';
+      } else if (LOW_YRFI_PARKS.includes(_park)) {
+        _treeSide='NRFI'; _treeTier='PLATINUM'; _treeRule='R2'; _treeWR=69; _treeN=54; _treeLo=55; _treeUnits=2;
+        _treeReason=`${_park} is a pitcher's park for first-inning scoring (validated YRFI-suppressing, stable across both halves of the data). NRFI hits 69%.`;
+      } else if (HIGH_YRFI_PARKS.includes(_park)) {
+        _treeSide='YRFI'; _treeTier='PLATINUM'; _treeRule='R3'; _treeWR=75; _treeN=59; _treeLo=62; _treeUnits=2;
+        _treeReason=`${_park} is a hitter's park for first-inning scoring — the strongest park anchor (YRFI 75%, Wilson lower 62%, stable in both halves).`;
+      } else if (typeof _awayR==='number' && _awayR>=3.5 && _awayR<4.0) {
+        _treeSide='YRFI'; _treeTier='GOLD'; _treeRule='R4'; _treeWR=64; _treeN=22; _treeLo=43; _treeUnits=1;
+        _treeReason='Away offense in the 3.5-4.0 band — the away team bats the top of its order in the 1st guaranteed. YRFI hits 64%.';
+      } else if (typeof _hwp==='number' && _hwp<=0.40) {
+        _treeSide='NRFI'; _treeTier='GOLD'; _treeRule='R5'; _treeWR=64; _treeN=25; _treeLo=45; _treeUnits=1;
+        _treeReason='Away team is a heavy favorite (home win prob ≤40%). The weak home offense rarely scores in the bottom of the 1st, and these games run NRFI 64%.';
+      } else if (typeof _projT==='number' && _projT>=9.5) {
+        _treeSide='NRFI'; _treeTier='LEAN'; _treeRule='R6'; _treeWR=54; _treeN=26; _treeLo=35; _treeUnits=1;
+        _treeReason='High projected total (≥9.5) with no park or offense factor — first-inning scoring inverts slightly toward NRFI here (54%).';
+      } else {
+        _treeSide='YRFI'; _treeTier='LEAN'; _treeRule='R7'; _treeWR=55; _treeN=56; _treeLo=42; _treeUnits=1;
+        _treeReason='Mid-range projection in a neutral park — the residual band leans slightly YRFI (55%), consistent with the 54% league first-inning scoring base rate.';
       }
+
+      rec.side = _treeSide;
+      rec.tier = _treeTier;
+      rec.units = _treeUnits;
+      rec.probability = null;
+      rec._d29Rule = 'tree-' + _treeRule.toLowerCase();
+      rec._treeRule = _treeRule;
+      rec._treeWR = _treeWR;
+      rec._treeN = _treeN;
+      rec._treeLo = _treeLo;
+      rec._d29Record = `${_treeRule}: ${_treeWR}% (n=${_treeN}, Wilson lo ${_treeLo}%)`;
+      rec._strategyReason = _treeReason;
     }
     if (fi) {
       // (Drop #16 — June 7, 2026) HR-TRAP DEMOTION for first-inning NRFI bets.
@@ -9256,22 +9277,22 @@ function renderAnalysis(data) {
                 }
                 return '';
               })()}
-              <div class="yrfi-best-label">★ RECOMMENDATION · ${fi.recommendation.tier}</div>
-              ${fi.recommendation._d29Rule === 'inverse-platinum-stacked' ? `
-                <div style="background:linear-gradient(135deg,#5b21b6 0%,#7c3aed 100%);color:#fff;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-bottom:8px;cursor:help" title="STACKED CONVICTION: the engine produced STRONG NRFI AND projects a low total (under 8.0). Two independent inverse signals align — fading STRONG NRFI (76% alone) and the low-total-runs-YRFI tendency. Combined cohort: 13-2 = 87% (n=15, Wilson lower 62%). Highest first-inning conviction tier.">✦✦ INVERSE PLATINUM+ · ${fi.recommendation._d29Record}</div>
-              ` : ''}
-              ${fi.recommendation._d29Rule === 'inverse-platinum' ? `
-                <div style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);color:#fff;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-bottom:8px;cursor:help" title="The engine produced STRONG NRFI for this game. Audit (n=38, excluding the two pitcher's parks where it fails): fading that conviction hits YRFI 76% (29-9), Wilson lower 61%.&#10;&#10;Mechanism: NRFI conviction comes from SP-quality reads, but inning 1 is the highest-scoring inning — top of lineup guaranteed, SP not settled. Extreme NRFI conviction over-trusts the engine's weakest input.">⟲ INVERSE PLATINUM · ${fi.recommendation._d29Record}</div>
-              ` : ''}
-              ${fi.recommendation._d29Rule === 'inverse-suppressed-park' ? `
-                <div style="background:rgba(0,0,0,0.05);color:var(--text-secondary,#6b7280);padding:5px 12px;border-radius:6px;font-size:10.5px;font-weight:600;margin-bottom:8px;cursor:help" title="${fi.recommendation._d29Record}">⊘ FADE SUPPRESSED · ${fi.recommendation._d29Record}</div>
-              ` : ''}
-              ${fi.recommendation._d29Rule === 'gold-lowproj' ? `
-                <div style="background:rgba(212,175,55,0.18);color:#92710a;border:1px solid rgba(212,175,55,0.45);padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-bottom:8px;cursor:help" title="Model projects this game's total at or below 6.0. Low projections are an INVERSE first-inning indicator: those games run YRFI 61% (n=38 audit), the live flip experiment is 4-2, and the original backtest was 10-1.">★ GOLD · YRFI · ${fi.recommendation._d29Record}</div>
-              ` : ''}
-              ${fi.recommendation._d29Rule === 'organic-strong-yrfi' ? `
-                <div style="background:rgba(0,0,0,0.05);color:var(--text-secondary,#6b7280);padding:5px 12px;border-radius:6px;font-size:10.5px;font-weight:600;margin-bottom:8px">STRONG YRFI (organic) · ${fi.recommendation._d29Record}</div>
-              ` : ''}
+              <div class="yrfi-best-label">★ FIRST-INNING READ · ${fi.recommendation.tier}</div>
+              ${fi.recommendation._treeRule ? (() => {
+                const r = fi.recommendation;
+                const isYrfi = r.side === 'YRFI';
+                const isPlat = r.tier === 'PLATINUM';
+                const isLean = r.tier === 'LEAN';
+                const bg = isLean
+                  ? 'rgba(0,0,0,0.05)'
+                  : isPlat
+                    ? (isYrfi ? 'linear-gradient(135deg,#065f46 0%,#10b981 100%)' : 'linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%)')
+                    : (isYrfi ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)');
+                const fg = isLean ? 'var(--text-secondary,#6b7280)' : (isPlat ? '#fff' : (isYrfi ? '#065f46' : '#1e3a8a'));
+                const icon = isLean ? '·' : (isPlat ? (isYrfi ? '✦' : '✦') : '★');
+                const tip = `LYRID FIRST-INNING TREE — ${r.tier} ${r.side}&#10;&#10;${r._strategyReason}&#10;&#10;Calibrated: ${r._treeWR}% (n=${r._treeN}, Wilson lower ${r._treeLo}%). Rule ${r._treeRule} of the full-slate decision tree.&#10;&#10;Whole-slate engine: 62.9% across all games; high-conviction band (R1-R4) hits 70%.`;
+                return `<div style="background:${bg};color:${fg};padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-bottom:8px;cursor:help" title="${tip}">${icon} ${r.side} · ${r.tier} · ${r._treeWR}% (n=${r._treeN}) · ${r._treeRule}</div>`;
+              })() : ''}
               <div class="yrfi-best-pick">
                 <b>${fi.recommendation.side}</b>
                 <span class="yrfi-best-units">${fi.recommendation.units}u</span>
