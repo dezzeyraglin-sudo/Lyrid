@@ -9985,7 +9985,7 @@ function importJsonState(text) {
   }
 
   // Sanity check the shape — should have at least one expected top-level key
-  const expectedKeys = ['picks', 'taggedHitters', 'projectionAudit', 'gameLineBets', 'firstInningBets', 'pitcherPropBets'];
+  const expectedKeys = ['picks', 'taggedHitters', 'projectionAudit', 'gameLineBets', 'firstInningBets', 'pitcherPropBets', 'wnbaPropHistory', 'wnbaGameBets'];
   const hasExpectedShape = expectedKeys.some(k => k in parsed);
   if (!hasExpectedShape) {
     alert('JSON does not look like a Lyrid state backup. None of the expected keys (picks, taggedHitters, projectionAudit, etc.) are present.');
@@ -9999,7 +9999,9 @@ function importJsonState(text) {
     projectionAudit: parsed.projectionAudit ? Object.keys(parsed.projectionAudit).length : 0,
     gameLineBets: parsed.gameLineBets ? Object.keys(parsed.gameLineBets).length : 0,
     firstInningBets: parsed.firstInningBets ? Object.keys(parsed.firstInningBets).length : 0,
-    pitcherPropBets: parsed.pitcherPropBets ? Object.keys(parsed.pitcherPropBets).length : 0
+    pitcherPropBets: parsed.pitcherPropBets ? Object.keys(parsed.pitcherPropBets).length : 0,
+    wnbaProps: parsed.wnbaPropHistory ? Object.values(parsed.wnbaPropHistory).reduce((a, d) => a + Object.keys(d || {}).length, 0) : 0,
+    wnbaGames: parsed.wnbaGameBets ? Object.keys(parsed.wnbaGameBets).length : 0
   };
 
   const currentCounts = {
@@ -10008,7 +10010,9 @@ function importJsonState(text) {
     projectionAudit: state.projectionAudit ? Object.keys(state.projectionAudit).length : 0,
     gameLineBets: state.gameLineBets ? Object.keys(state.gameLineBets).length : 0,
     firstInningBets: state.firstInningBets ? Object.keys(state.firstInningBets).length : 0,
-    pitcherPropBets: state.pitcherPropBets ? Object.keys(state.pitcherPropBets).length : 0
+    pitcherPropBets: state.pitcherPropBets ? Object.keys(state.pitcherPropBets).length : 0,
+    wnbaProps: state.wnbaPropHistory ? Object.values(state.wnbaPropHistory).reduce((a, d) => a + Object.keys(d || {}).length, 0) : 0,
+    wnbaGames: state.wnbaGameBets ? Object.keys(state.wnbaGameBets).length : 0
   };
 
   const summary =
@@ -10018,7 +10022,9 @@ function importJsonState(text) {
     `  • projection audit: ${incomingCounts.projectionAudit} (current: ${currentCounts.projectionAudit})\n` +
     `  • game-line bets: ${incomingCounts.gameLineBets} (current: ${currentCounts.gameLineBets})\n` +
     `  • YRFI bets: ${incomingCounts.firstInningBets} (current: ${currentCounts.firstInningBets})\n` +
-    `  • pitcher bets: ${incomingCounts.pitcherPropBets} (current: ${currentCounts.pitcherPropBets})\n\n` +
+    `  • pitcher bets: ${incomingCounts.pitcherPropBets} (current: ${currentCounts.pitcherPropBets})\n` +
+    `  • WNBA props: ${incomingCounts.wnbaProps} (current: ${currentCounts.wnbaProps})\n` +
+    `  • WNBA game bets: ${incomingCounts.wnbaGames} (current: ${currentCounts.wnbaGames})\n\n` +
     `Choose merge strategy:\n` +
     `  • OK = MERGE (incoming wins on key conflicts)\n` +
     `  • Cancel = abort import`;
@@ -10043,6 +10049,18 @@ function importJsonState(text) {
   }
   if (parsed.pitcherPropBets && typeof parsed.pitcherPropBets === 'object') {
     state.pitcherPropBets = Object.assign({}, state.pitcherPropBets || {}, parsed.pitcherPropBets);
+  }
+  if (parsed.wnbaGameBets && typeof parsed.wnbaGameBets === 'object') {
+    state.wnbaGameBets = Object.assign({}, state.wnbaGameBets || {}, parsed.wnbaGameBets);
+  }
+  if (parsed.wnbaPropHistory && typeof parsed.wnbaPropHistory === 'object') {
+    // Nested by date → merge each date's entries so existing days aren't wiped.
+    state.wnbaPropHistory = state.wnbaPropHistory || {};
+    for (const [d, entries] of Object.entries(parsed.wnbaPropHistory)) {
+      if (entries && typeof entries === 'object') {
+        state.wnbaPropHistory[d] = Object.assign({}, state.wnbaPropHistory[d] || {}, entries);
+      }
+    }
   }
   if (Array.isArray(parsed.picks)) {
     // De-duplicate picks by id+date+gamePk+hitter signature where possible
