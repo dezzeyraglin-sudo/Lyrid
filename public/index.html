@@ -4383,36 +4383,86 @@ function applyLyridUnderTier(propRecs, hitterContext) {
   if (hrrProp.fragility && hrrProp.fragility.tier === 'eliminated') return null;
 
   const formLabel = hitterContext.recentFormLabel || '';
-  const hand = (hitterContext.hand || '').toUpperCase();
   const reason = (hrrProp.reason || '').toLowerCase();
   const hasBpEdge = reason.includes('bullpen edge');
 
-  // PLATINUM UNDER: HRR + SCORCHING form (the regression-to-mean cohort)
-  if (formLabel === 'SCORCHING') {
+  // ================================================================
+  // (Drop #29 — June 12, 2026) UNDER TIER REWORK per 247-pick audit.
+  //
+  // PLATINUM (new workhorse): HRR + "bullpen edge" reason → UNDER.
+  //   Live: 36-22 = 62.1% (n=58), thirds 63/63/60 — never below 60%
+  //   in any time window. The most stable cohort in the dataset.
+  //   Mechanism: the engine's "bullpen edge" read is an INVERSE
+  //   indicator — the OVER side of these picks hits only 37.9%.
+  //   Subsumes the old Drop #24 GOLD rule (L-hitter + bp-edge, n=22),
+  //   which was this same signal on a smaller slice.
+  //
+  // RETIRED: SCORCHING-form PLATINUM (Drop #24). All-time 61.8% but
+  //   decaying hard: thirds 64/73/50 — the recent third is a coin
+  //   flip. Likely cause: the May/June model recalibrations reduced
+  //   the form multiplier's distortion, shrinking the regression
+  //   edge. SCORCHING picks now log _scorchingWatch for monitoring
+  //   but get NO tier and NO bet recommendation. Revisit if a fresh
+  //   30-pick window re-clears 58%.
+  // ================================================================
+  if (hasBpEdge) {
     hrrProp._lyridUnderTier = 'platinum';
-    hrrProp._lyridUnderRule = 'HRR + SCORCHING form — regression to mean';
-    hrrProp._lyridUnderWR = 0.667;
-    hrrProp._lyridUnderN = 30;
-    hrrProp._lyridUnderWilsonLow = 0.49;
-    hrrProp._lyridUnderWilsonHigh = 0.81;
-    hrrProp._lyridUnderThirds = '70/70/60';
+    hrrProp._lyridUnderRule = 'HRR + bullpen-edge reason — inverse indicator (OVER hits 37.9%)';
+    hrrProp._lyridUnderWR = 0.621;
+    hrrProp._lyridUnderN = 58;
+    hrrProp._lyridUnderWilsonLow = 0.492;
+    hrrProp._lyridUnderWilsonHigh = 0.73;
+    hrrProp._lyridUnderThirds = '63/63/60';
     return hrrProp;
   }
 
-  // GOLD UNDER: HRR + L hitter + (bp edge OR scorching, but PLATINUM already caught scorching)
-  // So effective GOLD = HRR + L + bp edge
-  if (hand === 'L' && hasBpEdge) {
-    hrrProp._lyridUnderTier = 'gold';
-    hrrProp._lyridUnderRule = 'HRR + L-hitter + bullpen edge — soft target';
-    hrrProp._lyridUnderWR = 0.591;
-    hrrProp._lyridUnderN = 22;
-    hrrProp._lyridUnderWilsonLow = 0.39;
-    hrrProp._lyridUnderWilsonHigh = 0.77;
-    hrrProp._lyridUnderThirds = '57/57/63';
-    return hrrProp;
+  if (formLabel === 'SCORCHING') {
+    // Watch-only — no tier, no recommendation. Audited 64/73/50 thirds.
+    hrrProp._scorchingWatch = true;
+    return null;
   }
 
   return null;
+}
+
+// ====================================================================
+// (Drop #29 — June 12, 2026) VERIFIED COHORT BADGES
+//
+// The 247-pick audit found the tool's best picks were visually
+// identical to its worst. Two cohorts cleared validation on the OVER
+// side and earn a gold "VERIFIED" badge:
+//
+//   1. RARELY-K HITS: prop = HITS, reason includes "rarely strikes
+//      out". Live: 18-7 = 72.0% (n=25), thirds 75/62/78, and the ONLY
+//      cohort whose Wilson LOWER bound (52.4%) clears -110. Went 4-0
+//      June 9-10. Fires 1-3 per slate.
+//
+//   2. ELITE-PTE + R-HITTER: reason includes "elite pitch-type edge",
+//      hitter bats R. Live: 16-8 = 66.7% (n=24), thirds 62/75/62.
+//
+// Anything else — including the 198-pick HRR "Multiple pathways"
+// cohort at 44.9% — gets no badge. The Drop #28 PASS rule handles
+// the worst of those.
+// ====================================================================
+function applyVerifiedCohortBadges(propRecs, hitterContext) {
+  if (!Array.isArray(propRecs) || !hitterContext) return;
+  const hand = (hitterContext.hand || '').toUpperCase();
+  for (const p of propRecs) {
+    const reason = (p.reason || '').toLowerCase();
+    if (p.key === 'H' && reason.includes('rarely strikes out')) {
+      p._verifiedCohort = 'rarely-k-hits';
+      p._verifiedWR = 0.72;
+      p._verifiedN = 25;
+      p._verifiedThirds = '75/62/78';
+      p._verifiedNote = 'Only cohort whose Wilson lower bound (52.4%) clears -110. Clears PrizePicks at point estimate. 4-0 on June 9-10.';
+    } else if (reason.includes('elite pitch-type edge') && hand === 'R') {
+      p._verifiedCohort = 'elite-pte-r';
+      p._verifiedWR = 0.667;
+      p._verifiedN = 24;
+      p._verifiedThirds = '62/75/62';
+      p._verifiedNote = 'R-handed hitters with elite arsenal matchup. Stable across all three audit windows.';
+    }
+  }
 }
 
 // ====================================================================
@@ -4482,19 +4532,13 @@ function classifyInverseTotalSignal(projTotal) {
   }
 
   // PLATINUM UNDER: model projects very high, regression down is the bet
-  if (projTotal >= 10.0) {
-    return {
-      tier: 'platinum',
-      side: 'UNDER',
-      reasoning: 'Model projects very high (≥10.0) — historically these games average 9.1 actual runs. Mean-reversion bet to UNDER.',
-      backtestWR: 0.838,
-      backtestN: 37,
-      wilsonLow: 0.69,
-      wilsonHigh: 0.92,
-      avgProj: 11.14,
-      avgActual: 9.08
-    };
-  }
+  // (Drop #30 — June 12, 2026) PLATINUM UNDER (proj ≥ 10.0) REMOVED.
+  // The June 12 totals audit exposed it as a benchmark artifact: 82% vs the
+  // projection but only 42% vs an actual 8.5 line — it LOSES money against
+  // a real book. It only "won" because the projection was inflated; the
+  // games still landed OVER 8.5. The vs-line edge lives almost entirely in
+  // the live F5 engine now (90-94%). Pre-game high-proj UNDER no longer
+  // surfaces as a tier.
 
   // GOLD OVER: model projects low, broader cohort
   if (projTotal >= 6.0 && projTotal < 7.5) {
@@ -4665,25 +4709,31 @@ function classifyLiveF5Signal(f5Runs, projTotal, homePark) {
 
   // PRIMARY UNDER signal — F5 ≤ 2
   if (f5Runs <= 2) {
-    // Sub-tier: if pre-game model said HIGH and F5 says LOW, this is the
-    // strongest historical setup (n=9, 100% UNDER projection)
-    const crossSignal = typeof projTotal === 'number' && projTotal >= 9.5;
+    // (Drop #30 — June 12, 2026) Numbers refreshed on n=62 (was n=32).
+    // CONFIRMED sub-tier: pre-game model said HIGH (≥9.0) and F5 says LOW —
+    // both reads now agree the total is too high. n=16, 94% UNDER 8.5.
+    const crossSignal = typeof projTotal === 'number' && projTotal >= 9.0;
     return {
       tier: 'platinum',
       side: 'UNDER',
       f5Runs: f5Runs,
-      reasoning: `Only ${f5Runs} run${f5Runs === 1 ? '' : 's'} scored through 5 innings. Historical audit: when F5 ≤ 2, games average 4.94 final runs and UNDER 8.5 hits 94%.`,
-      backtestWR: 0.94,
-      backtestN: 32,
+      reasoning: `Only ${f5Runs} run${f5Runs === 1 ? '' : 's'} scored through 5 innings. Audit (n=62): F5 ≤ 2 → UNDER 8.5 hits 90%, avg final 4.9 runs.`,
+      backtestWR: 0.90,
+      backtestN: 62,
       wilsonLow: 0.80,
-      wilsonHigh: 0.98,
-      avgFinal: 4.94,
-      under75WR: 0.84,
-      under65WR: 0.72,
-      timeStability: '100/90/92 across thirds',
+      wilsonHigh: 0.95,
+      avgFinal: 4.9,
+      // (Drop #30) alt-line UNDER hit rates (n=62) for EV selection
+      altLines: [
+        { line: 8.5, wr: 0.90, lo: 0.80 },
+        { line: 7.5, wr: 0.85, lo: 0.75 },
+        { line: 6.5, wr: 0.76, lo: 0.64 },
+        { line: 5.5, wr: 0.73, lo: 0.60 }
+      ],
+      timeStability: 'thirds 100/90/92, Wilson lower 80%',
       crossSignal: crossSignal,
       crossSignalNote: crossSignal
-        ? `MAX CONVICTION: pre-game model projected ${projTotal.toFixed(1)} but game says ${f5Runs} through 5. Historical n=9 with this exact setup → 9/9 UNDER projection, avg final 3.56 vs avg projected 10.23.`
+        ? `CONFIRMED: pre-game model projected ${projTotal.toFixed(1)} (HIGH) AND game says ${f5Runs} through 5 (LOW) — both reads agree. Combined cohort (proj≥9.0 + F5≤2): 15/16 = 94% UNDER 8.5.`
         : null,
       parkAdjustment: parkLateAdj,
       parkWarning: parkWarning,
@@ -4694,17 +4744,28 @@ function classifyLiveF5Signal(f5Runs, projTotal, homePark) {
   // MIRROR OVER signal — F5 ≥ 7
   if (f5Runs >= 7) {
     const isExtreme = f5Runs >= 8;
+    // CONFIRMED OVER sub-tier: pre-game model said LOW (<7.5) and F5 says HIGH
+    const crossSignal = typeof projTotal === 'number' && projTotal < 7.5;
     return {
-      tier: isExtreme ? 'platinum' : 'gold',
+      tier: 'platinum',  // (Drop #30) F5≥7 is 94% vs 8.5, Wilson lo 86% — full platinum
       side: 'OVER',
       f5Runs: f5Runs,
-      reasoning: `${f5Runs} runs already through 5 innings. Historical audit: F5 ≥ 7 → OVER 8.5 hits 84% (n=25); F5 ≥ 8 → OVER 8.5 hits 92% (n=13).`,
-      backtestWR: isExtreme ? 0.92 : 0.84,
-      backtestN: isExtreme ? 13 : 25,
-      wilsonLow: isExtreme ? 0.67 : 0.65,
-      wilsonHigh: isExtreme ? 0.99 : 0.94,
-      avgFinal: isExtreme ? 11.0 : 10.5,
-      timeStability: 'monotonic relationship holds across full audit window',
+      reasoning: `${f5Runs} runs already through 5 innings. Audit (n=81): F5 ≥ 7 → OVER 8.5 hits 94%, Wilson lower 86%.`,
+      backtestWR: 0.94,
+      backtestN: 81,
+      wilsonLow: 0.86,
+      wilsonHigh: 0.97,
+      avgFinal: isExtreme ? 11.5 : 10.8,
+      altLines: [
+        { line: 8.5, wr: 0.94, lo: 0.86 },
+        { line: 9.5, wr: 0.79, lo: 0.69 },
+        { line: 10.5, wr: 0.69, lo: 0.58 }
+      ],
+      timeStability: 'monotonic across full audit window, Wilson lower 86%',
+      crossSignal: crossSignal,
+      crossSignalNote: crossSignal
+        ? `CONFIRMED: pre-game model projected ${projTotal.toFixed(1)} (LOW) but game says ${f5Runs} through 5 (HIGH). Combined cohort (proj<7.5 + F5≥4): 31/42 = 74% OVER 8.5.`
+        : null,
       parkAdjustment: parkLateAdj,
       parkWarning: parkWarning,
       actionWindow: 'Live OVER bet — books reprice fast on high-scoring games. PP/UD live OVER props softer than mainline books.'
@@ -4808,6 +4869,10 @@ function applyMlbEngineRanking(propRecs, activeEngine) {
   // on HRR prop when SCORCHING form or L+bp-edge. Stamps metadata that the
   // UI uses to render the prop as UNDER recommended instead of OVER.
   const lyridUnderPick = applyLyridUnderTier(propRecs, hitterCtx);
+  // (Drop #29 — June 12, 2026) Stamp VERIFIED cohort badges (rarely-K HITS
+  // 72% n=25; elite-PTE + R-hitter 67% n=24). Display-layer metadata only —
+  // doesn't change isBest priority, just makes the validated picks visible.
+  applyVerifiedCohortBadges(propRecs, hitterCtx);
 
   // isBest priority:
   //   1. HARD-HIT (HITS prop, 75% live WR) — strongest confirmed cohort
@@ -5021,18 +5086,33 @@ const LyridAuditSync = (function() {
 
       // Merge projectionAudit — server wins on conflict ONLY if its entry
       // is more complete (graded=true beats graded=false). Otherwise union.
+      // (Drop #28 — June 12, 2026) Merge is now NULL-SAFE: a stale server
+      // copy carrying null for a field the local copy has populated (e.g.
+      // marketTotal stamped after odds loaded) no longer clobbers it. This
+      // was the bug that wiped June 8's market lines.
+      const mergePreferNonNull = (local, srv) => {
+        const out = { ...local };
+        for (const [k, v] of Object.entries(srv || {})) {
+          if (v === null || v === undefined) {
+            if (!(k in out)) out[k] = v;
+          } else {
+            out[k] = v;
+          }
+        }
+        return out;
+      };
       state.projectionAudit = state.projectionAudit || {};
       for (const [key, srv] of Object.entries(payload.projectionAudit || {})) {
         const local = state.projectionAudit[key];
         if (!local) {
           state.projectionAudit[key] = srv;
         } else if (srv.graded && !local.graded) {
-          state.projectionAudit[key] = { ...local, ...srv };
+          state.projectionAudit[key] = mergePreferNonNull(local, srv);
         } else if (local.graded && !srv.graded) {
           // local is more complete — leave alone, but we'll push it later
         } else {
-          // Both graded or both ungraded — server wins
-          state.projectionAudit[key] = { ...local, ...srv };
+          // Both graded or both ungraded — server wins on non-null fields only
+          state.projectionAudit[key] = mergePreferNonNull(local, srv);
         }
         // Track that this server entry matches what we have, so we don't re-push it
         projectionPushedHash.set(key, hashOf(state.projectionAudit[key]));
@@ -6762,6 +6842,32 @@ function renderAnalysis(data) {
   // candidates that survived fade override and demotes excess to ELITE.
   enforcePrimeSlateCap(data);
 
+  // (Drop #28 — June 12, 2026) TOP PICK SUPPRESSION FOR -EV COHORTS.
+  // The Isaac Collins bug (June 11, KC@TEX): HRR 1.5 OVER showed
+  // "★ TOP PICK · elite" while the EV chip on the same card said the
+  // cohort runs 43.5% live. The badge and the chip argued; the badge won
+  // and the pick lost (0-3, K). Rule: if a TOP PICK's headline prop is
+  // HRR "Multiple pathways" with no rescue tier (HARD-HIT or LYRID UNDER),
+  // the OVER is -EV in every market we track — strip the star and show
+  // PASS. We stamp _topPickSuppressed (not delete isTopPick) so
+  // logBestBets still records the pick and we can audit suppression
+  // accuracy later.
+  ['awayVsHome','homeVsAway'].forEach(sideKey => {
+    const s = data[sideKey];
+    if (!s?.mismatches) return;
+    s.mismatches.forEach(m => {
+      if (!m.isTopPick) return;
+      const best = (m.propRecs || []).find(p => p.isBest) || (m.propRecs || [])[0];
+      if (!best) return;
+      const isMultiPathwayHRR = best.key === 'HRR'
+        && (best.reason || m.reason || '').toLowerCase().includes('multiple pathways');
+      const hasRescueTier = best._hardHitTier || best._lyridUnderTier || m._hardHitTier || m._lyridUnderTier;
+      if (isMultiPathwayHRR && !hasRescueTier) {
+        m._topPickSuppressed = true;
+      }
+    });
+  });
+
   // Auto-log every "BEST BET" recommendation from this analysis
   logBestBets(data);
 
@@ -6949,6 +7055,7 @@ function renderAnalysis(data) {
                     return `
                     <div class="prop-pill ${p.isBest ? 'best' : ''} ${p._lyridUnderTier === 'platinum' ? 'lyrid-under-platinum' : ''} ${p._lyridUnderTier === 'gold' ? 'lyrid-under-gold' : ''}">
                       ${p.platform ? `<span class="pp-platform ${p.platform}">${p.platform}</span>` : ''}
+                      ${p._verifiedCohort ? `<span style="background:linear-gradient(135deg,#92710a 0%,#d4af37 50%,#b8901f 100%);color:#fff;font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:100px;letter-spacing:0.07em;cursor:help;text-shadow:0 1px 1px rgba(0,0,0,0.25)" title="LYRID VERIFIED COHORT — ${p._verifiedCohort === 'rarely-k-hits' ? 'RARELY-K HITS' : 'ELITE PITCH-TYPE EDGE + R-HITTER'}&#10;&#10;Live record: ${(p._verifiedWR*100).toFixed(0)}% (n=${p._verifiedN}), time-thirds ${p._verifiedThirds}.&#10;&#10;${p._verifiedNote}&#10;&#10;June 12 audit: one of only two OVER cohorts that cleared validation out of 247 graded picks.">✓ VERIFIED ${(p._verifiedWR*100).toFixed(0)}%</span>` : ''}
                       ${p._sharpHits ? `<span class="pp-sharp-hits" style="background:linear-gradient(135deg,#e8e9eb 0%,#c6c9cd 35%,#f5f6f8 50%,#b5b8bc 65%,#d8dadd 100%);color:#1a1d22;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.1em;margin-right:4px;border:1px solid rgba(155,158,162,0.6);text-shadow:0 0 1px rgba(255,255,255,0.5)" title="Lyrid's Sharp HITS&#10;&#10;Empirical override: backtest 43-20 (68% WR) on n=63 graded bets&#10;Rule: ${p._sharpHitsRule === 'R-vs-RHP-high-xwoba' ? 'R hitter vs RHP, xwOBA ≥ 0.60' : 'any hitter vs LHP, xwOBA ≥ 0.45'}&#10;Wilson 95% CI: [56%, 78%]&#10;Stable across time thirds: 67/71/67">✦ SHARP</span>` : ''}
                       ${p._hardHitTier ? `<span class="pp-hard-hit" style="background:linear-gradient(135deg,#fef3c7 0%,#fbbf24 35%,#fde68a 50%,#f59e0b 65%,#fcd34d 100%);color:#451a03;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(180,83,9,0.6);text-shadow:0 0 1px rgba(255,255,255,0.4)" title="LYRID HARD-HIT TIER&#10;&#10;Live audit (Drop #23): ${p._hardHitBacktestW}W-${p._hardHitBacktestL}L = ${(p._hardHitBacktestWR*100).toFixed(0)}% on n=${p._hardHitBacktestN}&#10;Filter: HITS prop where hitter season hard-hit % ≥ 45&#10;Wilson 95% CI: [${(p._hardHitWilsonLow*100).toFixed(0)}%, ${(p._hardHitWilsonHigh*100).toFixed(0)}%]&#10;Time stability: 75/75/75 across thirds&#10;Out-of-sample: 75% train (n=4), 75% test (n=8)&#10;&#10;⚠ Small sample — true WR could be 47-91%. Bet sized accordingly.">◆ HARD-HIT</span>` : ''}
                       ${p._lyridUnderTier === 'platinum' ? `<span class="pp-lyrid-under platinum" style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 35%,#60a5fa 50%,#2563eb 65%,#1d4ed8 100%);color:#fff;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(30,58,138,0.7);text-shadow:0 1px 1px rgba(0,0,0,0.4)" title="LYRID UNDER · PLATINUM&#10;&#10;FADE THE OVER — bet UNDER 1.5 H+R+RBI instead&#10;&#10;Live audit: 20W-10L = 67% on n=30&#10;Filter: HRR pick + recentFormLabel = SCORCHING&#10;Mechanism: hot streak regression — hitter's recent form inflates projection, mean-reversion is the bet&#10;Wilson 95% CI: [49%, 81%]&#10;Time thirds: 70/70/60&#10;OOS: 67% train (n=18), 67% test (n=12)&#10;&#10;PrizePicks EV at 67%:&#10;  2-pick: +33.5%&#10;  3-pick: +48.4%&#10;  4-pick: +97.9%&#10;  5-pick: +164%&#10;&#10;⚠ n=30 is small — Wilson lower bound 49%. Size bets accordingly.">✦ UNDER · PLATINUM</span>` : ''}
@@ -6973,27 +7080,27 @@ function renderAnalysis(data) {
                         // Honest labeling avoids the "78% backtest = win money"
                         // failure mode that turned up in the audit.
                         let evRow = '';
-                        if (p._hardHitTier) {
-                          evRow = `<span class="ev-chip ev-good" title="LYRID HARD-HIT cohort live WR: 75% (9-3, n=12). Clears every PP power-play structure and sportsbook -110 with margin.&#10;&#10;Wilson lower bound: 47% — n=12 is small. Treat as +EV but size bets accordingly.">✓ +EV: -110, PP 2-6</span>`;
+                        if (p._verifiedCohort === 'rarely-k-hits') {
+                          evRow = `<span class="ev-chip ev-good" title="RARELY-K HITS verified cohort: 72% (18-7, n=25), thirds 75/62/78.&#10;&#10;The only cohort whose Wilson LOWER bound (52.4%) clears -110 — profitable even on the pessimistic read. Clears PP at point estimate. 4-0 June 9-10.">✓ +EV: -110, PP — VERIFIED</span>`;
+                        } else if (p._verifiedCohort === 'elite-pte-r') {
+                          evRow = `<span class="ev-chip ev-good" title="ELITE-PTE + R-HITTER verified cohort: 67% (16-8, n=24), thirds 62/75/62.&#10;&#10;Clears -110 with margin and PP at point estimate. Wilson lower 46.7% — n still building.">✓ +EV: -110, PP</span>`;
+                        } else if (p._hardHitTier) {
+                          evRow = `<span class="ev-chip ev-borderline" title="LYRID HARD-HIT cohort: backtest was 75% (n=12) but LIVE is 3-6 = 50% since June 8 — regressing exactly as the small-n warning predicted.&#10;&#10;Downgraded from +EV to WATCH in the June 12 audit. n=18 combined is too small to kill, too weak to bet.">~ WATCH (live 50%)</span>`;
                         } else if (p._lyridUnderTier === 'platinum') {
-                          evRow = `<span class="ev-chip ev-good" title="LYRID UNDER PLATINUM cohort live WR: 67% (20-10, n=30) on the UNDER side.&#10;&#10;Clears every PP power-play and sportsbook -110.&#10;&#10;⚠ Bet the UNDER 1.5 H+R+RBI, NOT the OVER. The engine flagged this hitter's OVER because of hot-streak form, but that cohort regresses to the mean.&#10;&#10;Wilson lower bound: 49% — n=30 is small.">✓ +EV UNDER: all PP, -110</span>`;
-                        } else if (p._lyridUnderTier === 'gold') {
-                          evRow = `<span class="ev-chip ev-borderline" title="LYRID UNDER GOLD cohort live WR: 59% (13-9, n=22) on the UNDER side.&#10;&#10;Clears -110 sportsbook comfortably. Thin edge on PP 2/3-pick. Marginal on PP 4-pick.&#10;&#10;⚠ Bet the UNDER 1.5 H+R+RBI, NOT the OVER.&#10;&#10;Wilson lower bound: 39% — caution at PP, but solid -110 play.">~ +EV UNDER: -110, thin PP</span>`;
+                          evRow = `<span class="ev-chip ev-good" title="LYRID UNDER PLATINUM (bullpen-edge inverse): 62.1% (36-22, n=58) on the UNDER side — thirds 63/63/60, never below 60% in any window. The most stable cohort in the dataset.&#10;&#10;⚠ Bet the UNDER 1.5 H+R+RBI, NOT the OVER. The engine's 'bullpen edge' read is an inverse indicator: the OVER hits only 37.9%.&#10;&#10;Clears -110. Thin PP 2-pick edge.">✓ +EV UNDER: -110, thin PP</span>`;
                         } else if (p.key === 'H') {
-                          evRow = `<span class="ev-chip ev-borderline" title="HITS broad cohort live WR: 55% (22-18, n=40). Clears -110 sportsbook (52.4%) but NOT PrizePicks (needs 56-58%/leg).&#10;&#10;Look for HARD-HIT badge on this pick for confirmed +EV at PP.">~ -110 only</span>`;
+                          evRow = `<span class="ev-chip ev-borderline" title="HITS broad cohort live WR: 57% (n=49). Clears -110 sportsbook but marginal at PrizePicks.&#10;&#10;Look for the gold ✓ VERIFIED badge (rarely-K cohort) for the confirmed 72% edge.">~ -110 only</span>`;
                         } else if (p.key === 'HRR') {
                           const isMultiPathway = (p.reason || '').toLowerCase().includes('multiple pathways');
                           if (isMultiPathway) {
-                            evRow = `<span class="ev-chip ev-warn" title="HRR Multiple-pathways cohort live WR on the OVER: 43.5% (74-96, n=170).&#10;&#10;OVER does NOT clear -110 (need 52.4%) or PrizePicks (need 56-58%/leg).&#10;&#10;UNDER side of this cohort hits 56.5% — but check for PLATINUM/GOLD UNDER badge to confirm sharper edge.">⚠ OVER -EV all markets</span>`;
+                            evRow = `<span class="ev-chip ev-warn" title="HRR Multiple-pathways cohort live WR on the OVER: 44.9% (n=198).&#10;&#10;OVER does NOT clear -110 (need 52.4%) or PrizePicks (need 56-58%/leg).&#10;&#10;If a PLATINUM UNDER badge is present, the UNDER side is the play.">⚠ OVER -EV all markets</span>`;
                           }
                         }
                         return evRow;
                       })()}
                       <span class="pp-reason">${
                         p._lyridUnderTier === 'platinum'
-                          ? '<span style="color:#1e3a8a;font-weight:700">FADE — bet UNDER 1.5 (PLATINUM · 67% live WR · n=30 · hot-streak regression)</span>'
-                        : p._lyridUnderTier === 'gold'
-                          ? '<span style="color:#854d0e;font-weight:700">FADE — bet UNDER 1.5 (GOLD · 59% live WR · n=22 · L-hitter vs sharp pen)</span>'
+                          ? '<span style="color:#1e3a8a;font-weight:700">FADE — bet UNDER 1.5 (PLATINUM · 62% live · n=58 · bullpen-edge inverse, thirds 63/63/60)</span>'
                         : p.reason
                       }</span>
                     </div>
@@ -7103,7 +7210,7 @@ function renderAnalysis(data) {
               ${m._empUnderRec ? `<div style="padding:10px 12px 0">${buildLyridBestBanner(m._empUnderRec.backtestWR, m._empUnderRec.backtestN, { kind: 'compact', label: 'LYRID UNDER · ' + m._empUnderRec.propLabel, tooltip: m._empUnderRec.reasoningLines.join(' · ') })}</div>` : ''}
               <div class="match-head">
                 <div class="match-hitter">
-                  ${m.isTopPick ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}
+                  ${m.isTopPick && !m._topPickSuppressed ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}${m.isTopPick && m._topPickSuppressed ? '<span style="background:rgba(120,113,108,0.15);color:#57534e;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em;cursor:help" title="Engine ranked this hitter #1 on matchup quality, but the pick\'s cohort (HRR Multiple-pathways, no rescue tier) runs 43.5% live — OVER is -EV in every market. Suppressed per Drop #28 (the Isaac Collins rule). The matchup analysis below is still valid; the 1.5 HRR OVER bet is not.">⚠ PASS — cohort -EV</span>' : ''}
                   <!-- Drop 25: ENGINE REFUSED chip removed -->
                   ${m.hrChance && data.deepMode ? (function renderHrBadge(hc) {
                     // PER-GAME TIER DISPLAY (May 23, 2026 — Item 7)
@@ -8894,6 +9001,7 @@ function renderAnalysis(data) {
           </div>
           <div class="glb-rows">
             ${rowFor(gl.total, 'TOTAL')}
+            ${gl.total && gl.total.tier && gl.total.tier !== 'PASS' ? `<div style="font-size:9.5px;color:#92400e;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.3);border-radius:4px;padding:4px 8px;margin:2px 0 6px;line-height:1.4" title="June 12 totals audit (n=265, walk-forward): the model's projTotal predicts final runs WORSE than a static 8.5 (MAE 3.91 vs 3.56), r=-0.11. Pre-game total bets off the model graded 9-21 (43%). The durable totals edge is the LIVE F5 engine (90-94% vs 8.5). Treat this pre-game total as a faint lean only.">⚠ Pre-game model totals are unreliable (43% live). Wait for the LIVE F5 signal once the game reaches inning 5.</div>` : ''}
             ${rowFor(gl.moneyline, 'ML')}
             ${rowFor(gl.spread, 'RUN LINE')}
           </div>
@@ -8916,6 +9024,74 @@ function renderAnalysis(data) {
     // First-inning (YRFI/NRFI) panel
     let firstInningHtml = '';
     const fi = data.firstInning;
+    if (fi && fi.recommendation) {
+      // ==============================================================
+      // (Drop #29 — June 12, 2026) FIRST-INNING EMPIRICAL OVERRIDE.
+      //
+      // The 154-bet live audit found the engine at 43.5% overall with
+      // ANTI-CALIBRATED probability (claims 72-85% → hits 29%). Three
+      // rules, applied in precedence order, replace the raw output:
+      //
+      //   RULE 1 — INVERSE PLATINUM: final STRONG NRFI → flip to YRFI.
+      //     Live: fading STRONG NRFI hits 71% (30-12, n=42), Wilson
+      //     lower 56% (clears -110 pessimistically), and the signal is
+      //     STRENGTHENING: thirds 57 → 71 → 86. Mechanism: NRFI
+      //     conviction = SP-quality reads, but inning 1 is the highest-
+      //     scoring inning (guaranteed top of lineup, SP unsettled) —
+      //     extreme NRFI conviction means maximum reliance on the
+      //     engine's most broken input.
+      //
+      //   RULE 2 — KILL the high-proj→NRFI strategy flip (2-9 live).
+      //     Revert to PASS. The mirror strategy (low-proj→YRFI) stays.
+      //
+      //   RULE 3 — GOLD: projTotal ≤ 6.0 → YRFI. 61% audit (n=38),
+      //     4-2 live on the flip experiment, 10-1 backtest.
+      //
+      //   STRONG YRFI organic picks keep informational status (55%
+      //     live — the only original tier above water).
+      //
+      //   The headline probability number is RETIRED (anti-calibrated);
+      //   empirical cohort records render in its place.
+      // ==============================================================
+      const rec = fi.recommendation;
+      rec._d29OriginalSide = rec.side;
+      rec._d29OriginalTier = rec.tier;
+      const _projT = rec._projTotal;
+      const isHighProjFlip = rec.side === 'NRFI'
+        && (rec._strategyReason || '').includes('Extreme high projection');
+
+      if (rec.side === 'NRFI' && rec.tier === 'STRONG') {
+        // RULE 1 — invert
+        rec.side = 'YRFI';
+        rec.tier = 'INVERSE PLATINUM';
+        rec.units = 1;
+        rec.probability = null;
+        rec._d29Rule = 'inverse-platinum';
+        rec._d29Record = '71% live (30-12, n=42) · thirds 57/71/86 · Wilson lo 56%';
+        rec._strategyReason = 'Drop #29 INVERSE: engine produced STRONG NRFI — live audit shows that conviction inverts (fade hits 71%, strengthening). Betting YRFI.';
+      } else if (isHighProjFlip) {
+        // RULE 2 — kill the losing strategy
+        rec.tier = 'PASS';
+        rec.units = 0;
+        rec.probability = null;
+        rec._d29Rule = 'killed-highproj-flip';
+        rec._strategyReason = 'Drop #29 KILL: the high-projection→NRFI strategy is 2-9 live. No play.';
+      } else if (typeof _projT === 'number' && _projT <= 6.0) {
+        // RULE 3 — low-proj GOLD YRFI
+        rec.side = 'YRFI';
+        if (rec.tier === 'PASS' || rec.tier === 'SLIGHT' || rec.tier === 'MODERATE' || rec.tier === 'STRONG') {
+          rec.tier = 'GOLD';
+        }
+        rec.units = Math.max(rec.units || 0, 1);
+        rec.probability = null;
+        rec._d29Rule = 'gold-lowproj';
+        rec._d29Record = '61% audit (n=38) · 4-2 live · 10-1 backtest';
+        rec._strategyReason = `Drop #29 GOLD: extreme low projection (${_projT.toFixed(2)} ≤ 6.0) — low-proj games run YRFI 61%. Model total is an inverse first-inning indicator.`;
+      } else if (rec.side === 'YRFI' && rec.tier === 'STRONG') {
+        rec._d29Rule = 'organic-strong-yrfi';
+        rec._d29Record = '55% live (18/33) — the only original tier above water';
+      }
+    }
     if (fi) {
       // (Drop #16 — June 7, 2026) HR-TRAP DEMOTION for first-inning NRFI bets.
       //
@@ -8977,7 +9153,13 @@ function renderAnalysis(data) {
         // (Drop #16 — June 7, 2026) HR-trap demotion audit fields
         _hrTrap: fi.recommendation._hrTrap || false,
         _hrTrapReason: fi.recommendation._hrTrapReason || null,
-        _originalTierBeforeTrap: fi.recommendation._originalTierBeforeTrap || null
+        _originalTierBeforeTrap: fi.recommendation._originalTierBeforeTrap || null,
+        // (Drop #29 — June 12, 2026) Override audit + SP instrumentation
+        _d29Rule: fi.recommendation._d29Rule || null,
+        _d29OriginalSide: fi.recommendation._d29OriginalSide || null,
+        _d29OriginalTier: fi.recommendation._d29OriginalTier || null,
+        _spA: data.awayVsHome?.pitcher?.name || null,
+        _spB: data.homeVsAway?.pitcher?.name || null
       }).replace(/'/g, '&#39;');
 
       firstInningHtml = `
@@ -9012,10 +9194,19 @@ function renderAnalysis(data) {
                 return '';
               })()}
               <div class="yrfi-best-label">★ RECOMMENDATION · ${fi.recommendation.tier}</div>
+              ${fi.recommendation._d29Rule === 'inverse-platinum' ? `
+                <div style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);color:#fff;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-bottom:8px;cursor:help" title="The engine's internals produced STRONG NRFI for this game. Live audit (n=42): fading that exact conviction hits YRFI 71% (30-12), Wilson lower 56%, and the signal is strengthening over time (thirds 57→71→86).&#10;&#10;Mechanism: NRFI conviction comes from SP-quality reads, but inning 1 is the highest-scoring inning — top of lineup guaranteed, SP not settled. Extreme NRFI conviction = maximum reliance on the engine's weakest input.">⟲ INVERSE PLATINUM · ${fi.recommendation._d29Record}</div>
+              ` : ''}
+              ${fi.recommendation._d29Rule === 'gold-lowproj' ? `
+                <div style="background:rgba(212,175,55,0.18);color:#92710a;border:1px solid rgba(212,175,55,0.45);padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-bottom:8px;cursor:help" title="Model projects this game's total at or below 6.0. Low projections are an INVERSE first-inning indicator: those games run YRFI 61% (n=38 audit), the live flip experiment is 4-2, and the original backtest was 10-1.">★ GOLD · YRFI · ${fi.recommendation._d29Record}</div>
+              ` : ''}
+              ${fi.recommendation._d29Rule === 'organic-strong-yrfi' ? `
+                <div style="background:rgba(0,0,0,0.05);color:var(--text-secondary,#6b7280);padding:5px 12px;border-radius:6px;font-size:10.5px;font-weight:600;margin-bottom:8px">STRONG YRFI (organic) · ${fi.recommendation._d29Record}</div>
+              ` : ''}
               <div class="yrfi-best-pick">
                 <b>${fi.recommendation.side}</b>
                 <span class="yrfi-best-units">${fi.recommendation.units}u</span>
-                <span class="yrfi-best-prob ${probTier(fi.recommendation.probability)}">${probDisplay}</span>
+                ${fi.recommendation._d29Rule ? '' : `<span class="yrfi-best-prob ${probTier(fi.recommendation.probability)}">${probDisplay}</span>`}
               </div>
               <div class="yrfi-probs">
                 <div class="yrfi-prob-cell"><span class="yrfi-prob-label">YRFI</span><span class="yrfi-prob-val">${yrfiPct}%</span></div>
@@ -9023,6 +9214,7 @@ function renderAnalysis(data) {
                 <div class="yrfi-prob-cell"><span class="yrfi-prob-label">AWAY SCORES</span><span class="yrfi-prob-val">${awayPct}%</span></div>
                 <div class="yrfi-prob-cell"><span class="yrfi-prob-label">HOME SCORES</span><span class="yrfi-prob-val">${homePct}%</span></div>
               </div>
+              <div style="font-size:9.5px;color:var(--text-secondary,#9ca3af);font-style:italic;margin-top:4px">Model probs shown for reference only — live audit (n=154) found them anti-calibrated. The badge above reflects empirical cohort records, which are the betting signal.</div>
               ${(() => {
                 // (Drop #7 hotfix — June 3, 2026) When the strategy overrode the model's
                 // direction, the original fi.reasoning bullets explain the model's pick
@@ -10650,6 +10842,14 @@ function logBestBets(data) {
         _lyridUnderWR: bestBet._lyridUnderWR || null,
         _lyridUnderN: bestBet._lyridUnderN || null,
         _lyridUnderRule: bestBet._lyridUnderRule || null,
+        // (Drop #28 — June 12, 2026) TOP PICK suppression audit flag.
+        // true = star was hidden because cohort is -EV (Collins rule).
+        // Lets us grade whether suppressed picks really do lose.
+        _topPickSuppressed: m._topPickSuppressed || false,
+        // (Drop #29 — June 12, 2026) Verified cohort audit fields
+        _verifiedCohort: bestBet._verifiedCohort || null,
+        _verifiedWR: bestBet._verifiedWR || null,
+        _scorchingWatch: bestBet._scorchingWatch || false,
         isDeepVerified: true,   // flag so we know this is premium
         // (Drop #25 — June 8, 2026) fadeTier/fadeScore removed — fade engine deleted.
         // (Phase 1 — May 29, 2026) Capped flag — was the multiplier
@@ -11424,6 +11624,32 @@ function gradeProjectionFromLiveData(gamePk, liveData) {
     const away = liveData.score?.away;
     const home = liveData.score?.home;
     if (away == null || home == null) return;
+
+    // (Drop #28 — June 12, 2026) INNING CAPTURE ON LIVE-GRADE PATH.
+    // This silent path graded 28 games June 8-12 WITHOUT inning data because
+    // only the batch grader fetched innings. Fire the feed fetch here too —
+    // async, after the grade write — so F5 validation data keeps accumulating.
+    const _backfillInningsFor = (k) => {
+      fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`)
+        .then(r => r.ok ? r.json() : null)
+        .then(feed => {
+          const rawInnings = feed?.liveData?.linescore?.innings;
+          if (!Array.isArray(rawInnings) || rawInnings.length === 0) return;
+          const e = state.projectionAudit[k];
+          if (!e) return;
+          e.innings = rawInnings.map(i => ({
+            num: i.num,
+            awayRuns: i.away?.runs ?? null,
+            homeRuns: i.home?.runs ?? null,
+            awayHits: i.away?.hits ?? null,
+            homeHits: i.home?.hits ?? null
+          }));
+          saveState();
+          try { LyridAuditSync.markProjectionDirty(k); } catch(_) {}
+          console.log(`[drop28] innings captured on live-grade path: ${k} (${e.innings.length} innings)`);
+        })
+        .catch(() => {});
+    };
     const winner = home > away ? entry.homeTeam : away > home ? entry.awayTeam : null;
     const actualTotal = away + home;
 
@@ -11499,6 +11725,9 @@ function gradeProjectionFromLiveData(gamePk, liveData) {
       })()
     };
     saveState();
+    try { LyridAuditSync.markProjectionDirty(key); } catch(_) {}
+    // (Drop #28) fetch per-inning data for this game now that it's final
+    _backfillInningsFor(key);
     return;
   }
 }
@@ -11704,7 +11933,7 @@ function renderLiveF5Panel(gamePk, liveData, projTotal, homePark) {
       `Wilson 95% CI: [${(signal.wilsonLow * 100).toFixed(0)}%, ${(signal.wilsonHigh * 100).toFixed(0)}%]`,
       `Time stability: ${signal.timeStability}`,
       `Historical avg final: ${signal.avgFinal.toFixed(1)}`,
-      signal.under75WR ? `UNDER 7.5 hits ${(signal.under75WR * 100).toFixed(0)}%, UNDER 6.5 hits ${(signal.under65WR * 100).toFixed(0)}%` : '',
+      (signal.altLines && signal.altLines.length) ? 'Alt lines: ' + signal.altLines.map(a => `${signal.side} ${a.line} ${(a.wr*100).toFixed(0)}%`).join(', ') : '',
       signal.crossSignal ? `\n${signal.crossSignalNote}` : '',
       signal.parkWarning ? `\n${signal.parkWarning}` : '',
       '',
@@ -11712,19 +11941,31 @@ function renderLiveF5Panel(gamePk, liveData, projTotal, homePark) {
     ].filter(Boolean).join('&#10;');
 
     const crossBadge = signal.crossSignal
-      ? `<span style="display:inline-block;margin-left:6px;background:rgba(255,255,255,0.25);color:#fff;font-size:8.5px;font-weight:700;padding:2px 6px;border-radius:100px;letter-spacing:0.08em">⚡ MAX CONVICTION</span>`
+      ? `<span style="display:inline-block;margin-left:6px;background:rgba(255,255,255,0.25);color:#fff;font-size:8.5px;font-weight:700;padding:2px 6px;border-radius:100px;letter-spacing:0.08em">✓ CONFIRMED</span>`
       : '';
     const parkChip = signal.parkWarning
       ? `<div style="font-size:10px;color:var(--text-secondary, #6b7280);margin-top:4px;font-style:italic">${signal.parkWarning}</div>`
       : '';
+    // (Drop #30 — June 12, 2026) Alt-line EV strip — exact hit rate at each
+    // alternate total so the user can pick the optimal line vs the offered
+    // juice before books reprice.
+    const altStrip = (signal.altLines || []).map(a => {
+      const lo = (a.lo*100).toFixed(0);
+      return `<span style="display:inline-flex;flex-direction:column;align-items:center;min-width:52px;padding:3px 6px;border-radius:4px;background:rgba(59,130,246,0.08)" title="${signal.side} ${a.line} hits ${(a.wr*100).toFixed(0)}% (Wilson lower ${lo}%). Fair odds ≈ ${a.wr>=0.5 ? '-' + Math.round(a.wr/(1-a.wr)*100) : '+' + Math.round((1-a.wr)/a.wr*100)}; bet if the book offers worse than this.">
+        <span style="font-size:9px;color:var(--text-secondary,#6b7280)">${signal.side} ${a.line}</span>
+        <span style="font-size:13px;font-weight:700;color:#1e3a8a;font-variant-numeric:tabular-nums">${(a.wr*100).toFixed(0)}%</span>
+        <span style="font-size:8px;color:var(--text-secondary,#9ca3af)">lo ${lo}%</span>
+      </span>`;
+    }).join('');
 
     panelHtml = `
       <div style="border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:10px 12px;margin-top:10px;background:rgba(248,250,252,0.5)">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-          <div style="font-size:10px;color:var(--text-secondary, #6b7280);text-transform:uppercase;letter-spacing:0.08em;font-weight:600">⚡ LIVE F5 SIGNAL</div>
+          <div style="font-size:10px;color:var(--text-secondary, #6b7280);text-transform:uppercase;letter-spacing:0.08em;font-weight:600">⚡ LIVE F5 SIGNAL · primary totals engine</div>
           <span style="background:${bg};color:${fg};padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;cursor:help" title="${tooltip}">${icon} F5=${f5Runs} · ${signal.side} · ${tierLabel} · ${wr}% (n=${signal.backtestN})${crossBadge}</span>
         </div>
-        <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:flex-end;margin-bottom:4px">${inningCells}</div>
+        <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px">${inningCells}</div>
+        ${altStrip ? `<div style="margin-bottom:6px"><div style="font-size:9px;color:var(--text-secondary,#9ca3af);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Alt-line hit rates — pick best vs offered juice</div><div style="display:flex;gap:5px;flex-wrap:wrap">${altStrip}</div></div>` : ''}
         ${parkChip}
         <div style="font-size:10px;color:var(--text-secondary, #6b7280);margin-top:6px">${signal.actionWindow}</div>
       </div>
@@ -11764,7 +12005,15 @@ function captureProjection(data) {
   // Don't overwrite if already graded (actuals locked in)
   if (existing?.graded) return;
   const _projTotal = +parseFloat(data.projection.projTotal);
-  const _marketTotal = data.odds?.total ?? null;
+  // (Drop #28 — June 12, 2026) NEVER overwrite a previously-captured market
+  // total with null. Odds load async — if this capture runs before odds
+  // arrive, fall back to whatever a prior capture stamped. This was the bug
+  // that nulled out all of June 8's market lines.
+  const _oddsTotal = (typeof data.odds?.total === 'number') ? data.odds.total : null;
+  const _marketTotal = _oddsTotal ?? (typeof existing?.marketTotal === 'number' ? existing.marketTotal : null);
+  const _marketSpread = data.odds?.spread ?? existing?.marketSpread ?? null;
+  const _favoriteML = data.odds?.favoriteML ?? existing?.favoriteML ?? null;
+  const _favorite = data.odds?.favorite ?? existing?.favorite ?? null;
   // (Drop #25 — June 8, 2026) Classify inverse-projection signal at capture time
   const _inv = classifyInverseTotalSignal(_projTotal);
   // (Drop #26 — June 8, 2026) Classify inverse-MARKET signal — the actual
@@ -11783,10 +12032,10 @@ function captureProjection(data) {
     projTotal: _projTotal,
     homeWinProb: +parseFloat(data.projection.homeWinProb) / 100,  // decimal
     projWinner: parseFloat(data.projection.homeWinProb) >= 50 ? data.homeTeam?.abbreviation : data.awayTeam?.abbreviation,
-    marketTotal: data.odds?.total ?? null,
-    marketSpread: data.odds?.spread ?? null,
-    favoriteML: data.odds?.favoriteML ?? null,
-    favorite: data.odds?.favorite ?? null,
+    marketTotal: _marketTotal,
+    marketSpread: _marketSpread,
+    favoriteML: _favoriteML,
+    favorite: _favorite,
     deepMode: data.deepMode || false,
     // (Drop #25 — June 8, 2026) Inverse Total signal classification
     _inverseTotalTier: _inv ? _inv.tier : null,    // 'platinum' | 'gold' | null
@@ -11815,6 +12064,39 @@ function captureProjection(data) {
   saveState();
   // (Drop #20) Push to server for cross-device sync
   try { LyridAuditSync.markProjectionDirty(key); } catch(_) {}
+
+  // (Drop #28 — June 12, 2026) LATE MARKET STAMP. Odds load async — when
+  // capture runs before odds arrive, marketTotal is null here. Re-check the
+  // live data object every 30s (up to 6 tries = 3 min) and stamp the entry
+  // the moment a numeric total appears. Recomputes gap + inverse-market tier.
+  if (typeof _marketTotal !== 'number') scheduleMarketStamp(key, data);
+}
+
+function scheduleMarketStamp(key, data, attempt = 0) {
+  if (attempt >= 6) return;
+  setTimeout(() => {
+    const entry = state.projectionAudit[key];
+    if (!entry || entry.graded) return;
+    if (typeof entry.marketTotal === 'number') return;  // already stamped
+    const t = data.odds?.total;
+    if (typeof t === 'number') {
+      entry.marketTotal = t;
+      entry.marketSpread = data.odds?.spread ?? entry.marketSpread ?? null;
+      entry.favoriteML = data.odds?.favoriteML ?? entry.favoriteML ?? null;
+      entry.favorite = data.odds?.favorite ?? entry.favorite ?? null;
+      entry._marketGap = +(entry.projTotal - t).toFixed(2);
+      const inv = classifyInverseMarketSignal(entry.projTotal, t);
+      entry._inverseMarketTier = inv ? inv.tier : null;
+      entry._inverseMarketSide = inv ? inv.side : null;
+      entry._inverseMarketWR = inv ? inv.backtestWR : null;
+      entry._inverseMarketN = inv ? inv.backtestN : null;
+      saveState();
+      try { LyridAuditSync.markProjectionDirty(key); } catch(_) {}
+      console.log(`[drop28] late market stamp: ${key} → total ${t}, gap ${entry._marketGap}`);
+    } else {
+      scheduleMarketStamp(key, data, attempt + 1);
+    }
+  }, 30000);
 }
 
 /**
@@ -12291,7 +12573,15 @@ function logFirstInningBet(ctx) {
     _originalTier: ctx._originalTier || null,
     _originalProb: ctx._originalProb || null,
     _strategyReason: ctx._strategyReason || null,
-    _directionMatch: ctx._directionMatch === undefined ? null : ctx._directionMatch
+    _directionMatch: ctx._directionMatch === undefined ? null : ctx._directionMatch,
+    // (Drop #29 — June 12, 2026) Empirical-override audit + factor-model
+    // instrumentation. Both SP names stamped so the v2 factor model
+    // (SP first-inning splits) can join on them in ~3-4 weeks.
+    _d29Rule: ctx._d29Rule || null,
+    _d29OriginalSide: ctx._d29OriginalSide || null,
+    _d29OriginalTier: ctx._d29OriginalTier || null,
+    _spA: ctx._spA || null,
+    _spB: ctx._spB || null
   };
   saveState();
   showToast(`★ Logged: ${ctx.tier} ${ctx.pick} (${ctx.units || 0}u)`);
