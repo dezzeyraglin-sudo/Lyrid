@@ -13104,6 +13104,15 @@ function switchHistoryView(view) {
   renderHistory();
 }
 
+// esc (HTML-escape) is also defined inside the WNBA module, but renderHistory and the
+// other top-level renderers run in a different scope and can't reach that copy — which
+// threw "Can't find variable: esc" and blanked the WNBA history tables. Define it here too,
+// and expose on window so any script block can resolve it.
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+if (typeof window !== 'undefined') window.esc = esc;
+
 function renderHistory() {
   const container = document.getElementById('historyList');
   if (!container) return;
