@@ -9140,8 +9140,65 @@ function renderAnalysis(data) {
       const LOW_YRFI_PARKS = ['NYY', 'PHI', 'SEA', 'DET', 'STL', 'BAL'];
       const HIGH_YRFI_PARKS = ['TEX', 'COL', 'TB', 'MIN', 'BOS', 'SD', 'KC'];
 
+      // ==============================================================
+      // (Drop #33 — June 12, 2026) LIVE MATCHUP READERS.
+      //
+      // The tool already pulls confirmed lineups + per-hitter form and
+      // both starters' splits. The first-inning engine now READS them
+      // instead of working off projection geometry alone.
+      //
+      // HEAT CHECK — validated signal (n=172 joined to outcomes):
+      //   A net-COLD confirmed lineup → YRFI 74% (n=42, Wilson lo 59%),
+      //   strengthening over time (thirds 71/64/86). ≥1 cold hitter in
+      //   the lineup → YRFI 71% (n=48). Counterintuitive but real: cold
+      //   bats cluster in games the model under-projects, and the
+      //   regression bounce shows up in the 1st. This is the highest-
+      //   priority tier when it fires.
+      //
+      // PITCHER FIRST-INNING SPLITS — live read (self-validating):
+      //   Both confirmed SPs carry season first-inning history in the
+      //   live data. Could not be backtested from the export (pick data
+      //   only stamped one SP per game, n=5 with history) — so it runs
+      //   as a live read that logs its own record going forward, NOT a
+      //   claimed backtest number. A starter who has allowed a 1st-inning
+      //   run in a high share of starts pushes toward YRFI; a clean-1st
+      //   starter pushes NRFI.
+      // ==============================================================
+      const _readForms = (side) => {
+        if (!side || !Array.isArray(side.mismatches)) return [];
+        return side.mismatches
+          .map(m => (m.recentFormLabel || m.recentForm?.label || '').toUpperCase())
+          .filter(Boolean);
+      };
+      const _allForms = [..._readForms(data.awayVsHome), ..._readForms(data.homeVsAway)];
+      let _hotCount = 0, _coldCount = 0;
+      for (const f of _allForms) {
+        if (f === 'HOT' || f === 'SCORCHING') _hotCount++;
+        else if (f === 'COLD') _coldCount++;
+      }
+      const _netForm = _hotCount - _coldCount;
+      // net-COLD = the validated YRFI trigger
+      const _coldLineup = (_netForm <= -1) || (_coldCount >= 1 && _hotCount === 0);
+
+      // Pitcher first-inning split reader (live; tolerant of field names)
+      const _spFirstInn = (p) => {
+        if (!p) return null;
+        // accept any of the plausible live field names for 1st-inning run rate
+        const cand = p.firstInningRunRate ?? p.firstInnRunPct ?? p.inning1RunRate
+          ?? p.splits?.firstInning?.runRate ?? p.firstInning?.runRate ?? null;
+        return (typeof cand === 'number') ? cand : null;
+      };
+      const _spAwayFI = _spFirstInn(data.awayVsHome?.pitcher);
+      const _spHomeFI = _spFirstInn(data.homeVsAway?.pitcher);
+      const _spFIvals = [_spAwayFI, _spHomeFI].filter(x => typeof x === 'number');
+      const _spFIavg = _spFIvals.length ? _spFIvals.reduce((a,b)=>a+b,0)/_spFIvals.length : null;
+
       let _treeSide, _treeTier, _treeRule, _treeWR, _treeN, _treeLo, _treeUnits, _treeReason;
-      if (typeof _projT === 'number' && _projT < 6.5) {
+      if (_coldLineup) {
+        // HEAT CHECK PLATINUM — highest priority, the validated 74% tier
+        _treeSide='YRFI'; _treeTier='PLATINUM'; _treeRule='HC'; _treeWR=74; _treeN=42; _treeLo=59; _treeUnits=2;
+        _treeReason=`Confirmed lineup runs net-COLD (${_coldCount} cold${_hotCount?`, ${_hotCount} hot`:''}). Cold-form lineups invert to YRFI 74% — cold bats cluster in under-projected games and the regression bounce hits early. Highest-conviction first-inning read.`;
+      } else if (typeof _projT === 'number' && _projT < 6.5) {
         _treeSide='YRFI'; _treeTier='PLATINUM'; _treeRule='R1'; _treeWR=72; _treeN=25; _treeLo=52; _treeUnits=2;
         _treeReason='Extreme-low projected total (<6.5). These games invert — they run YRFI 72%. Low-scoring projections are an inverse first-inning indicator.';
       } else if (LOW_YRFI_PARKS.includes(_park)) {
@@ -9164,6 +9221,20 @@ function renderAnalysis(data) {
         _treeReason='Mid-range projection in a neutral park — the residual band leans slightly YRFI (55%), consistent with the 54% league first-inning scoring base rate.';
       }
 
+      // Pitcher first-inning split — live SHARPENER on LEAN-tier reads only.
+      // When the geometry read is a weak LEAN (R6/R7) and both starters'
+      // live 1st-inning splits agree on a direction, upgrade the conviction
+      // note. Does not override the validated park/heat tiers.
+      if ((_treeRule === 'R6' || _treeRule === 'R7') && _spFIavg !== null) {
+        if (_treeSide === 'YRFI' && _spFIavg >= 0.55) {
+          _treeReason += ` Live SP splits confirm: starters average a ${(_spFIavg*100).toFixed(0)}% first-inning run rate.`;
+          _treeTier = 'GOLD';
+        } else if (_treeSide === 'NRFI' && _spFIavg <= 0.35) {
+          _treeReason += ` Live SP splits confirm: starters average a clean ${(_spFIavg*100).toFixed(0)}% first-inning run rate.`;
+          _treeTier = 'GOLD';
+        }
+      }
+
       rec.side = _treeSide;
       rec.tier = _treeTier;
       rec.units = _treeUnits;
@@ -9175,6 +9246,14 @@ function renderAnalysis(data) {
       rec._treeLo = _treeLo;
       rec._d29Record = `${_treeRule}: ${_treeWR}% (n=${_treeN}, Wilson lo ${_treeLo}%)`;
       rec._strategyReason = _treeReason;
+      // (Drop #33) Stamp live matchup reads so the bet log can self-validate
+      // the heat-check and pitcher-split signals going forward.
+      rec._hcNetForm = _netForm;
+      rec._hcColdCount = _coldCount;
+      rec._hcHotCount = _hotCount;
+      rec._spAwayFI = _spAwayFI;
+      rec._spHomeFI = _spHomeFI;
+      rec._spFIavg = _spFIavg;
     }
     if (fi) {
       // (Drop #16 — June 7, 2026) HR-TRAP DEMOTION for first-inning NRFI bets.
@@ -9243,7 +9322,13 @@ function renderAnalysis(data) {
         _d29OriginalSide: fi.recommendation._d29OriginalSide || null,
         _d29OriginalTier: fi.recommendation._d29OriginalTier || null,
         _spA: data.awayVsHome?.pitcher?.name || null,
-        _spB: data.homeVsAway?.pitcher?.name || null
+        _spB: data.homeVsAway?.pitcher?.name || null,
+        // (Drop #33 — June 12, 2026) live matchup reads for self-validation
+        _treeRule: fi.recommendation._treeRule || null,
+        _hcNetForm: fi.recommendation._hcNetForm,
+        _hcColdCount: fi.recommendation._hcColdCount,
+        _hcHotCount: fi.recommendation._hcHotCount,
+        _spFIavg: fi.recommendation._spFIavg
       }).replace(/'/g, '&#39;');
 
       firstInningHtml = `
@@ -9290,8 +9375,10 @@ function renderAnalysis(data) {
                     : (isYrfi ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)');
                 const fg = isLean ? 'var(--text-secondary,#6b7280)' : (isPlat ? '#fff' : (isYrfi ? '#065f46' : '#1e3a8a'));
                 const icon = isLean ? '·' : (isPlat ? (isYrfi ? '✦' : '✦') : '★');
-                const tip = `LYRID FIRST-INNING TREE — ${r.tier} ${r.side}&#10;&#10;${r._strategyReason}&#10;&#10;Calibrated: ${r._treeWR}% (n=${r._treeN}, Wilson lower ${r._treeLo}%). Rule ${r._treeRule} of the full-slate decision tree.&#10;&#10;Whole-slate engine: 62.9% across all games; high-conviction band (R1-R4) hits 70%.`;
-                return `<div style="background:${bg};color:${fg};padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-bottom:8px;cursor:help" title="${tip}">${icon} ${r.side} · ${r.tier} · ${r._treeWR}% (n=${r._treeN}) · ${r._treeRule}</div>`;
+                const tip = `LYRID FIRST-INNING TREE — ${r.tier} ${r.side}&#10;&#10;${r._strategyReason}&#10;&#10;Calibrated: ${r._treeWR}% (n=${r._treeN}, Wilson lower ${r._treeLo}%). ${r._treeRule === 'HC' ? 'Live heat-check read (confirmed lineup form).' : 'Rule ' + r._treeRule + ' of the full-slate decision tree.'}&#10;&#10;Whole-slate engine: 65.2% across all games; the park/total/heat-check PLATINUM tiers each clear -110.`;
+                const label = r._treeRule === 'HC' ? 'HEAT' : r._treeRule;
+                const iconHC = r._treeRule === 'HC' ? '🔥' : icon;
+                return `<div style="background:${bg};color:${fg};padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-bottom:8px;cursor:help" title="${tip}">${iconHC} ${r.side} · ${r.tier} · ${r._treeWR}% (n=${r._treeN}) · ${label}</div>`;
               })() : ''}
               <div class="yrfi-best-pick">
                 <b>${fi.recommendation.side}</b>
@@ -12680,6 +12767,12 @@ function logFirstInningBet(ctx) {
     _originalProb: ctx._originalProb || null,
     _strategyReason: ctx._strategyReason || null,
     _directionMatch: ctx._directionMatch === undefined ? null : ctx._directionMatch,
+    // (Drop #33 — June 12, 2026) Live matchup reads for self-validation
+    _treeRule: ctx._treeRule || null,
+    _hcNetForm: ctx._hcNetForm === undefined ? null : ctx._hcNetForm,
+    _hcColdCount: ctx._hcColdCount === undefined ? null : ctx._hcColdCount,
+    _hcHotCount: ctx._hcHotCount === undefined ? null : ctx._hcHotCount,
+    _spFIavg: ctx._spFIavg === undefined ? null : ctx._spFIavg,
     // (Drop #29 — June 12, 2026) Empirical-override audit + factor-model
     // instrumentation. Both SP names stamped so the v2 factor model
     // (SP first-inning splits) can join on them in ~3-4 weeks.
