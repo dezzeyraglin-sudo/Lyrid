@@ -257,7 +257,18 @@ export function analyzeUnifiedProp(input, league = 'WNBA') {
                             : { mult: 1, active: false, detail: 'whistle points-only' };
   const mFunnel = funnelMult(funnel);
 
-  const rawCombined = mEnv.mult * mMatch.mult * mCover.mult * mWhistle.mult * mFunnel.mult;
+  // Combine multipliers ADDITIVELY (sum each factor's deviation from 1), NOT
+  // multiplicatively. Five near-1 factors chained with * compound into a career-high
+  // projection — this is what railed Plum to 31.8 on a 22.5 line (and A'ja Wilson to
+  // 31.4 in the env engine, and the MLB 7-multiplier buildGameProjection bug). Additive
+  // deviation honors the standing rule: no multiplicative chaining beyond two factors.
+  // Total adjustment capped at ±COMBINED_DEV_CAP, matching the env-engine's documented
+  // ~±14% intended swing.
+  const COMBINED_DEV_CAP = 0.15;
+  const devSum = [mEnv.mult, mMatch.mult, mCover.mult, mWhistle.mult, mFunnel.mult]
+    .reduce((acc, m) => acc + (Number.isFinite(m) ? m - 1 : 0), 0);
+  const rawCombined = 1 + clamp(devSum, [-COMBINED_DEV_CAP, COMBINED_DEV_CAP]);
+  // A tighter league clamp can constrain further; it can never loosen past the cap above.
   const combined = clamp(rawCombined, cfg.clamps.combined);
 
   let projection = blended * combined;

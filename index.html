@@ -4106,6 +4106,9 @@ let currentTrackView = 'today';
 let tagModalContext = null;  // { id, name, role, team, gamePk, opp }
 const analyzedCache = new Map();  // gamePk → response data (for modals)
 const LS_KEY = 'mismatch_finder_v2';
+// Small can't-lose stores (logged WNBA bets/props, MLB picks) get their own tiny key so a
+// quota failure on the big main blob (MLB audits + slate) can never drop them. Stays a few KB.
+const LS_CRITICAL_KEY = 'mismatch_finder_critical_v1';
 
 // =============================================================
 // MLB SELECTION ENGINE TOGGLE (May 23, 2026)
@@ -4994,6 +4997,18 @@ function loadState() {
     const saved = localStorage.getItem(LS_KEY);
     if (saved) state = { ...state, ...JSON.parse(saved) };
   } catch(_) {}
+  // Overlay the always-saved critical stores. This key persists even when the main blob
+  // is too big to save, so logged bets/picks survive a full-storage situation. Critical
+  // wins on key collisions (it's the freshest copy, written on every save).
+  try {
+    const crit = localStorage.getItem(LS_CRITICAL_KEY);
+    if (crit) {
+      const c = JSON.parse(crit);
+      if (c.wnbaGameBets)    state.wnbaGameBets    = { ...(state.wnbaGameBets || {}),    ...c.wnbaGameBets };
+      if (c.wnbaPropHistory) state.wnbaPropHistory = { ...(state.wnbaPropHistory || {}), ...c.wnbaPropHistory };
+      if (c.picks)           state.picks           = { ...(state.picks || {}),           ...c.picks };
+    }
+  } catch(_) {}
   state.currentDate = state.currentDate || getTodayStr();
   state.researchTags = state.researchTags || {};
   state.tracking = state.tracking || {};
@@ -5033,8 +5048,24 @@ function loadState() {
   }
 }
 function saveState() {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-  catch(e) { showToast('Save failed', true); }
+  // 1) Critical stores to their own tiny key FIRST — a few KB, always fits, so a logged
+  //    WNBA bet/pick can never be lost to a quota failure on the big blob below.
+  try {
+    localStorage.setItem(LS_CRITICAL_KEY, JSON.stringify({
+      wnbaGameBets: state.wnbaGameBets || {},
+      wnbaPropHistory: state.wnbaPropHistory || {},
+      picks: state.picks || {},
+      _v: 1,
+    }));
+  } catch (_) {}
+  // 2) Main blob — drop state.raw (the live slate, re-fetched on load) to stay under the
+  //    ~5MB cap. If it still overflows, the critical stores above already survived.
+  try {
+    const { raw, ...persist } = state;
+    localStorage.setItem(LS_KEY, JSON.stringify(persist));
+  } catch (e) {
+    showToast('Storage full — bets saved, older history trimmed', true);
+  }
 }
 
 // ============================================================================
@@ -15255,6 +15286,70 @@ window.captureWnbaPredictions = function(data) {
 // which fires inside analyzeGame). Scoped to a single gameId; captures that
 // game's full pool, tags the strongest actionable pick per player as a best bet,
 // and marks them loggedFromAnalyze so we know they came from an explicit analyze.
+// Hoisted to top level so logWnbaBestBetsForGame (and any caller) can reach it.
+// buildBestBetReasons: a STRUCTURED list of every real advantage the engine
+// found for this pick — stored on the best-bet entry so the Best Bets tab can
+// show the full "why" without recomputing. Each item: { label, detail }.
+function buildBestBetReasons(p, projection) {
+  const out = [];
+  const mult = p.multipliers || {};
+  const dc = p.dataCompleteness || {};
+  const sc = p.scores || {};
+  const ctx = p.playerContext || {};
+  const market = String(p.market || '').toLowerCase();
+  const line = Number(p.line);
+  const dir = (projection != null && Number.isFinite(line) && projection >= line) ? 'OVER' : 'UNDER';
+
+  // Edge headline
+  if (projection != null && Number.isFinite(line)) {
+    const d = projection - line;
+    out.push({ label: 'PROJECTION EDGE', detail: `Model ${projection.toFixed(1)} vs ${line} line (${d >= 0 ? '+' : ''}${d.toFixed(1)}), leaning ${dir}.` });
+  }
+  if (p.probOver != null) {
+    const pr = dir === 'OVER' ? p.probOver : 1 - p.probOver;
+    out.push({ label: 'HIT PROBABILITY', detail: `${Math.round(pr * 100)}% to land ${dir.toLowerCase()}.` });
+  }
+  // Real multiplier advantages
+  const addMult = (m, real, up, down) => {
+    if (m == null || !Number.isFinite(m) || Math.abs(m - 1) < 0.015 || !real) return;
+    out.push({ label: m > 1 ? 'FAVORABLE MATCHUP' : 'TOUGH MATCHUP', detail: m > 1 ? up : down });
+  };
+  addMult(mult.matchup_opposingDefense, dc.opposingDefense === 'REAL', 'Soft opposing defense for this market.', 'Stingy opposing defense for this market.');
+  addMult(mult.usageFunnel, dc.usageFunnel === 'REAL', 'Extra usage funneling to this player.', 'Reduced usage share in this lineup.');
+  addMult(mult.environment, dc.environment === 'REAL', 'Up-tempo pace environment.', 'Slow-pace environment.');
+  addMult(mult.whistle, dc.whistle === 'REAL', 'Strong free-throw rate.', 'Low free-throw rate.');
+  // Player attributes (real per-player data)
+  if (ctx.primaryCreator || (ctx.usageRate != null && ctx.usageRate >= 26)) {
+    out.push({ label: 'ROLE', detail: `High usage role${ctx.usageRate != null ? ` (${ctx.usageRate.toFixed(0)}%)` : ' (primary option)'}.` });
+  }
+  if (sc.roleStability != null && sc.roleStability >= 70) {
+    out.push({ label: 'ROLE STABILITY', detail: `Locked rotation role (stability ${sc.roleStability}/100).` });
+  }
+  if (ctx.expectedMinutes != null && ctx.expectedMinutes >= 30) {
+    out.push({ label: 'MINUTES', detail: `Heavy minutes load (${ctx.expectedMinutes.toFixed(0)} MPG).` });
+  }
+  if (!market.includes('rebound') && !market.includes('assist') && ctx.tsPct != null && ctx.tsPct >= 0.58) {
+    out.push({ label: 'EFFICIENCY', detail: `Elite shooting efficiency (${(ctx.tsPct * 100).toFixed(0)}% TS).` });
+  }
+  if (!market.includes('rebound') && ctx.last5Avg != null && ctx.seasonAvg != null && ctx.seasonAvg > 0) {
+    const dp = (ctx.last5Avg - ctx.seasonAvg) / ctx.seasonAvg;
+    if (dp >= 0.10) out.push({ label: 'HOT FORM', detail: `Last 5 ${ctx.last5Avg.toFixed(1)} vs ${ctx.seasonAvg.toFixed(1)} season avg.` });
+    else if (dp <= -0.10) out.push({ label: 'COOLING FORM', detail: `Last 5 ${ctx.last5Avg.toFixed(1)} vs ${ctx.seasonAvg.toFixed(1)} season avg.` });
+  }
+  if (sc.variance != null && sc.variance >= 55) {
+    out.push({ label: 'STABLE OUTPUT', detail: `Low game-to-game variance (${sc.variance}/100).` });
+  }
+  // Rebound geometry
+  if (market.includes('rebound') && p.reboundEquity && p.reboundEquity.equityMultiplier >= 1.04) {
+    out.push({ label: 'REBOUND GEOMETRY', detail: `Opponent's miss profile favors this rebounder's zone.` });
+  }
+  // Teammate-out boost
+  if (p.benefitsFrom && Array.isArray(p.benefitsFrom.out) && p.benefitsFrom.out.length) {
+    out.push({ label: 'INJURY BOOST', detail: `+${p.benefitsFrom.minGain} projected minutes with ${p.benefitsFrom.out.join(', ')} out.` });
+  }
+  return out;
+}
+
 window.logWnbaBestBetsForGame = function(data, gameId) {
   if (!data || !gameId) return;
   const pool = [];
@@ -16208,68 +16303,6 @@ async function autoGradeOnAppOpen() {
   // buildPropRead: one or two sentences on why the engine leans over/under THIS
   // line, citing the real factors that moved the projection. Mirrors MLB's
   // narrative quote block. Returns '' when there's nothing real to say.
-  // buildBestBetReasons: a STRUCTURED list of every real advantage the engine
-  // found for this pick — stored on the best-bet entry so the Best Bets tab can
-  // show the full "why" without recomputing. Each item: { label, detail }.
-  function buildBestBetReasons(p, projection) {
-    const out = [];
-    const mult = p.multipliers || {};
-    const dc = p.dataCompleteness || {};
-    const sc = p.scores || {};
-    const ctx = p.playerContext || {};
-    const market = String(p.market || '').toLowerCase();
-    const line = Number(p.line);
-    const dir = (projection != null && Number.isFinite(line) && projection >= line) ? 'OVER' : 'UNDER';
-
-    // Edge headline
-    if (projection != null && Number.isFinite(line)) {
-      const d = projection - line;
-      out.push({ label: 'PROJECTION EDGE', detail: `Model ${projection.toFixed(1)} vs ${line} line (${d >= 0 ? '+' : ''}${d.toFixed(1)}), leaning ${dir}.` });
-    }
-    if (p.probOver != null) {
-      const pr = dir === 'OVER' ? p.probOver : 1 - p.probOver;
-      out.push({ label: 'HIT PROBABILITY', detail: `${Math.round(pr * 100)}% to land ${dir.toLowerCase()}.` });
-    }
-    // Real multiplier advantages
-    const addMult = (m, real, up, down) => {
-      if (m == null || !Number.isFinite(m) || Math.abs(m - 1) < 0.015 || !real) return;
-      out.push({ label: m > 1 ? 'FAVORABLE MATCHUP' : 'TOUGH MATCHUP', detail: m > 1 ? up : down });
-    };
-    addMult(mult.matchup_opposingDefense, dc.opposingDefense === 'REAL', 'Soft opposing defense for this market.', 'Stingy opposing defense for this market.');
-    addMult(mult.usageFunnel, dc.usageFunnel === 'REAL', 'Extra usage funneling to this player.', 'Reduced usage share in this lineup.');
-    addMult(mult.environment, dc.environment === 'REAL', 'Up-tempo pace environment.', 'Slow-pace environment.');
-    addMult(mult.whistle, dc.whistle === 'REAL', 'Strong free-throw rate.', 'Low free-throw rate.');
-    // Player attributes (real per-player data)
-    if (ctx.primaryCreator || (ctx.usageRate != null && ctx.usageRate >= 26)) {
-      out.push({ label: 'ROLE', detail: `High usage role${ctx.usageRate != null ? ` (${ctx.usageRate.toFixed(0)}%)` : ' (primary option)'}.` });
-    }
-    if (sc.roleStability != null && sc.roleStability >= 70) {
-      out.push({ label: 'ROLE STABILITY', detail: `Locked rotation role (stability ${sc.roleStability}/100).` });
-    }
-    if (ctx.expectedMinutes != null && ctx.expectedMinutes >= 30) {
-      out.push({ label: 'MINUTES', detail: `Heavy minutes load (${ctx.expectedMinutes.toFixed(0)} MPG).` });
-    }
-    if (!market.includes('rebound') && !market.includes('assist') && ctx.tsPct != null && ctx.tsPct >= 0.58) {
-      out.push({ label: 'EFFICIENCY', detail: `Elite shooting efficiency (${(ctx.tsPct * 100).toFixed(0)}% TS).` });
-    }
-    if (!market.includes('rebound') && ctx.last5Avg != null && ctx.seasonAvg != null && ctx.seasonAvg > 0) {
-      const dp = (ctx.last5Avg - ctx.seasonAvg) / ctx.seasonAvg;
-      if (dp >= 0.10) out.push({ label: 'HOT FORM', detail: `Last 5 ${ctx.last5Avg.toFixed(1)} vs ${ctx.seasonAvg.toFixed(1)} season avg.` });
-      else if (dp <= -0.10) out.push({ label: 'COOLING FORM', detail: `Last 5 ${ctx.last5Avg.toFixed(1)} vs ${ctx.seasonAvg.toFixed(1)} season avg.` });
-    }
-    if (sc.variance != null && sc.variance >= 55) {
-      out.push({ label: 'STABLE OUTPUT', detail: `Low game-to-game variance (${sc.variance}/100).` });
-    }
-    // Rebound geometry
-    if (market.includes('rebound') && p.reboundEquity && p.reboundEquity.equityMultiplier >= 1.04) {
-      out.push({ label: 'REBOUND GEOMETRY', detail: `Opponent's miss profile favors this rebounder's zone.` });
-    }
-    // Teammate-out boost
-    if (p.benefitsFrom && Array.isArray(p.benefitsFrom.out) && p.benefitsFrom.out.length) {
-      out.push({ label: 'INJURY BOOST', detail: `+${p.benefitsFrom.minGain} projected minutes with ${p.benefitsFrom.out.join(', ')} out.` });
-    }
-    return out;
-  }
 
   function buildPropRead(p, proj) {
     const projection = proj && proj.projection != null ? Number(proj.projection) : null;
