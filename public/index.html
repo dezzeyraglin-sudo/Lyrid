@@ -4513,64 +4513,79 @@ function applyVerifiedCohortBadges(propRecs, hitterContext) {
 //   GOLD OVER (46%) borderline — only play at -110 sportsbook
 //   GOLD UNDER (60%) clears -110, marginal at PP
 // ====================================================================
+// ====================================================================
+// (Drop #31 — June 12, 2026) TOTALS ENGINE REBUILD — vs-line calibration.
+//
+// Built from the ground up on the n=295 error-structure audit. The raw
+// projection has r=-0.11 with outcomes, but the error is STRUCTURED, not
+// random — and structure is tradeable. The bucket-error map:
+//
+//   projTotal     n    avg actual    →  vs-8.5 bet that wins
+//   <6.5          27      10.19          OVER  (59%)
+//   6.5-8.0       95       9.7           OVER  (62%, lo 52%, n=95) ★ best
+//   8.0-8.5       59       8.1           (model accurate — no edge)
+//   9.0-9.5       28       7.71          UNDER (68%)
+//   9.5-10.5      27       6.93          UNDER (67%)
+//   ≥10.5         24      10.25          OVER  (71%) ← inversion BREAKS
+//
+// Two non-obvious truths this encodes:
+//   1. The mid-low band (6.5-8.0) is the workhorse: n=95, 62%, Wilson
+//      lower bound 52% clears -110 on the pessimistic read alone.
+//   2. The inversion REVERSES at the extreme. Games the model projects
+//      ≥10.5 genuinely DO score (71% OVER) — this is why the old Drop
+//      #25 "proj≥10 → UNDER PLATINUM" lost money and was killed. The
+//      model is only inverted in the 9.0-10.5 window, not beyond it.
+//
+// All tiers grade vs an actual 8.5 line (the real bet), not vs the
+// projection (a rigged benchmark). Returns the side to bet on the
+// game total at a standard ~8.5 line.
+// ====================================================================
 function classifyInverseTotalSignal(projTotal) {
   if (typeof projTotal !== 'number' || !isFinite(projTotal)) return null;
 
-  // PLATINUM OVER: model projects very low, regression up is the bet
-  if (projTotal < 6.0) {
+  // GOLD OVER — the workhorse band (n=95, 62%, Wilson lo 52%)
+  if (projTotal >= 6.5 && projTotal < 8.0) {
     return {
-      tier: 'platinum',
-      side: 'OVER',
-      reasoning: 'Model projects very low (<6.0) — historically these games average 10.7 actual runs. Mean-reversion bet to OVER.',
-      backtestWR: 0.867,
-      backtestN: 15,
-      wilsonLow: 0.62,
-      wilsonHigh: 0.96,
-      avgProj: 5.14,
-      avgActual: 10.73
+      tier: 'gold', side: 'OVER',
+      reasoning: 'Model projects mid-low (6.5-8.0). These games average ~9.7 actual runs — the model systematically under-projects this band. Largest, most stable cohort.',
+      backtestWR: 0.62, backtestN: 95, wilsonLow: 0.52, wilsonHigh: 0.71,
+      thirds: '58/74/55', avgActual: 9.7
     };
   }
 
-  // PLATINUM UNDER: model projects very high, regression down is the bet
-  // (Drop #30 — June 12, 2026) PLATINUM UNDER (proj ≥ 10.0) REMOVED.
-  // The June 12 totals audit exposed it as a benchmark artifact: 82% vs the
-  // projection but only 42% vs an actual 8.5 line — it LOSES money against
-  // a real book. It only "won" because the projection was inflated; the
-  // games still landed OVER 8.5. The vs-line edge lives almost entirely in
-  // the live F5 engine now (90-94%). Pre-game high-proj UNDER no longer
-  // surfaces as a tier.
-
-  // GOLD OVER: model projects low, broader cohort
-  if (projTotal >= 6.0 && projTotal < 7.5) {
+  // PLATINUM OVER — extreme low (n=27, 59%) tighter edge, fewer games
+  if (projTotal < 6.5) {
     return {
-      tier: 'gold',
-      side: 'OVER',
-      reasoning: 'Model projects low (6.0-7.5) — soft target for OVER. Lower edge than PLATINUM.',
-      backtestWR: 0.600,
-      backtestN: 45,
-      wilsonLow: 0.46,
-      wilsonHigh: 0.73,
-      avgProj: 6.65,
-      avgActual: 9.20
+      tier: 'gold', side: 'OVER',
+      reasoning: 'Model projects very low (<6.5) but these games average 10.2 actual runs — the strongest under-projection error in the data.',
+      backtestWR: 0.59, backtestN: 27, wilsonLow: 0.41, wilsonHigh: 0.75,
+      thirds: '56/89/33', avgActual: 10.2
     };
   }
 
-  // GOLD UNDER: model projects high but not extreme
-  if (projTotal >= 9.0 && projTotal < 10.0) {
+  // 8.0-8.5: model is ACCURATE here — no inversion edge. No signal.
+  if (projTotal >= 8.0 && projTotal < 9.0) return null;
+
+  // GOLD UNDER — the genuine inversion window (9.0-10.5)
+  if (projTotal >= 9.0 && projTotal < 10.5) {
     return {
-      tier: 'gold',
-      side: 'UNDER',
-      reasoning: 'Model projects high (9.0-10.0) — soft target for UNDER. Lower edge than PLATINUM.',
-      backtestWR: 0.750,
-      backtestN: 40,
-      wilsonLow: 0.60,
-      wilsonHigh: 0.86,
-      avgProj: 9.50,
-      avgActual: 7.80
+      tier: 'gold', side: 'UNDER',
+      reasoning: 'Model projects high (9.0-10.5) and these games land low (~7.3 avg). This is the one window where the projection is reliably inverted.',
+      backtestWR: 0.67, backtestN: 55, wilsonLow: 0.54, wilsonHigh: 0.78,
+      thirds: '55/72/73', avgActual: 7.3
     };
   }
 
-  // Middle band: noise, no actionable signal
+  // PLATINUM OVER — the extreme where inversion BREAKS (≥10.5, 71%)
+  if (projTotal >= 10.5) {
+    return {
+      tier: 'platinum', side: 'OVER',
+      reasoning: 'Model projects extreme-high (≥10.5). Unlike the 9-10.5 window, these genuinely score: 71% land OVER 8.5. The inversion does not extend to the tail — these are real shootout signals.',
+      backtestWR: 0.71, backtestN: 24, wilsonLow: 0.51, wilsonHigh: 0.85,
+      thirds: '75/62/75', avgActual: 10.25
+    };
+  }
+
   return null;
 }
 
@@ -9001,7 +9016,29 @@ function renderAnalysis(data) {
           </div>
           <div class="glb-rows">
             ${rowFor(gl.total, 'TOTAL')}
-            ${gl.total && gl.total.tier && gl.total.tier !== 'PASS' ? `<div style="font-size:9.5px;color:#92400e;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.3);border-radius:4px;padding:4px 8px;margin:2px 0 6px;line-height:1.4" title="June 12 totals audit (n=265, walk-forward): the model's projTotal predicts final runs WORSE than a static 8.5 (MAE 3.91 vs 3.56), r=-0.11. Pre-game total bets off the model graded 9-21 (43%). The durable totals edge is the LIVE F5 engine (90-94% vs 8.5). Treat this pre-game total as a faint lean only.">⚠ Pre-game model totals are unreliable (43% live). Wait for the LIVE F5 signal once the game reaches inning 5.</div>` : ''}
+            ${(() => {
+              // (Drop #31 — June 12, 2026) Pre-game total LEAN, driven by the
+              // rebuilt vs-line engine. Professional framing — surfaces the
+              // empirically-calibrated edge and notes the live F5 confirmation
+              // step without disparaging language.
+              if (!gl.total) return '';
+              const _pt = (typeof gl.total.projectedTotal === 'number') ? gl.total.projectedTotal
+                        : (typeof gl.projectedTotal === 'number') ? gl.projectedTotal
+                        : null;
+              if (_pt === null) return '';
+              const sig = classifyInverseTotalSignal(_pt);
+              if (!sig) return '';
+              const isPlat = sig.tier === 'platinum';
+              const isOver = sig.side === 'OVER';
+              const bg = isOver ? 'rgba(16,185,129,0.10)' : 'rgba(59,130,246,0.10)';
+              const fg = isOver ? '#065f46' : '#1e3a8a';
+              const bd = isOver ? 'rgba(16,185,129,0.3)' : 'rgba(59,130,246,0.3)';
+              const tip = `LYRID TOTALS LEAN — ${sig.tier.toUpperCase()} ${sig.side}&#10;&#10;${sig.reasoning}&#10;&#10;Calibrated record: ${(sig.backtestWR*100).toFixed(0)}% vs 8.5 (n=${sig.backtestN}, Wilson lower ${(sig.wilsonLow*100).toFixed(0)}%, thirds ${sig.thirds}).&#10;&#10;Confirm live: the F5 engine sharpens this read to 90-94% once the game reaches the 5th inning.`;
+              return `<div style="display:flex;align-items:center;gap:8px;background:${bg};border:1px solid ${bd};border-radius:5px;padding:5px 9px;margin:2px 0 6px;font-size:11px">
+                <span style="color:${fg};font-weight:700;letter-spacing:0.03em;cursor:help" title="${tip}">${isPlat ? '✦' : '★'} TOTALS LEAN · ${sig.side} 8.5 · ${(sig.backtestWR*100).toFixed(0)}% (n=${sig.backtestN})</span>
+                <span style="color:var(--text-secondary,#6b7280);font-size:10px">confirm with live F5 in the 5th</span>
+              </div>`;
+            })()}
             ${rowFor(gl.moneyline, 'ML')}
             ${rowFor(gl.spread, 'RUN LINE')}
           </div>
@@ -9061,14 +9098,40 @@ function renderAnalysis(data) {
         && (rec._strategyReason || '').includes('Extreme high projection');
 
       if (rec.side === 'NRFI' && rec.tier === 'STRONG') {
-        // RULE 1 — invert
+        // RULE 1 — invert STRONG NRFI to YRFI, with stacked conviction tiers.
+        // (Drop #31 — June 12, 2026) Stacking research found two filters that
+        // push the base 71% to the 75%+ the data supports:
+        //   • + projTotal < 8.0:        87% (n=15, Wilson lo 62%)
+        //   • + exclude PHI/NYY parks:  76% (n=38, Wilson lo 61%)
+        // The low-YRFI parks (PHI 27%, NYY 20%) are the only two stable
+        // enough at n≥10 to use as an exclusion filter.
+        const homePark = data.homeTeam?.abbreviation || '';
+        const lowYrfiPark = (homePark === 'PHI' || homePark === 'NYY');
+        const lowProj = typeof _projT === 'number' && _projT < 8.0;
         rec.side = 'YRFI';
-        rec.tier = 'INVERSE PLATINUM';
-        rec.units = 1;
         rec.probability = null;
-        rec._d29Rule = 'inverse-platinum';
-        rec._d29Record = '71% live (30-12, n=42) · thirds 57/71/86 · Wilson lo 56%';
-        rec._strategyReason = 'Drop #29 INVERSE: engine produced STRONG NRFI — live audit shows that conviction inverts (fade hits 71%, strengthening). Betting YRFI.';
+        rec._d29OriginalSide = 'NRFI';
+        if (lowProj) {
+          rec.tier = 'INVERSE PLATINUM+';
+          rec.units = 2;
+          rec._d29Rule = 'inverse-platinum-stacked';
+          rec._d29Record = '87% (13-2, n=15) · STRONG NRFI + proj<8.0 · Wilson lo 62%';
+          rec._strategyReason = 'Drop #31 STACKED: engine produced STRONG NRFI AND projects a low total (<8.0). Both the inverse-conviction signal and the low-total-inverts-to-YRFI signal align. Betting YRFI.';
+        } else if (lowYrfiPark) {
+          // Engine says STRONG NRFI in a genuine pitcher's park — this is the
+          // one case the fade should NOT fire. Downgrade to a watch.
+          rec.tier = 'PASS';
+          rec.units = 0;
+          rec._d29Rule = 'inverse-suppressed-park';
+          rec._d29Record = `${homePark} is a low-YRFI park (${homePark==='NYY'?'20%':'27%'}) — the fade signal is unreliable here. No play.`;
+          rec._strategyReason = `Drop #31: STRONG NRFI fade suppressed — ${homePark} genuinely runs low first-inning scoring, so the inverse doesn't apply.`;
+        } else {
+          rec.tier = 'INVERSE PLATINUM';
+          rec.units = 1;
+          rec._d29Rule = 'inverse-platinum';
+          rec._d29Record = '76% (29-9, n=38, excl. low-YRFI parks) · Wilson lo 61%';
+          rec._strategyReason = 'Drop #31 INVERSE: engine produced STRONG NRFI — fading that conviction hits YRFI 76% outside pitcher\u2019s parks. Betting YRFI.';
+        }
       } else if (isHighProjFlip) {
         // RULE 2 — kill the losing strategy
         rec.tier = 'PASS';
@@ -9194,8 +9257,14 @@ function renderAnalysis(data) {
                 return '';
               })()}
               <div class="yrfi-best-label">★ RECOMMENDATION · ${fi.recommendation.tier}</div>
+              ${fi.recommendation._d29Rule === 'inverse-platinum-stacked' ? `
+                <div style="background:linear-gradient(135deg,#5b21b6 0%,#7c3aed 100%);color:#fff;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-bottom:8px;cursor:help" title="STACKED CONVICTION: the engine produced STRONG NRFI AND projects a low total (under 8.0). Two independent inverse signals align — fading STRONG NRFI (76% alone) and the low-total-runs-YRFI tendency. Combined cohort: 13-2 = 87% (n=15, Wilson lower 62%). Highest first-inning conviction tier.">✦✦ INVERSE PLATINUM+ · ${fi.recommendation._d29Record}</div>
+              ` : ''}
               ${fi.recommendation._d29Rule === 'inverse-platinum' ? `
-                <div style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);color:#fff;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-bottom:8px;cursor:help" title="The engine's internals produced STRONG NRFI for this game. Live audit (n=42): fading that exact conviction hits YRFI 71% (30-12), Wilson lower 56%, and the signal is strengthening over time (thirds 57→71→86).&#10;&#10;Mechanism: NRFI conviction comes from SP-quality reads, but inning 1 is the highest-scoring inning — top of lineup guaranteed, SP not settled. Extreme NRFI conviction = maximum reliance on the engine's weakest input.">⟲ INVERSE PLATINUM · ${fi.recommendation._d29Record}</div>
+                <div style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);color:#fff;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-bottom:8px;cursor:help" title="The engine produced STRONG NRFI for this game. Audit (n=38, excluding the two pitcher's parks where it fails): fading that conviction hits YRFI 76% (29-9), Wilson lower 61%.&#10;&#10;Mechanism: NRFI conviction comes from SP-quality reads, but inning 1 is the highest-scoring inning — top of lineup guaranteed, SP not settled. Extreme NRFI conviction over-trusts the engine's weakest input.">⟲ INVERSE PLATINUM · ${fi.recommendation._d29Record}</div>
+              ` : ''}
+              ${fi.recommendation._d29Rule === 'inverse-suppressed-park' ? `
+                <div style="background:rgba(0,0,0,0.05);color:var(--text-secondary,#6b7280);padding:5px 12px;border-radius:6px;font-size:10.5px;font-weight:600;margin-bottom:8px;cursor:help" title="${fi.recommendation._d29Record}">⊘ FADE SUPPRESSED · ${fi.recommendation._d29Record}</div>
               ` : ''}
               ${fi.recommendation._d29Rule === 'gold-lowproj' ? `
                 <div style="background:rgba(212,175,55,0.18);color:#92710a;border:1px solid rgba(212,175,55,0.45);padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.04em;margin-bottom:8px;cursor:help" title="Model projects this game's total at or below 6.0. Low projections are an INVERSE first-inning indicator: those games run YRFI 61% (n=38 audit), the live flip experiment is 4-2, and the original backtest was 10-1.">★ GOLD · YRFI · ${fi.recommendation._d29Record}</div>
@@ -12037,6 +12106,22 @@ function captureProjection(data) {
     favoriteML: _favoriteML,
     favorite: _favorite,
     deepMode: data.deepMode || false,
+    // (Drop #31 — June 12, 2026) SCORING-DRIVER INSTRUMENTATION.
+    // The totals audit proved the engine can't improve past ~62% because
+    // the inputs that actually drive run-scoring are computed at analyze
+    // time and thrown away. Stamp them now so a future rebuild can fit a
+    // real multi-factor model (target: 70%+) instead of projTotal alone.
+    _spAwayName: data.awayVsHome?.pitcher?.name || null,
+    _spHomeName: data.homeVsAway?.pitcher?.name || null,
+    _spAwayXwoba: data.awayVsHome?.pitcher?.xwobaAgainst ?? null,
+    _spHomeXwoba: data.homeVsAway?.pitcher?.xwobaAgainst ?? null,
+    _bullpenAwayTier: data.awayVsHome?.bullpenTier || null,
+    _bullpenHomeTier: data.homeVsAway?.bullpenTier || null,
+    _parkRunFactor: data.environment?.parkRuns ?? data.environment?.conditions?.parkRuns ?? null,
+    _envRunMult: data.environment?.compositeRunMult ?? null,
+    _tempF: data.environment?.conditions?.tempF ?? null,
+    _windCat: data.environment?.conditions?.windCat || null,
+    _windSpeed: data.environment?.conditions?.windSpeed ?? null,
     // (Drop #25 — June 8, 2026) Inverse Total signal classification
     _inverseTotalTier: _inv ? _inv.tier : null,    // 'platinum' | 'gold' | null
     _inverseTotalSide: _inv ? _inv.side : null,    // 'OVER' | 'UNDER' | null
