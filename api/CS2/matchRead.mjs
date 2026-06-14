@@ -115,6 +115,18 @@ if (args.list) {
   process.exit(0);
 }
 
+// FORWARD SLATE: pull today's (or a given date's) scheduled games from BDL with
+// start times, resolve each team's roster from history, and project every player.
+// Writes the whole slate to one file. Needs BDL_API_KEY (uses bdlClient). Usage:
+//   node matchRead.mjs --today --cache .cache/cs2 --out cs2_reads.json
+//   node matchRead.mjs --today 2026-06-15 --cache .cache/cs2 --out cs2_reads.json
+if (args.today) {
+  const date = (args.today === true) ? new Date().toISOString().slice(0, 10) : String(args.today);
+  await runToday(date);
+  process.exit(0);
+}
+
+
 const MATCH_ID = num(args.match);
 if (MATCH_ID == null) { console.error("Pass --match <id>  (or --list to find one)"); process.exit(1); }
 const target = matchById.get(MATCH_ID);
@@ -167,6 +179,7 @@ if (JSON_OUT) {
   const matchObj = {
     matchId: MATCH_ID,
     date: target.start_time?.slice(0, 10) ?? null,
+    startTime: target.start_time ?? null,
     teamA: target.team1?.name ?? null,
     teamB: target.team2?.name ?? null,
     format: `Bo${target.best_of}`,
@@ -331,6 +344,93 @@ function teamStrength(teamId, beforeTs) {
     }
   }
   return rows.length ? mean(rows) : 0;
+}
+
+// ---------- forward slate (today's games) ----------
+// A player's own team is in every one of their matches; opponents vary. So the
+// team that appears most across their participations is their own team.
+function argmaxTeam(pid, beforeTs) {
+  const hist = (playerMatches.get(pid) ?? []).filter((x) => x.ts < beforeTs);
+  const cnt = new Map();
+  for (const h of hist) for (const t of [h.t1, h.t2]) if (t != null) cnt.set(t, (cnt.get(t) || 0) + 1);
+  let best = null, bc = -1;
+  for (const [t, c] of cnt) if (c > bc) { bc = c; best = t; }
+  return best;
+}
+
+// The five players from a team's most recent prior match (their last known lineup).
+function recentLineup(teamId, beforeTs) {
+  let best = null, bestTs = -1;
+  for (const [mid, byNum] of mapsByMatch) {
+    const m = matchById.get(mid); if (!m?.start_time) continue;
+    const ts = Date.parse(m.start_time); if (ts >= beforeTs) continue;
+    if (m.team1?.id === teamId || m.team2?.id === teamId) { if (ts > bestTs) { bestTs = ts; best = byNum; } }
+  }
+  if (!best) return [];
+  const pids = new Set();
+  for (const n of [1, 2]) { const mm = best[n]; if (!mm) continue; for (const r of (mapStats.get(mm.id) ?? [])) { const pid = r.player?.id ?? r.player_id; if (pid != null) pids.add(pid); } }
+  return [...pids].filter((pid) => argmaxTeam(pid, beforeTs) === teamId);
+}
+
+// Pre-veto map estimate: the two maps these rosters have played most recently.
+function expectedMapsFor(pids, beforeTs) {
+  const set = new Set(pids), freq = new Map();
+  for (const x of pm) { if (x.ts >= beforeTs || !set.has(x.playerId) || !x.map) continue; freq.set(x.map, (freq.get(x.map) || 0) + 1); }
+  return [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([m]) => m);
+}
+
+async function runToday(date) {
+  const { BdlCs2Client } = await import("./bdlClient.mjs");
+  const client = new BdlCs2Client();
+  const nowTs = Date.now();
+
+  let cursor = null; const todays = [];
+  do {
+    const params = { dates: [date], per_page: 100 };
+    if (cursor) params.cursor = cursor;
+    const page = await client.request("/cs/v1/matches", params);
+    todays.push(...(page.data ?? []));
+    cursor = page.meta?.next_cursor ?? null;
+  } while (cursor);
+
+  const games = todays.filter((m) => (m.best_of ?? 0) >= 3); // Maps 1+2 markets are Bo3+
+  const out = {
+    ok: true, generatedAt: new Date().toISOString(), validated: false,
+    source: "BDL CS2 today's slate + matchRead forward projection — PARTIAL, NOT validated vs price",
+    matches: [],
+  };
+
+  for (const m of games) {
+    const lineup1 = m.team1?.id != null ? recentLineup(m.team1.id, nowTs) : [];
+    const lineup2 = m.team2?.id != null ? recentLineup(m.team2.id, nowTs) : [];
+    const expMaps = expectedMapsFor([...lineup1, ...lineup2], nowTs);
+    const vol = roundVolume(m, nowTs);
+    const build = (pids, teamName) => {
+      const profs = pids.map((pid) => profile(pid, nowTs, expMaps)).filter(Boolean);
+      assignRolesRelative(profs);
+      return profs.map((p) => ({ team: teamName ?? null, ...computeRead(p, vol) }));
+    };
+    out.matches.push({
+      matchId: m.id,
+      date: m.start_time?.slice(0, 10) ?? date,
+      startTime: m.start_time ?? null,
+      teamA: m.team1?.name ?? null,
+      teamB: m.team2?.name ?? null,
+      format: `Bo${m.best_of}`,
+      tier: m.tournament?.tier ?? null,
+      lan: !m.tournament?.is_online,
+      maps: expMaps,
+      roundVolume: { erounds: vol.erounds, blowout: vol.blowout, ot: vol.otRate, confidence: "LOW" },
+      players: [...build(lineup1, m.team1?.name), ...build(lineup2, m.team2?.name)],
+    });
+  }
+  out.matches.sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
+  fs.writeFileSync(OUT_PATH, JSON.stringify(out, null, 2));
+  console.error(`✓ ${out.matches.length} game(s) for ${date} → ${OUT_PATH}`);
+  for (const mm of out.matches) {
+    const t = mm.startTime ? new Date(mm.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--";
+    console.error(`   ${t}  ${mm.teamA} vs ${mm.teamB}  (${mm.players.length} players${mm.players.length ? "" : " — roster not in cache, pull more history"})`);
+  }
 }
 
 function computeRead(p, vol) {
