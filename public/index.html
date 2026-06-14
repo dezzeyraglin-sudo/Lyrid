@@ -16980,6 +16980,7 @@ async function autoGradeOnAppOpen() {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const bandClass = (b) => b === 'STRONG' ? 'glb-tier-strong' : b === 'LEAN' ? 'glb-tier-moderate' : 'cs2-band-pass';
   const leanClass = (l) => l === 'OVER-friendly' ? 'cs2-lean-over' : l === 'UNDER-friendly' ? 'cs2-lean-under' : 'cs2-lean-neutral';
+  const fmtTime = (iso) => { if (!iso) return null; const d = new Date(iso); if (isNaN(d)) return null; if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0) return null; return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
 
   window.switchToCs2 = function () {
     if (typeof switchTab === 'function') switchTab('cs2');
@@ -17058,8 +17059,8 @@ async function autoGradeOnAppOpen() {
     return `
       <button class="lyrid-game-card${isSel ? ' signal' : ''}" type="button" onclick="analyzeCs2Match('${esc(m.matchId)}')" aria-label="Read ${esc(m.teamA)} vs ${esc(m.teamB)}">
         <div class="lyrid-game-time">
-          <div class="lyrid-game-time-value">${esc((m.date || '').slice(5) || 'TBD')}</div>
-          <div class="lyrid-game-time-zone">${esc(m.format || 'Bo3')}</div>
+          <div class="lyrid-game-time-value">${esc(fmtTime(m.startTime) || (m.date || '').slice(5) || 'TBD')}</div>
+          <div class="lyrid-game-time-zone">${esc((fmtTime(m.startTime) ? (m.date || '').slice(5) + ' · ' : '') + (m.format || 'Bo3'))}</div>
         </div>
         <div class="lyrid-game-matchup">
           <div class="lyrid-game-teams"><span>${esc(m.teamA || '?')}</span><span class="at">vs</span><span>${esc(m.teamB || '?')}</span></div>
