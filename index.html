@@ -13131,6 +13131,30 @@ function esc(s) {
 }
 if (typeof window !== 'undefined') window.esc = esc;
 
+// Empirical WNBA tier — what a market+direction ACTUALLY hits, from 134 graded
+// real-line picks (Jun 1–8 2026). Replaces the inverted finalEdgeScore label.
+// counts = [wins, n]. Update as more pricks grade.
+function wnbaEmpTier(market, lean) {
+  const m = String(market || '').toLowerCase();
+  const s = String(lean || '').toUpperCase();
+  const C = {
+    'assists|UNDER': [21, 24], 'rebounds|UNDER': [25, 38],
+    'assists|OVER': [5, 11], 'rebounds|OVER': [4, 7],
+    'points|UNDER': [2, 6], 'points|OVER': [22, 48],
+  };
+  const c = C[m + '|' + s];
+  if (!c) return { tier: 'UNGRADED', bet: false, wr: null, n: 0 };
+  const [w, n] = c, wr = w / n;
+  let tier;
+  if (m === 'points') tier = 'AVOID';          // 44%, +2.9 biased — off the board pending re-validation
+  else if (s === 'OVER') tier = 'PASS';        // overs show no validated edge (~47%)
+  else if (wr >= 0.80 && n >= 20) tier = 'PLATINUM';
+  else if (wr >= 0.60 && n >= 15) tier = 'GOLD';
+  else tier = 'LEAN';
+  return { tier, bet: (tier === 'PLATINUM' || tier === 'GOLD'), wr, n };
+}
+if (typeof window !== 'undefined') window.wnbaEmpTier = wnbaEmpTier;
+
 function renderHistory() {
   const container = document.getElementById('historyList');
   if (!container) return;
@@ -16671,6 +16695,18 @@ async function autoGradeOnAppOpen() {
       } else {
         _leanTxt = `LEAN UNDER ${_ea.toFixed(1)}`; _leanColor = '#7f1d1d'; _leanBg = '#fee2e2';
       }
+      const _leanDir = (p.propSignal && p.propSignal.side === 'UNDER') ? 'UNDER'
+                     : (p.recommendation === 'PASS' || _ea == null || _ea < 0.5) ? null
+                     : (_edge > 0 ? 'OVER' : 'UNDER');
+      const _emp = _leanDir ? wnbaEmpTier(p.market, _leanDir) : null;
+      const _empBadge = (() => {
+        if (!_emp) return '';
+        const S = { PLATINUM:['#0b5d3b','#d1fae5','✓'], GOLD:['#7a5c12','#fef3c7','✓'], LEAN:['#475569','#e2e8f0','~'], PASS:['#64748b','#f1f5f9','—'], AVOID:['#7f1d1d','#fee2e2','⚠'], UNGRADED:['#64748b','#f1f5f9','?'] };
+        const [fg,bg,ic] = S[_emp.tier] || S.UNGRADED;
+        const lbl = _emp.tier === 'AVOID' ? 'AVOID' : _emp.tier === 'PASS' ? 'NO EDGE' : `${_emp.tier}${_emp.wr != null ? ' ' + Math.round(_emp.wr*100) + '%' : ''}`;
+        return `<span title="what ${esc(p.market)} ${_leanDir} actually hits — empirical tier from 134 graded picks" style="font-size:9px;font-weight:800;letter-spacing:0.05em;color:${fg};background:${bg};padding:3px 8px;border-radius:100px;white-space:nowrap">${ic} ${lbl}</span>`;
+      })();
+      const _rowDim = (_emp && (_emp.tier === 'AVOID' || _emp.tier === 'PASS')) ? '0.62' : '1';
       const _hasBook = p.lineSource === 'provided';
       const _bookTag = _hasBook ? (p.lineBook ? esc(p.lineBook) : 'BOOK') : 'MODEL';
       const _reason = wnbaMarketReason(p, proj, _edge);
@@ -16687,12 +16723,13 @@ async function autoGradeOnAppOpen() {
             <span class="wnba-ppline-out" style="font-size:11px;color:var(--text-secondary, var(--dim))"></span>
           </div>`;
       return `
-        <div style="padding:9px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
+        <div style="padding:9px 0;opacity:${_rowDim};border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
           <div style="display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap">
             <span style="min-width:74px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-primary)">${i === 0 ? '<span style="color:var(--accent, #c9a45e)" title="strongest edge for this player">★</span> ' : ''}${esc(p.market)}</span>
             <span style="font-size:12px;color:var(--text-secondary, var(--dim))" title="what the tool projects this player finishes with">Tool <b style="font-size:16px;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${isOut ? 'OUT' : (_projN != null ? _projN.toFixed(1) : '—')}</b></span>
             <span style="font-size:12px;color:var(--text-secondary, var(--dim))" title="${_hasBook ? 'real sportsbook line' : 'no book line — engine-inferred'}">${_hasBook ? 'Book' : 'Model line'} <b style="font-size:16px;color:var(--text-primary);font-variant-numeric:tabular-nums">${_lineN != null ? _lineN : '—'}</b> <span style="font-size:8px;text-transform:uppercase;letter-spacing:0.04em;opacity:0.85">${_bookTag}</span></span>
             <span style="margin-left:auto;font-size:10px;font-weight:800;letter-spacing:0.04em;color:${_leanColor};background:${_leanBg};padding:3px 9px;border-radius:100px;white-space:nowrap" title="tool lean vs the line (gap between projection and line)">${esc(_leanTxt)}</span>
+            ${_empBadge}
           </div>
           ${_reason ? `<div style="margin-top:5px;font-size:11px;line-height:1.5;color:var(--text-secondary, var(--dim))">${_reason}</div>` : ''}
           ${_ppInput}
