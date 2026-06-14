@@ -22,7 +22,8 @@ import path from "node:path";
 import { mean, std, pct, round1, round2 } from "./stats.mjs";
 
 const CFG = {
-  AWP_HS_MAX: 42,        // HS% at/below this + real frag volume => AWP-leaning
+  AWP_HS_MAX: 42,        // HS% at/below this + real frag volume => AWP-leaning (absolute fallback)
+  AWP_HS_SANITY: 46,     // relative mode: lowest-HS player is AWP only if below this
   ENTRY_FK_PER_MAP: 2.8, // first kills/map at/above => entry profile
   STAR_KPR: 0.74,        // KPR at/above => star carry
   SUPPORT_KPR: 0.60,     // KPR below this => support/IGL (KAST-gated if present)
@@ -82,6 +83,27 @@ for (const [matchId, byNum] of mapsByMatch) {
   }
 }
 
+// Player -> match participations, for resolving which team a player is on (no team
+// field on the row, but a player's true team recurs across all their matches while
+// opponents vary, so it's the argmax of team appearances).
+const playerMatches = new Map();
+for (const [matchId, byNum] of mapsByMatch) {
+  const m = matchById.get(matchId);
+  if (!m?.start_time) continue;
+  const ts = Date.parse(m.start_time);
+  const seen = new Set();
+  for (const n of [1, 2]) {
+    const mm = byNum[n]; if (!mm) continue;
+    for (const r of mapStats.get(mm.id) ?? []) {
+      const pid = r.player?.id ?? r.player_id;
+      if (pid == null || seen.has(pid)) continue;
+      seen.add(pid);
+      if (!playerMatches.has(pid)) playerMatches.set(pid, []);
+      playerMatches.get(pid).push({ ts, t1: m.team1?.id ?? null, t2: m.team2?.id ?? null });
+    }
+  }
+}
+
 if (args.list) {
   const recent = [...matches].sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time)).slice(0, 25);
   console.log("recent matches:");
@@ -114,10 +136,29 @@ console.log(`expected maps 1&2: ${expMaps.join(" + ")}`);
 console.log(`round volume [LOW CONFIDENCE]: E[rounds/map] ${vol.erounds}  blowout ${pct(vol.blowout)}  OT ${pct(vol.otRate)}`);
 console.log("=".repeat(70));
 
-for (const pid of roster) {
-  const prof = profile(pid, tts, expMaps);
-  if (!prof) continue;
-  printRead(prof, vol);
+const profiles = roster.map((pid) => profile(pid, tts, expMaps)).filter(Boolean);
+
+// resolve each player to one of the two match teams, then assign roles relatively
+const t1id = target.team1?.id, t2id = target.team2?.id;
+const byTeam = new Map([[t1id, []], [t2id, []]]);
+const unresolved = [];
+for (const p of profiles) {
+  const team = resolveTeam(p.pid, tts, t1id, t2id);
+  if (team != null && byTeam.has(team)) byTeam.get(team).push(p);
+  else unresolved.push(p);
+}
+for (const [, team] of byTeam) assignRolesRelative(team);
+for (const p of unresolved) p.role = inferRole(p); // fallback for unresolved players
+
+for (const [teamId, team] of byTeam) {
+  if (!team.length) continue;
+  const tname = teamId === t1id ? target.team1?.name : target.team2?.name;
+  console.log(`\n──── ${tname ?? "team"} ────`);
+  for (const p of team) printRead(p, vol);
+}
+if (unresolved.length) {
+  console.log(`\n──── (team unresolved — absolute role fallback) ────`);
+  for (const p of unresolved) printRead(p, vol);
 }
 
 console.log("\nUNPOWERED (not in this read — needs demo-level data): opponent site/pace");
@@ -169,6 +210,46 @@ function inferRole({ hs, kpr, kast, fkPerMap }) {
   if (fkPerMap >= CFG.ENTRY_FK_PER_MAP && kpr >= 0.58) return "Entry";
   if (kpr < CFG.SUPPORT_KPR && (kast == null || kast >= CFG.SUPPORT_KAST)) return "Support/IGL";
   return "Rifler";
+}
+
+// Resolve which of the two match teams a player belongs to, from prior matches.
+function resolveTeam(pid, beforeTs, teamA, teamB) {
+  const hist = (playerMatches.get(pid) ?? []).filter((x) => x.ts < beforeTs);
+  let a = 0, b = 0;
+  for (const h of hist) {
+    if (h.t1 === teamA || h.t2 === teamA) a++;
+    if (h.t1 === teamB || h.t2 === teamB) b++;
+  }
+  if (a === 0 && b === 0) return null;
+  return a >= b ? teamA : teamB;
+}
+
+// Assign roles RELATIVELY within a team's five: at most one AWPer (the lowest-HS
+// player, and only if genuinely low), one support, one star, one entry; rest Rifler.
+// This is how real lineups work and it stops the absolute HS cutoff from tagging
+// three AWPers across two teams.
+function assignRolesRelative(team) {
+  if (team.length < 3) { for (const p of team) p.role = inferRole(p); return; }
+  const avail = new Set(team);
+  const pickFrom = (set, sel, cond) => {
+    const arr = [...set];
+    if (!arr.length) return;
+    const chosen = arr.reduce(sel);
+    if (cond(chosen)) return chosen;
+    return null;
+  };
+  const withHs = [...avail].filter((p) => p.hs != null);
+  if (withHs.length) {
+    const awp = withHs.reduce((lo, p) => (p.hs < lo.hs ? p : lo));
+    if (awp.hs <= CFG.AWP_HS_SANITY) { awp.role = "AWPer"; avail.delete(awp); }
+  }
+  const sup = pickFrom(avail, (lo, p) => (p.kpr < lo.kpr ? p : lo), (c) => c.kpr < CFG.SUPPORT_KPR + 0.04);
+  if (sup) { sup.role = "Support/IGL"; avail.delete(sup); }
+  const star = pickFrom(avail, (hi, p) => (p.kpr > hi.kpr ? p : hi), (c) => c.kpr >= 0.66);
+  if (star) { star.role = "Star rifler"; avail.delete(star); }
+  const entry = pickFrom(avail, (hi, p) => (p.fkPerMap > hi.fkPerMap ? p : hi), (c) => c.fkPerMap >= 2.4);
+  if (entry) { entry.role = "Entry"; avail.delete(entry); }
+  for (const p of avail) p.role = "Rifler";
 }
 function propTypeFor(role, hs) {
   if (role === "AWPer") return "kills or fantasy (NOT headshots — AWP kills aren't HS)";
@@ -238,7 +319,7 @@ function printRead(p, vol) {
   console.log(`\n${p.nick}   [${p.role}, ${leanFromRole(p.role)}]   n=${p.n} maps${thin}`);
   console.log(`  KPR ${round2(p.kpr)} (recent ${round2(p.recentKpr)})  HS ${p.hs == null ? "?" : Math.round(p.hs) + "%"}  KAST ${p.kast == null ? "?" : Math.round(p.kast) + "%"}  FK/map ${round1(p.fkPerMap)}`);
   console.log(`  Map1&2 kills  floor ${floor} · median ${median} · ceiling ${ceiling}   map-fit ${p.mapFitRatio == null ? "n/a" : (p.mapFitRatio >= 1 ? "+" : "") + pct(p.mapFitRatio - 1)}`);
-  console.log(`  prop type: ${p.propType}`);
+  console.log(`  prop type: ${propTypeFor(p.role, p.hs)}`);
   console.log(`  pick score ${score}/100 → ${band}   [PARTIAL: excludes opponent-style 15% + line-value 10%]`);
   if (flags.length) for (const f of flags) console.log(`   ⚠ ${f}`);
 }
