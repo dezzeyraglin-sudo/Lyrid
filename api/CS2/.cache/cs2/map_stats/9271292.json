@@ -1,0 +1,176 @@
+{
+  "match_map_id": 9271292,
+  "match_id": 7126721,
+  "rows": [
+    {
+      "player": {
+        "id": 294,
+        "nickname": "ZywOo"
+      },
+      "match_map_id": 9271292,
+      "kills": 29,
+      "deaths": 15,
+      "assists": 8,
+      "adr": 96.1,
+      "kast": 79.31,
+      "rating": 7.66,
+      "headshot_percentage": 37.93,
+      "first_kills": 3,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 1125,
+        "nickname": "flameZ"
+      },
+      "match_map_id": 9271292,
+      "kills": 27,
+      "deaths": 20,
+      "assists": 7,
+      "adr": 99.17,
+      "kast": 86.21,
+      "rating": 7.57,
+      "headshot_percentage": 40.74,
+      "first_kills": 6,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 4744,
+        "nickname": "MATYS"
+      },
+      "match_map_id": 9271292,
+      "kills": 25,
+      "deaths": 16,
+      "assists": 6,
+      "adr": 87.93,
+      "kast": 82.76,
+      "rating": 7.41,
+      "headshot_percentage": 56,
+      "first_kills": 5,
+      "first_deaths": 3,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 3680,
+        "nickname": "mezii"
+      },
+      "match_map_id": 9271292,
+      "kills": 17,
+      "deaths": 17,
+      "assists": 11,
+      "adr": 69.97,
+      "kast": 75.86,
+      "rating": 6.2,
+      "headshot_percentage": 70.59,
+      "first_kills": 6,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 1124,
+        "nickname": "Nertz"
+      },
+      "match_map_id": 9271292,
+      "kills": 21,
+      "deaths": 20,
+      "assists": 7,
+      "adr": 85,
+      "kast": 65.52,
+      "rating": 6.09,
+      "headshot_percentage": 33.33,
+      "first_kills": 3,
+      "first_deaths": 8,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 1223,
+        "nickname": "SunPayus"
+      },
+      "match_map_id": 9271292,
+      "kills": 17,
+      "deaths": 19,
+      "assists": 2,
+      "adr": 58.76,
+      "kast": 79.31,
+      "rating": 5.52,
+      "headshot_percentage": 58.82,
+      "first_kills": 2,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 2801,
+        "nickname": "HeavyGod"
+      },
+      "match_map_id": 9271292,
+      "kills": 14,
+      "deaths": 16,
+      "assists": 4,
+      "adr": 66.9,
+      "kast": 65.52,
+      "rating": 5.5,
+      "headshot_percentage": 35.71,
+      "first_kills": 1,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 95,
+        "nickname": "ropz"
+      },
+      "match_map_id": 9271292,
+      "kills": 11,
+      "deaths": 16,
+      "assists": 5,
+      "adr": 54.03,
+      "kast": 68.97,
+      "rating": 5.05,
+      "headshot_percentage": 72.73,
+      "first_kills": 1,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 7068,
+        "nickname": "tAk"
+      },
+      "match_map_id": 9271292,
+      "kills": 12,
+      "deaths": 24,
+      "assists": 4,
+      "adr": 53.31,
+      "kast": 65.52,
+      "rating": 4.74,
+      "headshot_percentage": 50,
+      "first_kills": 1,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 18,
+        "nickname": "apEX"
+      },
+      "match_map_id": 9271292,
+      "kills": 11,
+      "deaths": 21,
+      "assists": 11,
+      "adr": 50.45,
+      "kast": 65.52,
+      "rating": 4.25,
+      "headshot_percentage": 36.36,
+      "first_kills": 1,
+      "first_deaths": 7,
+      "clutches_won": 0
+    }
+  ]
+}

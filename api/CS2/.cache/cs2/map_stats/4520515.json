@@ -1,0 +1,176 @@
+{
+  "match_map_id": 4520515,
+  "match_id": 3488617,
+  "rows": [
+    {
+      "player": {
+        "id": 242,
+        "nickname": "Grim"
+      },
+      "match_map_id": 4520515,
+      "kills": 27,
+      "deaths": 11,
+      "assists": 3,
+      "adr": 119,
+      "kast": 80,
+      "rating": 9.22,
+      "headshot_percentage": 62.96,
+      "first_kills": 3,
+      "first_deaths": 1,
+      "clutches_won": 2
+    },
+    {
+      "player": {
+        "id": 13431,
+        "nickname": "xKacpersky"
+      },
+      "match_map_id": 4520515,
+      "kills": 17,
+      "deaths": 17,
+      "assists": 4,
+      "adr": 91.4,
+      "kast": 75,
+      "rating": 6.89,
+      "headshot_percentage": 64.71,
+      "first_kills": 3,
+      "first_deaths": 4,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 281,
+        "nickname": "Sonic"
+      },
+      "match_map_id": 4520515,
+      "kills": 16,
+      "deaths": 13,
+      "assists": 4,
+      "adr": 93.2,
+      "kast": 85,
+      "rating": 6.73,
+      "headshot_percentage": 56.25,
+      "first_kills": 3,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 3233,
+        "nickname": "br0"
+      },
+      "match_map_id": 4520515,
+      "kills": 14,
+      "deaths": 16,
+      "assists": 6,
+      "adr": 79.85,
+      "kast": 70,
+      "rating": 6.18,
+      "headshot_percentage": 71.43,
+      "first_kills": 3,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 410,
+        "nickname": "sjuush"
+      },
+      "match_map_id": 4520515,
+      "kills": 14,
+      "deaths": 14,
+      "assists": 4,
+      "adr": 73.4,
+      "kast": 65,
+      "rating": 6.16,
+      "headshot_percentage": 57.14,
+      "first_kills": 3,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 13811,
+        "nickname": "cairne"
+      },
+      "match_map_id": 4520515,
+      "kills": 14,
+      "deaths": 17,
+      "assists": 8,
+      "adr": 92.55,
+      "kast": 70,
+      "rating": 6.13,
+      "headshot_percentage": 50,
+      "first_kills": 3,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 440,
+        "nickname": "oSee"
+      },
+      "match_map_id": 4520515,
+      "kills": 10,
+      "deaths": 9,
+      "assists": 7,
+      "adr": 57.5,
+      "kast": 65,
+      "rating": 5.79,
+      "headshot_percentage": 30,
+      "first_kills": 1,
+      "first_deaths": 3,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 2866,
+        "nickname": "r1nkle"
+      },
+      "match_map_id": 4520515,
+      "kills": 11,
+      "deaths": 15,
+      "assists": 2,
+      "adr": 52.3,
+      "kast": 60,
+      "rating": 5.33,
+      "headshot_percentage": 27.27,
+      "first_kills": 0,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 29,
+        "nickname": "nitr0"
+      },
+      "match_map_id": 4520515,
+      "kills": 8,
+      "deaths": 13,
+      "assists": 8,
+      "adr": 55.5,
+      "kast": 85,
+      "rating": 4.85,
+      "headshot_percentage": 62.5,
+      "first_kills": 0,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 98,
+        "nickname": "Snappi"
+      },
+      "match_map_id": 4520515,
+      "kills": 6,
+      "deaths": 12,
+      "assists": 0,
+      "adr": 40.85,
+      "kast": 55,
+      "rating": 4.35,
+      "headshot_percentage": 100,
+      "first_kills": 1,
+      "first_deaths": 2,
+      "clutches_won": 0
+    }
+  ]
+}

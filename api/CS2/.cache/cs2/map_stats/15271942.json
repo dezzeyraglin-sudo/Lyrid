@@ -1,0 +1,176 @@
+{
+  "match_map_id": 15271942,
+  "match_id": 10660070,
+  "rows": [
+    {
+      "player": {
+        "id": 73,
+        "nickname": "jks"
+      },
+      "match_map_id": 15271942,
+      "kills": 19,
+      "deaths": 10,
+      "assists": 5,
+      "adr": 115.13,
+      "kast": 87.5,
+      "rating": 8.28,
+      "headshot_percentage": 57.89,
+      "first_kills": 2,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 694,
+        "nickname": "Vexite"
+      },
+      "match_map_id": 15271942,
+      "kills": 13,
+      "deaths": 6,
+      "assists": 1,
+      "adr": 83.75,
+      "kast": 81.25,
+      "rating": 7.67,
+      "headshot_percentage": 69.23,
+      "first_kills": 5,
+      "first_deaths": 0,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 683,
+        "nickname": "nettik"
+      },
+      "match_map_id": 15271942,
+      "kills": 15,
+      "deaths": 7,
+      "assists": 4,
+      "adr": 100.38,
+      "kast": 81.25,
+      "rating": 7.07,
+      "headshot_percentage": 73.33,
+      "first_kills": 2,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 3150,
+        "nickname": "story"
+      },
+      "match_map_id": 15271942,
+      "kills": 11,
+      "deaths": 6,
+      "assists": 2,
+      "adr": 70.44,
+      "kast": 81.25,
+      "rating": 6.19,
+      "headshot_percentage": 36.36,
+      "first_kills": 1,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 181,
+        "nickname": "INS"
+      },
+      "match_map_id": 15271942,
+      "kills": 11,
+      "deaths": 12,
+      "assists": 11,
+      "adr": 75.31,
+      "kast": 81.25,
+      "rating": 6.12,
+      "headshot_percentage": 18.18,
+      "first_kills": 1,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 704,
+        "nickname": "asap"
+      },
+      "match_map_id": 15271942,
+      "kills": 10,
+      "deaths": 14,
+      "assists": 2,
+      "adr": 78.56,
+      "kast": 68.75,
+      "rating": 6.07,
+      "headshot_percentage": 70,
+      "first_kills": 3,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 151,
+        "nickname": "dexter"
+      },
+      "match_map_id": 15271942,
+      "kills": 10,
+      "deaths": 14,
+      "assists": 2,
+      "adr": 75.5,
+      "kast": 62.5,
+      "rating": 5.54,
+      "headshot_percentage": 70,
+      "first_kills": 2,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 170,
+        "nickname": "Liazz"
+      },
+      "match_map_id": 15271942,
+      "kills": 9,
+      "deaths": 13,
+      "assists": 1,
+      "adr": 68.31,
+      "kast": 56.25,
+      "rating": 5.35,
+      "headshot_percentage": 66.67,
+      "first_kills": 0,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 172,
+        "nickname": "aliStair"
+      },
+      "match_map_id": 15271942,
+      "kills": 10,
+      "deaths": 13,
+      "assists": 5,
+      "adr": 63.94,
+      "kast": 62.5,
+      "rating": 5.05,
+      "headshot_percentage": 40,
+      "first_kills": 0,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 4630,
+        "nickname": "TjP"
+      },
+      "match_map_id": 15271942,
+      "kills": 2,
+      "deaths": 15,
+      "assists": 1,
+      "adr": 23.06,
+      "kast": 37.5,
+      "rating": 2.58,
+      "headshot_percentage": 50,
+      "first_kills": 0,
+      "first_deaths": 4,
+      "clutches_won": 0
+    }
+  ]
+}

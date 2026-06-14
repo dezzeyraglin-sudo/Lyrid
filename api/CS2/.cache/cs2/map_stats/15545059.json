@@ -1,0 +1,176 @@
+{
+  "match_map_id": 15545059,
+  "match_id": 10662184,
+  "rows": [
+    {
+      "player": {
+        "id": 220,
+        "nickname": "huNter-"
+      },
+      "match_map_id": 15545059,
+      "kills": 16,
+      "deaths": 6,
+      "assists": 1,
+      "adr": 88.19,
+      "kast": null,
+      "rating": 7.11,
+      "headshot_percentage": 50,
+      "first_kills": 3,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 1223,
+        "nickname": "SunPayus"
+      },
+      "match_map_id": 15545059,
+      "kills": 11,
+      "deaths": 10,
+      "assists": 3,
+      "adr": 64,
+      "kast": null,
+      "rating": 6.46,
+      "headshot_percentage": 18.18,
+      "first_kills": 5,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 7970,
+        "nickname": "dem0n"
+      },
+      "match_map_id": 15545059,
+      "kills": 10,
+      "deaths": 13,
+      "assists": 2,
+      "adr": 84.44,
+      "kast": null,
+      "rating": 6.31,
+      "headshot_percentage": 70,
+      "first_kills": 1,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 2801,
+        "nickname": "HeavyGod"
+      },
+      "match_map_id": 15545059,
+      "kills": 9,
+      "deaths": 7,
+      "assists": 3,
+      "adr": 71.63,
+      "kast": null,
+      "rating": 6.11,
+      "headshot_percentage": 66.67,
+      "first_kills": 0,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 14151,
+        "nickname": "dziugss"
+      },
+      "match_map_id": 15545059,
+      "kills": 10,
+      "deaths": 9,
+      "assists": 0,
+      "adr": 56.38,
+      "kast": null,
+      "rating": 6.09,
+      "headshot_percentage": 70,
+      "first_kills": 1,
+      "first_deaths": 1,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 1124,
+        "nickname": "Nertz"
+      },
+      "match_map_id": 15545059,
+      "kills": 11,
+      "deaths": 8,
+      "assists": 2,
+      "adr": 72.13,
+      "kast": null,
+      "rating": 5.95,
+      "headshot_percentage": 27.27,
+      "first_kills": 1,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 4744,
+        "nickname": "MATYS"
+      },
+      "match_map_id": 15545059,
+      "kills": 8,
+      "deaths": 9,
+      "assists": 5,
+      "adr": 63.81,
+      "kast": null,
+      "rating": 5.66,
+      "headshot_percentage": 50,
+      "first_kills": 0,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 4469,
+        "nickname": "lauNX"
+      },
+      "match_map_id": 15545059,
+      "kills": 8,
+      "deaths": 12,
+      "assists": 5,
+      "adr": 64.25,
+      "kast": null,
+      "rating": 5.46,
+      "headshot_percentage": 75,
+      "first_kills": 2,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 8221,
+        "nickname": "Krabeni"
+      },
+      "match_map_id": 15545059,
+      "kills": 7,
+      "deaths": 11,
+      "assists": 3,
+      "adr": 51.75,
+      "kast": null,
+      "rating": 5.16,
+      "headshot_percentage": 42.86,
+      "first_kills": 2,
+      "first_deaths": 4,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 10348,
+        "nickname": "cmtry"
+      },
+      "match_map_id": 15545059,
+      "kills": 5,
+      "deaths": 10,
+      "assists": 3,
+      "adr": 39.38,
+      "kast": null,
+      "rating": 4.52,
+      "headshot_percentage": 20,
+      "first_kills": 1,
+      "first_deaths": 2,
+      "clutches_won": 1
+    }
+  ]
+}

@@ -1,0 +1,176 @@
+{
+  "match_map_id": 16057207,
+  "match_id": 11074805,
+  "rows": [
+    {
+      "player": {
+        "id": 294,
+        "nickname": "ZywOo"
+      },
+      "match_map_id": 16057207,
+      "kills": 19,
+      "deaths": 9,
+      "assists": 6,
+      "adr": 92.82,
+      "kast": 86.36,
+      "rating": 7.44,
+      "headshot_percentage": 68.42,
+      "first_kills": 2,
+      "first_deaths": 2,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 95,
+        "nickname": "ropz"
+      },
+      "match_map_id": 16057207,
+      "kills": 19,
+      "deaths": 15,
+      "assists": 3,
+      "adr": 88.09,
+      "kast": 81.82,
+      "rating": 7,
+      "headshot_percentage": 47.37,
+      "first_kills": 4,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 18,
+        "nickname": "apEX"
+      },
+      "match_map_id": 16057207,
+      "kills": 16,
+      "deaths": 16,
+      "assists": 8,
+      "adr": 89.32,
+      "kast": 68.18,
+      "rating": 6.74,
+      "headshot_percentage": 56.25,
+      "first_kills": 6,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 1421,
+        "nickname": "Spinx"
+      },
+      "match_map_id": 16057207,
+      "kills": 16,
+      "deaths": 16,
+      "assists": 3,
+      "adr": 82.95,
+      "kast": 68.18,
+      "rating": 6.73,
+      "headshot_percentage": 43.75,
+      "first_kills": 3,
+      "first_deaths": 1,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 1125,
+        "nickname": "flameZ"
+      },
+      "match_map_id": 16057207,
+      "kills": 14,
+      "deaths": 12,
+      "assists": 3,
+      "adr": 60.09,
+      "kast": 77.27,
+      "rating": 5.91,
+      "headshot_percentage": 57.14,
+      "first_kills": 2,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 3680,
+        "nickname": "mezii"
+      },
+      "match_map_id": 16057207,
+      "kills": 14,
+      "deaths": 13,
+      "assists": 7,
+      "adr": 63.32,
+      "kast": 86.36,
+      "rating": 5.86,
+      "headshot_percentage": 50,
+      "first_kills": 0,
+      "first_deaths": 1,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 204,
+        "nickname": "Brollan"
+      },
+      "match_map_id": 16057207,
+      "kills": 14,
+      "deaths": 18,
+      "assists": 7,
+      "adr": 84.14,
+      "kast": 72.73,
+      "rating": 5.83,
+      "headshot_percentage": 71.43,
+      "first_kills": 0,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 3141,
+        "nickname": "xertioN"
+      },
+      "match_map_id": 16057207,
+      "kills": 11,
+      "deaths": 18,
+      "assists": 8,
+      "adr": 80.64,
+      "kast": 68.18,
+      "rating": 5.63,
+      "headshot_percentage": 63.64,
+      "first_kills": 5,
+      "first_deaths": 6,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 1630,
+        "nickname": "torzsi"
+      },
+      "match_map_id": 16057207,
+      "kills": 13,
+      "deaths": 16,
+      "assists": 1,
+      "adr": 50,
+      "kast": 77.27,
+      "rating": 5.32,
+      "headshot_percentage": 53.85,
+      "first_kills": 0,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 16530,
+        "nickname": "xelex"
+      },
+      "match_map_id": 16057207,
+      "kills": 10,
+      "deaths": 14,
+      "assists": 1,
+      "adr": 40.77,
+      "kast": 59.09,
+      "rating": 4.53,
+      "headshot_percentage": 50,
+      "first_kills": 0,
+      "first_deaths": 4,
+      "clutches_won": 1
+    }
+  ]
+}

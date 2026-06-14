@@ -1,0 +1,176 @@
+{
+  "match_map_id": 4235765,
+  "match_id": 3463776,
+  "rows": [
+    {
+      "player": {
+        "id": 176,
+        "nickname": "Jame"
+      },
+      "match_map_id": 4235765,
+      "kills": 21,
+      "deaths": 9,
+      "assists": 6,
+      "adr": 126.06,
+      "kast": 83.33,
+      "rating": 8.45,
+      "headshot_percentage": 14.29,
+      "first_kills": 5,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 3277,
+        "nickname": "BELCHONOKK"
+      },
+      "match_map_id": 4235765,
+      "kills": 16,
+      "deaths": 9,
+      "assists": 4,
+      "adr": 86.61,
+      "kast": 66.67,
+      "rating": 7.13,
+      "headshot_percentage": 25,
+      "first_kills": 2,
+      "first_deaths": 1,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 14268,
+        "nickname": "zweih"
+      },
+      "match_map_id": 4235765,
+      "kills": 13,
+      "deaths": 9,
+      "assists": 7,
+      "adr": 88.28,
+      "kast": 88.89,
+      "rating": 6.43,
+      "headshot_percentage": 46.15,
+      "first_kills": 0,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 9745,
+        "nickname": "xiELO"
+      },
+      "match_map_id": 4235765,
+      "kills": 13,
+      "deaths": 11,
+      "assists": 5,
+      "adr": 73.83,
+      "kast": 66.67,
+      "rating": 6.28,
+      "headshot_percentage": 53.85,
+      "first_kills": 2,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 2922,
+        "nickname": "shadiy"
+      },
+      "match_map_id": 4235765,
+      "kills": 14,
+      "deaths": 15,
+      "assists": 2,
+      "adr": 79.83,
+      "kast": 61.11,
+      "rating": 5.84,
+      "headshot_percentage": 64.29,
+      "first_kills": 2,
+      "first_deaths": 4,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 2968,
+        "nickname": "keen"
+      },
+      "match_map_id": 4235765,
+      "kills": 11,
+      "deaths": 17,
+      "assists": 4,
+      "adr": 83.17,
+      "kast": 61.11,
+      "rating": 5.73,
+      "headshot_percentage": 72.73,
+      "first_kills": 2,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 11072,
+        "nickname": "nota"
+      },
+      "match_map_id": 4235765,
+      "kills": 13,
+      "deaths": 11,
+      "assists": 3,
+      "adr": 63.44,
+      "kast": 72.22,
+      "rating": 5.73,
+      "headshot_percentage": 61.54,
+      "first_kills": 3,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 559,
+        "nickname": "hazr"
+      },
+      "match_map_id": 4235765,
+      "kills": 13,
+      "deaths": 14,
+      "assists": 1,
+      "adr": 71.56,
+      "kast": 50,
+      "rating": 5.69,
+      "headshot_percentage": 76.92,
+      "first_kills": 1,
+      "first_deaths": 5,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 3203,
+        "nickname": "SaVage"
+      },
+      "match_map_id": 4235765,
+      "kills": 6,
+      "deaths": 15,
+      "assists": 1,
+      "adr": 50.78,
+      "kast": 44.44,
+      "rating": 4.64,
+      "headshot_percentage": 83.33,
+      "first_kills": 1,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 2209,
+        "nickname": "ADDICT"
+      },
+      "match_map_id": 4235765,
+      "kills": 5,
+      "deaths": 15,
+      "assists": 2,
+      "adr": 50.28,
+      "kast": 44.44,
+      "rating": 3.95,
+      "headshot_percentage": 60,
+      "first_kills": 0,
+      "first_deaths": 2,
+      "clutches_won": 0
+    }
+  ]
+}

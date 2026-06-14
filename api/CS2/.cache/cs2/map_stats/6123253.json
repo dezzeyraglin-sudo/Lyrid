@@ -1,0 +1,176 @@
+{
+  "match_map_id": 6123253,
+  "match_id": 3088140,
+  "rows": [
+    {
+      "player": {
+        "id": 359,
+        "nickname": "KSCERATO"
+      },
+      "match_map_id": 6123253,
+      "kills": 17,
+      "deaths": 8,
+      "assists": 1,
+      "adr": 74.9,
+      "kast": 90.48,
+      "rating": 7.14,
+      "headshot_percentage": 47.06,
+      "first_kills": 2,
+      "first_deaths": 0,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 306,
+        "nickname": "YEKINDAR"
+      },
+      "match_map_id": 6123253,
+      "kills": 20,
+      "deaths": 11,
+      "assists": 2,
+      "adr": 92.67,
+      "kast": 61.9,
+      "rating": 6.92,
+      "headshot_percentage": 75,
+      "first_kills": 2,
+      "first_deaths": 5,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 769,
+        "nickname": "JamYoung"
+      },
+      "match_map_id": 6123253,
+      "kills": 13,
+      "deaths": 11,
+      "assists": 7,
+      "adr": 77.67,
+      "kast": 80.95,
+      "rating": 6.34,
+      "headshot_percentage": 69.23,
+      "first_kills": 1,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 2,
+        "nickname": "FalleN"
+      },
+      "match_map_id": 6123253,
+      "kills": 14,
+      "deaths": 12,
+      "assists": 8,
+      "adr": 80.1,
+      "kast": 80.95,
+      "rating": 6.24,
+      "headshot_percentage": 57.14,
+      "first_kills": 2,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 16281,
+        "nickname": "molodoy"
+      },
+      "match_map_id": 6123253,
+      "kills": 12,
+      "deaths": 12,
+      "assists": 4,
+      "adr": 66.1,
+      "kast": 76.19,
+      "rating": 6.18,
+      "headshot_percentage": 58.33,
+      "first_kills": 3,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 5854,
+        "nickname": "Mercury"
+      },
+      "match_map_id": 6123253,
+      "kills": 13,
+      "deaths": 14,
+      "assists": 7,
+      "adr": 73.05,
+      "kast": 76.19,
+      "rating": 5.94,
+      "headshot_percentage": 30.77,
+      "first_kills": 3,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 7848,
+        "nickname": "Moseyuh"
+      },
+      "match_map_id": 6123253,
+      "kills": 13,
+      "deaths": 16,
+      "assists": 3,
+      "adr": 68.29,
+      "kast": 71.43,
+      "rating": 5.66,
+      "headshot_percentage": 69.23,
+      "first_kills": 2,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 356,
+        "nickname": "yuurih"
+      },
+      "match_map_id": 6123253,
+      "kills": 7,
+      "deaths": 12,
+      "assists": 7,
+      "adr": 58.81,
+      "kast": 76.19,
+      "rating": 4.93,
+      "headshot_percentage": 42.86,
+      "first_kills": 3,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 11017,
+        "nickname": "Zero"
+      },
+      "match_map_id": 6123253,
+      "kills": 12,
+      "deaths": 14,
+      "assists": 2,
+      "adr": 55.95,
+      "kast": 47.62,
+      "rating": 4.77,
+      "headshot_percentage": 58.33,
+      "first_kills": 2,
+      "first_deaths": 6,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 3202,
+        "nickname": "Jee"
+      },
+      "match_map_id": 6123253,
+      "kills": 4,
+      "deaths": 15,
+      "assists": 0,
+      "adr": 21.95,
+      "kast": 57.14,
+      "rating": 3.69,
+      "headshot_percentage": 25,
+      "first_kills": 1,
+      "first_deaths": 1,
+      "clutches_won": 0
+    }
+  ]
+}

@@ -1,0 +1,176 @@
+{
+  "match_map_id": 16034826,
+  "match_id": 11074809,
+  "rows": [
+    {
+      "player": {
+        "id": 25,
+        "nickname": "NiKo"
+      },
+      "match_map_id": 16034826,
+      "kills": 28,
+      "deaths": 12,
+      "assists": 2,
+      "adr": 127.86,
+      "kast": 86.36,
+      "rating": 8.75,
+      "headshot_percentage": 67.86,
+      "first_kills": 4,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 1558,
+        "nickname": "m0NESY"
+      },
+      "match_map_id": 16034826,
+      "kills": 21,
+      "deaths": 13,
+      "assists": 4,
+      "adr": 100,
+      "kast": 81.82,
+      "rating": 7.63,
+      "headshot_percentage": 19.05,
+      "first_kills": 4,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 594,
+        "nickname": "TeSeS"
+      },
+      "match_map_id": 16034826,
+      "kills": 18,
+      "deaths": 9,
+      "assists": 4,
+      "adr": 63.68,
+      "kast": 77.27,
+      "rating": 6.07,
+      "headshot_percentage": 44.44,
+      "first_kills": 1,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 2666,
+        "nickname": "Gizmy"
+      },
+      "match_map_id": 16034826,
+      "kills": 11,
+      "deaths": 15,
+      "assists": 8,
+      "adr": 61.5,
+      "kast": 77.27,
+      "rating": 5.98,
+      "headshot_percentage": 63.64,
+      "first_kills": 2,
+      "first_deaths": 5,
+      "clutches_won": 3
+    },
+    {
+      "player": {
+        "id": 6952,
+        "nickname": "AZUWU"
+      },
+      "match_map_id": 16034826,
+      "kills": 16,
+      "deaths": 21,
+      "assists": 3,
+      "adr": 71.68,
+      "kast": 63.64,
+      "rating": 5.88,
+      "headshot_percentage": 87.5,
+      "first_kills": 4,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 1580,
+        "nickname": "Bymas"
+      },
+      "match_map_id": 16034826,
+      "kills": 13,
+      "deaths": 14,
+      "assists": 4,
+      "adr": 64.95,
+      "kast": 68.18,
+      "rating": 5.69,
+      "headshot_percentage": 38.46,
+      "first_kills": 2,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 1566,
+        "nickname": "afro"
+      },
+      "match_map_id": 16034826,
+      "kills": 11,
+      "deaths": 17,
+      "assists": 5,
+      "adr": 70.86,
+      "kast": 68.18,
+      "rating": 5.25,
+      "headshot_percentage": 18.18,
+      "first_kills": 0,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 725,
+        "nickname": "Rainwaker"
+      },
+      "match_map_id": 16034826,
+      "kills": 10,
+      "deaths": 15,
+      "assists": 2,
+      "adr": 49.09,
+      "kast": 59.09,
+      "rating": 5,
+      "headshot_percentage": 20,
+      "first_kills": 2,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 15372,
+        "nickname": "kyousuke"
+      },
+      "match_map_id": 16034826,
+      "kills": 8,
+      "deaths": 14,
+      "assists": 7,
+      "adr": 53.45,
+      "kast": 81.82,
+      "rating": 4.94,
+      "headshot_percentage": 50,
+      "first_kills": 1,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 27,
+        "nickname": "karrigan"
+      },
+      "match_map_id": 16034826,
+      "kills": 7,
+      "deaths": 13,
+      "assists": 7,
+      "adr": 42.55,
+      "kast": 90.91,
+      "rating": 4.48,
+      "headshot_percentage": 85.71,
+      "first_kills": 2,
+      "first_deaths": 3,
+      "clutches_won": 0
+    }
+  ]
+}

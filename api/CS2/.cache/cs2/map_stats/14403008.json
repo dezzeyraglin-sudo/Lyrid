@@ -1,0 +1,176 @@
+{
+  "match_map_id": 14403008,
+  "match_id": 9487951,
+  "rows": [
+    {
+      "player": {
+        "id": 15517,
+        "nickname": "tENZY"
+      },
+      "match_map_id": 14403008,
+      "kills": 22,
+      "deaths": 12,
+      "assists": 5,
+      "adr": 104.95,
+      "kast": 86.36,
+      "rating": 8.73,
+      "headshot_percentage": 63.64,
+      "first_kills": 8,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 1062,
+        "nickname": "misutaaa"
+      },
+      "match_map_id": 14403008,
+      "kills": 18,
+      "deaths": 14,
+      "assists": 6,
+      "adr": 91.59,
+      "kast": 86.36,
+      "rating": 6.9,
+      "headshot_percentage": 61.11,
+      "first_kills": 1,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 267,
+        "nickname": "Maka"
+      },
+      "match_map_id": 14403008,
+      "kills": 15,
+      "deaths": 16,
+      "assists": 3,
+      "adr": 81.14,
+      "kast": 77.27,
+      "rating": 6.34,
+      "headshot_percentage": 26.67,
+      "first_kills": 4,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 5254,
+        "nickname": "MaSvAl"
+      },
+      "match_map_id": 14403008,
+      "kills": 15,
+      "deaths": 11,
+      "assists": 2,
+      "adr": 67.59,
+      "kast": 68.18,
+      "rating": 6.24,
+      "headshot_percentage": 66.67,
+      "first_kills": 1,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 4781,
+        "nickname": "Graviti"
+      },
+      "match_map_id": 14403008,
+      "kills": 16,
+      "deaths": 13,
+      "assists": 3,
+      "adr": 68.86,
+      "kast": 72.73,
+      "rating": 6.17,
+      "headshot_percentage": 56.25,
+      "first_kills": 1,
+      "first_deaths": 3,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 5518,
+        "nickname": "AW"
+      },
+      "match_map_id": 14403008,
+      "kills": 11,
+      "deaths": 12,
+      "assists": 6,
+      "adr": 71.32,
+      "kast": 63.64,
+      "rating": 5.98,
+      "headshot_percentage": 90.91,
+      "first_kills": 1,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 13939,
+        "nickname": "sFade8"
+      },
+      "match_map_id": 14403008,
+      "kills": 13,
+      "deaths": 16,
+      "assists": 8,
+      "adr": 72.36,
+      "kast": 72.73,
+      "rating": 5.68,
+      "headshot_percentage": 53.85,
+      "first_kills": 4,
+      "first_deaths": 4,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 14974,
+        "nickname": "mo0n"
+      },
+      "match_map_id": 14403008,
+      "kills": 10,
+      "deaths": 12,
+      "assists": 4,
+      "adr": 54.27,
+      "kast": 68.18,
+      "rating": 5.64,
+      "headshot_percentage": 20,
+      "first_kills": 2,
+      "first_deaths": 0,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 370,
+        "nickname": "Lucky"
+      },
+      "match_map_id": 14403008,
+      "kills": 9,
+      "deaths": 15,
+      "assists": 3,
+      "adr": 52.64,
+      "kast": 68.18,
+      "rating": 4.49,
+      "headshot_percentage": 44.44,
+      "first_kills": 0,
+      "first_deaths": 5,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 3190,
+        "nickname": "Ex3rcice"
+      },
+      "match_map_id": 14403008,
+      "kills": 5,
+      "deaths": 14,
+      "assists": 4,
+      "adr": 39.41,
+      "kast": 50,
+      "rating": 3.81,
+      "headshot_percentage": 60,
+      "first_kills": 0,
+      "first_deaths": 5,
+      "clutches_won": 0
+    }
+  ]
+}

@@ -1,0 +1,193 @@
+{
+  "match_map_id": 9281527,
+  "match_id": 7126719,
+  "rows": [
+    {
+      "player": {
+        "id": 1249,
+        "nickname": "Lucky"
+      },
+      "match_map_id": 9281527,
+      "kills": 26,
+      "deaths": 11,
+      "assists": 4,
+      "adr": 300.28,
+      "kast": null,
+      "rating": 10,
+      "headshot_percentage": null,
+      "first_kills": 5,
+      "first_deaths": 2,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 370,
+        "nickname": "Lucky"
+      },
+      "match_map_id": 9281527,
+      "kills": 26,
+      "deaths": 11,
+      "assists": 4,
+      "adr": 130,
+      "kast": 88.89,
+      "rating": 9.7,
+      "headshot_percentage": 38.46,
+      "first_kills": 5,
+      "first_deaths": 2,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 1062,
+        "nickname": "misutaaa"
+      },
+      "match_map_id": 9281527,
+      "kills": 13,
+      "deaths": 12,
+      "assists": 7,
+      "adr": 82.39,
+      "kast": 88.89,
+      "rating": 6.91,
+      "headshot_percentage": 61.54,
+      "first_kills": 2,
+      "first_deaths": 0,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 4781,
+        "nickname": "Graviti"
+      },
+      "match_map_id": 9281527,
+      "kills": 16,
+      "deaths": 11,
+      "assists": 4,
+      "adr": 80.17,
+      "kast": 94.44,
+      "rating": 6.81,
+      "headshot_percentage": 68.75,
+      "first_kills": 1,
+      "first_deaths": 2,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 3190,
+        "nickname": "Ex3rcice"
+      },
+      "match_map_id": 9281527,
+      "kills": 13,
+      "deaths": 13,
+      "assists": 8,
+      "adr": 93.72,
+      "kast": 83.33,
+      "rating": 6.49,
+      "headshot_percentage": 69.23,
+      "first_kills": 1,
+      "first_deaths": 2,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 6772,
+        "nickname": "ultimate"
+      },
+      "match_map_id": 9281527,
+      "kills": 16,
+      "deaths": 15,
+      "assists": 3,
+      "adr": 84.39,
+      "kast": 83.33,
+      "rating": 6.28,
+      "headshot_percentage": 37.5,
+      "first_kills": 1,
+      "first_deaths": 2,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 267,
+        "nickname": "Maka"
+      },
+      "match_map_id": 9281527,
+      "kills": 11,
+      "deaths": 10,
+      "assists": 8,
+      "adr": 54.44,
+      "kast": 77.78,
+      "rating": 5.76,
+      "headshot_percentage": 27.27,
+      "first_kills": 2,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 548,
+        "nickname": "malbsMd"
+      },
+      "match_map_id": 9281527,
+      "kills": 13,
+      "deaths": 16,
+      "assists": 1,
+      "adr": 80.06,
+      "kast": 61.11,
+      "rating": 5.74,
+      "headshot_percentage": 69.23,
+      "first_kills": 3,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 2199,
+        "nickname": "siuhy"
+      },
+      "match_map_id": 9281527,
+      "kills": 8,
+      "deaths": 15,
+      "assists": 3,
+      "adr": 62.44,
+      "kast": 61.11,
+      "rating": 5.23,
+      "headshot_percentage": 50,
+      "first_kills": 2,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 63,
+        "nickname": "NAF"
+      },
+      "match_map_id": 9281527,
+      "kills": 8,
+      "deaths": 16,
+      "assists": 9,
+      "adr": 83.5,
+      "kast": 83.33,
+      "rating": 5.05,
+      "headshot_percentage": 75,
+      "first_kills": 1,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 30,
+        "nickname": "EliGE"
+      },
+      "match_map_id": 9281527,
+      "kills": 12,
+      "deaths": 17,
+      "assists": 2,
+      "adr": 60.28,
+      "kast": 66.67,
+      "rating": 4.78,
+      "headshot_percentage": 41.67,
+      "first_kills": 0,
+      "first_deaths": 3,
+      "clutches_won": 0
+    }
+  ]
+}

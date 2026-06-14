@@ -1,0 +1,176 @@
+{
+  "match_map_id": 13969935,
+  "match_id": 9520639,
+  "rows": [
+    {
+      "player": {
+        "id": 5204,
+        "nickname": "insani"
+      },
+      "match_map_id": 13969935,
+      "kills": 27,
+      "deaths": 23,
+      "assists": 5,
+      "adr": 114.46,
+      "kast": 71.43,
+      "rating": 7.39,
+      "headshot_percentage": 59.26,
+      "first_kills": 6,
+      "first_deaths": 4,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 779,
+        "nickname": "dumau"
+      },
+      "match_map_id": 13969935,
+      "kills": 25,
+      "deaths": 18,
+      "assists": 8,
+      "adr": 105,
+      "kast": 82.14,
+      "rating": 7.35,
+      "headshot_percentage": 52,
+      "first_kills": 7,
+      "first_deaths": 4,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 9151,
+        "nickname": "saadzin"
+      },
+      "match_map_id": 13969935,
+      "kills": 22,
+      "deaths": 12,
+      "assists": 5,
+      "adr": 70.07,
+      "kast": 71.43,
+      "rating": 6.29,
+      "headshot_percentage": 27.27,
+      "first_kills": 2,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 648,
+        "nickname": "latto"
+      },
+      "match_map_id": 13969935,
+      "kills": 20,
+      "deaths": 19,
+      "assists": 6,
+      "adr": 81.21,
+      "kast": 71.43,
+      "rating": 6.25,
+      "headshot_percentage": 60,
+      "first_kills": 2,
+      "first_deaths": 4,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 2814,
+        "nickname": "n1ssim"
+      },
+      "match_map_id": 13969935,
+      "kills": 21,
+      "deaths": 16,
+      "assists": 4,
+      "adr": 68.07,
+      "kast": 78.57,
+      "rating": 5.99,
+      "headshot_percentage": 42.86,
+      "first_kills": 0,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 11081,
+        "nickname": "kl1m"
+      },
+      "match_map_id": 13969935,
+      "kills": 19,
+      "deaths": 21,
+      "assists": 5,
+      "adr": 65.07,
+      "kast": 67.86,
+      "rating": 5.91,
+      "headshot_percentage": 52.63,
+      "first_kills": 3,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 5041,
+        "nickname": "venomzera"
+      },
+      "match_map_id": 13969935,
+      "kills": 13,
+      "deaths": 19,
+      "assists": 4,
+      "adr": 53.82,
+      "kast": 64.29,
+      "rating": 5.24,
+      "headshot_percentage": 53.85,
+      "first_kills": 4,
+      "first_deaths": 2,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 357,
+        "nickname": "arT"
+      },
+      "match_map_id": 13969935,
+      "kills": 14,
+      "deaths": 20,
+      "assists": 8,
+      "adr": 57.96,
+      "kast": 71.43,
+      "rating": 5.14,
+      "headshot_percentage": 21.43,
+      "first_kills": 2,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 3677,
+        "nickname": "LNZ"
+      },
+      "match_map_id": 13969935,
+      "kills": 11,
+      "deaths": 17,
+      "assists": 3,
+      "adr": 52.57,
+      "kast": 75,
+      "rating": 5.05,
+      "headshot_percentage": 36.36,
+      "first_kills": 1,
+      "first_deaths": 3,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 4305,
+        "nickname": "brnz4n"
+      },
+      "match_map_id": 13969935,
+      "kills": 15,
+      "deaths": 22,
+      "assists": 5,
+      "adr": 59.54,
+      "kast": 67.86,
+      "rating": 4.95,
+      "headshot_percentage": 66.67,
+      "first_kills": 1,
+      "first_deaths": 2,
+      "clutches_won": 0
+    }
+  ]
+}

@@ -1,0 +1,176 @@
+{
+  "match_map_id": 16030563,
+  "match_id": 11074808,
+  "rows": [
+    {
+      "player": {
+        "id": 5529,
+        "nickname": "Wicadia"
+      },
+      "match_map_id": 16030563,
+      "kills": 20,
+      "deaths": 15,
+      "assists": 7,
+      "adr": 103.19,
+      "kast": 80.95,
+      "rating": 7.11,
+      "headshot_percentage": 50,
+      "first_kills": 2,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 104,
+        "nickname": "XANTARES"
+      },
+      "match_map_id": 16030563,
+      "kills": 17,
+      "deaths": 11,
+      "assists": 7,
+      "adr": 92.29,
+      "kast": 76.19,
+      "rating": 7.09,
+      "headshot_percentage": 47.06,
+      "first_kills": 5,
+      "first_deaths": 2,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 2801,
+        "nickname": "HeavyGod"
+      },
+      "match_map_id": 16030563,
+      "kills": 15,
+      "deaths": 15,
+      "assists": 4,
+      "adr": 79.19,
+      "kast": 76.19,
+      "rating": 6.65,
+      "headshot_percentage": 66.67,
+      "first_kills": 3,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 1124,
+        "nickname": "Nertz"
+      },
+      "match_map_id": 16030563,
+      "kills": 16,
+      "deaths": 15,
+      "assists": 6,
+      "adr": 92.19,
+      "kast": 61.9,
+      "rating": 6.19,
+      "headshot_percentage": 62.5,
+      "first_kills": 2,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 137,
+        "nickname": "woxic"
+      },
+      "match_map_id": 16030563,
+      "kills": 13,
+      "deaths": 12,
+      "assists": 3,
+      "adr": 58,
+      "kast": 71.43,
+      "rating": 5.91,
+      "headshot_percentage": 38.46,
+      "first_kills": 2,
+      "first_deaths": 1,
+      "clutches_won": 1
+    },
+    {
+      "player": {
+        "id": 105,
+        "nickname": "MAJ3R"
+      },
+      "match_map_id": 16030563,
+      "kills": 15,
+      "deaths": 12,
+      "assists": 1,
+      "adr": 59.71,
+      "kast": 71.43,
+      "rating": 5.9,
+      "headshot_percentage": 53.33,
+      "first_kills": 1,
+      "first_deaths": 0,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 1223,
+        "nickname": "SunPayus"
+      },
+      "match_map_id": 16030563,
+      "kills": 14,
+      "deaths": 15,
+      "assists": 1,
+      "adr": 62.62,
+      "kast": 66.67,
+      "rating": 5.71,
+      "headshot_percentage": 42.86,
+      "first_kills": 2,
+      "first_deaths": 1,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 5066,
+        "nickname": "Soulfly"
+      },
+      "match_map_id": 16030563,
+      "kills": 12,
+      "deaths": 13,
+      "assists": 7,
+      "adr": 70.24,
+      "kast": 71.43,
+      "rating": 5.19,
+      "headshot_percentage": 50,
+      "first_kills": 1,
+      "first_deaths": 4,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 220,
+        "nickname": "huNter-"
+      },
+      "match_map_id": 16030563,
+      "kills": 10,
+      "deaths": 16,
+      "assists": 4,
+      "adr": 52.71,
+      "kast": 61.9,
+      "rating": 4.81,
+      "headshot_percentage": 70,
+      "first_kills": 2,
+      "first_deaths": 3,
+      "clutches_won": 0
+    },
+    {
+      "player": {
+        "id": 4744,
+        "nickname": "MATYS"
+      },
+      "match_map_id": 16030563,
+      "kills": 8,
+      "deaths": 16,
+      "assists": 4,
+      "adr": 55.38,
+      "kast": 57.14,
+      "rating": 4.47,
+      "headshot_percentage": 75,
+      "first_kills": 1,
+      "first_deaths": 3,
+      "clutches_won": 0
+    }
+  ]
+}
