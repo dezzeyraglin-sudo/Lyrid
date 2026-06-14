@@ -38,6 +38,8 @@ const CFG = {
 
 const args = parseArgs(process.argv.slice(2));
 const CACHE = args.cache ?? ".cache/cs2";
+const JSON_OUT = !!args.json;                 // emit a slate JSON for the Lyrid app instead of console text
+const OUT_PATH = args.out ?? "cs2_reads.json"; // upsert this match into the file (one file = a slate)
 
 const matches = readJson(path.join(CACHE, "matches.json"));
 const maps = readJson(path.join(CACHE, "match_maps.json"));
@@ -129,12 +131,14 @@ const roster = [...k1].filter((p) => k2.has(p));
 // round-volume read for the series (honestly weak; flagged)
 const vol = roundVolume(target, tts);
 
-console.log("=".repeat(70));
-console.log(`MATCH READ — ${target.team1?.name ?? "?"} vs ${target.team2?.name ?? "?"}   ${target.start_time?.slice(0, 10)}`);
-console.log(`format Bo${target.best_of} · tier ${target.tournament?.tier ?? "?"} · ${target.tournament?.is_online ? "ONLINE (higher variance)" : "LAN"}`);
-console.log(`expected maps 1&2: ${expMaps.join(" + ")}`);
-console.log(`round volume [LOW CONFIDENCE]: E[rounds/map] ${vol.erounds}  blowout ${pct(vol.blowout)}  OT ${pct(vol.otRate)}`);
-console.log("=".repeat(70));
+if (!JSON_OUT) {
+  console.log("=".repeat(70));
+  console.log(`MATCH READ — ${target.team1?.name ?? "?"} vs ${target.team2?.name ?? "?"}   ${target.start_time?.slice(0, 10)}`);
+  console.log(`format Bo${target.best_of} · tier ${target.tournament?.tier ?? "?"} · ${target.tournament?.is_online ? "ONLINE (higher variance)" : "LAN"}`);
+  console.log(`expected maps 1&2: ${expMaps.join(" + ")}`);
+  console.log(`round volume [LOW CONFIDENCE]: E[rounds/map] ${vol.erounds}  blowout ${pct(vol.blowout)}  OT ${pct(vol.otRate)}`);
+  console.log("=".repeat(70));
+}
 
 const profiles = roster.map((pid) => profile(pid, tts, expMaps)).filter(Boolean);
 
@@ -149,6 +153,43 @@ for (const p of profiles) {
 }
 for (const [, team] of byTeam) assignRolesRelative(team);
 for (const p of unresolved) p.role = inferRole(p); // fallback for unresolved players
+
+// collect every player (team-resolved first, then fallback) with their team name
+const playersOut = [];
+for (const [teamId, team] of byTeam) {
+  const tname = teamId === t1id ? target.team1?.name : target.team2?.name;
+  for (const p of team) playersOut.push({ team: tname ?? null, ...computeRead(p, vol) });
+}
+for (const p of unresolved) playersOut.push({ team: null, ...computeRead(p, vol) });
+
+if (JSON_OUT) {
+  // Upsert this match into a slate file the Lyrid CS2 tab fetches. One file = one slate.
+  const matchObj = {
+    matchId: MATCH_ID,
+    date: target.start_time?.slice(0, 10) ?? null,
+    teamA: target.team1?.name ?? null,
+    teamB: target.team2?.name ?? null,
+    format: `Bo${target.best_of}`,
+    tier: target.tournament?.tier ?? null,
+    lan: !target.tournament?.is_online,
+    maps: expMaps,
+    roundVolume: { erounds: vol.erounds, blowout: vol.blowout, ot: vol.otRate, confidence: "LOW" },
+    players: playersOut,
+  };
+  let file = {
+    ok: true, generatedAt: null, validated: false,
+    source: "BDL CS2 + matchRead — PARTIAL pick score, NOT yet validated vs Underdog price",
+    matches: [],
+  };
+  if (fs.existsSync(OUT_PATH)) { try { file = JSON.parse(fs.readFileSync(OUT_PATH, "utf8")); } catch { /* start fresh */ } }
+  file.matches = (file.matches || []).filter((m) => m.matchId !== MATCH_ID); // replace if re-run
+  file.matches.push(matchObj);
+  file.matches.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  file.ok = true; file.validated = false; file.generatedAt = new Date().toISOString();
+  fs.writeFileSync(OUT_PATH, JSON.stringify(file, null, 2));
+  console.error(`✓ ${matchObj.teamA} vs ${matchObj.teamB} → ${OUT_PATH}  (${file.matches.length} match${file.matches.length === 1 ? "" : "es"} in slate)`);
+  process.exit(0);
+}
 
 for (const [teamId, team] of byTeam) {
   if (!team.length) continue;
@@ -292,12 +333,11 @@ function teamStrength(teamId, beforeTs) {
   return rows.length ? mean(rows) : 0;
 }
 
-function printRead(p, vol) {
+function computeRead(p, vol) {
   const Etot = 2 * vol.erounds;                       // expected combined rounds
   const floor = Math.round(p.kprP.p20 * Etot);
   const median = Math.round(p.kprP.p50 * Etot);
   const ceiling = Math.round(p.kprP.p85 * Etot);
-  const thin = p.n < CFG.THIN_N ? "  ⚠THIN" : "";
   // PARTIAL pick score: powered weights only, re-normalized; missing weights shown.
   const w = { roleStability: 0.15, mapFit: 0.20, roundVolume: 0.20, recentForm: 0.10, blowout: 0.10 };
   const active = Object.values(w).reduce((a, b) => a + b, 0); // 0.75 (oppStyle .15 + line .10 absent)
@@ -316,12 +356,35 @@ function printRead(p, vol) {
   if (p.mapFitRatio != null && p.mapFitRatio < 0.85) flags.push(`weak on expected maps (${pct(p.mapFitRatio - 1)} vs avg)`);
   if (Math.abs(p.formDelta) > 0.12) flags.push(`recent role/form shift (KPR ${p.formDelta > 0 ? "+" : ""}${round2(p.formDelta)}) — season avg may mislead`);
 
-  console.log(`\n${p.nick}   [${p.role}, ${leanFromRole(p.role)}]   n=${p.n} maps${thin}`);
-  console.log(`  KPR ${round2(p.kpr)} (recent ${round2(p.recentKpr)})  HS ${p.hs == null ? "?" : Math.round(p.hs) + "%"}  KAST ${p.kast == null ? "?" : Math.round(p.kast) + "%"}  FK/map ${round1(p.fkPerMap)}`);
-  console.log(`  Map1&2 kills  floor ${floor} · median ${median} · ceiling ${ceiling}   map-fit ${p.mapFitRatio == null ? "n/a" : (p.mapFitRatio >= 1 ? "+" : "") + pct(p.mapFitRatio - 1)}`);
-  console.log(`  prop type: ${propTypeFor(p.role, p.hs)}`);
-  console.log(`  pick score ${score}/100 → ${band}   [PARTIAL: excludes opponent-style 15% + line-value 10%]`);
-  if (flags.length) for (const f of flags) console.log(`   ⚠ ${f}`);
+  return {
+    nick: p.nick,
+    role: p.role,
+    lean: leanFromRole(p.role),
+    n: p.n,
+    thin: p.n < CFG.THIN_N,
+    kpr: round2(p.kpr),
+    recentKpr: round2(p.recentKpr),
+    hs: p.hs == null ? null : Math.round(p.hs),
+    kast: p.kast == null ? null : Math.round(p.kast),
+    fkPerMap: round1(p.fkPerMap),
+    floor, median, ceiling,
+    mapFitPct: p.mapFitRatio == null ? null : Math.round((p.mapFitRatio - 1) * 100),
+    propType: propTypeFor(p.role, p.hs),
+    score, band,
+    partial: true, // score excludes opponent-style (15%) + line-value (10%)
+    flags,
+  };
+}
+
+function printRead(p, vol) {
+  const r = computeRead(p, vol);
+  const thin = r.thin ? "  ⚠THIN" : "";
+  console.log(`\n${r.nick}   [${r.role}, ${r.lean}]   n=${r.n} maps${thin}`);
+  console.log(`  KPR ${r.kpr} (recent ${r.recentKpr})  HS ${r.hs == null ? "?" : r.hs + "%"}  KAST ${r.kast == null ? "?" : r.kast + "%"}  FK/map ${r.fkPerMap}`);
+  console.log(`  Map1&2 kills  floor ${r.floor} · median ${r.median} · ceiling ${r.ceiling}   map-fit ${r.mapFitPct == null ? "n/a" : (r.mapFitPct >= 0 ? "+" : "") + r.mapFitPct + "%"}`);
+  console.log(`  prop type: ${r.propType}`);
+  console.log(`  pick score ${r.score}/100 → ${r.band}   [PARTIAL: excludes opponent-style 15% + line-value 10%]`);
+  if (r.flags.length) for (const f of r.flags) console.log(`   ⚠ ${f}`);
 }
 
 // ---------- utils ----------

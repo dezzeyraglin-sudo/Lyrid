@@ -1,0 +1,238 @@
+<!-- ===================================================================== -->
+<!--  LYRID CS2 TAB — drop-in. Three blocks. Splice each into index.html.   -->
+<!--  Styled entirely with Lyrid design tokens + your real component classes -->
+<!--  (.glb-tier-*, .lyrid-game-card, .lyrid-btn, .lyrid-empty). No invented -->
+<!--  colors. Honest by design — renders THIN / PARTIAL / unvalidated flags. -->
+<!--  Research view, not a sold pick feature, until grader.mjs confirms edge. -->
+<!--                                                                         -->
+<!--  DATA: tries /api/cs2/slate first (the live endpoint you'll build later, -->
+<!--  twin of /api/wnba/slate); falls back to /cs2_reads.json (static, now).  -->
+<!--  v1 works today; upgrades to live with zero frontend changes.           -->
+<!-- ===================================================================== -->
+
+
+<!-- ===================================================================== -->
+<!-- BLOCK A — NAV BUTTON                                                   -->
+<!-- Paste right AFTER the WNBA nav button                                  -->
+<!--   (data-tab="wnba" onclick="switchTab('wnba')" — around line 3208).    -->
+<!-- ===================================================================== -->
+<button class="lyrid-nav-btn" data-tab="cs2" onclick="switchToCs2()">CS2</button>
+
+
+<!-- ===================================================================== -->
+<!-- BLOCK B — PANEL                                                        -->
+<!-- Paste right AFTER the closing </div> of  id="wnba-panel"               -->
+<!-- (after wnbaAnalysisContainer's div closes, around line 3332).          -->
+<!-- ===================================================================== -->
+<div class="panel-content" id="cs2-panel">
+  <div class="lyrid-page-header">
+    <div class="lyrid-page-eyebrow" id="cs2PageEyebrow">Counter-Strike 2 · Maps 1+2</div>
+    <div class="lyrid-date-nav">
+      <span class="lyrid-date-current" id="cs2DateDisplay">Slate</span>
+    </div>
+    <button class="lyrid-btn primary" id="loadCs2Btn" onclick="loadCs2Slate()">Refresh</button>
+    <span id="cs2Meta" class="lyrid-eyebrow" style="margin-left:auto"></span>
+  </div>
+  <div id="cs2Banner"></div>
+  <div id="cs2GamesList"></div>
+  <div id="cs2AnalysisContainer"></div>
+</div>
+
+
+<!-- ===================================================================== -->
+<!-- BLOCK C — SCRIPT MODULE (+ scoped styles, all token-based)             -->
+<!-- Paste inside the main <script> with your other modules (after the      -->
+<!-- WNBA IIFE, ~line 16930), BEFORE </script>. Self-contained.             -->
+<!-- ===================================================================== -->
+<style>
+  #cs2-panel .cs2-banner{background:var(--data-warning-surface);border:0.5px solid var(--border-hairline);border-left:3px solid var(--data-warning);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);border-radius:var(--radius-md)}
+  #cs2-panel .cs2-banner-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--data-warning);font-weight:var(--weight-medium);margin-bottom:var(--space-1)}
+  #cs2-panel .cs2-banner-text{font-size:var(--size-caption);color:var(--text-secondary);line-height:var(--line-caption)}
+  #cs2-panel .cs2-analysis-head{margin:var(--space-2) 0 var(--space-4);padding-bottom:var(--space-3);border-bottom:0.5px solid var(--border-hairline)}
+  #cs2-panel .cs2-analysis-title{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-medium);color:var(--text-primary)}
+  #cs2-panel .cs2-analysis-sub{font-size:var(--size-caption);color:var(--text-secondary);margin-top:var(--space-1)}
+  #cs2-panel .cs2-team-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--text-secondary);font-weight:var(--weight-medium);margin:var(--space-4) 0 var(--space-2)}
+  #cs2-panel .cs2-pcard{background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-2)}
+  #cs2-panel .cs2-pcard-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
+  #cs2-panel .cs2-nick{font-family:var(--font-sans);font-weight:500;font-size:var(--size-body-sm);color:var(--text-primary)}
+  #cs2-panel .cs2-role{font-size:10px;color:var(--text-secondary)}
+  #cs2-panel .cs2-lean-over{color:var(--data-positive);font-size:10px}
+  #cs2-panel .cs2-lean-under{color:var(--data-negative);font-size:10px}
+  #cs2-panel .cs2-lean-neutral{color:var(--text-muted);font-size:10px}
+  #cs2-panel .cs2-band-pass{font-family:var(--font-sans);font-size:9px;font-weight:500;letter-spacing:0.10em;padding:2px 7px;border-radius:var(--radius-sm);text-transform:uppercase;background:var(--surface-muted);color:var(--text-muted);border:0.5px solid var(--border-strong)}
+  #cs2-panel .cs2-score{margin-left:auto;display:inline-flex;align-items:center;gap:6px}
+  #cs2-panel .cs2-score-num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-secondary)}
+  #cs2-panel .cs2-statbar{display:flex;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--space-2)}
+  #cs2-panel .cs2-stat{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-primary)}
+  #cs2-panel .cs2-stat .k{color:var(--text-secondary);font-family:var(--font-sans);font-size:10px;margin-left:3px}
+  #cs2-panel .cs2-range{display:flex;align-items:center;gap:var(--space-4);padding:var(--space-2) var(--space-3);background:var(--surface-muted);border-radius:var(--radius-sm);margin-bottom:var(--space-2)}
+  #cs2-panel .cs2-range-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-loose);text-transform:uppercase;color:var(--text-secondary)}
+  #cs2-panel .cs2-range-val{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-md);color:var(--text-primary)}
+  #cs2-panel .cs2-range-val .k{font-family:var(--font-sans);font-size:10px;color:var(--text-secondary);margin-left:3px}
+  #cs2-panel .cs2-mapfit{margin-left:auto;font-family:var(--font-mono);font-size:var(--size-mono-sm);color:var(--text-secondary)}
+  #cs2-panel .cs2-prop{font-size:var(--size-caption);color:var(--text-secondary)}
+  #cs2-panel .cs2-flag{font-size:var(--size-caption);color:var(--data-warning);background:var(--data-warning-surface);border-left:2px solid var(--data-warning);padding:var(--space-1) var(--space-2);margin-top:var(--space-1);border-radius:var(--radius-sm)}
+  #cs2-panel .cs2-thin{font-family:var(--font-sans);font-size:9px;letter-spacing:0.08em;color:var(--data-warning);border:0.5px solid var(--data-warning);border-radius:var(--radius-pill);padding:1px 6px}
+  #cs2-panel .cs2-low{color:var(--data-warning)}
+  #cs2-panel .cs2-foot{font-size:var(--size-caption);color:var(--text-muted);margin-top:var(--space-4);line-height:var(--line-caption)}
+</style>
+<script>
+(function () {
+  const state = { raw: null, selectedMatchId: null, loaded: false };
+  window._cs2State = state;
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const bandClass = (b) => b === 'STRONG' ? 'glb-tier-strong' : b === 'LEAN' ? 'glb-tier-moderate' : 'cs2-band-pass';
+  const leanClass = (l) => l === 'OVER-friendly' ? 'cs2-lean-over' : l === 'UNDER-friendly' ? 'cs2-lean-under' : 'cs2-lean-neutral';
+
+  window.switchToCs2 = function () {
+    if (typeof switchTab === 'function') switchTab('cs2');
+    else {
+      document.querySelectorAll('.lyrid-nav-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector('.lyrid-nav-btn[data-tab="cs2"]')?.classList.add('active');
+      document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
+      document.getElementById('cs2-panel')?.classList.add('active');
+    }
+    if (!state.loaded) loadCs2Slate();
+  };
+
+  window.loadCs2Slate = async function () {
+    const list = document.getElementById('cs2GamesList');
+    const analysis = document.getElementById('cs2AnalysisContainer');
+    const meta = document.getElementById('cs2Meta');
+    if (list) list.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-text">Loading slate…</div></div>`;
+    if (analysis) analysis.innerHTML = '';
+    state.loaded = true;
+
+    let data = null;
+    for (const url of ['/api/cs2/slate', '/cs2_reads.json']) {
+      try { const res = await fetch(url, { cache: 'no-store' }); if (res.ok) { data = await res.json(); break; } }
+      catch (_) { /* try next */ }
+    }
+
+    if (!data || !Array.isArray(data.matches)) {
+      if (list) list.innerHTML = `
+        <div class="lyrid-empty">
+          <div class="lyrid-empty-title">No CS2 slate found</div>
+          <div class="lyrid-empty-text">Generate one with <code>node matchRead.mjs --match &lt;id&gt; --json --out cs2_reads.json</code>, then place it where the app can fetch it (repo root or /public).</div>
+        </div>`;
+      if (meta) meta.textContent = '';
+      return;
+    }
+    state.raw = data;
+    renderCs2Slate();
+  };
+
+  function renderCs2Slate() {
+    const data = state.raw;
+    const list = document.getElementById('cs2GamesList');
+    const banner = document.getElementById('cs2Banner');
+    const meta = document.getElementById('cs2Meta');
+    if (!data || !list) return;
+
+    if (meta) {
+      const gen = data.generatedAt ? new Date(data.generatedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+      const players = (data.matches || []).reduce((a, m) => a + (m.players ? m.players.length : 0), 0);
+      meta.textContent = `${(data.matches || []).length} MATCHES · ${players} PLAYERS${gen ? ' · ' + gen : ''}`;
+    }
+
+    if (banner) {
+      banner.innerHTML = `
+        <div class="cs2-banner">
+          <div class="cs2-banner-eyebrow">Research · not validated vs price</div>
+          <div class="cs2-banner-text">Projection-only reads (Maps 1+2 kills). Pick score is <b>PARTIAL</b> — it excludes opponent style and line value, which the data can't see yet. No edge has been proven against Underdog's number. Treat as a watchlist, not picks.</div>
+        </div>`;
+    }
+
+    const matches = data.matches || [];
+    if (!matches.length) {
+      list.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">No matches in slate</div><div class="lyrid-empty-text">Add matches with the --json generator.</div></div>`;
+      return;
+    }
+    list.innerHTML = `<div class="lyrid-games-list">${matches.map(renderCs2MatchRow).join('')}</div>`;
+    if (matches[0]) analyzeCs2Match(matches[0].matchId);
+  }
+
+  function renderCs2MatchRow(m) {
+    const vol = m.roundVolume || {};
+    const sub = `${esc(m.format || 'Bo3')}${m.tier ? ' · ' + esc(String(m.tier).toUpperCase()) : ''} · ${m.lan ? 'LAN' : 'ONLINE'}`;
+    const mapsLine = (m.maps || []).map(esc).join(' + ') || '—';
+    const leanCount = (m.players || []).filter(p => p.band === 'LEAN' || p.band === 'STRONG').length;
+    const isSel = String(m.matchId) === String(state.selectedMatchId);
+    return `
+      <button class="lyrid-game-card${isSel ? ' signal' : ''}" type="button" onclick="analyzeCs2Match('${esc(m.matchId)}')" aria-label="Read ${esc(m.teamA)} vs ${esc(m.teamB)}">
+        <div class="lyrid-game-time">
+          <div class="lyrid-game-time-value">${esc((m.date || '').slice(5) || 'TBD')}</div>
+          <div class="lyrid-game-time-zone">${esc(m.format || 'Bo3')}</div>
+        </div>
+        <div class="lyrid-game-matchup">
+          <div class="lyrid-game-teams"><span>${esc(m.teamA || '?')}</span><span class="at">vs</span><span>${esc(m.teamB || '?')}</span></div>
+          <div class="lyrid-game-pitchers">${mapsLine} · ${sub} · E[rds] ${vol.erounds ?? '?'}</div>
+        </div>
+        <div class="lyrid-game-projection${isSel ? ' signal' : ''}">
+          <div class="lyrid-game-projection-label">${leanCount} lean${leanCount === 1 ? '' : 's'}</div>
+          <div class="lyrid-game-projection-value" aria-hidden="true">${isSel ? '★' : '→'}</div>
+        </div>
+      </button>`;
+  }
+
+  window.analyzeCs2Match = function (matchId) {
+    state.selectedMatchId = matchId;
+    const data = state.raw; if (!data) return;
+    const m = (data.matches || []).find(x => String(x.matchId) === String(matchId));
+    const container = document.getElementById('cs2AnalysisContainer');
+    if (!m || !container) return;
+
+    const list = document.getElementById('cs2GamesList');
+    if (list) list.innerHTML = `<div class="lyrid-games-list">${(data.matches || []).map(renderCs2MatchRow).join('')}</div>`;
+
+    const vol = m.roundVolume || {};
+    const pctOf = (x) => x != null ? Math.round(x * 100) + '%' : '?';
+    const byTeam = {};
+    for (const p of (m.players || [])) { const t = p.team || '—'; (byTeam[t] = byTeam[t] || []).push(p); }
+    for (const t in byTeam) byTeam[t].sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    const header = `
+      <div class="cs2-analysis-head">
+        <div class="cs2-analysis-title">${esc(m.teamA)} vs ${esc(m.teamB)}</div>
+        <div class="cs2-analysis-sub">Maps 1+2: <b style="color:var(--text-primary)">${(m.maps || []).map(esc).join(' + ') || '—'}</b> · E[rds/map] ${vol.erounds ?? '?'} · blowout ${pctOf(vol.blowout)} · OT ${pctOf(vol.ot)} <span class="cs2-low">[round volume LOW CONFIDENCE]</span></div>
+      </div>`;
+
+    const teamsHtml = Object.keys(byTeam).map(t =>
+      `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(renderCs2PlayerCard).join('')}`).join('');
+
+    container.innerHTML = header + teamsHtml +
+      `<div class="cs2-foot">UNPOWERED (needs demo-level data): opponent site/pace, CT/T splits, positional fit, economy, stand-ins. Pick score excludes opponent-style (15%) + line-value (10%).</div>`;
+  };
+
+  function renderCs2PlayerCard(p) {
+    const mf = p.mapFitPct == null ? 'n/a' : (p.mapFitPct >= 0 ? '+' : '') + p.mapFitPct + '%';
+    const thin = p.thin ? `<span class="cs2-thin">THIN n=${p.n}</span>` : '';
+    const st = (v, k) => `<span class="cs2-stat">${v}<span class="k">${k}</span></span>`;
+    const flags = (p.flags || []).map(f => `<div class="cs2-flag">⚠ ${esc(f)}</div>`).join('');
+    return `
+      <div class="cs2-pcard">
+        <div class="cs2-pcard-head">
+          <span class="cs2-nick">${esc(p.nick)}</span>
+          <span class="cs2-role">${esc(p.role)}</span>
+          <span class="${leanClass(p.lean)}">${esc(p.lean)}</span>
+          ${thin}
+          <span class="cs2-score"><span class="cs2-score-num">${p.score}/100</span><span class="${bandClass(p.band)}">${esc(p.band)}</span></span>
+        </div>
+        <div class="cs2-statbar">
+          ${st(p.kpr, 'KPR')} ${st(p.recentKpr, 'recent')} ${st(p.hs == null ? '?' : p.hs + '%', 'HS')} ${st(p.kast == null ? '?' : p.kast + '%', 'KAST')} ${st(p.fkPerMap, 'FK/map')}
+        </div>
+        <div class="cs2-range">
+          <span class="cs2-range-eyebrow">Maps 1+2 kills</span>
+          <span class="cs2-range-val">${p.floor}<span class="k">floor</span></span>
+          <span class="cs2-range-val">${p.median}<span class="k">median</span></span>
+          <span class="cs2-range-val">${p.ceiling}<span class="k">ceiling</span></span>
+          <span class="cs2-mapfit">map-fit ${mf}</span>
+        </div>
+        <div class="cs2-prop">prop: ${esc(p.propType)}</div>
+        ${flags}
+      </div>`;
+  }
+})();
+</script>
