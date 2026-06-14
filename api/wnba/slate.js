@@ -57,6 +57,7 @@
 import { analyzeBasketballProp } from "../_lib/basketball/basketballProps.js";
 import { analyzeUnifiedProp } from "../_lib/basketball/unifiedPointsEngine.js";
 import { analyzeReboundProp } from "../_lib/basketball/reboundEnvironmentEngine.js";
+import { classifyWnbaEmpiricalTier } from "../_lib/basketball/wnbaEmpiricalTier.js";
 import { analyzeGameLine } from "../_lib/basketball/gameLineEngine.js";
 import { buildWnbaDefenseTable, defenseMultiplier, teamDefenseFor } from "../_lib/wnba/wnbaDefenseFeed.js";
 import { externalCoverageSignal, externalFoulRate, externalPaceSignal } from "../_lib/wnba/wnbaExternalSignals.js";
@@ -421,16 +422,37 @@ async function generateSlate(opts = {}) {
     removedOut.push({ player: a.player, team: a.team, detail: a.injuryDetail || null });
   }
 
+  // Stamp the empirical tier (what this market+direction actually hits across graded
+  // history, with a Wilson floor) onto every analysis. Direction-aware; this is the
+  // honest bet signal and replaces the inverted finalEdgeScore label.
+  for (const a of allAnalyses) {
+    if (a.error) continue;
+    const lean = (a.projection != null && a.line != null)
+      ? (Number(a.projection) >= Number(a.line) ? 'OVER' : 'UNDER')
+      : null;
+    a.empTier = classifyWnbaEmpiricalTier({
+      market: a.market,
+      lean,
+      projection: a.projection,
+      line: a.line,
+      paceScore: a.scores?.env ?? a.scores?.environment,
+    });
+  }
+
   // STEP 5: Organize output
   const successful = allAnalyses.filter(a => !a.error && a.recommendation !== 'PASS');
   const passes = allAnalyses.filter(a => a.recommendation === 'PASS');
   const errors = allAnalyses.filter(a => a.error);
 
-  // Rank by finalEdge descending — top edges first
+  // Rank by EMPIRICAL tier first (what actually hits), then finalEdge as tiebreak.
+  // The old finalEdge-only sort floated points-overs to the top because finalEdge
+  // rewarded the inflated projection; this puts validated assists/rebounds unders first.
+  const EMP_RANK = { PLATINUM: 5, GOLD: 4, LEAN: 3, UNGRADED: 2, PASS: 1, AVOID: 0 };
   successful.sort((a, b) => {
-    const aScore = a.scores?.finalEdge || 0;
-    const bScore = b.scores?.finalEdge || 0;
-    return bScore - aScore;
+    const ar = EMP_RANK[a.empTier?.tier] ?? 2;
+    const br = EMP_RANK[b.empTier?.tier] ?? 2;
+    if (ar !== br) return br - ar;
+    return (b.scores?.finalEdge || 0) - (a.scores?.finalEdge || 0);
   });
 
   // Top 10 across the slate

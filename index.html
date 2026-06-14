@@ -15324,6 +15324,7 @@ window.captureWnbaPredictions = function(data) {
         env: p.scores.environment, def: p.scores.matchup,
         cov: p.scores.coverage, var: p.scores.variance
       } : null,
+      empTier: p.empTier ? { tier: p.empTier.tier, bet: !!p.empTier.recommend, wr: p.empTier.wr ?? null, n: p.empTier.n ?? null } : null,
       floor: p.floor ?? null, ceiling: p.ceiling ?? null,
       capturedAt: existing?.capturedAt || new Date().toISOString(),
       actual: null, result: null, error: null, graded: false
@@ -15468,6 +15469,7 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
         env: p.scores.environment, def: p.scores.matchup,
         cov: p.scores.coverage, var: p.scores.variance
       } : null,
+      empTier: p.empTier ? { tier: p.empTier.tier, bet: !!p.empTier.recommend, wr: p.empTier.wr ?? null, n: p.empTier.n ?? null } : null,
       floor: p.floor ?? null, ceiling: p.ceiling ?? null,
       capturedAt: existing?.capturedAt || new Date().toISOString(),
       actual: existing?.actual ?? null, result: existing?.result ?? null,
@@ -16698,7 +16700,10 @@ async function autoGradeOnAppOpen() {
       const _leanDir = (p.propSignal && p.propSignal.side === 'UNDER') ? 'UNDER'
                      : (p.recommendation === 'PASS' || _ea == null || _ea < 0.5) ? null
                      : (_edge > 0 ? 'OVER' : 'UNDER');
-      const _emp = _leanDir ? wnbaEmpTier(p.market, _leanDir) : null;
+      const _emp = !_leanDir ? null
+        : ((p.empTier && p.empTier.tier)
+            ? { tier: p.empTier.tier, wr: (p.empTier.wr ?? null), bet: !!p.empTier.recommend }
+            : wnbaEmpTier(p.market, _leanDir));
       const _empBadge = (() => {
         if (!_emp) return '';
         const S = { PLATINUM:['#0b5d3b','#d1fae5','✓'], GOLD:['#7a5c12','#fef3c7','✓'], LEAN:['#475569','#e2e8f0','~'], PASS:['#64748b','#f1f5f9','—'], AVOID:['#7f1d1d','#fee2e2','⚠'], UNGRADED:['#64748b','#f1f5f9','?'] };
