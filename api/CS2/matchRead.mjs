@@ -22,14 +22,17 @@ import path from "node:path";
 import { mean, std, pct, round1, round2 } from "./stats.mjs";
 
 const CFG = {
-  AWP_HS_MAX: 42,      // HS% at/below this + real frag volume => AWP-leaning
-  ENTRY_FK_PER_MAP: 4, // first kills/map at/above => entry profile
-  STAR_KPR: 0.78,      // KPR at/above => star carry
-  SUPPORT_KPR: 0.62,   // KPR below this + high KAST => support/IGL
-  SUPPORT_KAST: 70,
-  RECENT_N: 8,         // maps counted as "recent form"
-  MIN_MAPS: 6,         // below this we won't profile a player
-  LEAGUE_ROUNDS: 22,   // fallback expected rounds
+  AWP_HS_MAX: 42,        // HS% at/below this + real frag volume => AWP-leaning
+  ENTRY_FK_PER_MAP: 2.8, // first kills/map at/above => entry profile
+  STAR_KPR: 0.74,        // KPR at/above => star carry
+  SUPPORT_KPR: 0.60,     // KPR below this => support/IGL (KAST-gated if present)
+  SUPPORT_KAST: 68,
+  RECENT_N: 8,           // maps counted as "recent form"
+  MIN_MAPS: 6,           // below this we won't profile a player
+  THIN_N: 10,            // reads below this flagged as thin sample
+  MIN_ROUNDS: 13,        // drop forfeits/incompletes below a full regulation map
+  MAX_ROUNDS: 40,        // drop anomalies above a plausible double-OT map
+  LEAGUE_ROUNDS: 22,     // fallback expected rounds
 };
 
 const args = parseArgs(process.argv.slice(2));
@@ -65,7 +68,7 @@ for (const [matchId, byNum] of mapsByMatch) {
     const mm = byNum[n];
     if (!mm) continue;
     const rounds = (mm.team1_score ?? 0) + (mm.team2_score ?? 0);
-    if (rounds <= 0) continue;
+    if (rounds < CFG.MIN_ROUNDS || rounds > CFG.MAX_ROUNDS) continue; // forfeits/anomalies
     for (const r of mapStats.get(mm.id) ?? []) {
       const pid = r.player?.id ?? r.player_id;
       if (pid == null) continue;
@@ -147,26 +150,25 @@ function profile(pid, beforeTs, expectedMaps) {
   const onExpected = hist.filter((x) => expectedMaps.includes(x.map)).map((x) => x.kills);
   const mapFitRatio = onExpected.length >= 3 ? mean(onExpected) / mean(kills) : null;
 
-  // floor/median/ceiling for the Map1&2 TOTAL (POWERED) — use per-map kill
-  // percentiles ×2 as a simple combined estimate (compression makes this slightly
-  // conservative, which is the safe direction).
-  const sorted = [...kills].sort((a, b) => a - b);
-  const fl = 2 * pctl(sorted, 0.2), md = 2 * pctl(sorted, 0.5), ce = 2 * pctl(sorted, 0.85);
+  // KPR-anchored distribution (POWERED): percentiles of the player's kills-per-round,
+  // scaled by expected series rounds in printRead. Ties floor/median/ceiling to the
+  // validated rate model instead of noisy raw-kill percentiles.
+  const kprSorted = [...kprs].sort((a, b) => a - b);
+  const kprP = { p20: pctl(kprSorted, 0.2), p50: pctl(kprSorted, 0.5), p85: pctl(kprSorted, 0.85) };
 
   return {
     pid, nick, n: hist.length, kpr, hs, kast, fkPerMap, role,
-    recentKpr, formDelta, mapFitRatio, expectedMaps,
-    floor: Math.round(fl), median: Math.round(md), ceiling: Math.round(ce),
+    recentKpr, formDelta, mapFitRatio, expectedMaps, kprP,
     propType: propTypeFor(role, hs),
   };
 }
 
 function inferRole({ hs, kpr, kast, fkPerMap }) {
-  if (hs != null && hs <= CFG.AWP_HS_MAX && kpr >= 0.6) return "AWPer";
-  if (fkPerMap >= CFG.ENTRY_FK_PER_MAP && kpr >= 0.6) return "Entry";
+  if (hs != null && hs <= CFG.AWP_HS_MAX && kpr >= 0.58) return "AWPer";
   if (kpr >= CFG.STAR_KPR) return "Star rifler";
-  if (kpr < CFG.SUPPORT_KPR && kast != null && kast >= CFG.SUPPORT_KAST) return "Support/IGL";
-  return "Rotator/secondary";
+  if (fkPerMap >= CFG.ENTRY_FK_PER_MAP && kpr >= 0.58) return "Entry";
+  if (kpr < CFG.SUPPORT_KPR && (kast == null || kast >= CFG.SUPPORT_KAST)) return "Support/IGL";
+  return "Rifler";
 }
 function propTypeFor(role, hs) {
   if (role === "AWPer") return "kills or fantasy (NOT headshots — AWP kills aren't HS)";
@@ -176,7 +178,7 @@ function propTypeFor(role, hs) {
 }
 function leanFromRole(role) {
   if (role === "Support/IGL") return "UNDER-friendly";
-  if (role === "Star rifler" || role === "AWPer" || role === "Entry") return "OVER-friendly";
+  if (role === "Star rifler" || role === "AWPer" || role === "Entry" || role === "Rifler") return "OVER-friendly";
   return "neutral";
 }
 
@@ -190,7 +192,7 @@ function roundVolume(match, beforeTs) {
   // base rates from the cache
   const allRounds = pm.map((x) => x.rounds);
   const otRate = pm.filter((x) => x.rounds > 24).length / Math.max(1, pm.length);
-  const blowout = pm.filter((x) => x.rounds <= 18).length / Math.max(1, pm.length);
+  const blowout = pm.filter((x) => x.rounds <= 17).length / Math.max(1, pm.length);
   void allRounds;
   return { erounds: round1(erounds), gap: round1(gap), otRate, blowout };
 }
@@ -210,6 +212,11 @@ function teamStrength(teamId, beforeTs) {
 }
 
 function printRead(p, vol) {
+  const Etot = 2 * vol.erounds;                       // expected combined rounds
+  const floor = Math.round(p.kprP.p20 * Etot);
+  const median = Math.round(p.kprP.p50 * Etot);
+  const ceiling = Math.round(p.kprP.p85 * Etot);
+  const thin = p.n < CFG.THIN_N ? "  ⚠THIN" : "";
   // PARTIAL pick score: powered weights only, re-normalized; missing weights shown.
   const w = { roleStability: 0.15, mapFit: 0.20, roundVolume: 0.20, recentForm: 0.10, blowout: 0.10 };
   const active = Object.values(w).reduce((a, b) => a + b, 0); // 0.75 (oppStyle .15 + line .10 absent)
@@ -228,9 +235,9 @@ function printRead(p, vol) {
   if (p.mapFitRatio != null && p.mapFitRatio < 0.85) flags.push(`weak on expected maps (${pct(p.mapFitRatio - 1)} vs avg)`);
   if (Math.abs(p.formDelta) > 0.12) flags.push(`recent role/form shift (KPR ${p.formDelta > 0 ? "+" : ""}${round2(p.formDelta)}) — season avg may mislead`);
 
-  console.log(`\n${p.nick}   [${p.role}, ${leanFromRole(p.role)}]   n=${p.n} maps`);
+  console.log(`\n${p.nick}   [${p.role}, ${leanFromRole(p.role)}]   n=${p.n} maps${thin}`);
   console.log(`  KPR ${round2(p.kpr)} (recent ${round2(p.recentKpr)})  HS ${p.hs == null ? "?" : Math.round(p.hs) + "%"}  KAST ${p.kast == null ? "?" : Math.round(p.kast) + "%"}  FK/map ${round1(p.fkPerMap)}`);
-  console.log(`  Map1&2 kills  floor ${p.floor} · median ${p.median} · ceiling ${p.ceiling}   map-fit ${p.mapFitRatio == null ? "n/a" : (p.mapFitRatio >= 1 ? "+" : "") + pct(p.mapFitRatio - 1)}`);
+  console.log(`  Map1&2 kills  floor ${floor} · median ${median} · ceiling ${ceiling}   map-fit ${p.mapFitRatio == null ? "n/a" : (p.mapFitRatio >= 1 ? "+" : "") + pct(p.mapFitRatio - 1)}`);
   console.log(`  prop type: ${p.propType}`);
   console.log(`  pick score ${score}/100 → ${band}   [PARTIAL: excludes opponent-style 15% + line-value 10%]`);
   if (flags.length) for (const f of flags) console.log(`   ⚠ ${f}`);
