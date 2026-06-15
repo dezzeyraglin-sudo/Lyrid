@@ -40,7 +40,7 @@ for (const f of fs.readdirSync(ROUNDS)) {
     for (const ts of r.team_stats ?? []) {
       const id = ts.team?.id; if (id == null) continue;
       const t = bump(team, id, () => ({ pistolW: 0, pistolN: 0, ctW: 0, ctN: 0, tW: 0, tN: 0, name: ts.team?.name ?? null,
-        n: 0, fk: 0, fd: 0, tk: 0, td: 0, ecoN: 0, ecoW: 0, swSum: 0, swN: 0, uWS: 0, uWN: 0, uLS: 0, uLN: 0 }));
+        n: 0, fk: 0, fd: 0, tk: 0, td: 0, ecoN: 0, ecoW: 0, swSum: 0, swN: 0, uWS: 0, uWN: 0, uLS: 0, uLN: 0, elimN: 0 }));
       if (ts.is_pistol_round) { t.pistolN++; if (ts.won) t.pistolW++; }
       if (ts.team_side === "CT") { t.ctN++; if (ts.won) t.ctW++; }
       else if (ts.team_side === "T") { t.tN++; if (ts.won) t.tW++; }
@@ -53,6 +53,7 @@ for (const f of fs.readdirSync(ROUNDS)) {
       if (ts.won && ts.win_streak != null) { t.swSum += ts.win_streak; t.swN++; } // snowball length
       const uv = ts.utility_value;                                     // utility on wins vs losses
       if (uv != null) { if (ts.won) { t.uWS += uv; t.uWN++; } else { t.uLS += uv; t.uLN++; } }
+      if (r.end_reason === "elimination") t.elimN++;                   // kill density (elim rounds = more kills)
     }
   }
 }
@@ -71,6 +72,7 @@ for (const [id, t] of team) {
     snowball: t.swN ? round2(t.swSum / t.swN) : null,            // avg consecutive-win length when winning
     utilOnWin: t.uWN ? Math.round(t.uWS / t.uWN) : null,
     utilOnLoss: t.uLN ? Math.round(t.uLS / t.uLN) : null,
+    elimRate: t.n ? round3(t.elimN / t.n) : null,
     roundsN: t.n,
   };
 }

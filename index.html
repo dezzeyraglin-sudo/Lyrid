@@ -17074,7 +17074,7 @@ async function autoGradeOnAppOpen() {
 
   function renderCs2MatchRow(m) {
     const vol = m.roundVolume || {};
-    const sub = `${esc(m.format || 'Bo3')}${m.tier ? ' · ' + esc(String(m.tier).toUpperCase()) : ''} · ${m.lan ? 'LAN' : 'ONLINE'}`;
+    const sub = `${esc(m.format || 'Bo3')}${m.tier ? ' · ' + esc(String(m.tier).toUpperCase()) : ''} · ${m.lan ? 'LAN' : 'ONLINE'}${m.doOrDie ? ' · ELIM' : ''}${m.stage ? ' · ' + esc(m.stage) : ''}`;
     const mapsLine = (m.maps || []).map(esc).join(' + ') || '—';
     const leanCount = (m.players || []).filter(p => p.band === 'LEAN' || p.band === 'STRONG').length;
     const isSel = String(m.matchId) === String(state.selectedMatchId);
@@ -17114,7 +17114,7 @@ async function autoGradeOnAppOpen() {
     const header = `
       <div class="cs2-analysis-head">
         <div class="cs2-analysis-title">${esc(m.teamA)} vs ${esc(m.teamB)}</div>
-        <div class="cs2-analysis-sub">Maps 1+2: <b style="color:var(--text-primary)">${(m.maps || []).map(esc).join(' + ') || '—'}</b> · E[rds/map] ${vol.erounds ?? '?'} · blowout ${pctOf(vol.blowout)} · OT ${pctOf(vol.ot)} <span class="cs2-low">[round volume LOW CONFIDENCE]</span>${m.lineupAsOf ? ' \u00b7 lineup as of ' + esc(m.lineupAsOf) : ''}${m.rosterChanged ? ' <span class="cs2-low">\u00b7 roster changed</span>' : ''}</div>
+        <div class="cs2-analysis-sub">Maps 1+2: <b style="color:var(--text-primary)">${(m.maps || []).map(esc).join(' + ') || '—'}</b> · E[rds/map] ${vol.erounds ?? '?'} · blowout ${pctOf(vol.blowout)} · OT ${pctOf(vol.ot)}${vol.killDensity && vol.killDensity !== 1 ? ' · kill-dens ×' + vol.killDensity : ''} <span class="cs2-low">[round volume LOW CONFIDENCE]</span>${m.lineupAsOf ? ' \u00b7 lineup as of ' + esc(m.lineupAsOf) : ''}${m.rosterChanged ? ' <span class="cs2-low">\u00b7 roster changed</span>' : ''}</div>
       </div>`;
 
     const rr = m.roundRead;
@@ -17193,7 +17193,7 @@ async function autoGradeOnAppOpen() {
           <span class="cs2-score"><span class="cs2-score-num">${p.score}/100</span><span class="${bandClass(p.band)}">${esc(p.band)}</span></span>
         </div>
         <div class="cs2-statbar">
-          ${st(p.kpr, 'KPR')} ${st(p.recentKpr, 'recent')} ${st(p.hs == null ? '?' : p.hs + '%', 'HS')} ${st(p.kast == null ? '?' : p.kast + '%', 'KAST')} ${st(p.fkPerMap, 'FK/map')}${p.adr == null ? '' : ' ' + st(p.adr, 'ADR')}${p.survival == null ? '' : ' ' + st(p.survival + '%', 'surv')}${p.openingWin == null ? '' : ' ' + st(p.openingWin + '%', 'open-win')}
+          ${st(p.kpr, 'KPR')} ${st(p.recentKpr, 'recent')} ${st(p.hs == null ? '?' : p.hs + '%', 'HS')} ${st(p.kast == null ? '?' : p.kast + '%', 'KAST')} ${st(p.fkPerMap, 'FK/map')}${p.adr == null ? '' : ' ' + st(p.adr, 'ADR')}${p.survival == null ? '' : ' ' + st(p.survival + '%', 'surv')}${p.openingWin == null ? '' : ' ' + st(p.openingWin + '%', 'open-win')}${p.clutchPerMap == null ? '' : ' ' + st(p.clutchPerMap, 'clutch')}
         </div>
         <div class="cs2-range">
           <span class="cs2-range-eyebrow">Maps 1+2 kills</span>

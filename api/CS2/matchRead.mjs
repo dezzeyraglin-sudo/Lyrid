@@ -78,7 +78,7 @@ for (const [matchId, byNum] of mapsByMatch) {
       pm.push({
         ts, playerId: pid, nick: r.player?.nickname ?? String(pid), map: canonMap(mm.map_name),
         kills: r.kills ?? 0, rounds, kpr: (r.kills ?? 0) / rounds,
-        deaths: r.deaths ?? 0, adr: r.adr ?? null,
+        deaths: r.deaths ?? 0, adr: r.adr ?? null, clutch: r.clutches_won ?? 0,
         hs: r.headshot_percentage ?? null, fk: r.first_kills ?? 0, fd: r.first_deaths ?? 0,
         kast: r.kast ?? null, rating: r.rating ?? null,
         t1: match.team1?.id ?? null, t2: match.team2?.id ?? null,
@@ -274,6 +274,7 @@ function profile(pid, beforeTs, expectedMaps) {
   const survival = 1 - dpr;
   const adrVals = hist.map((x) => x.adr).filter((v) => v != null);
   const adr = adrVals.length ? mean(adrVals) : null;
+  const clutchPerMap = mean(hist.map((x) => x.clutch || 0));   // clutch ability -> fat right tail
   const fkSum = hist.reduce((a, x) => a + x.fk, 0), fdSum = hist.reduce((a, x) => a + x.fd, 0);
   const openingWin = (fkSum + fdSum) > 0 ? fkSum / (fkSum + fdSum) : null;
   const openingShare = mean(hist.map((x) => (x.fk + x.fd) / x.rounds));
@@ -295,7 +296,7 @@ function profile(pid, beforeTs, expectedMaps) {
     pid, nick, n: hist.length, kpr, hs, kast, fkPerMap, role,
     recentKpr, formDelta, mapFitRatio, expectedMaps, kprP,
     kprStrong, kprStrongN: strongKprs.length, kprWeak,
-    dpr, survival, adr, openingWin, openingShare,
+    dpr, survival, adr, clutchPerMap, openingWin, openingShare,
     propType: propTypeFor(role, hs),
   };
 }
@@ -389,10 +390,13 @@ function roundVolume(match, beforeTs) {
   // inferred round-margin gap (R^2~0.01). Bigger gap -> more lopsided -> fewer rounds.
   const rk1 = rankingByTeam.get(match.team1?.id)?.rank;
   const rk2 = rankingByTeam.get(match.team2?.id)?.rank;
+  const pt1 = rankingByTeam.get(match.team1?.id)?.points;
+  const pt2 = rankingByTeam.get(match.team2?.id)?.points;
   let erounds, gap, ranked = false;
   if (rk1 != null && rk2 != null) {
     ranked = true;
-    gap = Math.abs(rk1 - rk2);
+    // continuous strength gap from Valve points (finer than integer rank); ~28 pts ≈ 1 rank step
+    gap = (pt1 != null && pt2 != null) ? Math.abs(pt1 - pt2) / 28 : Math.abs(rk1 - rk2);
     erounds = Math.max(16, Math.min(26, CFG.LEAGUE_ROUNDS - 0.22 * Math.min(24, gap)));
   } else {
     const s1 = teamStrength(match.team1?.id, beforeTs);
@@ -411,7 +415,10 @@ function roundVolume(match, beforeTs) {
   if (dt.delta) erounds = Math.max(15, Math.min(26, erounds + dt.delta));
   const otRate = pm.filter((x) => x.rounds > 24).length / Math.max(1, pm.length);
   const blowout = pm.filter((x) => x.rounds <= 17).length / Math.max(1, pm.length);
-  return { erounds: round1(erounds), gap: round1(gap), otRate, blowout, ranked,
+  // kill density — elimination-heavy teams produce more kills/round than defuse/time-expiry teams
+  const ea = roundsByTeam.get(match.team1?.id)?.elimRate, eb = roundsByTeam.get(match.team2?.id)?.elimRate;
+  const killDensity = (ea != null && eb != null) ? clamp(1 + 0.3 * ((ea + eb) / 2 - 0.55), 0.95, 1.06) : 1;
+  return { erounds: round1(erounds), gap: round1(gap), otRate, blowout, ranked, killDensity: round2(killDensity),
     blowoutRisk: dt.blowoutRisk, otLean: dt.otLean, controlEdge: dt.controlEdge, controlBy: dt.controlBy };
 }
 
@@ -580,11 +587,14 @@ async function runToday(date) {
       format: `Bo${m.best_of}`,
       tier: m.tournament?.tier ?? null,
       lan: !m.tournament?.is_online,
+      stage: m.stage?.name ?? null,
+      doOrDie: m.stage?.stage_type === "bracket",
+      tournament: m.tournament?.name ?? null,
       maps: expMaps,
       rosterSource: (ro1.source === "official" && ro2.source === "official") ? "official" : ((ro1.source === "inferred" || ro2.source === "inferred") ? "inferred" : "mixed"),
       lineupAsOf: asOfTs ? new Date(asOfTs).toISOString().slice(0, 10) : null,
       rosterChanged: (ro1.newPids.size + ro2.newPids.size) > 0,
-      roundVolume: { erounds: vol.erounds, blowout: vol.blowout, ot: vol.otRate, gap: vol.gap, confidence: vol.ranked ? "MED · ranked" : "LOW" },
+      roundVolume: { erounds: vol.erounds, blowout: vol.blowout, ot: vol.otRate, gap: vol.gap, killDensity: vol.killDensity, confidence: vol.ranked ? "MED · ranked" : "LOW" },
       roundRead: roundRead(m, expMaps, vol),
       players: [...build(ro1, m.team1?.name, m.team2?.id), ...build(ro2, m.team2?.name, m.team1?.id)],
     });
@@ -623,6 +633,13 @@ function computeRead(p, vol, opp = {}) {
   }
   // opening-duel ceiling shaping — winning openings -> survive to multi-frag.
   if (p.openingWin != null) ceiling = Math.round(ceiling * clamp(0.94 + 0.12 * p.openingWin, 0.94, 1.06));
+  // clutch ability fattens the right tail (clutches are multi-kill situations)
+  if (p.clutchPerMap) ceiling = Math.round(ceiling * clamp(1 + 0.05 * p.clutchPerMap, 1, 1.10));
+  // kill density — elimination-heavy matchups produce more kills/round than defuse/time-expiry
+  const kd = vol.killDensity ?? 1;
+  if (kd !== 1) { floor = Math.round(floor * kd); median = Math.round(median * kd); ceiling = Math.round(ceiling * kd); }
+  // keep the band coherent after all multiplicative shaping (floor <= median <= ceiling)
+  floor = Math.min(floor, median); ceiling = Math.max(ceiling, median);
 
   // headshots Maps 1+2 = (adjusted) kills projection x the player's headshot share.
   const hsFrac = p.hs == null ? null : Math.max(0, Math.min(1, p.hs / 100));
@@ -650,6 +667,7 @@ function computeRead(p, vol, opp = {}) {
   if (p.adr != null && p.adr < 70 && p.kpr >= 0.70) flags.push(`kills outrun ADR (${Math.round(p.adr)}) — cleanup-dependent, more volatile`);
   if (p.openingWin != null && p.openingShare > 0.12 && p.openingWin >= 0.55) flags.push(`wins openings ${Math.round(p.openingWin * 100)}% — survives to multi-frag`);
   if (p.openingWin != null && p.openingShare > 0.12 && p.openingWin <= 0.45) flags.push(`loses openings ${Math.round(p.openingWin * 100)}% — dies early, ceiling capped`);
+  if (p.clutchPerMap != null && p.clutchPerMap >= 0.6) flags.push(`clutch threat (${round2(p.clutchPerMap)}/map) — fat right tail, ceiling live`);
   if (oppNote) flags.push(`opponent-adjusted ${oppNote}`);
 
   return {
@@ -667,6 +685,7 @@ function computeRead(p, vol, opp = {}) {
     hsFloor, hsMedian, hsCeiling,
     adr: p.adr == null ? null : Math.round(p.adr),
     survival: p.survival == null ? null : Math.round(p.survival * 100),
+    clutchPerMap: p.clutchPerMap == null ? null : round2(p.clutchPerMap),
     openingWin: p.openingWin == null ? null : Math.round(p.openingWin * 100),
     deathsPerMap: round1(p.dpr * vol.erounds),
     oppFactor: oppFactor === 1 ? null : round2(oppFactor),
