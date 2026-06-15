@@ -52,6 +52,53 @@ function discordEmbed(insight, tier) {
   };
 }
 
+// Build a single multi-play digest embed (one promotional post listing top plays).
+function digestEmbed(plays, dateStr) {
+  const fields = plays.slice(0, 8).map(p => {
+    const tier = String(p.tier || '').toLowerCase();
+    const hit = (p.confidence != null && p.confidence !== '')
+      ? `${p.confidence}%${p.sample_n ? ` (n=${p.sample_n})` : ''}` : '';
+    const head = [p.sport, p.market].filter(Boolean).join(' · ') || 'Signal';
+    const body = [
+      `**${p.lean || ''}** — ${p.matchup || ''}`.trim(),
+      [tier ? tier.toUpperCase() : '', hit].filter(Boolean).join(' · ')
+    ].filter(Boolean).join('\n');
+    return { name: head, value: body || '—', inline: false };
+  });
+  return {
+    username: 'Lyrid Signals',
+    embeds: [{
+      title: `Lyrid — Today's Top Signals${dateStr ? ` · ${dateStr}` : ''}`,
+      description: 'The strongest plays our models are surfacing right now.',
+      url: 'https://lyrid.app',
+      color: TIER_COLOR.platinum,
+      fields,
+      footer: { text: 'Lyrid • analytics, not advice • full board at lyrid.app' },
+      timestamp: new Date().toISOString()
+    }]
+  };
+}
+
+async function postDigestToDiscord(plays, dateStr) {
+  const r = await fetch(DISCORD_WEBHOOK, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(digestEmbed(plays, dateStr))
+  });
+  if (!r.ok) throw new Error(`discord ${r.status}`);
+  return true;
+}
+
+async function postDigestToZapier(plays, dateStr) {
+  const r = await fetch(ZAP_HOOK, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'digest', date: dateStr, plays, sent_at: new Date().toISOString() })
+  });
+  if (!r.ok) throw new Error(`zapier ${r.status}`);
+  return true;
+}
+
 async function postToDiscord(insight, tier) {
   const r = await fetch(DISCORD_WEBHOOK, {
     method: 'POST',
@@ -105,6 +152,27 @@ export default async function handler(req, res) {
     if (FOUNDER_USER_ID && userData.user.id !== FOUNDER_USER_ID) {
       return res.status(403).json({ error: 'not_founder' });
     }
+  }
+
+  // --- 1b. DIGEST mode: one curated multi-play promo post (button / daily cron) ---
+  if ((req.body || {}).type === 'digest') {
+    const plays = Array.isArray(req.body.plays) ? req.body.plays : [];
+    const dateStr = req.body.date || new Date().toISOString().slice(0, 10);
+    if (plays.length === 0) {
+      return res.status(400).json({ error: 'no_plays' });
+    }
+    const jobs = [];
+    if (DISCORD_WEBHOOK) jobs.push(['discord', postDigestToDiscord(plays, dateStr)]);
+    if (ZAP_HOOK)        jobs.push(['facebook', postDigestToZapier(plays, dateStr)]);
+    const settled = await Promise.allSettled(jobs.map(([, p]) => p));
+    const result = {};
+    settled.forEach((s, i) => {
+      const name = jobs[i][0];
+      result[name] = s.status === 'fulfilled' ? 'sent' : `failed: ${s.reason?.message || 'error'}`;
+      if (s.status === 'rejected') console.warn(`[publish-insight:digest] ${name}`, s.reason?.message);
+    });
+    const anySent = Object.values(result).some(v => v === 'sent');
+    return res.status(anySent ? 200 : 502).json({ type: 'digest', plays: plays.length, channels: result });
   }
 
   // --- 2. Validate the insight payload ---
