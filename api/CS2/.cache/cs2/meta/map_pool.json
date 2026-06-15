@@ -1,0 +1,2294 @@
+{
+  "316": [
+    {
+      "team_id": 316,
+      "map_name": "de_zoo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "cs_assault",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "cs_italy",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "cs_militia",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "cs_office",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_abbey",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_biome",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_cache",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_canals",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_cbble",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_tuscan",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "cs_agency",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_train",
+      "matches_played": 18,
+      "wins": 14,
+      "losses": 4,
+      "win_rate": 77.78,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_nuke",
+      "matches_played": 210,
+      "wins": 141,
+      "losses": 69,
+      "win_rate": 67.14,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_dust2",
+      "matches_played": 108,
+      "wins": 67,
+      "losses": 41,
+      "win_rate": 62.04,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_ancient",
+      "matches_played": 136,
+      "wins": 84,
+      "losses": 52,
+      "win_rate": 61.76,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_overpass",
+      "matches_played": 74,
+      "wins": 42,
+      "losses": 32,
+      "win_rate": 56.76,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_inferno",
+      "matches_played": 110,
+      "wins": 59,
+      "losses": 51,
+      "win_rate": 53.64,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_mirage",
+      "matches_played": 106,
+      "wins": 54,
+      "losses": 52,
+      "win_rate": 50.94,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_anubis",
+      "matches_played": 45,
+      "wins": 19,
+      "losses": 26,
+      "win_rate": 42.22,
+      "is_permaban": false
+    },
+    {
+      "team_id": 316,
+      "map_name": "de_vertigo",
+      "matches_played": 1,
+      "wins": 0,
+      "losses": 1,
+      "win_rate": 0,
+      "is_permaban": true
+    }
+  ],
+  "631": [
+    {
+      "team_id": 631,
+      "map_name": "de_zoo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "cs_assault",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "cs_italy",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "cs_militia",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "cs_office",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_abbey",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_biome",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_cache",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_canals",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_cbble",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_tuscan",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "cs_agency",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_train",
+      "matches_played": 42,
+      "wins": 29,
+      "losses": 13,
+      "win_rate": 69.05,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_vertigo",
+      "matches_played": 92,
+      "wins": 57,
+      "losses": 35,
+      "win_rate": 61.96,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_dust2",
+      "matches_played": 63,
+      "wins": 37,
+      "losses": 26,
+      "win_rate": 58.73,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_overpass",
+      "matches_played": 77,
+      "wins": 44,
+      "losses": 33,
+      "win_rate": 57.14,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_inferno",
+      "matches_played": 175,
+      "wins": 99,
+      "losses": 76,
+      "win_rate": 56.57,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_mirage",
+      "matches_played": 177,
+      "wins": 98,
+      "losses": 79,
+      "win_rate": 55.37,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_nuke",
+      "matches_played": 169,
+      "wins": 93,
+      "losses": 76,
+      "win_rate": 55.03,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_ancient",
+      "matches_played": 72,
+      "wins": 37,
+      "losses": 35,
+      "win_rate": 51.39,
+      "is_permaban": false
+    },
+    {
+      "team_id": 631,
+      "map_name": "de_anubis",
+      "matches_played": 39,
+      "wins": 19,
+      "losses": 20,
+      "win_rate": 48.72,
+      "is_permaban": false
+    }
+  ],
+  "637": [
+    {
+      "team_id": 637,
+      "map_name": "de_zoo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "cs_assault",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "cs_italy",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "cs_militia",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "cs_office",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_abbey",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_biome",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_cache",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_canals",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_cbble",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_tuscan",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "cs_agency",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_ancient",
+      "matches_played": 114,
+      "wins": 80,
+      "losses": 34,
+      "win_rate": 70.18,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_dust2",
+      "matches_played": 122,
+      "wins": 85,
+      "losses": 37,
+      "win_rate": 69.67,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_anubis",
+      "matches_played": 69,
+      "wins": 47,
+      "losses": 22,
+      "win_rate": 68.12,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_train",
+      "matches_played": 20,
+      "wins": 13,
+      "losses": 7,
+      "win_rate": 65,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_overpass",
+      "matches_played": 74,
+      "wins": 45,
+      "losses": 29,
+      "win_rate": 60.81,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_nuke",
+      "matches_played": 156,
+      "wins": 92,
+      "losses": 64,
+      "win_rate": 58.97,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_mirage",
+      "matches_played": 166,
+      "wins": 95,
+      "losses": 71,
+      "win_rate": 57.23,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_vertigo",
+      "matches_played": 51,
+      "wins": 29,
+      "losses": 22,
+      "win_rate": 56.86,
+      "is_permaban": false
+    },
+    {
+      "team_id": 637,
+      "map_name": "de_inferno",
+      "matches_played": 41,
+      "wins": 12,
+      "losses": 29,
+      "win_rate": 29.27,
+      "is_permaban": false
+    }
+  ],
+  "650": [
+    {
+      "team_id": 650,
+      "map_name": "de_zoo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "cs_assault",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "cs_italy",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "cs_militia",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "cs_office",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_abbey",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_biome",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_cache",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_canals",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_cbble",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_tuscan",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "cs_agency",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_dust2",
+      "matches_played": 139,
+      "wins": 98,
+      "losses": 41,
+      "win_rate": 70.5,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_train",
+      "matches_played": 22,
+      "wins": 15,
+      "losses": 7,
+      "win_rate": 68.18,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_inferno",
+      "matches_played": 179,
+      "wins": 119,
+      "losses": 60,
+      "win_rate": 66.48,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_vertigo",
+      "matches_played": 89,
+      "wins": 58,
+      "losses": 31,
+      "win_rate": 65.17,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_overpass",
+      "matches_played": 83,
+      "wins": 53,
+      "losses": 30,
+      "win_rate": 63.86,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_nuke",
+      "matches_played": 171,
+      "wins": 109,
+      "losses": 62,
+      "win_rate": 63.74,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_anubis",
+      "matches_played": 55,
+      "wins": 34,
+      "losses": 21,
+      "win_rate": 61.82,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_mirage",
+      "matches_played": 170,
+      "wins": 105,
+      "losses": 65,
+      "win_rate": 61.76,
+      "is_permaban": false
+    },
+    {
+      "team_id": 650,
+      "map_name": "de_ancient",
+      "matches_played": 1,
+      "wins": 0,
+      "losses": 1,
+      "win_rate": 0,
+      "is_permaban": true
+    }
+  ],
+  "717": [
+    {
+      "team_id": 717,
+      "map_name": "de_zoo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "cs_assault",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "cs_italy",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "cs_militia",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "cs_office",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_abbey",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_biome",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_cache",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_canals",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_cbble",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_train",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": true
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_tuscan",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "cs_agency",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_ancient",
+      "matches_played": 120,
+      "wins": 84,
+      "losses": 36,
+      "win_rate": 70,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_mirage",
+      "matches_played": 141,
+      "wins": 90,
+      "losses": 51,
+      "win_rate": 63.83,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_inferno",
+      "matches_played": 114,
+      "wins": 70,
+      "losses": 44,
+      "win_rate": 61.4,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_overpass",
+      "matches_played": 33,
+      "wins": 18,
+      "losses": 15,
+      "win_rate": 54.55,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_dust2",
+      "matches_played": 59,
+      "wins": 32,
+      "losses": 27,
+      "win_rate": 54.24,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_anubis",
+      "matches_played": 61,
+      "wins": 31,
+      "losses": 30,
+      "win_rate": 50.82,
+      "is_permaban": false
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_vertigo",
+      "matches_played": 2,
+      "wins": 1,
+      "losses": 1,
+      "win_rate": 50,
+      "is_permaban": true
+    },
+    {
+      "team_id": 717,
+      "map_name": "de_nuke",
+      "matches_played": 97,
+      "wins": 48,
+      "losses": 49,
+      "win_rate": 49.48,
+      "is_permaban": false
+    }
+  ],
+  "745": [
+    {
+      "team_id": 745,
+      "map_name": "de_zoo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "cs_assault",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "cs_italy",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "cs_militia",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "cs_office",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_abbey",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_anubis",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": true
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_biome",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_cache",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_canals",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_cbble",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_tuscan",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "cs_agency",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_train",
+      "matches_played": 29,
+      "wins": 20,
+      "losses": 9,
+      "win_rate": 68.97,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_nuke",
+      "matches_played": 168,
+      "wins": 101,
+      "losses": 67,
+      "win_rate": 60.12,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_ancient",
+      "matches_played": 114,
+      "wins": 67,
+      "losses": 47,
+      "win_rate": 58.77,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_inferno",
+      "matches_played": 161,
+      "wins": 94,
+      "losses": 67,
+      "win_rate": 58.39,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_overpass",
+      "matches_played": 57,
+      "wins": 33,
+      "losses": 24,
+      "win_rate": 57.89,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_mirage",
+      "matches_played": 165,
+      "wins": 92,
+      "losses": 73,
+      "win_rate": 55.76,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_vertigo",
+      "matches_played": 79,
+      "wins": 42,
+      "losses": 37,
+      "win_rate": 53.16,
+      "is_permaban": false
+    },
+    {
+      "team_id": 745,
+      "map_name": "de_dust2",
+      "matches_played": 63,
+      "wins": 31,
+      "losses": 32,
+      "win_rate": 49.21,
+      "is_permaban": false
+    }
+  ],
+  "765": [
+    {
+      "team_id": 765,
+      "map_name": "de_zoo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "cs_assault",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "cs_italy",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "cs_militia",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "cs_office",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_abbey",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_biome",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_cache",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_canals",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_cbble",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_tuscan",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_vertigo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": true
+    },
+    {
+      "team_id": 765,
+      "map_name": "cs_agency",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_train",
+      "matches_played": 42,
+      "wins": 29,
+      "losses": 13,
+      "win_rate": 69.05,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_dust2",
+      "matches_played": 110,
+      "wins": 74,
+      "losses": 36,
+      "win_rate": 67.27,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_mirage",
+      "matches_played": 197,
+      "wins": 131,
+      "losses": 66,
+      "win_rate": 66.5,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_nuke",
+      "matches_played": 161,
+      "wins": 102,
+      "losses": 59,
+      "win_rate": 63.35,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_ancient",
+      "matches_played": 108,
+      "wins": 68,
+      "losses": 40,
+      "win_rate": 62.96,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_anubis",
+      "matches_played": 44,
+      "wins": 26,
+      "losses": 18,
+      "win_rate": 59.09,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_inferno",
+      "matches_played": 156,
+      "wins": 87,
+      "losses": 69,
+      "win_rate": 55.77,
+      "is_permaban": false
+    },
+    {
+      "team_id": 765,
+      "map_name": "de_overpass",
+      "matches_played": 80,
+      "wins": 43,
+      "losses": 37,
+      "win_rate": 53.75,
+      "is_permaban": false
+    }
+  ],
+  "771": [
+    {
+      "team_id": 771,
+      "map_name": "de_zoo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "cs_assault",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "cs_italy",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "cs_militia",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "cs_office",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_abbey",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_biome",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_cache",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_canals",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_cbble",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_tuscan",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "cs_agency",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_inferno",
+      "matches_played": 204,
+      "wins": 136,
+      "losses": 68,
+      "win_rate": 66.67,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_dust2",
+      "matches_played": 123,
+      "wins": 72,
+      "losses": 51,
+      "win_rate": 58.54,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_anubis",
+      "matches_played": 57,
+      "wins": 33,
+      "losses": 24,
+      "win_rate": 57.89,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_nuke",
+      "matches_played": 132,
+      "wins": 75,
+      "losses": 57,
+      "win_rate": 56.82,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_ancient",
+      "matches_played": 111,
+      "wins": 63,
+      "losses": 48,
+      "win_rate": 56.76,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_mirage",
+      "matches_played": 158,
+      "wins": 84,
+      "losses": 74,
+      "win_rate": 53.16,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_train",
+      "matches_played": 29,
+      "wins": 15,
+      "losses": 14,
+      "win_rate": 51.72,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_vertigo",
+      "matches_played": 80,
+      "wins": 40,
+      "losses": 40,
+      "win_rate": 50,
+      "is_permaban": false
+    },
+    {
+      "team_id": 771,
+      "map_name": "de_overpass",
+      "matches_played": 21,
+      "wins": 6,
+      "losses": 15,
+      "win_rate": 28.57,
+      "is_permaban": true
+    }
+  ],
+  "2018": [
+    {
+      "team_id": 2018,
+      "map_name": "de_zoo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "cs_assault",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "cs_italy",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "cs_militia",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "cs_office",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_abbey",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_biome",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_cache",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_canals",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_cbble",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_tuscan",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "cs_agency",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_dust2",
+      "matches_played": 82,
+      "wins": 49,
+      "losses": 33,
+      "win_rate": 59.76,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_ancient",
+      "matches_played": 89,
+      "wins": 47,
+      "losses": 42,
+      "win_rate": 52.81,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_vertigo",
+      "matches_played": 69,
+      "wins": 35,
+      "losses": 34,
+      "win_rate": 50.72,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_nuke",
+      "matches_played": 127,
+      "wins": 63,
+      "losses": 64,
+      "win_rate": 49.61,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_overpass",
+      "matches_played": 51,
+      "wins": 25,
+      "losses": 26,
+      "win_rate": 49.02,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_mirage",
+      "matches_played": 101,
+      "wins": 49,
+      "losses": 52,
+      "win_rate": 48.51,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_train",
+      "matches_played": 23,
+      "wins": 11,
+      "losses": 12,
+      "win_rate": 47.83,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_inferno",
+      "matches_played": 67,
+      "wins": 32,
+      "losses": 35,
+      "win_rate": 47.76,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2018,
+      "map_name": "de_anubis",
+      "matches_played": 38,
+      "wins": 18,
+      "losses": 20,
+      "win_rate": 47.37,
+      "is_permaban": false
+    }
+  ],
+  "2766": [
+    {
+      "team_id": 2766,
+      "map_name": "de_zoo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "cs_assault",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "cs_italy",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "cs_militia",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "cs_office",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_abbey",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_biome",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_cache",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_canals",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_cbble",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_tuscan",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "cs_agency",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_nuke",
+      "matches_played": 170,
+      "wins": 106,
+      "losses": 64,
+      "win_rate": 62.35,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_mirage",
+      "matches_played": 193,
+      "wins": 113,
+      "losses": 80,
+      "win_rate": 58.55,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_inferno",
+      "matches_played": 108,
+      "wins": 60,
+      "losses": 48,
+      "win_rate": 55.56,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_ancient",
+      "matches_played": 151,
+      "wins": 83,
+      "losses": 68,
+      "win_rate": 54.97,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_overpass",
+      "matches_played": 102,
+      "wins": 56,
+      "losses": 46,
+      "win_rate": 54.9,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_train",
+      "matches_played": 46,
+      "wins": 25,
+      "losses": 21,
+      "win_rate": 54.35,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_anubis",
+      "matches_played": 103,
+      "wins": 53,
+      "losses": 50,
+      "win_rate": 51.46,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_dust2",
+      "matches_played": 53,
+      "wins": 25,
+      "losses": 28,
+      "win_rate": 47.17,
+      "is_permaban": false
+    },
+    {
+      "team_id": 2766,
+      "map_name": "de_vertigo",
+      "matches_played": 10,
+      "wins": 4,
+      "losses": 6,
+      "win_rate": 40,
+      "is_permaban": false
+    }
+  ],
+  "5556": [
+    {
+      "team_id": 5556,
+      "map_name": "de_zoo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "cs_assault",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "cs_italy",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "cs_militia",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "cs_office",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_abbey",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_biome",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_cache",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_canals",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_cbble",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_tuscan",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "cs_agency",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_nuke",
+      "matches_played": 66,
+      "wins": 42,
+      "losses": 24,
+      "win_rate": 63.64,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_vertigo",
+      "matches_played": 8,
+      "wins": 5,
+      "losses": 3,
+      "win_rate": 62.5,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_inferno",
+      "matches_played": 85,
+      "wins": 53,
+      "losses": 32,
+      "win_rate": 62.35,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_mirage",
+      "matches_played": 89,
+      "wins": 55,
+      "losses": 34,
+      "win_rate": 61.8,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_ancient",
+      "matches_played": 89,
+      "wins": 55,
+      "losses": 34,
+      "win_rate": 61.8,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_dust2",
+      "matches_played": 51,
+      "wins": 30,
+      "losses": 21,
+      "win_rate": 58.82,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_overpass",
+      "matches_played": 27,
+      "wins": 14,
+      "losses": 13,
+      "win_rate": 51.85,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_anubis",
+      "matches_played": 64,
+      "wins": 32,
+      "losses": 32,
+      "win_rate": 50,
+      "is_permaban": false
+    },
+    {
+      "team_id": 5556,
+      "map_name": "de_train",
+      "matches_played": 9,
+      "wins": 3,
+      "losses": 6,
+      "win_rate": 33.33,
+      "is_permaban": false
+    }
+  ],
+  "7278": [
+    {
+      "team_id": 7278,
+      "map_name": "de_zoo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "cs_assault",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "cs_italy",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "cs_militia",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "cs_office",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_abbey",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_biome",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_cache",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_canals",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_cbble",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_tuscan",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_vertigo",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "cs_agency",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_anubis",
+      "matches_played": null,
+      "wins": null,
+      "losses": 0,
+      "win_rate": null,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_train",
+      "matches_played": 7,
+      "wins": 6,
+      "losses": 1,
+      "win_rate": 85.71,
+      "is_permaban": true
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_mirage",
+      "matches_played": 39,
+      "wins": 30,
+      "losses": 9,
+      "win_rate": 76.92,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_nuke",
+      "matches_played": 19,
+      "wins": 12,
+      "losses": 7,
+      "win_rate": 63.16,
+      "is_permaban": true
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_ancient",
+      "matches_played": 25,
+      "wins": 14,
+      "losses": 11,
+      "win_rate": 56,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_overpass",
+      "matches_played": 8,
+      "wins": 4,
+      "losses": 4,
+      "win_rate": 50,
+      "is_permaban": true
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_dust2",
+      "matches_played": 30,
+      "wins": 14,
+      "losses": 16,
+      "win_rate": 46.67,
+      "is_permaban": false
+    },
+    {
+      "team_id": 7278,
+      "map_name": "de_inferno",
+      "matches_played": 11,
+      "wins": 4,
+      "losses": 7,
+      "win_rate": 36.36,
+      "is_permaban": true
+    }
+  ]
+}
