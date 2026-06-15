@@ -20,6 +20,14 @@
     {
       "path": "/api/cron/wnba-prefetch",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/post-digest",
+      "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/cron/post-digest",
+      "schedule": "0 18 * * *"
     }
   ],
   "rewrites": [
