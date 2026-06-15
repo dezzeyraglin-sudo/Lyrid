@@ -359,6 +359,31 @@ function leanFromRole(role) {
   return "neutral";
 }
 
+// Team discipline -> map shape. Opening-duel control + refrag discipline are the
+// snowball seed; the trailing team's eco resilience decides if they can break it.
+// Strong control vs weak resilience -> blowout (fewer rounds). Even + both resilient
+// -> grind/OT (more rounds). Bounded; experimental, labeled, not price-validated.
+function disciplineTilt(a, b) {
+  const none = { delta: 0, blowoutRisk: null, otLean: null, controlEdge: null, controlBy: null };
+  if (!a || !b || a.openingWin == null || b.openingWin == null) return none;
+  const openingEdge = a.openingWin - b.openingWin;
+  const tradeEdge = (a.tradePerRound != null && b.tradePerRound != null) ? clamp(a.tradePerRound - b.tradePerRound, -0.3, 0.3) : 0;
+  const controlEdge = round2(openingEdge + 0.5 * tradeEdge);
+  const controlBy = controlEdge >= 0 ? "A" : "B";
+  const lead = Math.abs(controlEdge);
+  let delta = 0, blowoutRisk = null, otLean = null;
+  if (lead >= 0.10) {
+    const underdogEco = controlEdge > 0 ? b.ecoWin : a.ecoWin;
+    const resil = underdogEco == null ? 0.2 : underdogEco;     // weak eco -> snowball can't be broken
+    const frac = 1 - clamp(resil / 0.35, 0, 1);
+    delta = -clamp(lead, 0, 0.25) * 4 * frac;                  // up to ~ -1 round
+    blowoutRisk = (frac >= 0.5 && lead >= 0.14) ? "HIGH" : "MED";
+  } else if (lead < 0.05) {
+    const bothEco = (a.ecoWin != null && b.ecoWin != null) ? (a.ecoWin + b.ecoWin) / 2 : null;
+    if (bothEco != null && bothEco >= 0.25) { delta = 0.8; otLean = "YES"; }
+  }
+  return { delta: round1(delta), blowoutRisk, otLean, controlEdge, controlBy };
+}
 function roundVolume(match, beforeTs) {
   // Prefer official Valve World Ranking gap (a real strength signal) over the weak
   // inferred round-margin gap (R^2~0.01). Bigger gap -> more lopsided -> fewer rounds.
@@ -378,9 +403,16 @@ function roundVolume(match, beforeTs) {
   // a large pistol-win-rate gap snowballs into shorter, more lopsided maps.
   const pa = roundsByTeam.get(match.team1?.id)?.pistolWin, pb = roundsByTeam.get(match.team2?.id)?.pistolWin;
   if (pa != null && pb != null) erounds = Math.max(15, erounds - 1.5 * Math.abs(pa - pb));
+  // discipline / snowball tilt — trade discipline, opening-duel control and eco
+  // resilience decide whether a map snowballs (blowout, fewer rounds) or grinds out
+  // (resilient teams trade rounds -> OT, more rounds). This moves erounds, which
+  // scales EVERY player's kills. Bounded + only fires with round data present.
+  const dt = disciplineTilt(roundsByTeam.get(match.team1?.id), roundsByTeam.get(match.team2?.id));
+  if (dt.delta) erounds = Math.max(15, Math.min(26, erounds + dt.delta));
   const otRate = pm.filter((x) => x.rounds > 24).length / Math.max(1, pm.length);
   const blowout = pm.filter((x) => x.rounds <= 17).length / Math.max(1, pm.length);
-  return { erounds: round1(erounds), gap: round1(gap), otRate, blowout, ranked };
+  return { erounds: round1(erounds), gap: round1(gap), otRate, blowout, ranked,
+    blowoutRisk: dt.blowoutRisk, otLean: dt.otLean, controlEdge: dt.controlEdge, controlBy: dt.controlBy };
 }
 
 // Round-by-round read (RESEARCH): pistol-round edge, CT/T side splits, and a totals
@@ -406,8 +438,17 @@ function roundRead(match, expMaps, vol) {
   } else if (pistolEdge != null && Math.abs(pistolEdge) < 0.06 && vol.ranked && gap != null && gap <= 2) {
     totalsLean = "OVER"; reason = "even pistols, close teams -> longer halves, more rounds";
   }
-  const splits = (t) => t ? { pistol: pct1(t.pistolWin), ct: pct1(t.ctWin), t: pct1(t.tWin) } : null;
-  return { teamA: splits(a), teamB: splits(b), pistolEdge, favPistol, mapCtLean: avgCt == null ? null : Math.round(avgCt * 100), totalsLean, reason };
+  // discipline / snowball can independently set the lean when it reads strongly
+  const ctrlName = vol.controlBy === "A" ? (match.team1?.name ?? "team A") : (match.team2?.name ?? "team B");
+  if (vol.blowoutRisk === "HIGH") { totalsLean = "UNDER"; reason = `${ctrlName} controls openings + trades vs weak eco resilience -> blowout risk, fewer rounds`; }
+  else if (vol.otLean === "YES") { totalsLean = "OVER"; reason = "both teams trade well + eco-resilient -> rounds grind out, OT live"; }
+  const splits = (t) => t ? { pistol: pct1(t.pistolWin), ct: pct1(t.ctWin), t: pct1(t.tWin),
+    openingWin: t.openingWin == null ? null : Math.round(t.openingWin * 100),
+    tradeRatio: t.tradeRatio ?? null,
+    ecoWin: t.ecoWin == null ? null : Math.round(t.ecoWin * 100),
+    snowball: t.snowball ?? null } : null;
+  return { teamA: splits(a), teamB: splits(b), pistolEdge, favPistol, mapCtLean: avgCt == null ? null : Math.round(avgCt * 100),
+    totalsLean, reason, blowoutRisk: vol.blowoutRisk, otLean: vol.otLean, controlEdge: vol.controlEdge, controlBy: vol.controlBy };
 }
 function teamStrength(teamId, beforeTs) {
   if (teamId == null) return 0;

@@ -16947,6 +16947,9 @@ async function autoGradeOnAppOpen() {
   #cs2-panel .cs2-analysis-title{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-medium);color:var(--text-primary)}
   #cs2-panel .cs2-analysis-sub{font-size:var(--size-caption);color:var(--text-secondary);margin-top:var(--space-1)}
   #cs2-panel .cs2-roundread{background:var(--surface-muted);border-radius:var(--radius-sm);padding:var(--space-3);margin-bottom:var(--space-3)}
+  #cs2-panel .cs2-rr-badge{font-family:var(--font-mono);font-size:10px;font-weight:600;padding:1px 6px;border-radius:var(--radius-xs,4px);margin-left:6px;text-transform:uppercase;letter-spacing:.04em}
+  #cs2-panel .cs2-rr-blowout{background:color-mix(in srgb,var(--data-negative) 18%,transparent);color:var(--data-negative)}
+  #cs2-panel .cs2-rr-ot{background:color-mix(in srgb,var(--data-positive) 18%,transparent);color:var(--data-positive)}
   #cs2-panel .cs2-rr-top{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-1)}
   #cs2-panel .cs2-rr-lean{font-family:var(--font-sans);font-size:10px;font-weight:600;letter-spacing:0.08em;padding:2px 8px;border-radius:var(--radius-pill)}
   #cs2-panel .cs2-rr-under{background:var(--data-negative-surface);color:var(--data-negative)}
@@ -17119,9 +17122,11 @@ async function autoGradeOnAppOpen() {
       <div class="cs2-roundread">
         <div class="cs2-rr-top">
           <span class="cs2-rr-lean cs2-rr-${(rr.totalsLean || 'neutral').toLowerCase()}">TOTALS ${esc(rr.totalsLean)}</span>
+          ${rr.blowoutRisk ? `<span class="cs2-rr-badge cs2-rr-blowout">BLOWOUT ${esc(rr.blowoutRisk)}</span>` : ''}${rr.otLean ? `<span class="cs2-rr-badge cs2-rr-ot">OT LIVE</span>` : ''}
           <span class="cs2-rr-reason">${esc(rr.reason)}</span>
         </div>
         ${rr.teamA && rr.teamB ? `<div class="cs2-rr-splits">${esc(m.teamA)} — pistol ${rr.teamA.pistol}% · CT ${rr.teamA.ct}% · T ${rr.teamA.t}% &nbsp;|&nbsp; ${esc(m.teamB)} — pistol ${rr.teamB.pistol}% · CT ${rr.teamB.ct}% · T ${rr.teamB.t}%</div>` : ''}
+        ${rr.teamA && rr.teamB && rr.teamA.openingWin != null ? `<div class="cs2-rr-splits">${esc(m.teamA)} — opening ${rr.teamA.openingWin}% · trade ${rr.teamA.tradeRatio} · eco ${rr.teamA.ecoWin}% · streak ${rr.teamA.snowball} &nbsp;|&nbsp; ${esc(m.teamB)} — opening ${rr.teamB.openingWin}% · trade ${rr.teamB.tradeRatio} · eco ${rr.teamB.ecoWin}% · streak ${rr.teamB.snowball}</div>` : ''}
       </div>`;
     const teamsHtml = Object.keys(byTeam).map(t =>
       `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(p => renderCs2PlayerCard(p, m.matchId)).join('')}`).join('');

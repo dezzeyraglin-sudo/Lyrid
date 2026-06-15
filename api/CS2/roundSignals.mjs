@@ -39,10 +39,20 @@ for (const f of fs.readdirSync(ROUNDS)) {
     // per-team pistol + side
     for (const ts of r.team_stats ?? []) {
       const id = ts.team?.id; if (id == null) continue;
-      const t = bump(team, id, () => ({ pistolW: 0, pistolN: 0, ctW: 0, ctN: 0, tW: 0, tN: 0, name: ts.team?.name ?? null }));
+      const t = bump(team, id, () => ({ pistolW: 0, pistolN: 0, ctW: 0, ctN: 0, tW: 0, tN: 0, name: ts.team?.name ?? null,
+        n: 0, fk: 0, fd: 0, tk: 0, td: 0, ecoN: 0, ecoW: 0, swSum: 0, swN: 0, uWS: 0, uWN: 0, uLS: 0, uLN: 0 }));
       if (ts.is_pistol_round) { t.pistolN++; if (ts.won) t.pistolW++; }
       if (ts.team_side === "CT") { t.ctN++; if (ts.won) t.ctW++; }
       else if (ts.team_side === "T") { t.tN++; if (ts.won) t.tW++; }
+      // discipline / snowball signals (the mechanism behind blowouts & OT)
+      t.n++;
+      t.fk += ts.first_kills || 0; t.fd += ts.first_deaths || 0;       // opening-duel control
+      t.tk += ts.trade_kills || 0; t.td += ts.trade_deaths || 0;       // refrag discipline
+      const eq = ts.equipment_value;                                   // eco resilience
+      if (eq != null && eq < 2000) { t.ecoN++; if (ts.won) t.ecoW++; }
+      if (ts.won && ts.win_streak != null) { t.swSum += ts.win_streak; t.swN++; } // snowball length
+      const uv = ts.utility_value;                                     // utility on wins vs losses
+      if (uv != null) { if (ts.won) { t.uWS += uv; t.uWN++; } else { t.uLS += uv; t.uLN++; } }
     }
   }
 }
@@ -54,6 +64,14 @@ for (const [id, t] of team) {
     pistolWin: t.pistolN ? round3(t.pistolW / t.pistolN) : null, pistolN: t.pistolN,
     ctWin: t.ctN ? round3(t.ctW / t.ctN) : null, ctN: t.ctN,
     tWin: t.tN ? round3(t.tW / t.tN) : null, tN: t.tN,
+    openingWin: (t.fk + t.fd) ? round3(t.fk / (t.fk + t.fd)) : null,
+    tradePerRound: t.n ? round3(t.tk / t.n) : null,
+    tradeRatio: round2(t.tk / Math.max(1, t.td)),
+    ecoWin: t.ecoN ? round3(t.ecoW / t.ecoN) : null, ecoN: t.ecoN,
+    snowball: t.swN ? round2(t.swSum / t.swN) : null,            // avg consecutive-win length when winning
+    utilOnWin: t.uWN ? Math.round(t.uWS / t.uWN) : null,
+    utilOnLoss: t.uLN ? Math.round(t.uLS / t.uLN) : null,
+    roundsN: t.n,
   };
 }
 const mapOut = {};
@@ -70,6 +88,7 @@ for (const [m, s] of sample) console.log(`    ${m.padEnd(10)} CT win ${(s.ctWin 
 
 function canonMap(name) { return String(name || "").toLowerCase().replace(/^de_/, "").trim(); }
 function round3(x) { return Math.round(x * 1000) / 1000; }
+function round2(x) { return Math.round(x * 100) / 100; }
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) if (argv[i].startsWith("--")) { const k = argv[i].slice(2); out[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true; }
