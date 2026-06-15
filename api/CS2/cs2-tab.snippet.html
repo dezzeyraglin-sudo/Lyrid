@@ -51,6 +51,14 @@
   #cs2-panel .cs2-analysis-head{margin:var(--space-2) 0 var(--space-4);padding-bottom:var(--space-3);border-bottom:0.5px solid var(--border-hairline)}
   #cs2-panel .cs2-analysis-title{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-medium);color:var(--text-primary)}
   #cs2-panel .cs2-analysis-sub{font-size:var(--size-caption);color:var(--text-secondary);margin-top:var(--space-1)}
+  #cs2-panel .cs2-roundread{background:var(--surface-muted);border-radius:var(--radius-sm);padding:var(--space-3);margin-bottom:var(--space-3)}
+  #cs2-panel .cs2-rr-top{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-1)}
+  #cs2-panel .cs2-rr-lean{font-family:var(--font-sans);font-size:10px;font-weight:600;letter-spacing:0.08em;padding:2px 8px;border-radius:var(--radius-pill)}
+  #cs2-panel .cs2-rr-under{background:var(--data-negative-surface);color:var(--data-negative)}
+  #cs2-panel .cs2-rr-over{background:var(--data-positive-surface);color:var(--data-positive)}
+  #cs2-panel .cs2-rr-neutral{background:var(--surface-card);color:var(--text-muted);border:0.5px solid var(--border-strong)}
+  #cs2-panel .cs2-rr-reason{font-size:var(--size-caption);color:var(--text-secondary)}
+  #cs2-panel .cs2-rr-splits{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-secondary)}
   #cs2-panel .cs2-team-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--text-secondary);font-weight:var(--weight-medium);margin:var(--space-4) 0 var(--space-2)}
   #cs2-panel .cs2-pcard{background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-2)}
   #cs2-panel .cs2-pcard-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
@@ -65,6 +73,7 @@
   #cs2-panel .cs2-statbar{display:flex;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--space-2)}
   #cs2-panel .cs2-stat{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-primary)}
   #cs2-panel .cs2-stat .k{color:var(--text-secondary);font-family:var(--font-sans);font-size:10px;margin-left:3px}
+  #cs2-panel .cs2-oppadj{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--data-warning);margin:2px 0 var(--space-1)}
   #cs2-panel .cs2-range{display:flex;align-items:center;gap:var(--space-4);padding:var(--space-2) var(--space-3);background:var(--surface-muted);border-radius:var(--radius-sm);margin-bottom:var(--space-2)}
   #cs2-panel .cs2-range-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-loose);text-transform:uppercase;color:var(--text-secondary)}
   #cs2-panel .cs2-range-val{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-md);color:var(--text-primary)}
@@ -75,16 +84,27 @@
   #cs2-panel .cs2-thin{font-family:var(--font-sans);font-size:9px;letter-spacing:0.08em;color:var(--data-warning);border:0.5px solid var(--data-warning);border-radius:var(--radius-pill);padding:1px 6px}
   #cs2-panel .cs2-low{color:var(--data-warning)}
   #cs2-panel .cs2-foot{font-size:var(--size-caption);color:var(--text-muted);margin-top:var(--space-4);line-height:var(--line-caption)}
+  #cs2-panel .cs2-line-row{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-2);padding-top:var(--space-2);border-top:0.5px solid var(--border-hairline);flex-wrap:wrap}
+  #cs2-panel .cs2-line-label{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-loose);text-transform:uppercase;color:var(--text-secondary)}
+  #cs2-panel .cs2-line-input{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);width:64px;height:28px;padding:0 8px;border:0.5px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface-card);color:var(--text-primary)}
+  #cs2-panel .cs2-line-input:focus{outline:none;border-color:var(--brand-primary);box-shadow:var(--elevation-focus)}
+  #cs2-panel .cs2-line-res{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-primary)}
+  #cs2-panel .cs2-line-hint{font-size:var(--size-caption);color:var(--text-muted)}
+  #cs2-panel .cs2-line-delta{color:var(--text-secondary)}
 </style>
 <script>
 (function () {
-  const state = { raw: null, selectedMatchId: null, loaded: false };
+  const state = { raw: null, selectedMatchId: null, loaded: false, lines: {}, lineKeys: {}, lineP: {} };
+  try { state.lines = JSON.parse(localStorage.getItem('lyrid_cs2_lines') || '{}') || {}; } catch (_) { state.lines = {}; }
   window._cs2State = state;
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const bandClass = (b) => b === 'STRONG' ? 'glb-tier-strong' : b === 'LEAN' ? 'glb-tier-moderate' : 'cs2-band-pass';
   const leanClass = (l) => l === 'OVER-friendly' ? 'cs2-lean-over' : l === 'UNDER-friendly' ? 'cs2-lean-under' : 'cs2-lean-neutral';
+  const fmtTime = (iso) => { if (!iso) return null; const d = new Date(iso); if (isNaN(d)) return null; if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0) return null; return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
+  const erf = (x) => { const t = 1 / (1 + 0.3275911 * Math.abs(x)); const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x); return x >= 0 ? y : -y; };
+  const ncdf = (z) => 0.5 * (1 + erf(z / Math.SQRT2));
 
   window.switchToCs2 = function () {
     if (typeof switchTab === 'function') switchTab('cs2');
@@ -163,12 +183,12 @@
     return `
       <button class="lyrid-game-card${isSel ? ' signal' : ''}" type="button" onclick="analyzeCs2Match('${esc(m.matchId)}')" aria-label="Read ${esc(m.teamA)} vs ${esc(m.teamB)}">
         <div class="lyrid-game-time">
-          <div class="lyrid-game-time-value">${esc((m.date || '').slice(5) || 'TBD')}</div>
-          <div class="lyrid-game-time-zone">${esc(m.format || 'Bo3')}</div>
+          <div class="lyrid-game-time-value">${esc(fmtTime(m.startTime) || (m.date || '').slice(5) || 'TBD')}</div>
+          <div class="lyrid-game-time-zone">${esc((fmtTime(m.startTime) ? (m.date || '').slice(5) + ' · ' : '') + (m.format || 'Bo3'))}</div>
         </div>
         <div class="lyrid-game-matchup">
-          <div class="lyrid-game-teams"><span>${esc(m.teamA || '?')}</span><span class="at">vs</span><span>${esc(m.teamB || '?')}</span></div>
-          <div class="lyrid-game-pitchers">${mapsLine} · ${sub} · E[rds] ${vol.erounds ?? '?'}</div>
+          <div class="lyrid-game-teams"><span>${m.rankA ? '#' + m.rankA + ' ' : ''}${esc(m.teamA || '?')}</span><span class="at">vs</span><span>${m.rankB ? '#' + m.rankB + ' ' : ''}${esc(m.teamB || '?')}</span></div>
+          <div class="lyrid-game-pitchers">${mapsLine} · ${sub} · E[rds] ${vol.erounds ?? '?'}${m.rosterSource === 'inferred' ? ' · inferred roster' : ''}</div>
         </div>
         <div class="lyrid-game-projection${isSel ? ' signal' : ''}">
           <div class="lyrid-game-projection-label">${leanCount} lean${leanCount === 1 ? '' : 's'}</div>
@@ -196,21 +216,73 @@
     const header = `
       <div class="cs2-analysis-head">
         <div class="cs2-analysis-title">${esc(m.teamA)} vs ${esc(m.teamB)}</div>
-        <div class="cs2-analysis-sub">Maps 1+2: <b style="color:var(--text-primary)">${(m.maps || []).map(esc).join(' + ') || '—'}</b> · E[rds/map] ${vol.erounds ?? '?'} · blowout ${pctOf(vol.blowout)} · OT ${pctOf(vol.ot)} <span class="cs2-low">[round volume LOW CONFIDENCE]</span></div>
+        <div class="cs2-analysis-sub">Maps 1+2: <b style="color:var(--text-primary)">${(m.maps || []).map(esc).join(' + ') || '—'}</b> · E[rds/map] ${vol.erounds ?? '?'} · blowout ${pctOf(vol.blowout)} · OT ${pctOf(vol.ot)} <span class="cs2-low">[round volume LOW CONFIDENCE]</span>${m.lineupAsOf ? ' \u00b7 lineup as of ' + esc(m.lineupAsOf) : ''}${m.rosterChanged ? ' <span class="cs2-low">\u00b7 roster changed</span>' : ''}</div>
       </div>`;
 
+    const rr = m.roundRead;
+    const roundReadHtml = !rr ? '' : `
+      <div class="cs2-roundread">
+        <div class="cs2-rr-top">
+          <span class="cs2-rr-lean cs2-rr-${(rr.totalsLean || 'neutral').toLowerCase()}">TOTALS ${esc(rr.totalsLean)}</span>
+          <span class="cs2-rr-reason">${esc(rr.reason)}</span>
+        </div>
+        ${rr.teamA && rr.teamB ? `<div class="cs2-rr-splits">${esc(m.teamA)} — pistol ${rr.teamA.pistol}% · CT ${rr.teamA.ct}% · T ${rr.teamA.t}% &nbsp;|&nbsp; ${esc(m.teamB)} — pistol ${rr.teamB.pistol}% · CT ${rr.teamB.ct}% · T ${rr.teamB.t}%</div>` : ''}
+      </div>`;
     const teamsHtml = Object.keys(byTeam).map(t =>
-      `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(renderCs2PlayerCard).join('')}`).join('');
+      `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(p => renderCs2PlayerCard(p, m.matchId)).join('')}`).join('');
 
-    container.innerHTML = header + teamsHtml +
-      `<div class="cs2-foot">UNPOWERED (needs demo-level data): opponent site/pace, CT/T splits, positional fit, economy, stand-ins. Pick score excludes opponent-style (15%) + line-value (10%).</div>`;
+    container.innerHTML = header + roundReadHtml + teamsHtml +
+      `<div class="cs2-foot">UNPOWERED: opponent site/pace read, positional fit, deep economy discipline, day-of stand-ins. Pick score excludes opponent-style (15%) + line-value (10%).</div>`;
   };
 
-  function renderCs2PlayerCard(p) {
+  function cs2RenderLineResult(p, val) {
+    if (val === '' || val == null || isNaN(Number(val))) return '<span class="cs2-line-hint">enter Book line</span>';
+    const line = Number(val);
+    const sd = Math.max(1, (p.ceiling - p.floor) / 1.88);
+    const pOver = 1 - ncdf((line - p.median) / sd);
+    const over = pOver >= 0.5;
+    const prob = Math.round((over ? pOver : 1 - pOver) * 100);
+    const delta = p.median - line;
+    const cls = over ? 'cs2-lean-over' : 'cs2-lean-under';
+    return `Tool ${p.median} · Book ${esc(line)} → <span class="${cls}">${over ? 'OVER' : 'UNDER'} ${prob}%</span> <span class="cs2-line-delta">(${delta >= 0 ? '+' : ''}${delta.toFixed(1)})</span>`;
+  }
+
+  window.cs2SetLine = function (safeId, val) {
+    const key = state.lineKeys[safeId]; const p = state.lineP[safeId];
+    if (!key) return;
+    if (val === '' || val == null) delete state.lines[key]; else state.lines[key] = val;
+    try { localStorage.setItem('lyrid_cs2_lines', JSON.stringify(state.lines)); } catch (_) {}
+    const el = document.getElementById('lr_' + safeId);
+    if (el && p) el.innerHTML = cs2RenderLineResult(p, val);
+  };
+
+  function renderCs2PlayerCard(p, matchId) {
     const mf = p.mapFitPct == null ? 'n/a' : (p.mapFitPct >= 0 ? '+' : '') + p.mapFitPct + '%';
     const thin = p.thin ? `<span class="cs2-thin">THIN n=${p.n}</span>` : '';
     const st = (v, k) => `<span class="cs2-stat">${v}<span class="k">${k}</span></span>`;
-    const flags = (p.flags || []).map(f => `<div class="cs2-flag">⚠ ${esc(f)}</div>`).join('');
+    const flags = (p.flags || []).filter(f => !/^opponent-adjusted/.test(f)).map(f => `<div class="cs2-flag">⚠ ${esc(f)}</div>`).join('');
+    const mkRow = (statKey, label, proj) => {
+      if (proj.median == null) return '';
+      const key = `${matchId}|${p.nick}|${statKey}`;
+      const sid = 'cs2_' + key.replace(/[^A-Za-z0-9]/g, '_');
+      state.lineKeys[sid] = key; state.lineP[sid] = proj;
+      const cur = state.lines[key] == null ? '' : state.lines[key];
+      return `
+        <div class="cs2-line-row">
+          <span class="cs2-line-label">${esc(label)}</span>
+          <input class="cs2-line-input" type="number" step="0.5" inputmode="decimal" value="${esc(cur)}" placeholder="—" oninput="cs2SetLine('${sid}', this.value)">
+          <span class="cs2-line-res" id="lr_${sid}">${cs2RenderLineResult(proj, cur)}</span>
+        </div>`;
+    };
+    const oppAdj = p.oppFactor == null ? '' : `
+        <div class="cs2-oppadj">opp-adj ×${p.oppFactor}${(p.kprStrong != null && p.kprWeak != null) ? ` · ${p.kprStrong} KPR vs elite / ${p.kprWeak} vs field` : ''}</div>`;
+    const hsRange = p.hsMedian == null ? '' : `
+        <div class="cs2-range">
+          <span class="cs2-range-eyebrow">Maps 1+2 HS</span>
+          <span class="cs2-range-val">${p.hsFloor}<span class="k">floor</span></span>
+          <span class="cs2-range-val">${p.hsMedian}<span class="k">median</span></span>
+          <span class="cs2-range-val">${p.hsCeiling}<span class="k">ceiling</span></span>
+        </div>`;
     return `
       <div class="cs2-pcard">
         <div class="cs2-pcard-head">
@@ -221,7 +293,7 @@
           <span class="cs2-score"><span class="cs2-score-num">${p.score}/100</span><span class="${bandClass(p.band)}">${esc(p.band)}</span></span>
         </div>
         <div class="cs2-statbar">
-          ${st(p.kpr, 'KPR')} ${st(p.recentKpr, 'recent')} ${st(p.hs == null ? '?' : p.hs + '%', 'HS')} ${st(p.kast == null ? '?' : p.kast + '%', 'KAST')} ${st(p.fkPerMap, 'FK/map')}
+          ${st(p.kpr, 'KPR')} ${st(p.recentKpr, 'recent')} ${st(p.hs == null ? '?' : p.hs + '%', 'HS')} ${st(p.kast == null ? '?' : p.kast + '%', 'KAST')} ${st(p.fkPerMap, 'FK/map')}${p.adr == null ? '' : ' ' + st(p.adr, 'ADR')}${p.survival == null ? '' : ' ' + st(p.survival + '%', 'surv')}${p.openingWin == null ? '' : ' ' + st(p.openingWin + '%', 'open-win')}
         </div>
         <div class="cs2-range">
           <span class="cs2-range-eyebrow">Maps 1+2 kills</span>
@@ -230,7 +302,11 @@
           <span class="cs2-range-val">${p.ceiling}<span class="k">ceiling</span></span>
           <span class="cs2-mapfit">map-fit ${mf}</span>
         </div>
+        ${oppAdj}
+        ${hsRange}
         <div class="cs2-prop">prop: ${esc(p.propType)}</div>
+        ${mkRow('kills', 'Kills line', { median: p.median, floor: p.floor, ceiling: p.ceiling })}
+        ${mkRow('hs', 'HS line', { median: p.hsMedian, floor: p.hsFloor, ceiling: p.hsCeiling })}
         ${flags}
       </div>`;
   }

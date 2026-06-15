@@ -16968,6 +16968,7 @@ async function autoGradeOnAppOpen() {
   #cs2-panel .cs2-statbar{display:flex;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--space-2)}
   #cs2-panel .cs2-stat{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-primary)}
   #cs2-panel .cs2-stat .k{color:var(--text-secondary);font-family:var(--font-sans);font-size:10px;margin-left:3px}
+  #cs2-panel .cs2-oppadj{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--data-warning);margin:2px 0 var(--space-1)}
   #cs2-panel .cs2-range{display:flex;align-items:center;gap:var(--space-4);padding:var(--space-2) var(--space-3);background:var(--surface-muted);border-radius:var(--radius-sm);margin-bottom:var(--space-2)}
   #cs2-panel .cs2-range-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-loose);text-transform:uppercase;color:var(--text-secondary)}
   #cs2-panel .cs2-range-val{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-md);color:var(--text-primary)}
@@ -17154,7 +17155,7 @@ async function autoGradeOnAppOpen() {
     const mf = p.mapFitPct == null ? 'n/a' : (p.mapFitPct >= 0 ? '+' : '') + p.mapFitPct + '%';
     const thin = p.thin ? `<span class="cs2-thin">THIN n=${p.n}</span>` : '';
     const st = (v, k) => `<span class="cs2-stat">${v}<span class="k">${k}</span></span>`;
-    const flags = (p.flags || []).map(f => `<div class="cs2-flag">⚠ ${esc(f)}</div>`).join('');
+    const flags = (p.flags || []).filter(f => !/^opponent-adjusted/.test(f)).map(f => `<div class="cs2-flag">⚠ ${esc(f)}</div>`).join('');
     const mkRow = (statKey, label, proj) => {
       if (proj.median == null) return '';
       const key = `${matchId}|${p.nick}|${statKey}`;
@@ -17168,6 +17169,8 @@ async function autoGradeOnAppOpen() {
           <span class="cs2-line-res" id="lr_${sid}">${cs2RenderLineResult(proj, cur)}</span>
         </div>`;
     };
+    const oppAdj = p.oppFactor == null ? '' : `
+        <div class="cs2-oppadj">opp-adj ×${p.oppFactor}${(p.kprStrong != null && p.kprWeak != null) ? ` · ${p.kprStrong} KPR vs elite / ${p.kprWeak} vs field` : ''}</div>`;
     const hsRange = p.hsMedian == null ? '' : `
         <div class="cs2-range">
           <span class="cs2-range-eyebrow">Maps 1+2 HS</span>
@@ -17185,7 +17188,7 @@ async function autoGradeOnAppOpen() {
           <span class="cs2-score"><span class="cs2-score-num">${p.score}/100</span><span class="${bandClass(p.band)}">${esc(p.band)}</span></span>
         </div>
         <div class="cs2-statbar">
-          ${st(p.kpr, 'KPR')} ${st(p.recentKpr, 'recent')} ${st(p.hs == null ? '?' : p.hs + '%', 'HS')} ${st(p.kast == null ? '?' : p.kast + '%', 'KAST')} ${st(p.fkPerMap, 'FK/map')}
+          ${st(p.kpr, 'KPR')} ${st(p.recentKpr, 'recent')} ${st(p.hs == null ? '?' : p.hs + '%', 'HS')} ${st(p.kast == null ? '?' : p.kast + '%', 'KAST')} ${st(p.fkPerMap, 'FK/map')}${p.adr == null ? '' : ' ' + st(p.adr, 'ADR')}${p.survival == null ? '' : ' ' + st(p.survival + '%', 'surv')}${p.openingWin == null ? '' : ' ' + st(p.openingWin + '%', 'open-win')}
         </div>
         <div class="cs2-range">
           <span class="cs2-range-eyebrow">Maps 1+2 kills</span>
@@ -17194,6 +17197,7 @@ async function autoGradeOnAppOpen() {
           <span class="cs2-range-val">${p.ceiling}<span class="k">ceiling</span></span>
           <span class="cs2-mapfit">map-fit ${mf}</span>
         </div>
+        ${oppAdj}
         ${hsRange}
         <div class="cs2-prop">prop: ${esc(p.propType)}</div>
         ${mkRow('kills', 'Kills line', { median: p.median, floor: p.floor, ceiling: p.ceiling })}

@@ -78,8 +78,10 @@ for (const [matchId, byNum] of mapsByMatch) {
       pm.push({
         ts, playerId: pid, nick: r.player?.nickname ?? String(pid), map: canonMap(mm.map_name),
         kills: r.kills ?? 0, rounds, kpr: (r.kills ?? 0) / rounds,
+        deaths: r.deaths ?? 0, adr: r.adr ?? null,
         hs: r.headshot_percentage ?? null, fk: r.first_kills ?? 0, fd: r.first_deaths ?? 0,
         kast: r.kast ?? null, rating: r.rating ?? null,
+        t1: match.team1?.id ?? null, t2: match.team2?.id ?? null,
       });
     }
   }
@@ -183,7 +185,9 @@ for (const p of unresolved) p.role = inferRole(p); // fallback for unresolved pl
 const playersOut = [];
 for (const [teamId, team] of byTeam) {
   const tname = teamId === t1id ? target.team1?.name : target.team2?.name;
-  for (const p of team) playersOut.push({ team: tname ?? null, ...computeRead(p, vol) });
+  const oppId = teamId === t1id ? t2id : t1id;
+  const oppRank = rankingByTeam.get(oppId)?.rank ?? null;
+  for (const p of team) playersOut.push({ team: tname ?? null, ...computeRead(p, vol, { oppRank, oppId }) });
 }
 for (const p of unresolved) playersOut.push({ team: null, ...computeRead(p, vol) });
 
@@ -222,7 +226,9 @@ for (const [teamId, team] of byTeam) {
   if (!team.length) continue;
   const tname = teamId === t1id ? target.team1?.name : target.team2?.name;
   console.log(`\n──── ${tname ?? "team"} ────`);
-  for (const p of team) printRead(p, vol);
+  const oppId = teamId === t1id ? t2id : t1id;
+  const oppRank = rankingByTeam.get(oppId)?.rank ?? null;
+  for (const p of team) printRead(p, vol, { oppRank, oppId });
 }
 if (unresolved.length) {
   console.log(`\n──── (team unresolved — absolute role fallback) ────`);
@@ -252,6 +258,26 @@ function profile(pid, beforeTs, expectedMaps) {
   const recentKpr = mean(recent.map((x) => x.kpr));
   const formDelta = recentKpr - kpr; // + = heating up
 
+  // opponent-quality split (research: performance vs top teams is the discriminator)
+  const ownTeam = argmaxTeam(pid, beforeTs);
+  const strongKprs = [], weakKprs = [];
+  for (const x of hist) {
+    const opp = ownTeam === x.t1 ? x.t2 : x.t1;
+    const oppRank = opp == null ? null : (rankingByTeam.get(opp)?.rank ?? null);
+    if (oppRank != null && oppRank <= 10) strongKprs.push(x.kpr); else weakKprs.push(x.kpr);
+  }
+  const kprStrong = strongKprs.length ? mean(strongKprs) : null;
+  const kprWeak = weakKprs.length ? mean(weakKprs) : null;
+
+  // survival (deaths = price of output), ADR (purest frag signal), opening duels
+  const dpr = mean(hist.map((x) => x.deaths / x.rounds));
+  const survival = 1 - dpr;
+  const adrVals = hist.map((x) => x.adr).filter((v) => v != null);
+  const adr = adrVals.length ? mean(adrVals) : null;
+  const fkSum = hist.reduce((a, x) => a + x.fk, 0), fdSum = hist.reduce((a, x) => a + x.fd, 0);
+  const openingWin = (fkSum + fdSum) > 0 ? fkSum / (fkSum + fdSum) : null;
+  const openingShare = mean(hist.map((x) => (x.fk + x.fd) / x.rounds));
+
   // role inference (INFERRED — no labels in data)
   const role = inferRole({ hs, kpr, kast, fkPerMap });
 
@@ -268,6 +294,8 @@ function profile(pid, beforeTs, expectedMaps) {
   return {
     pid, nick, n: hist.length, kpr, hs, kast, fkPerMap, role,
     recentKpr, formDelta, mapFitRatio, expectedMaps, kprP,
+    kprStrong, kprStrongN: strongKprs.length, kprWeak,
+    dpr, survival, adr, openingWin, openingShare,
     propType: propTypeFor(role, hs),
   };
 }
@@ -359,6 +387,8 @@ function roundVolume(match, beforeTs) {
 // lean. Pistol + ranking convergence -> snowball -> UNDER rounds; even pistols + close
 // teams -> OVER. Unvalidated vs price — surfaced as a lean, not a pick.
 function pct1(x) { return x == null ? null : Math.round(x * 100); }
+function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+function signedPct(x) { const v = Math.round(x * 100); return (v >= 0 ? "+" : "") + v + "%"; }
 function roundRead(match, expMaps, vol) {
   const a = roundsByTeam.get(match.team1?.id);
   const b = roundsByTeam.get(match.team2?.id);
@@ -486,11 +516,12 @@ async function runToday(date) {
     const ro2 = m.team2?.id != null ? forwardRoster(m.team2.id, nowTs) : { pids: [], source: "none", asOf: null, newPids: new Set() };
     const expMaps = expectedMapsForTeams(m.team1?.id, m.team2?.id, [...ro1.pids, ...ro2.pids], nowTs);
     const vol = roundVolume(m, nowTs);
-    const build = (ro, teamName) => {
+    const build = (ro, teamName, oppId) => {
+      const oppRank = rankingByTeam.get(oppId)?.rank ?? null;
       const profs = ro.pids.map((pid) => profile(pid, nowTs, expMaps)).filter(Boolean);
       assignRolesRelative(profs);
       return profs.map((p) => {
-        const r = { team: teamName ?? null, ...computeRead(p, vol) };
+        const r = { team: teamName ?? null, ...computeRead(p, vol, { oppRank, oppId }) };
         if (ro.newPids.has(p.pid)) r.flags = [...(r.flags || []), "new to the lineup since their prior series — confirm they're starting (CS2 rosters churn: transfer/stand-in/bench)"];
         return r;
       });
@@ -514,7 +545,7 @@ async function runToday(date) {
       rosterChanged: (ro1.newPids.size + ro2.newPids.size) > 0,
       roundVolume: { erounds: vol.erounds, blowout: vol.blowout, ot: vol.otRate, gap: vol.gap, confidence: vol.ranked ? "MED · ranked" : "LOW" },
       roundRead: roundRead(m, expMaps, vol),
-      players: [...build(ro1, m.team1?.name), ...build(ro2, m.team2?.name)],
+      players: [...build(ro1, m.team1?.name, m.team2?.id), ...build(ro2, m.team2?.name, m.team1?.id)],
     });
   }
   out.matches.sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
@@ -526,12 +557,33 @@ async function runToday(date) {
   }
 }
 
-function computeRead(p, vol) {
+function computeRead(p, vol, opp = {}) {
   const Etot = 2 * vol.erounds;                       // expected combined rounds
-  const floor = Math.round(p.kprP.p20 * Etot);
-  const median = Math.round(p.kprP.p50 * Etot);
-  const ceiling = Math.round(p.kprP.p85 * Etot);
-  // headshots Maps 1+2 = kills projection x the player's headshot share (HS%/100).
+  let floor = Math.round(p.kprP.p20 * Etot);
+  let median = Math.round(p.kprP.p50 * Etot);
+  let ceiling = Math.round(p.kprP.p85 * Etot);
+
+  // OPPONENT-STRENGTH ADJUSTMENT — research: opponent quality is the discriminator.
+  // vs a top-10 side with a real elite sample, use the player's OWN elite-opp rate;
+  // otherwise a bounded generic adjustment by opponent rank.
+  let oppFactor = 1, oppNote = null;
+  const oppRank = opp.oppRank;
+  if (oppRank != null) {
+    if (oppRank <= 10 && p.kprStrongN >= 3 && p.kpr > 0 && p.kprStrong != null) {
+      oppFactor = clamp(p.kprStrong / p.kpr, 0.8, 1.2);
+      oppNote = `vs top-${oppRank}: own elite-opp form (${signedPct(oppFactor - 1)})`;
+    } else {
+      oppFactor = clamp(1 - 0.006 * (15 - oppRank), 0.88, 1.12);
+      oppNote = `vs #${oppRank}: ${signedPct(oppFactor - 1)}`;
+    }
+    floor = Math.round(floor * oppFactor);
+    median = Math.round(median * oppFactor);
+    ceiling = Math.round(ceiling * oppFactor);
+  }
+  // opening-duel ceiling shaping — winning openings -> survive to multi-frag.
+  if (p.openingWin != null) ceiling = Math.round(ceiling * clamp(0.94 + 0.12 * p.openingWin, 0.94, 1.06));
+
+  // headshots Maps 1+2 = (adjusted) kills projection x the player's headshot share.
   const hsFrac = p.hs == null ? null : Math.max(0, Math.min(1, p.hs / 100));
   const hsFloor = hsFrac == null ? null : Math.round(floor * hsFrac);
   const hsMedian = hsFrac == null ? null : Math.round(median * hsFrac);
@@ -553,6 +605,11 @@ function computeRead(p, vol) {
   if (p.role === "Support/IGL") flags.push("support/IGL role → kill props fragile, prefer fantasy");
   if (p.mapFitRatio != null && p.mapFitRatio < 0.85) flags.push(`weak on expected maps (${pct(p.mapFitRatio - 1)} vs avg)`);
   if (Math.abs(p.formDelta) > 0.12) flags.push(`recent role/form shift (KPR ${p.formDelta > 0 ? "+" : ""}${round2(p.formDelta)}) — season avg may mislead`);
+  if (p.adr != null && p.adr >= 80 && p.kpr < 0.62) flags.push(`high ADR (${Math.round(p.adr)}) on modest KPR — impact > raw kills, kills can spike`);
+  if (p.adr != null && p.adr < 70 && p.kpr >= 0.70) flags.push(`kills outrun ADR (${Math.round(p.adr)}) — cleanup-dependent, more volatile`);
+  if (p.openingWin != null && p.openingShare > 0.12 && p.openingWin >= 0.55) flags.push(`wins openings ${Math.round(p.openingWin * 100)}% — survives to multi-frag`);
+  if (p.openingWin != null && p.openingShare > 0.12 && p.openingWin <= 0.45) flags.push(`loses openings ${Math.round(p.openingWin * 100)}% — dies early, ceiling capped`);
+  if (oppNote) flags.push(`opponent-adjusted ${oppNote}`);
 
   return {
     nick: p.nick,
@@ -567,6 +624,13 @@ function computeRead(p, vol) {
     fkPerMap: round1(p.fkPerMap),
     floor, median, ceiling,
     hsFloor, hsMedian, hsCeiling,
+    adr: p.adr == null ? null : Math.round(p.adr),
+    survival: p.survival == null ? null : Math.round(p.survival * 100),
+    openingWin: p.openingWin == null ? null : Math.round(p.openingWin * 100),
+    deathsPerMap: round1(p.dpr * vol.erounds),
+    oppFactor: oppFactor === 1 ? null : round2(oppFactor),
+    kprStrong: p.kprStrong == null ? null : round2(p.kprStrong),
+    kprWeak: p.kprWeak == null ? null : round2(p.kprWeak),
     mapFitPct: p.mapFitRatio == null ? null : Math.round((p.mapFitRatio - 1) * 100),
     propType: propTypeFor(p.role, p.hs),
     score, band,
@@ -575,12 +639,14 @@ function computeRead(p, vol) {
   };
 }
 
-function printRead(p, vol) {
-  const r = computeRead(p, vol);
+function printRead(p, vol, opp) {
+  const r = computeRead(p, vol, opp);
   const thin = r.thin ? "  ⚠THIN" : "";
   console.log(`\n${r.nick}   [${r.role}, ${r.lean}]   n=${r.n} maps${thin}`);
   console.log(`  KPR ${r.kpr} (recent ${r.recentKpr})  HS ${r.hs == null ? "?" : r.hs + "%"}  KAST ${r.kast == null ? "?" : r.kast + "%"}  FK/map ${r.fkPerMap}`);
-  console.log(`  Map1&2 kills  floor ${r.floor} · median ${r.median} · ceiling ${r.ceiling}   map-fit ${r.mapFitPct == null ? "n/a" : (r.mapFitPct >= 0 ? "+" : "") + r.mapFitPct + "%"}`);
+  console.log(`  ADR ${r.adr ?? "?"}  survival ${r.survival == null ? "?" : r.survival + "%"}  opening-win ${r.openingWin == null ? "?" : r.openingWin + "%"}`);
+  console.log(`  Map1&2 kills  floor ${r.floor} · median ${r.median} · ceiling ${r.ceiling}   map-fit ${r.mapFitPct == null ? "n/a" : (r.mapFitPct >= 0 ? "+" : "") + r.mapFitPct + "%"}${r.oppFactor ? "  opp×" + r.oppFactor : ""}`);
+  console.log(`  Map1&2 HS  floor ${r.hsFloor ?? "?"} · median ${r.hsMedian ?? "?"} · ceiling ${r.hsCeiling ?? "?"}`);
   console.log(`  prop type: ${r.propType}`);
   console.log(`  pick score ${r.score}/100 → ${r.band}   [PARTIAL: excludes opponent-style 15% + line-value 10%]`);
   if (r.flags.length) for (const f of r.flags) console.log(`   ⚠ ${f}`);
