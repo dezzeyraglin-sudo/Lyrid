@@ -76,7 +76,7 @@ for (const [matchId, byNum] of mapsByMatch) {
       const pid = r.player?.id ?? r.player_id;
       if (pid == null) continue;
       pm.push({
-        ts, playerId: pid, nick: r.player?.nickname ?? String(pid), map: mm.map_name,
+        ts, playerId: pid, nick: r.player?.nickname ?? String(pid), map: canonMap(mm.map_name),
         kills: r.kills ?? 0, rounds, kpr: (r.kills ?? 0) / rounds,
         hs: r.headshot_percentage ?? null, fk: r.first_kills ?? 0, fd: r.first_deaths ?? 0,
         kast: r.kast ?? null, rating: r.rating ?? null,
@@ -105,6 +105,15 @@ for (const [matchId, byNum] of mapsByMatch) {
     }
   }
 }
+
+// ---- optional meta: rankings / official rosters / map pools (from pullMeta.mjs) ----
+const META_DIR = path.join(CACHE, "meta");
+const rankingByTeam = new Map();   // teamId -> { rank, points }
+const rosterByTeam = new Map();    // teamId -> [{id,nickname}]
+const mapPoolByTeam = new Map();   // teamId -> [{map, win_rate, played, permaban}]
+for (const r of (readJsonSafe(path.join(META_DIR, "rankings.json")) ?? [])) if (r.team?.id != null) rankingByTeam.set(r.team.id, { rank: r.rank, points: r.points });
+{ const ro = readJsonSafe(path.join(META_DIR, "rosters.json")); if (ro) for (const [tid, arr] of Object.entries(ro)) rosterByTeam.set(Number(tid), arr); }
+{ const mp = readJsonSafe(path.join(META_DIR, "map_pool.json")); if (mp) for (const [tid, arr] of Object.entries(mp)) mapPoolByTeam.set(Number(tid), (arr || []).map((x) => ({ map: canonMap(x.map_name), win_rate: x.win_rate, played: x.matches_played, permaban: x.is_permaban }))); }
 
 if (args.list) {
   const recent = [...matches].sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time)).slice(0, 25);
@@ -318,18 +327,24 @@ function leanFromRole(role) {
 }
 
 function roundVolume(match, beforeTs) {
-  // strength gap from prior round margins (the backtest showed this is WEAK —
-  // R^2~0.01 — so it's reported low-confidence until rankings/map-pace are added)
-  const s1 = teamStrength(match.team1?.id, beforeTs);
-  const s2 = teamStrength(match.team2?.id, beforeTs);
-  const gap = Math.abs(s1 - s2);
-  const erounds = Math.max(16, Math.min(26, CFG.LEAGUE_ROUNDS - 0.4 * gap));
-  // base rates from the cache
-  const allRounds = pm.map((x) => x.rounds);
+  // Prefer official Valve World Ranking gap (a real strength signal) over the weak
+  // inferred round-margin gap (R^2~0.01). Bigger gap -> more lopsided -> fewer rounds.
+  const rk1 = rankingByTeam.get(match.team1?.id)?.rank;
+  const rk2 = rankingByTeam.get(match.team2?.id)?.rank;
+  let erounds, gap, ranked = false;
+  if (rk1 != null && rk2 != null) {
+    ranked = true;
+    gap = Math.abs(rk1 - rk2);
+    erounds = Math.max(16, Math.min(26, CFG.LEAGUE_ROUNDS - 0.22 * Math.min(24, gap)));
+  } else {
+    const s1 = teamStrength(match.team1?.id, beforeTs);
+    const s2 = teamStrength(match.team2?.id, beforeTs);
+    gap = Math.abs(s1 - s2);
+    erounds = Math.max(16, Math.min(26, CFG.LEAGUE_ROUNDS - 0.4 * gap));
+  }
   const otRate = pm.filter((x) => x.rounds > 24).length / Math.max(1, pm.length);
   const blowout = pm.filter((x) => x.rounds <= 17).length / Math.max(1, pm.length);
-  void allRounds;
-  return { erounds: round1(erounds), gap: round1(gap), otRate, blowout };
+  return { erounds: round1(erounds), gap: round1(gap), otRate, blowout, ranked };
 }
 function teamStrength(teamId, beforeTs) {
   if (teamId == null) return 0;
@@ -349,8 +364,12 @@ function teamStrength(teamId, beforeTs) {
 // ---------- forward slate (today's games) ----------
 // A player's own team is in every one of their matches; opponents vary. So the
 // team that appears most across their participations is their own team.
-function argmaxTeam(pid, beforeTs) {
-  const hist = (playerMatches.get(pid) ?? []).filter((x) => x.ts < beforeTs);
+// Current team = argmax of appearances over the player's most RECENT matches only
+// (short window), so a transfer/new org shows up fast instead of being outvoted by
+// a long history with a former team. CS2 rosters churn constantly — this keeps up.
+function argmaxTeam(pid, beforeTs, windowN = 6) {
+  const hist = (playerMatches.get(pid) ?? []).filter((x) => x.ts < beforeTs)
+    .sort((a, b) => b.ts - a.ts).slice(0, windowN);
   const cnt = new Map();
   for (const h of hist) for (const t of [h.t1, h.t2]) if (t != null) cnt.set(t, (cnt.get(t) || 0) + 1);
   let best = null, bc = -1;
@@ -358,18 +377,47 @@ function argmaxTeam(pid, beforeTs) {
   return best;
 }
 
-// The five players from a team's most recent prior match (their last known lineup).
-function recentLineup(teamId, beforeTs) {
-  let best = null, bestTs = -1;
+// A team's last known lineup + churn signals: the 5 from their most recent match,
+// which of them were NOT in the match before that (debut/transfer/stand-in), and
+// how fresh the lineup is. CS2 lineups change often, so we surface all of it.
+function lineupInfo(teamId, beforeTs) {
+  const tmatches = [];
   for (const [mid, byNum] of mapsByMatch) {
     const m = matchById.get(mid); if (!m?.start_time) continue;
     const ts = Date.parse(m.start_time); if (ts >= beforeTs) continue;
-    if (m.team1?.id === teamId || m.team2?.id === teamId) { if (ts > bestTs) { bestTs = ts; best = byNum; } }
+    if (m.team1?.id === teamId || m.team2?.id === teamId) tmatches.push({ ts, byNum });
   }
-  if (!best) return [];
-  const pids = new Set();
-  for (const n of [1, 2]) { const mm = best[n]; if (!mm) continue; for (const r of (mapStats.get(mm.id) ?? [])) { const pid = r.player?.id ?? r.player_id; if (pid != null) pids.add(pid); } }
-  return [...pids].filter((pid) => argmaxTeam(pid, beforeTs) === teamId);
+  tmatches.sort((a, b) => b.ts - a.ts);
+  if (!tmatches.length) return { pids: [], asOf: null, newPids: new Set() };
+  const rosterOf = (byNum) => {
+    const s = new Set();
+    for (const n of [1, 2]) { const mm = byNum[n]; if (!mm) continue; for (const r of (mapStats.get(mm.id) ?? [])) { const pid = r.player?.id ?? r.player_id; if (pid != null && argmaxTeam(pid, beforeTs) === teamId) s.add(pid); } }
+    return s;
+  };
+  const latest = rosterOf(tmatches[0].byNum);
+  const prior = tmatches[1] ? rosterOf(tmatches[1].byNum) : new Set();
+  const newPids = new Set([...latest].filter((p) => prior.size && !prior.has(p)));
+  return { pids: [...latest], asOf: tmatches[0].ts, newPids };
+}
+
+// Prefer the official active roster; fall back to inferred last lineup.
+function forwardRoster(teamId, beforeTs) {
+  const official = rosterByTeam.get(teamId);
+  if (official && official.length >= 4) return { pids: official.map((p) => p.id), source: "official", asOf: null, newPids: new Set() };
+  return { ...lineupInfo(teamId, beforeTs), source: "inferred" };
+}
+
+// Expected Maps 1+2 from both teams' map pools: most-played maps neither permabans.
+function expectedMapsForTeams(t1, t2, fallbackPids, beforeTs) {
+  const p1 = mapPoolByTeam.get(t1), p2 = mapPoolByTeam.get(t2);
+  if (p1 && p2) {
+    const ban = new Set([...p1, ...p2].filter((x) => x.permaban).map((x) => x.map));
+    const sc = new Map();
+    for (const arr of [p1, p2]) for (const x of arr) { if (ban.has(x.map)) continue; sc.set(x.map, (sc.get(x.map) || 0) + (x.played || 0)); }
+    const ranked = [...sc.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m);
+    if (ranked.length >= 2) return ranked.slice(0, 2);
+  }
+  return expectedMapsFor(fallbackPids, beforeTs);
 }
 
 // Pre-veto map estimate: the two maps these rosters have played most recently.
@@ -401,27 +449,38 @@ async function runToday(date) {
   };
 
   for (const m of games) {
-    const lineup1 = m.team1?.id != null ? recentLineup(m.team1.id, nowTs) : [];
-    const lineup2 = m.team2?.id != null ? recentLineup(m.team2.id, nowTs) : [];
-    const expMaps = expectedMapsFor([...lineup1, ...lineup2], nowTs);
+    const ro1 = m.team1?.id != null ? forwardRoster(m.team1.id, nowTs) : { pids: [], source: "none", asOf: null, newPids: new Set() };
+    const ro2 = m.team2?.id != null ? forwardRoster(m.team2.id, nowTs) : { pids: [], source: "none", asOf: null, newPids: new Set() };
+    const expMaps = expectedMapsForTeams(m.team1?.id, m.team2?.id, [...ro1.pids, ...ro2.pids], nowTs);
     const vol = roundVolume(m, nowTs);
-    const build = (pids, teamName) => {
-      const profs = pids.map((pid) => profile(pid, nowTs, expMaps)).filter(Boolean);
+    const build = (ro, teamName) => {
+      const profs = ro.pids.map((pid) => profile(pid, nowTs, expMaps)).filter(Boolean);
       assignRolesRelative(profs);
-      return profs.map((p) => ({ team: teamName ?? null, ...computeRead(p, vol) }));
+      return profs.map((p) => {
+        const r = { team: teamName ?? null, ...computeRead(p, vol) };
+        if (ro.newPids.has(p.pid)) r.flags = [...(r.flags || []), "new to the lineup since their prior series — confirm they're starting (CS2 rosters churn: transfer/stand-in/bench)"];
+        return r;
+      });
     };
+    const asOfTs = Math.max(ro1.asOf || 0, ro2.asOf || 0) || null;
+    const rk = (tid) => rankingByTeam.get(tid)?.rank ?? null;
     out.matches.push({
       matchId: m.id,
       date: m.start_time?.slice(0, 10) ?? date,
       startTime: m.start_time ?? null,
       teamA: m.team1?.name ?? null,
       teamB: m.team2?.name ?? null,
+      rankA: rk(m.team1?.id),
+      rankB: rk(m.team2?.id),
       format: `Bo${m.best_of}`,
       tier: m.tournament?.tier ?? null,
       lan: !m.tournament?.is_online,
       maps: expMaps,
-      roundVolume: { erounds: vol.erounds, blowout: vol.blowout, ot: vol.otRate, confidence: "LOW" },
-      players: [...build(lineup1, m.team1?.name), ...build(lineup2, m.team2?.name)],
+      rosterSource: (ro1.source === "official" && ro2.source === "official") ? "official" : ((ro1.source === "inferred" || ro2.source === "inferred") ? "inferred" : "mixed"),
+      lineupAsOf: asOfTs ? new Date(asOfTs).toISOString().slice(0, 10) : null,
+      rosterChanged: (ro1.newPids.size + ro2.newPids.size) > 0,
+      roundVolume: { erounds: vol.erounds, blowout: vol.blowout, ot: vol.otRate, gap: vol.gap, confidence: vol.ranked ? "MED · ranked" : "LOW" },
+      players: [...build(ro1, m.team1?.name), ...build(ro2, m.team2?.name)],
     });
   }
   out.matches.sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
@@ -438,6 +497,11 @@ function computeRead(p, vol) {
   const floor = Math.round(p.kprP.p20 * Etot);
   const median = Math.round(p.kprP.p50 * Etot);
   const ceiling = Math.round(p.kprP.p85 * Etot);
+  // headshots Maps 1+2 = kills projection x the player's headshot share (HS%/100).
+  const hsFrac = p.hs == null ? null : Math.max(0, Math.min(1, p.hs / 100));
+  const hsFloor = hsFrac == null ? null : Math.round(floor * hsFrac);
+  const hsMedian = hsFrac == null ? null : Math.round(median * hsFrac);
+  const hsCeiling = hsFrac == null ? null : Math.round(ceiling * hsFrac);
   // PARTIAL pick score: powered weights only, re-normalized; missing weights shown.
   const w = { roleStability: 0.15, mapFit: 0.20, roundVolume: 0.20, recentForm: 0.10, blowout: 0.10 };
   const active = Object.values(w).reduce((a, b) => a + b, 0); // 0.75 (oppStyle .15 + line .10 absent)
@@ -468,6 +532,7 @@ function computeRead(p, vol) {
     kast: p.kast == null ? null : Math.round(p.kast),
     fkPerMap: round1(p.fkPerMap),
     floor, median, ceiling,
+    hsFloor, hsMedian, hsCeiling,
     mapFitPct: p.mapFitRatio == null ? null : Math.round((p.mapFitRatio - 1) * 100),
     propType: propTypeFor(p.role, p.hs),
     score, band,
@@ -494,6 +559,8 @@ function pctl(sortedAsc, q) {
   const lo = Math.floor(i), hi = Math.ceil(i);
   return lo === hi ? sortedAsc[lo] : sortedAsc[lo] + (sortedAsc[hi] - sortedAsc[lo]) * (i - lo);
 }
+function canonMap(name) { return String(name || "").toLowerCase().replace(/^de_/, "").trim(); }
+function readJsonSafe(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } }
 function readJson(p) {
   if (!fs.existsSync(p)) { console.error(`Missing ${p}. Run pullSeason.mjs first.`); process.exit(1); }
   return JSON.parse(fs.readFileSync(p, "utf8"));

@@ -17073,8 +17073,8 @@ async function autoGradeOnAppOpen() {
           <div class="lyrid-game-time-zone">${esc((fmtTime(m.startTime) ? (m.date || '').slice(5) + ' · ' : '') + (m.format || 'Bo3'))}</div>
         </div>
         <div class="lyrid-game-matchup">
-          <div class="lyrid-game-teams"><span>${esc(m.teamA || '?')}</span><span class="at">vs</span><span>${esc(m.teamB || '?')}</span></div>
-          <div class="lyrid-game-pitchers">${mapsLine} · ${sub} · E[rds] ${vol.erounds ?? '?'}</div>
+          <div class="lyrid-game-teams"><span>${m.rankA ? '#' + m.rankA + ' ' : ''}${esc(m.teamA || '?')}</span><span class="at">vs</span><span>${m.rankB ? '#' + m.rankB + ' ' : ''}${esc(m.teamB || '?')}</span></div>
+          <div class="lyrid-game-pitchers">${mapsLine} · ${sub} · E[rds] ${vol.erounds ?? '?'}${m.rosterSource === 'inferred' ? ' · inferred roster' : ''}</div>
         </div>
         <div class="lyrid-game-projection${isSel ? ' signal' : ''}">
           <div class="lyrid-game-projection-label">${leanCount} lean${leanCount === 1 ? '' : 's'}</div>
@@ -17102,7 +17102,7 @@ async function autoGradeOnAppOpen() {
     const header = `
       <div class="cs2-analysis-head">
         <div class="cs2-analysis-title">${esc(m.teamA)} vs ${esc(m.teamB)}</div>
-        <div class="cs2-analysis-sub">Maps 1+2: <b style="color:var(--text-primary)">${(m.maps || []).map(esc).join(' + ') || '—'}</b> · E[rds/map] ${vol.erounds ?? '?'} · blowout ${pctOf(vol.blowout)} · OT ${pctOf(vol.ot)} <span class="cs2-low">[round volume LOW CONFIDENCE]</span></div>
+        <div class="cs2-analysis-sub">Maps 1+2: <b style="color:var(--text-primary)">${(m.maps || []).map(esc).join(' + ') || '—'}</b> · E[rds/map] ${vol.erounds ?? '?'} · blowout ${pctOf(vol.blowout)} · OT ${pctOf(vol.ot)} <span class="cs2-low">[round volume LOW CONFIDENCE]</span>${m.lineupAsOf ? ' \u00b7 lineup as of ' + esc(m.lineupAsOf) : ''}${m.rosterChanged ? ' <span class="cs2-low">\u00b7 roster changed</span>' : ''}</div>
       </div>`;
 
     const teamsHtml = Object.keys(byTeam).map(t =>
@@ -17134,14 +17134,30 @@ async function autoGradeOnAppOpen() {
   };
 
   function renderCs2PlayerCard(p, matchId) {
-    const lkey = `${matchId}|${p.nick}|kills`;
-    const safeId = 'cs2k_' + lkey.replace(/[^A-Za-z0-9]/g, '_');
-    state.lineKeys[safeId] = lkey; state.lineP[safeId] = p;
-    const cur = state.lines[lkey] == null ? '' : state.lines[lkey];
     const mf = p.mapFitPct == null ? 'n/a' : (p.mapFitPct >= 0 ? '+' : '') + p.mapFitPct + '%';
     const thin = p.thin ? `<span class="cs2-thin">THIN n=${p.n}</span>` : '';
     const st = (v, k) => `<span class="cs2-stat">${v}<span class="k">${k}</span></span>`;
     const flags = (p.flags || []).map(f => `<div class="cs2-flag">⚠ ${esc(f)}</div>`).join('');
+    const mkRow = (statKey, label, proj) => {
+      if (proj.median == null) return '';
+      const key = `${matchId}|${p.nick}|${statKey}`;
+      const sid = 'cs2_' + key.replace(/[^A-Za-z0-9]/g, '_');
+      state.lineKeys[sid] = key; state.lineP[sid] = proj;
+      const cur = state.lines[key] == null ? '' : state.lines[key];
+      return `
+        <div class="cs2-line-row">
+          <span class="cs2-line-label">${esc(label)}</span>
+          <input class="cs2-line-input" type="number" step="0.5" inputmode="decimal" value="${esc(cur)}" placeholder="—" oninput="cs2SetLine('${sid}', this.value)">
+          <span class="cs2-line-res" id="lr_${sid}">${cs2RenderLineResult(proj, cur)}</span>
+        </div>`;
+    };
+    const hsRange = p.hsMedian == null ? '' : `
+        <div class="cs2-range">
+          <span class="cs2-range-eyebrow">Maps 1+2 HS</span>
+          <span class="cs2-range-val">${p.hsFloor}<span class="k">floor</span></span>
+          <span class="cs2-range-val">${p.hsMedian}<span class="k">median</span></span>
+          <span class="cs2-range-val">${p.hsCeiling}<span class="k">ceiling</span></span>
+        </div>`;
     return `
       <div class="cs2-pcard">
         <div class="cs2-pcard-head">
@@ -17161,12 +17177,10 @@ async function autoGradeOnAppOpen() {
           <span class="cs2-range-val">${p.ceiling}<span class="k">ceiling</span></span>
           <span class="cs2-mapfit">map-fit ${mf}</span>
         </div>
+        ${hsRange}
         <div class="cs2-prop">prop: ${esc(p.propType)}</div>
-        <div class="cs2-line-row">
-          <span class="cs2-line-label">Underdog line</span>
-          <input class="cs2-line-input" type="number" step="0.5" inputmode="decimal" value="${esc(cur)}" placeholder="—" oninput="cs2SetLine('${safeId}', this.value)">
-          <span class="cs2-line-res" id="lr_${safeId}">${cs2RenderLineResult(p, cur)}</span>
-        </div>
+        ${mkRow('kills', 'Kills line', { median: p.median, floor: p.floor, ceiling: p.ceiling })}
+        ${mkRow('hs', 'HS line', { median: p.hsMedian, floor: p.hsFloor, ceiling: p.hsCeiling })}
         ${flags}
       </div>`;
   }
