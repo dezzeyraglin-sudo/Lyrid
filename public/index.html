@@ -12044,6 +12044,9 @@ async function fetchLiveInnings(gamePk) {
     const currentInning = feed?.liveData?.linescore?.currentInning;
     const inningState = feed?.liveData?.linescore?.inningState;  // 'Top', 'Middle', 'Bottom', 'End'
     const isFinal = feed?.gameData?.status?.abstractGameState === 'Final';
+    // (publish bridge) capture team abbreviations from the feed for the publish payload
+    const awayTeam = feed?.gameData?.teams?.away?.abbreviation || null;
+    const homeTeam = feed?.gameData?.teams?.home?.abbreviation || null;
     if (!Array.isArray(rawInnings)) return null;
     const innings = rawInnings.map(i => ({
       num: i.num,
@@ -12052,7 +12055,7 @@ async function fetchLiveInnings(gamePk) {
       awayHits: i.away?.hits ?? null,
       homeHits: i.home?.hits ?? null
     }));
-    const data = { innings, currentInning, inningState, isFinal };
+    const data = { innings, currentInning, inningState, isFinal, awayTeam, homeTeam };
     liveInningsCache.set(gamePk, { data, fetchedAt: Date.now() });
     return data;
   } catch (err) {
@@ -12094,6 +12097,59 @@ async function pollLiveF5(gamePk, projTotal, homePark) {
   }
 }
 
+// ===========================================================================
+// Lyrid -> Discord + Facebook publish bridge (client side)
+// Sends a publish-worthy PLATINUM signal to /api/publish-insight, which fans it
+// out to Discord (immediate) and Zapier->Slack-approval->Facebook (gated).
+// The target URLs live server-side; nothing secret is in this file.
+// Same-origin /api/ call, so the auth wrapper attaches the founder bearer token.
+// ===========================================================================
+const _lyridPublished = new Set(); // per-session guard against double-fires
+
+async function lyridPublishInsight(insight) {
+  try {
+    if (!insight || !insight.insight_id) return;
+    if (_lyridPublished.has(insight.insight_id)) return; // already sent this session
+    _lyridPublished.add(insight.insight_id);
+
+    const res = await fetch('/api/publish-insight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify(insight)
+    });
+
+    if (!res.ok) {
+      // 401 = signed out, 403 = not the founder: don't retry, leave marked handled.
+      if (res.status === 401 || res.status === 403) return;
+      _lyridPublished.delete(insight.insight_id); // transient — allow retry later
+      console.warn('[lyrid-publish] failed:', res.status);
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    console.log('[lyrid-publish]', data.ok ? 'SENT' : (data.skipped || 'ok'), insight.insight_id);
+  } catch (err) {
+    _lyridPublished.delete(insight.insight_id);
+    console.warn('[lyrid-publish] error:', err.message);
+  }
+}
+
+// Build the fixed-shape insight from a LIVE F5 PLATINUM signal + game context.
+function buildTotalsInsight(signal, gamePk, liveData) {
+  const side = (signal.side || '').toUpperCase();
+  return {
+    insight_id: `f5-${gamePk}-${side.toLowerCase()}`,            // stable + unique per game
+    matchup: `${liveData.awayTeam} @ ${liveData.homeTeam}`,      // "NYY @ BOS"
+    market: 'Game Total',
+    lean: `${side} 8.5`,                                         // F5 engine baseline line
+    engine: 'LIVE F5',
+    signal: `F5=${signal.f5Runs}`,                              // e.g. "F5=2"
+    confidence: Math.round((signal.backtestWR || 0) * 100),     // 90
+    sample_n: signal.backtestN || '',                           // 62
+    tier: (signal.tier || '').toLowerCase()                      // "platinum"
+  };
+}
+
 function renderLiveF5Panel(gamePk, liveData, projTotal, homePark) {
   const el = document.getElementById(`liveF5_${gamePk}`);
   if (!el) return;
@@ -12133,6 +12189,12 @@ function renderLiveF5Panel(gamePk, liveData, projTotal, homePark) {
 
   // Compute the tier (only if F5 is complete)
   const signal = f5Complete ? classifyLiveF5Signal(f5Runs, projTotal, homePark) : null;
+
+  // (publish bridge) Auto-post PLATINUM F5 totals signal to Discord + FB approval.
+  // Fires once per game (client guard + server dedup); no-ops for non-founder sessions.
+  if (signal && signal.tier === 'platinum' && liveData.awayTeam && liveData.homeTeam) {
+    lyridPublishInsight(buildTotalsInsight(signal, gamePk, liveData));
+  }
 
   // Format inning-by-inning runs for visual scoreboard
   const inningCells = innings.slice(0, 9).map((i, idx) => {
