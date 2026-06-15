@@ -17440,6 +17440,24 @@ function lyridMountDigestButton() {
 // Mount once the page is ready.
 if (document.readyState !== 'loading') lyridMountDigestButton();
 else document.addEventListener('DOMContentLoaded', lyridMountDigestButton);
+
+// --- Cache today's digest server-side for the noon cron ----------------------
+// Only the founder session succeeds (endpoint is founder-gated); members 403 silently.
+// Re-caches periodically so the stored digest reflects every board loaded this session.
+async function lyridCacheDigest() {
+  try {
+    const digest = lyridBuildDigest();
+    if (!digest.plays.length) return; // never overwrite a good cache with empty
+    await fetch('/api/digest/cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ date: digest.date, plays: digest.plays })
+    });
+  } catch (_) { /* silent — caching is best-effort */ }
+}
+setTimeout(lyridCacheDigest, 45000);      // after boards have had time to load
+setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 </script>
 </body>
 </html>
