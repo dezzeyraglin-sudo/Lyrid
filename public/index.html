@@ -16946,6 +16946,14 @@ async function autoGradeOnAppOpen() {
   #cs2-panel .cs2-analysis-head{margin:var(--space-2) 0 var(--space-4);padding-bottom:var(--space-3);border-bottom:0.5px solid var(--border-hairline)}
   #cs2-panel .cs2-analysis-title{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-medium);color:var(--text-primary)}
   #cs2-panel .cs2-analysis-sub{font-size:var(--size-caption);color:var(--text-secondary);margin-top:var(--space-1)}
+  #cs2-panel .cs2-roundread{background:var(--surface-muted);border-radius:var(--radius-sm);padding:var(--space-3);margin-bottom:var(--space-3)}
+  #cs2-panel .cs2-rr-top{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-1)}
+  #cs2-panel .cs2-rr-lean{font-family:var(--font-sans);font-size:10px;font-weight:600;letter-spacing:0.08em;padding:2px 8px;border-radius:var(--radius-pill)}
+  #cs2-panel .cs2-rr-under{background:var(--data-negative-surface);color:var(--data-negative)}
+  #cs2-panel .cs2-rr-over{background:var(--data-positive-surface);color:var(--data-positive)}
+  #cs2-panel .cs2-rr-neutral{background:var(--surface-card);color:var(--text-muted);border:0.5px solid var(--border-strong)}
+  #cs2-panel .cs2-rr-reason{font-size:var(--size-caption);color:var(--text-secondary)}
+  #cs2-panel .cs2-rr-splits{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-secondary)}
   #cs2-panel .cs2-team-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--text-secondary);font-weight:var(--weight-medium);margin:var(--space-4) 0 var(--space-2)}
   #cs2-panel .cs2-pcard{background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-2)}
   #cs2-panel .cs2-pcard-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
@@ -17105,11 +17113,20 @@ async function autoGradeOnAppOpen() {
         <div class="cs2-analysis-sub">Maps 1+2: <b style="color:var(--text-primary)">${(m.maps || []).map(esc).join(' + ') || '—'}</b> · E[rds/map] ${vol.erounds ?? '?'} · blowout ${pctOf(vol.blowout)} · OT ${pctOf(vol.ot)} <span class="cs2-low">[round volume LOW CONFIDENCE]</span>${m.lineupAsOf ? ' \u00b7 lineup as of ' + esc(m.lineupAsOf) : ''}${m.rosterChanged ? ' <span class="cs2-low">\u00b7 roster changed</span>' : ''}</div>
       </div>`;
 
+    const rr = m.roundRead;
+    const roundReadHtml = !rr ? '' : `
+      <div class="cs2-roundread">
+        <div class="cs2-rr-top">
+          <span class="cs2-rr-lean cs2-rr-${(rr.totalsLean || 'neutral').toLowerCase()}">TOTALS ${esc(rr.totalsLean)}</span>
+          <span class="cs2-rr-reason">${esc(rr.reason)}</span>
+        </div>
+        ${rr.teamA && rr.teamB ? `<div class="cs2-rr-splits">${esc(m.teamA)} — pistol ${rr.teamA.pistol}% · CT ${rr.teamA.ct}% · T ${rr.teamA.t}% &nbsp;|&nbsp; ${esc(m.teamB)} — pistol ${rr.teamB.pistol}% · CT ${rr.teamB.ct}% · T ${rr.teamB.t}%</div>` : ''}
+      </div>`;
     const teamsHtml = Object.keys(byTeam).map(t =>
       `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(p => renderCs2PlayerCard(p, m.matchId)).join('')}`).join('');
 
-    container.innerHTML = header + teamsHtml +
-      `<div class="cs2-foot">UNPOWERED (needs demo-level data): opponent site/pace, CT/T splits, positional fit, economy, stand-ins. Pick score excludes opponent-style (15%) + line-value (10%).</div>`;
+    container.innerHTML = header + roundReadHtml + teamsHtml +
+      `<div class="cs2-foot">UNPOWERED: opponent site/pace read, positional fit, deep economy discipline, day-of stand-ins. Pick score excludes opponent-style (15%) + line-value (10%).</div>`;
   };
 
   function cs2RenderLineResult(p, val) {

@@ -114,6 +114,10 @@ const mapPoolByTeam = new Map();   // teamId -> [{map, win_rate, played, permaba
 for (const r of (readJsonSafe(path.join(META_DIR, "rankings.json")) ?? [])) if (r.team?.id != null) rankingByTeam.set(r.team.id, { rank: r.rank, points: r.points });
 { const ro = readJsonSafe(path.join(META_DIR, "rosters.json")); if (ro) for (const [tid, arr] of Object.entries(ro)) rosterByTeam.set(Number(tid), arr); }
 { const mp = readJsonSafe(path.join(META_DIR, "map_pool.json")); if (mp) for (const [tid, arr] of Object.entries(mp)) mapPoolByTeam.set(Number(tid), (arr || []).map((x) => ({ map: canonMap(x.map_name), win_rate: x.win_rate, played: x.matches_played, permaban: x.is_permaban }))); }
+const roundsByTeam = new Map();    // teamId -> { pistolWin, ctWin, tWin, ... }
+const sideByMap = new Map();       // mapCanon -> { ctWin, n }
+{ const tr = readJsonSafe(path.join(META_DIR, "team_rounds.json")); if (tr) for (const [tid, v] of Object.entries(tr)) roundsByTeam.set(Number(tid), v); }
+{ const sm = readJsonSafe(path.join(META_DIR, "map_sides.json")); if (sm) for (const [m, v] of Object.entries(sm)) sideByMap.set(m, v); }
 
 if (args.list) {
   const recent = [...matches].sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time)).slice(0, 25);
@@ -196,6 +200,7 @@ if (JSON_OUT) {
     lan: !target.tournament?.is_online,
     maps: expMaps,
     roundVolume: { erounds: vol.erounds, blowout: vol.blowout, ot: vol.otRate, confidence: "LOW" },
+    roundRead: roundRead(target, expMaps, vol),
     players: playersOut,
   };
   let file = {
@@ -342,9 +347,37 @@ function roundVolume(match, beforeTs) {
     gap = Math.abs(s1 - s2);
     erounds = Math.max(16, Math.min(26, CFG.LEAGUE_ROUNDS - 0.4 * gap));
   }
+  // a large pistol-win-rate gap snowballs into shorter, more lopsided maps.
+  const pa = roundsByTeam.get(match.team1?.id)?.pistolWin, pb = roundsByTeam.get(match.team2?.id)?.pistolWin;
+  if (pa != null && pb != null) erounds = Math.max(15, erounds - 1.5 * Math.abs(pa - pb));
   const otRate = pm.filter((x) => x.rounds > 24).length / Math.max(1, pm.length);
   const blowout = pm.filter((x) => x.rounds <= 17).length / Math.max(1, pm.length);
   return { erounds: round1(erounds), gap: round1(gap), otRate, blowout, ranked };
+}
+
+// Round-by-round read (RESEARCH): pistol-round edge, CT/T side splits, and a totals
+// lean. Pistol + ranking convergence -> snowball -> UNDER rounds; even pistols + close
+// teams -> OVER. Unvalidated vs price — surfaced as a lean, not a pick.
+function pct1(x) { return x == null ? null : Math.round(x * 100); }
+function roundRead(match, expMaps, vol) {
+  const a = roundsByTeam.get(match.team1?.id);
+  const b = roundsByTeam.get(match.team2?.id);
+  const cts = (expMaps || []).map((m) => sideByMap.get(m)?.ctWin).filter((x) => x != null);
+  const avgCt = cts.length ? mean(cts) : null;
+  let pistolEdge = null, favPistol = null;
+  if (a?.pistolWin != null && b?.pistolWin != null) {
+    pistolEdge = round2(a.pistolWin - b.pistolWin);
+    favPistol = pistolEdge >= 0 ? (match.team1?.name ?? "team A") : (match.team2?.name ?? "team B");
+  }
+  let totalsLean = "NEUTRAL", reason = "balanced pistols / strength";
+  const gap = vol.gap ?? null;
+  if (pistolEdge != null && Math.abs(pistolEdge) >= 0.12 && vol.ranked && gap != null && gap >= 4) {
+    totalsLean = "UNDER"; reason = `pistol + ranking edge to ${favPistol} -> snowball / blowout risk`;
+  } else if (pistolEdge != null && Math.abs(pistolEdge) < 0.06 && vol.ranked && gap != null && gap <= 2) {
+    totalsLean = "OVER"; reason = "even pistols, close teams -> longer halves, more rounds";
+  }
+  const splits = (t) => t ? { pistol: pct1(t.pistolWin), ct: pct1(t.ctWin), t: pct1(t.tWin) } : null;
+  return { teamA: splits(a), teamB: splits(b), pistolEdge, favPistol, mapCtLean: avgCt == null ? null : Math.round(avgCt * 100), totalsLean, reason };
 }
 function teamStrength(teamId, beforeTs) {
   if (teamId == null) return 0;
@@ -480,6 +513,7 @@ async function runToday(date) {
       lineupAsOf: asOfTs ? new Date(asOfTs).toISOString().slice(0, 10) : null,
       rosterChanged: (ro1.newPids.size + ro2.newPids.size) > 0,
       roundVolume: { erounds: vol.erounds, blowout: vol.blowout, ot: vol.otRate, gap: vol.gap, confidence: vol.ranked ? "MED · ranked" : "LOW" },
+      roundRead: roundRead(m, expMaps, vol),
       players: [...build(ro1, m.team1?.name), ...build(ro2, m.team2?.name)],
     });
   }

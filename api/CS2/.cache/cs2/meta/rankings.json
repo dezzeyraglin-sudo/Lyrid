@@ -1,0 +1,134 @@
+[
+  {
+    "rank": 1,
+    "points": 1994.27,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-12",
+    "team": {
+      "id": 637,
+      "name": "Spirit",
+      "short_name": "TS"
+    }
+  },
+  {
+    "rank": 2,
+    "points": 1991.87,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-12",
+    "team": {
+      "id": 650,
+      "name": "Vitality",
+      "short_name": "VIT"
+    }
+  },
+  {
+    "rank": 3,
+    "points": 1948.72,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-12",
+    "team": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    }
+  },
+  {
+    "rank": 4,
+    "points": 1933.41,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-12",
+    "team": {
+      "id": 765,
+      "name": "Natus Vincere",
+      "short_name": "NAVI"
+    }
+  },
+  {
+    "rank": 5,
+    "points": 1854.94,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-12",
+    "team": {
+      "id": 745,
+      "name": "MOUZ",
+      "short_name": "MOUZ"
+    }
+  },
+  {
+    "rank": 6,
+    "points": 1823.69,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-12",
+    "team": {
+      "id": 5556,
+      "name": "Legacy",
+      "short_name": "LGC"
+    }
+  },
+  {
+    "rank": 7,
+    "points": 1726.17,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-12",
+    "team": {
+      "id": 717,
+      "name": "The MongolZ",
+      "short_name": "MGLZ"
+    }
+  },
+  {
+    "rank": 8,
+    "points": 1721.23,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-12",
+    "team": {
+      "id": 7278,
+      "name": "FUT",
+      "short_name": "FUT"
+    }
+  },
+  {
+    "rank": 9,
+    "points": 1701.22,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-12",
+    "team": {
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
+    }
+  },
+  {
+    "rank": 10,
+    "points": 1676.34,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-12",
+    "team": {
+      "id": 631,
+      "name": "FURIA",
+      "short_name": "FURIA"
+    }
+  },
+  {
+    "rank": 11,
+    "points": 1675.3,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-12",
+    "team": {
+      "id": 771,
+      "name": "G2",
+      "short_name": "G2"
+    }
+  },
+  {
+    "rank": 12,
+    "points": 1674.58,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-12",
+    "team": {
+      "id": 316,
+      "name": "9z",
+      "short_name": "9z"
+    }
+  }
+]
