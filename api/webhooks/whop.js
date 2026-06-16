@@ -187,6 +187,56 @@ export function tierForProduct(productId) {
 }
 
 /**
+ * Find a Supabase user by EMAIL — the identifier Whop actually sends.
+ *
+ * Whop's membership webhook payload carries data.user.email but no Discord ID,
+ * so this is the primary way we resolve a buyer to a Supabase account.
+ *
+ * Resolution order:
+ *   1. Direct lookup against public.profiles (fast; profiles.email is set by
+ *      the signup trigger).
+ *   2. Fallback scan of auth.users (authoritative email source) in case the
+ *      profiles row doesn't exist yet or its email column wasn't populated.
+ *
+ * Matching is case-insensitive. Returns a record with at least { id, email }
+ * or null if no account uses that email (e.g. the buyer paid on Whop with a
+ * different email than they used for Discord sign-in, or hasn't signed in yet).
+ */
+export async function findUserByEmail(supabase, email) {
+  if (!email) return null;
+  const target = String(email).trim().toLowerCase();
+  if (!target) return null;
+
+  // Fast path: profiles table, indexed by email.
+  try {
+    const { data: rows } = await supabase
+      .from('profiles')
+      .select('id, email')
+      .ilike('email', target)
+      .limit(1);
+    if (rows && rows[0]?.id) {
+      return { id: rows[0].id, email: rows[0].email };
+    }
+  } catch {
+    // fall through to auth.users scan
+  }
+
+  // Fallback: scan auth.users (paginated, same pattern as the Discord lookup).
+  let page = 1;
+  const perPage = 200;
+  while (page <= 20) {  // hard cap at 4000 users searched
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage });
+    if (error || !data?.users || data.users.length === 0) return null;
+    for (const u of data.users) {
+      if (u.email && u.email.toLowerCase() === target) return u;
+    }
+    if (data.users.length < perPage) return null;  // last page
+    page++;
+  }
+  return null;
+}
+
+/**
  * Find a Supabase user by Discord ID by querying auth.users via service-role.
  *
  * Discord OAuth via Supabase stores the Discord user ID in
@@ -336,6 +386,16 @@ export function parseEvent(payload) {
     data.discord_user?.id ||
     null;
 
+  // Whop's real membership webhook identifies the buyer by email
+  // (data.user.email) — it does NOT include a Discord ID. Email is the
+  // reliable join key to our Supabase users; discordId is kept only as a
+  // best-effort fallback for any legacy/custom payloads that carry it.
+  const email =
+    user.email ||
+    data.email ||
+    data.user_email ||
+    null;
+
   const productId = data.product_id || data.product?.id || null;
   const membershipId = data.id || data.membership_id || null;
 
@@ -347,7 +407,7 @@ export function parseEvent(payload) {
     data.current_period_end ||
     null;
 
-  return { type, discordId, productId, membershipId, periodEnd, raw: payload };
+  return { type, email, discordId, productId, membershipId, periodEnd, raw: payload };
 }
 
 /**
@@ -467,7 +527,11 @@ export default async function handler(req, res) {
   // Process the event
   try {
     const supabase = await getSupabaseAdmin();
-    const user = await findUserByDiscordId(supabase, event.discordId);
+    // Match by email first (Whop's payload carries data.user.email, not a
+    // Discord ID), then fall back to Discord ID for any legacy/custom payloads.
+    const user =
+      (await findUserByEmail(supabase, event.email)) ||
+      (await findUserByDiscordId(supabase, event.discordId));
 
     // Log first (always), then attempt the profile update
     await logEvent(supabase, {
