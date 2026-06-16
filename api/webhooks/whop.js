@@ -305,6 +305,24 @@ export async function applyEventToProfile(supabase, { user, eventType, productId
     return { applied: false, reason: 'no_user_match' };
   }
 
+  // FOOLPROOF LIFETIME: never let a Whop subscription event override a
+  // lifetime grant. Lifetime members are managed manually and must be insulated
+  // from activation/deactivation events (e.g. a Whop trial lapsing should not
+  // flip a lifetime member's status to 'canceled').
+  try {
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('subscription_source')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (existing?.subscription_source === 'lifetime') {
+      return { applied: false, reason: 'lifetime_protected' };
+    }
+  } catch {
+    // If this pre-check fails, fall through and process normally — a transient
+    // read error shouldn't silently drop a legitimate subscription update.
+  }
+
   // Accept both `membership.activated` (Whop's actual format) and
   // `membership_activated` (legacy format used in tests and some integrations)
   const isActivation = eventType === 'membership.activated' || eventType === 'membership_activated';
