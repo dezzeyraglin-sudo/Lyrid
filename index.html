@@ -311,7 +311,7 @@
   }
   @media (max-width: 640px){
     .lyrid-auth-username{display:none}
-    /* tier badge kept visible on mobile — compact, useful indicator */
+    .lyrid-auth-tier{display:none}
   }
 
   .lyrid-auth-menu{
@@ -17309,10 +17309,13 @@ function _collectTotals(date) {
     for (const k in audit) {
       const e = audit[k];
       if (!e || e.date !== date || typeof e.projTotal !== 'number') continue;
-      const sig = (typeof classifyInverseMarketSignal === 'function' && typeof e.marketTotal === 'number'
-                    ? classifyInverseMarketSignal(e.projTotal, e.marketTotal) : null)
-               || (typeof classifyInverseTotalSignal === 'function'
-                    ? classifyInverseTotalSignal(e.projTotal) : null);
+      // Use the SAME source the dashboard's TOTALS LEAN uses (Drop #31): the
+      // pre-game lean is driven solely by classifyInverseTotalSignal(projTotal).
+      // Previously this preferred classifyInverseMarketSignal, which returns the
+      // OPPOSITE direction on high-projection games (proj >=10.5 reads OVER on the
+      // board, but the market-gap signal said UNDER) — flipping O/U in the post.
+      const sig = (typeof classifyInverseTotalSignal === 'function')
+                    ? classifyInverseTotalSignal(e.projTotal) : null;
       if (!sig || !DIGEST_TIERS.has(String(sig.tier).toLowerCase())) continue;
       out.push({
         sport: 'MLB', market: 'Game Total',
