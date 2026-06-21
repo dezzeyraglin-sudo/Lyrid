@@ -3522,6 +3522,21 @@
 
   <h2>DATA MANAGEMENT</h2>
   <div class="hint-box"><b>SYNC:</b> Export backup on one device, import on another to copy all picks/notes over.</div>
+  <!-- (Drop #37) Storage meter + cleanup -->
+  <div id="storagePanel" style="margin:10px 0;padding:12px 14px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--dim);font-weight:600">Local storage</span>
+      <span id="storageUsageLabel" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink)">—</span>
+    </div>
+    <div style="height:8px;background:var(--panel-3);border-radius:100px;overflow:hidden">
+      <div id="storageBar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s,background 0.3s"></div>
+    </div>
+    <div id="storageBreakdown" style="font-size:10px;color:var(--dim);margin-top:8px;line-height:1.5"></div>
+    <div class="controls" style="margin-top:10px">
+      <button class="btn sm" onclick="lyridFreeUpSpace(false)" title="Trim old box-score detail from graded picks. Keeps every result and the engine training data.">⊘ FREE UP SPACE (safe)</button>
+      <button class="btn sm" onclick="lyridFreeUpSpace(true)" title="Archive a backup, then age out data older than 45 days. Use only if the safe option isn't enough.">⊘⊘ DEEP CLEAN (45-day)</button>
+    </div>
+  </div>
   <div class="controls">
     <button class="btn" onclick="exportAllData()">EXPORT BACKUP</button>
     <button class="btn" onclick="document.getElementById('importFile').click()">IMPORT BACKUP</button>
@@ -5153,6 +5168,155 @@ function loadState() {
     state.banned.teams = state.banned.teams || [];
   }
 }
+// ============================================================================
+// (Drop #37 — June 21, 2026) STORAGE MANAGER
+//
+// localStorage caps at ~5MB. The main blob grows every game; once it overflows
+// saveState() silently lost the NEWEST data. Diagnosis from the June 12 backup:
+//   hrAudit.entries  1.1MB / 50.8%  (2,318 entries, 1,696 ungraded)  ← runaway
+//   bestBetHistory   367KB / 16.7%  (fat per-pick box-score `line` field)
+//   projectionAudit  358KB / 16.3%  (VALUABLE — drives every engine; keep)
+//
+// Strategy (lossless-where-it-matters):
+//   1. Strip the dead-weight `line` box-score object from GRADED hrAudit /
+//      bestBetHistory entries. The engines only need the tier + actual result;
+//      the full box score is never read again after grading.
+//   2. Drop UNGRADED hrAudit entries older than the grading window (they will
+//      never grade — the game is long over and no actual was captured).
+//   3. Age-out everything older than a retention horizon, but ALWAYS keep
+//      graded projectionAudit (the engines' training corpus).
+//   4. Before any destructive prune, auto-download a JSON archive so nothing
+//      is ever truly lost — the user can re-import it for deep analysis.
+// ============================================================================
+const LyridStorage = (function() {
+  const HR_UNGRADED_MAX_AGE_DAYS = 3;   // ungraded HR rows older than this won't grade
+  const SOFT_RETENTION_DAYS = 45;       // age-out window for non-essential stores
+  const QUOTA_SOFT_BYTES = 4.3 * 1024 * 1024;  // start compacting before the hard ~5MB cap
+
+  function _daysAgo(dateStr) {
+    if (!dateStr) return 1e9;
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d)) return 1e9;
+    return Math.floor((Date.now() - d.getTime()) / 86400000);
+  }
+
+  // Approx serialized size of the persisted blob.
+  function usageBytes() {
+    try {
+      const { raw, ...persist } = state;
+      return new Blob([JSON.stringify(persist)]).size;
+    } catch (_) { return 0; }
+  }
+  function usageReport() {
+    const { raw, ...persist } = state;
+    const total = (() => { try { return new Blob([JSON.stringify(persist)]).size; } catch { return 0; } })();
+    const stores = {};
+    for (const k of Object.keys(persist)) {
+      try { stores[k] = new Blob([JSON.stringify(persist[k])]).size; } catch { stores[k] = 0; }
+    }
+    return { total, cap: 5 * 1024 * 1024, stores };
+  }
+
+  // (1)+(2): strip dead `line` from graded rows; drop stale ungraded HR rows.
+  // Returns {removed, slimmed} counts. Non-destructive to engine inputs.
+  function compact(opts = {}) {
+    const aggressive = !!opts.aggressive;
+    let slimmed = 0, removed = 0;
+
+    // hrAudit.entries — the runaway
+    if (state.hrAudit && Array.isArray(state.hrAudit.entries)) {
+      const kept = [];
+      for (const e of state.hrAudit.entries) {
+        // drop ungraded rows too old to ever grade
+        if (!e.graded && _daysAgo(e.date) > HR_UNGRADED_MAX_AGE_DAYS) { removed++; continue; }
+        // strip the fat box-score `line` + `criteria` from graded rows
+        if (e.graded && (e.line || e.criteria)) {
+          delete e.line; delete e.criteria; slimmed++;
+        }
+        // in aggressive mode, also age out graded rows past the soft horizon
+        if (aggressive && e.graded && _daysAgo(e.date) > SOFT_RETENTION_DAYS) { removed++; continue; }
+        kept.push(e);
+      }
+      state.hrAudit.entries = kept;
+    }
+
+    // bestBetHistory — strip the fat `line` from graded picks
+    if (state.bestBetHistory) {
+      for (const date of Object.keys(state.bestBetHistory)) {
+        const day = state.bestBetHistory[date];
+        const items = Array.isArray(day) ? day : Object.values(day || {});
+        for (const p of items) {
+          if (p && p.result && p.line) { delete p.line; slimmed++; }
+        }
+        if (aggressive && _daysAgo(date) > SOFT_RETENTION_DAYS) {
+          delete state.bestBetHistory[date]; removed++;
+        }
+      }
+    }
+
+    // In aggressive mode, age out non-essential dated stores past the horizon.
+    // projectionAudit is the engines' corpus — only prune UNGRADED stale rows.
+    if (aggressive) {
+      if (state.projectionAudit) {
+        for (const k of Object.keys(state.projectionAudit)) {
+          const e = state.projectionAudit[k];
+          if (!e.graded && _daysAgo(e.date) > SOFT_RETENTION_DAYS) { delete state.projectionAudit[k]; removed++; }
+        }
+      }
+      for (const store of ['gameLineBets', 'firstInningBets', 'pitcherPropBets']) {
+        if (!state[store]) continue;
+        for (const k of Object.keys(state[store])) {
+          const e = state[store][k];
+          if (e && _daysAgo(e.date) > SOFT_RETENTION_DAYS) { delete state[store][k]; removed++; }
+        }
+      }
+    }
+    return { removed, slimmed };
+  }
+
+  // Archive the stores most likely to be pruned, as a download, before deleting.
+  function archive() {
+    try {
+      const { raw, ...persist } = state;
+      const blob = new Blob([JSON.stringify(persist, null, 0)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `lyrid-archive-${getTodayStr()}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      return true;
+    } catch (_) { return false; }
+  }
+
+  // Called by saveState on quota overflow: compact (slim only), retry; if still
+  // failing, archive + aggressive prune, retry once more.
+  function recoverFromQuota(persistKey, payloadStr) {
+    // pass 1 — slim graded rows + drop stale ungraded HR
+    compact({ aggressive: false });
+    try {
+      const { raw, ...persist } = state;
+      localStorage.setItem(persistKey, JSON.stringify(persist));
+      showToast('Storage compacted — older box-score detail trimmed, all results kept', false);
+      return true;
+    } catch (_) {}
+    // pass 2 — archive then aggressive age-out
+    archive();
+    compact({ aggressive: true });
+    try {
+      const { raw, ...persist } = state;
+      localStorage.setItem(persistKey, JSON.stringify(persist));
+      showToast('Storage freed — archived a backup and aged out data older than 45 days', false);
+      return true;
+    } catch (_) {
+      showToast('Storage still full after cleanup — export a backup and use Free Up Space', true);
+      return false;
+    }
+  }
+
+  return { usageBytes, usageReport, compact, archive, recoverFromQuota, QUOTA_SOFT_BYTES, SOFT_RETENTION_DAYS };
+})();
+
 function saveState() {
   // 1) Critical stores to their own tiny key FIRST — a few KB, always fits, so a logged
   //    WNBA bet/pick can never be lost to a quota failure on the big blob below.
@@ -5167,11 +5331,57 @@ function saveState() {
   // 2) Main blob — drop state.raw (the live slate, re-fetched on load) to stay under the
   //    ~5MB cap. If it still overflows, the critical stores above already survived.
   try {
+    // (Drop #37) Proactive compaction — if we're approaching the cap, slim
+    // graded box-score detail BEFORE the write so it rarely fails outright.
+    try {
+      if (LyridStorage.usageBytes() > LyridStorage.QUOTA_SOFT_BYTES) {
+        LyridStorage.compact({ aggressive: false });
+      }
+    } catch (_) {}
     const { raw, ...persist } = state;
     localStorage.setItem(LS_KEY, JSON.stringify(persist));
   } catch (e) {
-    showToast('Storage full — bets saved, older history trimmed', true);
+    // (Drop #37) Instead of silently losing the newest data, recover:
+    // compact → retry → archive + aggressive prune → retry.
+    LyridStorage.recoverFromQuota(LS_KEY, null);
   }
+}
+
+// (Drop #37) Storage UI — meter + manual cleanup.
+function renderStorageMeter() {
+  const bar = document.getElementById('storageBar');
+  const label = document.getElementById('storageUsageLabel');
+  const breakdown = document.getElementById('storageBreakdown');
+  if (!bar || !label) return;
+  const r = LyridStorage.usageReport();
+  const pct = Math.min(100, Math.round(r.total / r.cap * 100));
+  bar.style.width = pct + '%';
+  bar.style.background = pct >= 90 ? 'var(--danger,#ff5555)' : pct >= 75 ? 'var(--warn,#e0a050)' : 'var(--accent)';
+  label.textContent = `${(r.total/1024/1024).toFixed(2)} MB / ${(r.cap/1024/1024).toFixed(0)} MB (${pct}%)`;
+  if (breakdown) {
+    const top = Object.entries(r.stores).sort((a,b) => b[1]-a[1]).slice(0,4)
+      .filter(([,sz]) => sz > 1024)
+      .map(([k,sz]) => `${k} ${(sz/1024).toFixed(0)}KB`).join(' · ');
+    breakdown.textContent = top ? 'Largest: ' + top : '';
+  }
+}
+
+function lyridFreeUpSpace(deep) {
+  const before = LyridStorage.usageBytes();
+  if (deep) {
+    if (!confirm('Deep clean: this first downloads a full backup, then removes data older than 45 days (keeping all graded engine data). Continue?')) return;
+    LyridStorage.archive();
+    const res = LyridStorage.compact({ aggressive: true });
+    saveState();
+    const after = LyridStorage.usageBytes();
+    alert(`Deep clean done.\nFreed ${((before-after)/1024/1024).toFixed(2)} MB.\nTrimmed ${res.slimmed} entries, removed ${res.removed} old rows.\nA backup was downloaded first.`);
+  } else {
+    const res = LyridStorage.compact({ aggressive: false });
+    saveState();
+    const after = LyridStorage.usageBytes();
+    alert(`Freed ${((before-after)/1024/1024).toFixed(2)} MB.\nTrimmed box-score detail from ${res.slimmed} graded entries, removed ${res.removed} stale ungraded rows.\nEvery result and all engine data kept.`);
+  }
+  renderStorageMeter();
 }
 
 // ============================================================================
@@ -6236,6 +6446,8 @@ window.switchTab = function(tabName) {
   }
   if (tabName === 'settings') renderSettings();
   if (tabName === 'research') renderResearch();
+  // (Drop #37) refresh the storage meter whenever a tab containing it opens
+  try { if (document.getElementById('storageBar')) renderStorageMeter(); } catch (_) {}
 };
 
 // Lyrid date navigation
