@@ -439,6 +439,82 @@
   /* ===========================================================
      LYRID GAME CARD — slate listing
      =========================================================== */
+  /* (Drop #36) Tonight's Cleanest Edges — ranked board (dark theme) */
+  .cleanest-edges{margin:0 0 20px;padding:18px 16px 16px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+  .ce-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
+  .ce-eyebrow{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:var(--accent);font-weight:600}
+  .ce-title{font-family:'Source Serif Pro',Georgia,serif;font-weight:600;font-size:23px;line-height:1.1;letter-spacing:-0.01em;color:var(--ink);margin-top:5px}
+  .ce-sub{font-size:13px;color:var(--dim);margin-top:5px;max-width:90%}
+  .ce-count{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--accent);background:rgba(198,255,61,0.1);border:1px solid rgba(198,255,61,0.3);border-radius:100px;min-width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .ce-cards{display:flex;flex-direction:column;gap:12px}
+  .ce-card{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .ce-card-top{display:flex;gap:12px;align-items:flex-start;padding:13px 14px 0}
+  .ce-rank{font-family:'Source Serif Pro',Georgia,serif;font-size:19px;font-weight:600;color:var(--dim);line-height:1;width:18px;flex:none;padding-top:2px}
+  .ce-who{flex:1;min-width:0}
+  .ce-nm{font-weight:600;font-size:15px;letter-spacing:-0.01em;color:var(--ink)}
+  .ce-meta{font-size:11.5px;color:var(--dim);margin-top:1px}
+  .ce-game{text-align:right;flex:none}
+  .ce-mu{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:500;color:var(--dim)}
+  .ce-verdict{margin:11px 14px 0;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:11px}
+  .ce-verdict.less{background:rgba(102,170,255,0.1);border:1px solid rgba(102,170,255,0.25)}
+  .ce-verdict.more{background:rgba(198,255,61,0.09);border:1px solid rgba(198,255,61,0.25)}
+  .ce-verdict.watch{background:rgba(255,255,255,0.04);border:1px solid var(--line)}
+  .ce-varrow{font-size:18px;font-weight:700;line-height:1;flex:none}
+  .ce-verdict.less .ce-varrow{color:#66aaff}
+  .ce-verdict.more .ce-varrow{color:var(--accent)}
+  .ce-verdict.watch .ce-varrow{color:var(--dim)}
+  .ce-vmain{flex:1;min-width:0}
+  .ce-vdir{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase}
+  .ce-verdict.less .ce-vdir{color:#66aaff}
+  .ce-verdict.more .ce-vdir{color:var(--accent)}
+  .ce-verdict.watch .ce-vdir{color:var(--dim)}
+  .ce-vline{font-weight:600;font-size:14.5px;letter-spacing:-0.01em;margin-top:1px;color:var(--ink)}
+  .ce-rate{text-align:right;flex:none}
+  .ce-pct{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:600;line-height:1}
+  .ce-verdict.less .ce-pct{color:#66aaff}
+  .ce-verdict.more .ce-pct{color:var(--accent)}
+  .ce-pctlbl{font-size:8.5px;color:var(--dim);letter-spacing:0.05em;text-transform:uppercase;margin-top:2px}
+  .ce-signals{display:flex;gap:6px;margin:9px 14px 0;flex-wrap:wrap}
+  .ce-sig{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;padding:3px 7px;border-radius:5px;display:inline-flex;align-items:center;gap:4px}
+  .ce-sig.plat{background:rgba(120,160,200,0.12);color:#9fc0e0;border:1px solid rgba(120,160,200,0.3)}
+  .ce-sig.gold{background:rgba(198,160,80,0.12);color:#d4af6a;border:1px solid rgba(198,160,80,0.3)}
+  .ce-sig.verified{background:rgba(198,255,61,0.1);color:var(--accent);border:1px solid rgba(198,255,61,0.3)}
+  .ce-sig.watchflag{background:rgba(255,255,255,0.04);color:var(--dim);border:1px solid var(--line)}
+  .ce-sig.warnflag{background:rgba(255,180,80,0.1);color:#e0a050;border:1px solid rgba(255,180,80,0.3)}
+  .ce-why{margin:10px 14px 0;font-size:13px;color:var(--ink);line-height:1.5}
+  .ce-expander{margin:10px 0 0;border-top:1px solid var(--line)}
+  .ce-exp-btn{width:100%;background:none;border:0;padding:10px 14px;font-family:'Inter',sans-serif;font-size:11.5px;font-weight:600;color:var(--dim);display:flex;align-items:center;justify-content:space-between;cursor:pointer}
+  .ce-exp-btn:hover{color:var(--ink)}
+  .ce-car{transition:transform 0.22s ease;font-size:9px}
+  .ce-card.open .ce-car{transform:rotate(180deg)}
+  .ce-exp-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows 0.26s ease}
+  .ce-card.open .ce-exp-body{grid-template-rows:1fr}
+  .ce-exp-inner{overflow:hidden;padding:0 14px}
+  .ce-card.open .ce-exp-inner{padding-bottom:14px}
+  .ce-ignore{display:flex;align-items:flex-start;gap:8px;background:rgba(255,180,80,0.08);border:1px solid rgba(255,180,80,0.25);border-radius:8px;padding:9px 11px;margin-bottom:11px}
+  .ce-ignore-ic{color:#e0a050;font-size:14px;flex:none;line-height:1.3}
+  .ce-ignore-tx{font-size:11.5px;line-height:1.45;color:var(--ink)}
+  .ce-ignore-tx b{color:#e0a050}
+  .ce-ignore-num{font-family:'JetBrains Mono',monospace;font-weight:600}
+  .ce-datahead{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.14em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+  .ce-drow{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .ce-drow:last-of-type{border-bottom:0}
+  .ce-dk{color:var(--dim)}
+  .ce-dv{font-family:'JetBrains Mono',monospace;font-weight:500;text-align:right;color:var(--ink)}
+  .ce-ctx{margin-top:11px}
+  .ce-ctx-lbl{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--dim);margin-bottom:7px}
+  .ce-ctx-chips{display:flex;flex-wrap:wrap;gap:5px}
+  .ce-ctx-chip{font-size:10px;font-family:'JetBrains Mono',monospace;padding:3px 7px;border-radius:5px;background:var(--panel-3);color:var(--dim);border:1px solid var(--line)}
+  .ce-open-game{margin-top:13px;width:100%;background:rgba(198,255,61,0.08);border:1px solid rgba(198,255,61,0.3);color:var(--accent);font-family:'Inter',sans-serif;font-size:12px;font-weight:600;padding:9px;border-radius:8px;cursor:pointer}
+  .ce-open-game:hover{background:rgba(198,255,61,0.14)}
+  .ce-legend{margin-top:16px;background:var(--panel-2);border:1px dashed var(--line);border-radius:12px;padding:13px 14px}
+  .ce-legend-h{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.14em;text-transform:uppercase;color:var(--dim);margin-bottom:10px;font-weight:600}
+  .ce-leg-row{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:var(--dim);margin-bottom:8px;line-height:1.45}
+  .ce-leg-row:last-child{margin-bottom:0}
+  .ce-leg-row b{color:var(--ink);font-weight:600}
+  .ce-dot{width:9px;height:9px;border-radius:50%;flex:none;margin-top:4px}
+  .ce-empty-text{font-size:12.5px;line-height:1.5;color:var(--dim);margin-top:6px}
+
   .lyrid-games-list{
     display:flex;
     flex-direction:column;
@@ -2204,6 +2280,12 @@
   }
 
   /* =============== PROBABILITY CHIPS (bonus display on props + game lines) =============== */
+  /* (Drop #36) Direction-correct verdict pill + muted model footnote */
+  .pp-verdict-pct{display:inline-block;padding:3px 9px;border-radius:100px;font-size:11px;font-weight:800;letter-spacing:0.04em;font-variant-numeric:tabular-nums;margin-left:6px;vertical-align:middle}
+  .pp-verdict-pct.fade{background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);color:#fff}
+  .pp-verdict-pct.over{background:var(--accent);color:#0a0d0a}
+  .pp-prob-footnote{display:inline-block;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:600;letter-spacing:0.02em;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;margin-left:6px;opacity:0.5;background:transparent;color:var(--dim);border:1px solid var(--line)}
+
   .pp-prob, .tpb-prob, .glb-prob, .glb-best-prob{
     display:inline-block;
     padding:2px 6px;
@@ -2256,158 +2338,6 @@
     vertical-align:middle;
   }
   .tpb-prob{margin-left:6px;margin-right:4px}
-
-  /* (Drop #34) Direction-correct verdict pill + muted model footnote */
-  .pp-verdict-pct{
-    display:inline-block;
-    padding:3px 9px;
-    border-radius:100px;
-    font-size:11px;
-    font-weight:800;
-    letter-spacing:0.04em;
-    font-variant-numeric:tabular-nums;
-    margin-left:6px;
-    vertical-align:middle;
-  }
-  .pp-verdict-pct.fade{
-    background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);
-    color:#fff;
-  }
-  .pp-verdict-pct.over{
-    background:var(--accent);
-    color:#0a0d0a;
-  }
-  .pp-prob-footnote{
-    display:inline-block;
-    padding:1px 5px;
-    border-radius:3px;
-    font-size:8.5px;
-    font-weight:600;
-    letter-spacing:0.02em;
-    font-family:'JetBrains Mono',monospace;
-    font-variant-numeric:tabular-nums;
-    margin-left:6px;
-    opacity:0.55;
-    background:transparent;
-    color:var(--dim);
-    border:1px solid var(--line);
-  }
-
-  /* (Drop #34) Collapsible "why" expander — hides the detail wall by default */
-  .why-expander{
-    margin:6px 12px 0;
-    border-top:1px solid var(--line);
-    padding-top:4px;
-  }
-  .why-expander > summary{
-    cursor:pointer;
-    list-style:none;
-    font-size:10.5px;
-    font-weight:700;
-    letter-spacing:0.05em;
-    color:var(--dim);
-    padding:5px 0;
-    user-select:none;
-    transition:color 0.15s;
-  }
-  .why-expander > summary::-webkit-details-marker{display:none}
-  .why-expander > summary::before{
-    content:'▸ ';
-    font-size:9px;
-  }
-  .why-expander[open] > summary::before{content:'▾ '}
-  .why-expander > summary:hover{color:var(--accent)}
-
-  /* (Drop #35) Tonight's Cleanest Edges — ranked board (Reader View, dark theme) */
-  .cleanest-edges{
-    margin:0 0 20px;
-    padding:18px 16px 16px;
-    background:var(--panel);
-    border:1px solid var(--line);
-    border-radius:14px;
-  }
-  .ce-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
-  .ce-eyebrow{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:var(--accent);font-weight:600}
-  .ce-title{font-family:'Source Serif Pro',Georgia,serif;font-weight:600;font-size:23px;line-height:1.1;letter-spacing:-0.01em;color:var(--ink);margin-top:5px}
-  .ce-sub{font-size:13px;color:var(--dim);margin-top:5px;max-width:90%}
-  .ce-count{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--accent);background:rgba(198,255,61,0.1);border:1px solid rgba(198,255,61,0.3);border-radius:100px;min-width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;flex:none}
-
-  .ce-cards{display:flex;flex-direction:column;gap:12px}
-  .ce-card{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  .ce-card-top{display:flex;gap:12px;align-items:flex-start;padding:13px 14px 0}
-  .ce-rank{font-family:'Source Serif Pro',Georgia,serif;font-size:19px;font-weight:600;color:var(--dim);line-height:1;width:18px;flex:none;padding-top:2px}
-  .ce-who{flex:1;min-width:0}
-  .ce-nm{font-weight:600;font-size:15px;letter-spacing:-0.01em;color:var(--ink)}
-  .ce-meta{font-size:11.5px;color:var(--dim);margin-top:1px}
-  .ce-game{text-align:right;flex:none}
-  .ce-mu{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:500;color:var(--dim)}
-
-  /* the verdict line — the loudest element */
-  .ce-verdict{margin:11px 14px 0;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:11px}
-  .ce-verdict.less{background:rgba(102,170,255,0.1);border:1px solid rgba(102,170,255,0.25)}
-  .ce-verdict.more{background:rgba(198,255,61,0.09);border:1px solid rgba(198,255,61,0.25)}
-  .ce-verdict.watch{background:rgba(255,255,255,0.04);border:1px solid var(--line)}
-  .ce-varrow{font-size:18px;font-weight:700;line-height:1;flex:none}
-  .ce-verdict.less .ce-varrow{color:#66aaff}
-  .ce-verdict.more .ce-varrow{color:var(--accent)}
-  .ce-verdict.watch .ce-varrow{color:var(--dim)}
-  .ce-vmain{flex:1;min-width:0}
-  .ce-vdir{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase}
-  .ce-verdict.less .ce-vdir{color:#66aaff}
-  .ce-verdict.more .ce-vdir{color:var(--accent)}
-  .ce-verdict.watch .ce-vdir{color:var(--dim)}
-  .ce-vline{font-weight:600;font-size:14.5px;letter-spacing:-0.01em;margin-top:1px;color:var(--ink)}
-  .ce-rate{text-align:right;flex:none}
-  .ce-pct{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:600;line-height:1}
-  .ce-verdict.less .ce-pct{color:#66aaff}
-  .ce-verdict.more .ce-pct{color:var(--accent)}
-  .ce-pctlbl{font-size:8.5px;color:var(--dim);letter-spacing:0.05em;text-transform:uppercase;margin-top:2px}
-
-  .ce-signals{display:flex;gap:6px;margin:9px 14px 0;flex-wrap:wrap}
-  .ce-sig{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;padding:3px 7px;border-radius:5px;display:inline-flex;align-items:center;gap:4px}
-  .ce-sig.plat{background:rgba(120,160,200,0.12);color:#9fc0e0;border:1px solid rgba(120,160,200,0.3)}
-  .ce-sig.gold{background:rgba(198,160,80,0.12);color:#d4af6a;border:1px solid rgba(198,160,80,0.3)}
-  .ce-sig.verified{background:rgba(198,255,61,0.1);color:var(--accent);border:1px solid rgba(198,255,61,0.3)}
-  .ce-sig.watchflag{background:rgba(255,255,255,0.04);color:var(--dim);border:1px solid var(--line)}
-  .ce-sig.warnflag{background:rgba(255,180,80,0.1);color:#e0a050;border:1px solid rgba(255,180,80,0.3)}
-
-  .ce-why{margin:10px 14px 0;font-size:13px;color:var(--ink);line-height:1.5}
-  .ce-why b{font-weight:600;color:var(--ink)}
-
-  .ce-expander{margin:10px 0 0;border-top:1px solid var(--line)}
-  .ce-exp-btn{width:100%;background:none;border:0;padding:10px 14px;font-family:'Inter',sans-serif;font-size:11.5px;font-weight:600;color:var(--dim);display:flex;align-items:center;justify-content:space-between;cursor:pointer}
-  .ce-exp-btn:hover{color:var(--ink)}
-  .ce-car{transition:transform 0.22s ease;font-size:9px}
-  .ce-card.open .ce-car{transform:rotate(180deg)}
-  .ce-exp-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows 0.26s ease}
-  .ce-card.open .ce-exp-body{grid-template-rows:1fr}
-  .ce-exp-inner{overflow:hidden;padding:0 14px}
-  .ce-card.open .ce-exp-inner{padding-bottom:14px}
-  .ce-ignore{display:flex;align-items:flex-start;gap:8px;background:rgba(255,180,80,0.08);border:1px solid rgba(255,180,80,0.25);border-radius:8px;padding:9px 11px;margin-bottom:11px}
-  .ce-ignore-ic{color:#e0a050;font-size:14px;flex:none;line-height:1.3}
-  .ce-ignore-tx{font-size:11.5px;line-height:1.45;color:var(--ink)}
-  .ce-ignore-tx b{color:#e0a050}
-  .ce-ignore-num{font-family:'JetBrains Mono',monospace;font-weight:600}
-  .ce-datahead{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.14em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
-  .ce-drow{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px}
-  .ce-drow:last-of-type{border-bottom:0}
-  .ce-dk{color:var(--dim)}
-  .ce-dv{font-family:'JetBrains Mono',monospace;font-weight:500;text-align:right;color:var(--ink)}
-  .ce-ctx{margin-top:11px}
-  .ce-ctx-lbl{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--dim);margin-bottom:7px}
-  .ce-ctx-chips{display:flex;flex-wrap:wrap;gap:5px}
-  .ce-ctx-chip{font-size:10px;font-family:'JetBrains Mono',monospace;letter-spacing:0.02em;padding:3px 7px;border-radius:5px;background:var(--panel-3);color:var(--dim);border:1px solid var(--line)}
-  .ce-open-game{margin-top:13px;width:100%;background:rgba(198,255,61,0.08);border:1px solid rgba(198,255,61,0.3);color:var(--accent);font-family:'Inter',sans-serif;font-size:12px;font-weight:600;padding:9px;border-radius:8px;cursor:pointer;letter-spacing:0.02em}
-  .ce-open-game:hover{background:rgba(198,255,61,0.14)}
-
-  .ce-legend{margin-top:16px;background:var(--panel-2);border:1px dashed var(--line);border-radius:12px;padding:13px 14px}
-  .ce-legend-h{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.14em;text-transform:uppercase;color:var(--dim);margin-bottom:10px;font-weight:600}
-  .ce-leg-row{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:var(--dim);margin-bottom:8px;line-height:1.45}
-  .ce-leg-row:last-child{margin-bottom:0}
-  .ce-leg-row b{color:var(--ink);font-weight:600}
-  .ce-dot{width:9px;height:9px;border-radius:50%;flex:none;margin-top:4px}
-  .ce-empty-text{font-size:12.5px;line-height:1.5;color:var(--dim);margin-top:6px}
-
 
   /* Game bets history entries */
   .glb-history-entry{padding:10px 12px;border-bottom:1px solid var(--line);border-left:3px solid var(--dim)}
@@ -3358,6 +3288,7 @@
   <nav class="lyrid-header-nav" role="navigation" aria-label="Main">
     <button class="lyrid-nav-btn active" data-tab="slate" onclick="switchTab('slate')">Slate</button>
     <button class="lyrid-nav-btn" data-tab="wnba" onclick="switchTab('wnba')">WNBA</button>
+    <button class="lyrid-nav-btn" data-tab="cs2" onclick="switchToCs2()">CS2</button>
     <button class="lyrid-nav-btn" data-tab="track" onclick="switchTab('track')">Track</button>
     <button class="lyrid-nav-btn" data-tab="history" onclick="switchTab('history')">History</button>
     <button class="lyrid-nav-btn" data-tab="settings" onclick="switchTab('settings')">Settings</button>
@@ -3481,6 +3412,21 @@
   <div id="wnbaBanner"></div>
   <div id="wnbaGamesList"></div>
   <div id="wnbaAnalysisContainer"></div>
+</div>
+
+<!-- CS2 -->
+<div class="panel-content" id="cs2-panel">
+  <div class="lyrid-page-header">
+    <div class="lyrid-page-eyebrow" id="cs2PageEyebrow">Counter-Strike 2 · Maps 1+2</div>
+    <div class="lyrid-date-nav">
+      <span class="lyrid-date-current" id="cs2DateDisplay">Slate</span>
+    </div>
+    <button class="lyrid-btn primary" id="loadCs2Btn" onclick="loadCs2Slate()">Refresh</button>
+    <span id="cs2Meta" class="lyrid-eyebrow" style="margin-left:auto"></span>
+  </div>
+  <div id="cs2Banner"></div>
+  <div id="cs2GamesList"></div>
+  <div id="cs2AnalysisContainer"></div>
 </div>
 
 <!-- TRACK -->
@@ -4143,6 +4089,14 @@
 </script>
 
 <script>
+// (Drop #36 — June 21, 2026) DEV DIAGNOSTICS FLAG.
+// Developer traces (HR-audit multiplier dumps, ENVIRONMENT AUDIT panel) must
+// never show to users. They render only when dev mode is explicitly on:
+//   localStorage.setItem('lyrid_dev','1')  in the console.
+const LYRID_DEV = (() => {
+  try { return localStorage.getItem('lyrid_dev') === '1'
+    || /[?&]dev=1\b/.test(location.search); } catch { return false; }
+})();
 // =============== PWA / SERVICE WORKER ===============
 let deferredInstallPrompt = null;
 
@@ -4258,6 +4212,9 @@ let currentTrackView = 'today';
 let tagModalContext = null;  // { id, name, role, team, gamePk, opp }
 const analyzedCache = new Map();  // gamePk → response data (for modals)
 const LS_KEY = 'mismatch_finder_v2';
+// Small can't-lose stores (logged WNBA bets/props, MLB picks) get their own tiny key so a
+// quota failure on the big main blob (MLB audits + slate) can never drop them. Stays a few KB.
+const LS_CRITICAL_KEY = 'mismatch_finder_critical_v1';
 
 // =============================================================
 // MLB SELECTION ENGINE TOGGLE (May 23, 2026)
@@ -5146,6 +5103,18 @@ function loadState() {
     const saved = localStorage.getItem(LS_KEY);
     if (saved) state = { ...state, ...JSON.parse(saved) };
   } catch(_) {}
+  // Overlay the always-saved critical stores. This key persists even when the main blob
+  // is too big to save, so logged bets/picks survive a full-storage situation. Critical
+  // wins on key collisions (it's the freshest copy, written on every save).
+  try {
+    const crit = localStorage.getItem(LS_CRITICAL_KEY);
+    if (crit) {
+      const c = JSON.parse(crit);
+      if (c.wnbaGameBets)    state.wnbaGameBets    = { ...(state.wnbaGameBets || {}),    ...c.wnbaGameBets };
+      if (c.wnbaPropHistory) state.wnbaPropHistory = { ...(state.wnbaPropHistory || {}), ...c.wnbaPropHistory };
+      if (c.picks)           state.picks           = { ...(state.picks || {}),           ...c.picks };
+    }
+  } catch(_) {}
   state.currentDate = state.currentDate || getTodayStr();
   state.researchTags = state.researchTags || {};
   state.tracking = state.tracking || {};
@@ -5185,8 +5154,24 @@ function loadState() {
   }
 }
 function saveState() {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-  catch(e) { showToast('Save failed', true); }
+  // 1) Critical stores to their own tiny key FIRST — a few KB, always fits, so a logged
+  //    WNBA bet/pick can never be lost to a quota failure on the big blob below.
+  try {
+    localStorage.setItem(LS_CRITICAL_KEY, JSON.stringify({
+      wnbaGameBets: state.wnbaGameBets || {},
+      wnbaPropHistory: state.wnbaPropHistory || {},
+      picks: state.picks || {},
+      _v: 1,
+    }));
+  } catch (_) {}
+  // 2) Main blob — drop state.raw (the live slate, re-fetched on load) to stay under the
+  //    ~5MB cap. If it still overflows, the critical stores above already survived.
+  try {
+    const { raw, ...persist } = state;
+    localStorage.setItem(LS_KEY, JSON.stringify(persist));
+  } catch (e) {
+    showToast('Storage full — bets saved, older history trimmed', true);
+  }
 }
 
 // ============================================================================
@@ -5912,71 +5897,55 @@ function computeEmpiricalMLStrategy(awayTeamAbbr, homeTeamAbbr, gameDate) {
 //   'compact' — slim inline pill, used inside dense bet rows
 // ====================================================================
 // ====================================================================
-// (Drop #34 — June 20, 2026) PER-CARD VERDICT.
-// Returns the single one-line play for a hitter card, in plain English,
-// with the direction (verb) leading. This is the banner that sits at the
-// top of every card so the actual bet isn't buried three sections down.
-//
-// Output shape: { kind, verb, prop, tier, wr, plain, tone } or null.
-//   kind: 'over' | 'fade' | 'verified' | 'none'
-//   verb: 'BET MORE' | 'BET LESS' | 'PASS'
-//   tone: 'go' (green) | 'fade' (blue) | 'stop' (grey)
+// (Drop #36 — June 21, 2026) PER-CARD VERDICT — ported from Drop #34/35,
+// hardened to reconcile with the TOP PICK selector. Returns the single
+// one-line play for a hitter card, in plain English, verb leading.
+// This is the spine the whole card serves.
 // ====================================================================
 function computeHitterVerdict(m) {
   const recs = m.propRecs || [];
   const best = recs.find(p => p.isBest) || recs[0];
 
-  // 1. Suppressed top pick → explicit PASS (the Collins rule made visible)
-  if (m.isTopPick && m._topPickSuppressed) {
-    return {
-      kind: 'none', verb: '⛔ PASS', prop: best ? best.label : 'H+R+RBI 1.5',
-      tier: null, wr: null, tone: 'stop',
-      plain: 'Looks like a top pick on matchup quality, but this exact profile loses money in our data. No edge — skip it.'
-    };
+  // Suppressed / -EV pass
+  if (m._topPickVerdict === 'pass' || (m.isTopPick && m._topPickSuppressed && !(best && best._lyridUnderTier))) {
+    return { kind:'none', verb:'⛔ PASS', prop: best ? best.label : 'H+R+RBI 1.5', tier:null, wr:null, tone:'stop',
+      plain:'Looks like a top pick on matchup quality, but this exact profile loses money in our data. No edge — skip it.' };
   }
-
   if (!best) return null;
 
-  // 2. Fade (UNDER tier) — the counterintuitive play, needs the most plain English
-  const fadeTier = best._lyridUnderTier;
+  // Fade (UNDER tier) — the counterintuitive play
+  const fadeTier = best._lyridUnderTier || m._lyridUnderTier;
   if (fadeTier === 'platinum' || fadeTier === 'gold') {
     const wr = fadeTier === 'platinum' ? 62 : 59;
-    return {
-      kind: 'fade', verb: '🔻 BET LESS', prop: 'Under 1.5 ' + (best.label || 'H+R+RBI'),
-      tier: fadeTier.toUpperCase(), wr, tone: 'fade',
-      plain: 'Looks great on paper — projected to mash — but hitters with this exact profile quietly underperform in our data. The smart bet is the under, not the over.'
-    };
+    return { kind:'fade', verb:'🔻 BET LESS', prop:'Under 1.5 ' + (best.label || 'H+R+RBI'),
+      tier:fadeTier.toUpperCase(), wr, tone:'fade',
+      plain:'Looks great on paper — projected to mash — but hitters with this exact profile quietly underperform in our data. The smart bet is the under, not the over.' };
   }
 
-  // 3. Verified cohort — the validated overs
+  // Verified cohort — validated overs
   if (best._verifiedCohort) {
     const wr = Math.round((best._verifiedWR || 0.7) * 100);
     const isHits = best._verifiedCohort === 'rarely-k-hits';
-    return {
-      kind: 'verified', verb: '✅ BET MORE', prop: best.label || (isHits ? 'Over 0.5 Hits' : 'Over'),
-      tier: 'VERIFIED', wr, tone: 'go',
+    return { kind:'verified', verb:'✅ BET MORE', prop: best.label || (isHits ? 'Over 0.5 Hits' : 'Over'),
+      tier:'VERIFIED', wr, tone:'go',
       plain: isHits
         ? 'This hitter rarely strikes out and the matchup is soft — our single most reliable bet type. Take the over.'
-        : 'Elite arsenal matchup for a right-handed bat — a validated profile that beats the line. Take the over.'
-    };
+        : 'Elite arsenal matchup for a right-handed bat — a validated profile that beats the line. Take the over.' };
   }
-
-  // 4. Sharp / Hard-hit tiers — strong overs
   if (best._sharpHits) {
-    return { kind: 'over', verb: '✅ BET MORE', prop: best.label || 'Over', tier: 'SHARP', wr: 68, tone: 'go',
-      plain: 'Strong contact profile against this pitcher — our sharp-hits filter, 68% in testing. Take the over.' };
+    return { kind:'over', verb:'✅ BET MORE', prop: best.label || 'Over 0.5 Hits', tier:'SHARP', wr:68, tone:'go',
+      plain:'Strong contact profile against this pitcher — our sharp-hits filter, 68% in testing. Take the over.' };
   }
 
-  // 5. Plain HRR over with no rescue tier → soft pass
+  // Plain multi-pathway HRR over → soft pass
   const isMultiPathHRR = best.key === 'HRR' && (best.reason || '').toLowerCase().includes('multiple pathways');
   if (isMultiPathHRR) {
-    return { kind: 'none', verb: '⛔ NO EDGE', prop: best.label || 'H+R+RBI 1.5', tier: null, wr: null, tone: 'stop',
-      plain: 'The model likes this on paper, but this pick type breaks even at best. Not a bet we\u2019d make.' };
+    return { kind:'none', verb:'⛔ NO EDGE', prop: best.label || 'H+R+RBI 1.5', tier:null, wr:null, tone:'stop',
+      plain:'The model likes this on paper, but this pick type breaks even at best. Not a bet we\u2019d make.' };
   }
 
-  // 6. Generic best prop — modest lean
-  return { kind: 'over', verb: '✅ LEAN OVER', prop: best.label || 'Over', tier: best.tier ? String(best.tier).toUpperCase() : null, wr: null, tone: 'go',
-    plain: 'Reasonable matchup edge on the over. A lean, not a hammer.' };
+  return { kind:'over', verb:'✅ LEAN OVER', prop: best.label || 'Over', tier: best.tier ? String(best.tier).toUpperCase() : null, wr:null, tone:'go',
+    plain:'Reasonable matchup edge on the over. A lean, not a hammer.' };
 }
 
 function buildVerdictBanner(m, env) {
@@ -5990,10 +5959,14 @@ function buildVerdictBanner(m, env) {
     ? `<span style="background:rgba(255,255,255,0.22);padding:1px 8px;border-radius:100px;font-size:11px;font-weight:800;margin-left:2px">${v.wr}%</span>` : '';
   const tierChip = v.tier
     ? `<span style="opacity:0.85;font-size:10px;font-weight:700;letter-spacing:0.06em;margin-left:6px">${v.tier}</span>` : '';
-  // Environment tension warning (Drop #34 — surface slugfest-vs-fade conflict)
   let envWarn = '';
   if (v.kind === 'fade' && env && typeof env.projTotal === 'number' && env.projTotal >= 9.5) {
     envWarn = `<div style="font-size:10px;color:#fbbf24;margin-top:4px;font-weight:600">⚠️ High-scoring game projected (${env.projTotal.toFixed(1)}) — fades carry extra risk here. Size down.</div>`;
+  }
+  // (Drop #36) goblin warning now applies to FADES too, not just overs.
+  let goblinWarn = '';
+  if (v.kind === 'fade' || v.kind === 'verified' || v.kind === 'over') {
+    goblinWarn = `<div style="font-size:9.5px;opacity:0.8;margin-top:3px">⚠ Standard line only — if PrizePicks shows a 👺/😈 (demon/goblin) alt line, the edge is gone. Skip it.</div>`;
   }
   return `
     <div class="verdict-banner" style="background:${bg};color:${fg};padding:9px 13px;border-radius:9px;margin:0 0 4px">
@@ -6003,7 +5976,7 @@ function buildVerdictBanner(m, env) {
         ${tierChip}${wrChip}
       </div>
       <div style="font-size:11px;line-height:1.45;margin-top:5px;opacity:0.92">${v.plain}</div>
-      ${envWarn}
+      ${envWarn}${goblinWarn}
     </div>`;
 }
 
@@ -6379,17 +6352,15 @@ async function loadLiveSlate() {
 }
 
 // ====================================================================
-// (Drop #34 — June 20, 2026) TODAY'S CLEANEST EDGES.
-// The novice front door: a ranked list of the highest-confidence,
-// plainest plays across the whole slate, drawn from today's already-
-// logged best bets. No need to open 14 games × 9 hitters — the cleanest
-// 4-6 edges surface at the top, in order, de-jargoned.
+// (Drop #36 — June 21, 2026) TONIGHT'S CLEANEST EDGES — wired board.
+// ROOT-CAUSE FIX for audit bug #4 ("never populates"): the auto-collect
+// is now actually wired into renderGames() and reads today's logged best
+// bets. Ranked, verdict-leading, plain English, collapsible evidence.
 // ====================================================================
 function gatherCleanestEdges(date) {
   const day = state.bestBetHistory && state.bestBetHistory[date];
   if (!day) return [];
   const picks = Object.values(day).filter(p => p && p.hitterName);
-  // Rank each pick. Higher rank = cleaner edge.
   const ranked = picks.map(p => {
     let kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, evidence;
     const ctxChips = [];
@@ -6403,15 +6374,15 @@ function gatherCleanestEdges(date) {
       const isHits = p._verifiedCohort === 'rarely-k-hits';
       kind='verified'; dir='more'; verb='Bet More'; tier='VERIFIED';
       wr=Math.round((p._verifiedWR||0.7)*100); rank=isHits?100:92; tone='go';
-      prop=isHits?'0.5 Hits':'Over';
-      edgeType=isHits?'Rarely-K verified cohort':'Elite pitch-type edge';
+      prop=isHits?'0.5 Hits':'Over'; edgeType=isHits?'Rarely-K verified cohort':'Elite pitch-type edge';
       plain=isHits?'Rarely strikes out in a soft matchup — our single most reliable bet type. Take the over.':'Elite arsenal matchup for a right-handed bat — a validated profile that beats the line.';
-      lineWarn = isHits;  // hits-overs get goblin'd
+      lineWarn = isHits;
       evidence=[['Hit rate (verified)', wr+'%'], ['Sample', 'n='+(p._verifiedN||25)], ['Best price', '+EV at standard \u2212110']];
     } else if (p._lyridUnderTier==='platinum') {
       kind='fade'; dir='less'; verb='Bet Less'; tier='PLATINUM'; wr=62; rank=88; tone='fade';
       prop='1.5 Hits + Runs + RBIs'; edgeType='Bullpen-inverse fade';
       plain='Looks great on paper — projected to mash — but this exact profile quietly underperforms in our data. The smart bet is the under.';
+      lineWarn = true;
       evidence=[['Edge type', 'Bullpen-inverse fade'], ['Hit rate (live)', '62% \u00b7 58 graded'], ['Best price', '+EV at standard \u2212110']];
     } else if (p._sharpHits) {
       kind='over'; dir='more'; verb='Bet More'; tier='SHARP'; wr=68; rank=84; tone='go';
@@ -6423,6 +6394,7 @@ function gatherCleanestEdges(date) {
       kind='fade'; dir='less'; verb='Bet Less'; tier='GOLD'; wr=59; rank=72; tone='fade';
       prop='1.5 Hits + Runs + RBIs'; edgeType='Soft bullpen fade';
       plain='A fade — bet the under, but size down. Thinner edge than the platinum plays above.';
+      lineWarn = true;
       evidence=[['Edge type', 'Bullpen fade (soft)'], ['Hit rate (live)', '59% \u00b7 22 graded'], ['Best price', '+EV \u2212110, thin PP']];
     } else if (p._hardHitTier) {
       kind='watch'; dir='watch'; verb='Watch'; tier='HARD-HIT'; wr=null; rank=40; tone='stop';
@@ -6430,7 +6402,7 @@ function gatherCleanestEdges(date) {
       plain='Was strong in backtest but cooling live (50% recently). Watch — don\u2019t hammer.';
       evidence=[['Backtest', '75% (n=12)'], ['Live', '50% (3-6)'], ['Status', 'Downgraded to watch']];
     } else {
-      return null;  // not clean enough to surface
+      return null;
     }
     return { ...p, _ce: { kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, ctxChips, evidence } };
   }).filter(Boolean);
@@ -6442,93 +6414,68 @@ function renderCleanestEdges(date) {
   const edges = gatherCleanestEdges(date);
   if (edges.length === 0) {
     return `<div class="cleanest-edges empty">
-      <div class="ce-head"><div class="ce-eyebrow">Tonight · Live MLB</div><div class="ce-title">Tonight's Cleanest Edges</div></div>
-      <div class="ce-empty-text">Analyze a few games below and your highest-confidence plays collect here automatically — ranked, plain-English, the call leading. No digging through 14 games.</div>
+      <div class="ce-head"><div><div class="ce-eyebrow">Tonight · Live MLB</div><div class="ce-title">Tonight's Cleanest Edges</div></div></div>
+      <div class="ce-empty-text">Analyze a few games below and your highest-confidence plays collect here automatically — ranked, plain-English, the call leading.</div>
     </div>`;
   }
-
   const cards = edges.map((e, i) => {
     const c = e._ce;
-    const isFade = c.dir === 'less';
-    const isMore = c.dir === 'more';
-    const isWatch = c.dir === 'watch';
+    const isFade = c.dir === 'less', isMore = c.dir === 'more';
     const arrow = isFade ? '↓' : isMore ? '↑' : '◦';
     const verdictClass = isFade ? 'less' : isMore ? 'more' : 'watch';
-
-    // Signal-lane chips (bet signals first, then warnings)
     const sigChips = [];
     if (c.tier === 'PLATINUM') sigChips.push('<span class="ce-sig plat">◆ Platinum</span>');
     else if (c.tier === 'GOLD') sigChips.push('<span class="ce-sig gold">◆ Gold</span>');
     else if (c.tier === 'VERIFIED') sigChips.push('<span class="ce-sig verified">✓ Verified</span>');
     else if (c.tier === 'SHARP') sigChips.push('<span class="ce-sig verified">✦ Sharp</span>');
     else if (c.tier === 'HARD-HIT') sigChips.push('<span class="ce-sig watchflag">◇ Hard-hit</span>');
-    if (e.isTopPick && !e._topPickSuppressed && c.tier !== 'HARD-HIT') sigChips.push('<span class="ce-sig verified">✓ Top pick</span>');
     if (c.lineWarn) sigChips.push('<span class="ce-sig warnflag">⚠ Check your line</span>');
     const env = (typeof e._projTotal === 'number') ? e._projTotal : null;
-    if (isFade && env != null && env >= 9.5) sigChips.push('⚠ High-scoring game');
-
-    // Evidence drawer rows
-    const evRows = (c.evidence || []).map(([k,v]) =>
-      `<div class="ce-drow"><span class="ce-dk">${k}</span><span class="ce-dv">${v}</span></div>`).join('');
+    if (isFade && env != null && env >= 9.5) sigChips.push('<span class="ce-sig warnflag">⚠ High-scoring game</span>');
+    const evRows = (c.evidence || []).map(([k,v]) => `<div class="ce-drow"><span class="ce-dk">${k}</span><span class="ce-dv">${v}</span></div>`).join('');
     const ctxChipsHtml = (c.ctxChips || []).length
-      ? `<div class="ce-ctx"><div class="ce-ctx-lbl">Matchup context</div><div class="ce-ctx-chips">${c.ctxChips.map(x=>`<span class="ce-ctx-chip">${x}</span>`).join('')}</div></div>`
-      : '';
-    // The model-% "ignore" callout — only on fades where the over-% is the trap
+      ? `<div class="ce-ctx"><div class="ce-ctx-lbl">Matchup context</div><div class="ce-ctx-chips">${c.ctxChips.map(x=>`<span class="ce-ctx-chip">${x}</span>`).join('')}</div></div>` : '';
     const ignoreBox = (isFade && c.modelPct != null)
-      ? `<div class="ce-ignore"><span class="ce-ignore-ic">⊘</span><span class="ce-ignore-tx"><b>Ignore the model's <span class="ce-ignore-num">${c.modelPct}%</span >.</b> Our live audit found it anti-calibrated — it points at the over. Bet the empirical call above, not this number.</span></div>`
-      : '';
-
+      ? `<div class="ce-ignore"><span class="ce-ignore-ic">⊘</span><span class="ce-ignore-tx"><b>Ignore the model's <span class="ce-ignore-num">${c.modelPct}%</span>.</b> Our live audit found it anti-calibrated — it points at the over. Bet the empirical call above, not this number.</span></div>` : '';
     const wrBlock = c.wr != null
       ? `<div class="ce-rate"><div class="ce-pct">${c.wr}%</div><div class="ce-pctlbl">cash rate</div></div>`
       : `<div class="ce-rate"><div class="ce-pct" style="font-size:14px">WATCH</div></div>`;
-
     return `
       <div class="ce-card" id="ce-card-${i}">
         <div class="ce-card-top">
           <div class="ce-rank">${i+1}</div>
-          <div class="ce-who">
-            <div class="ce-nm">${e.hitterName}</div>
-            <div class="ce-meta">${e.hand ? e.hand + ' · ' : ''}${e.team || ''}</div>
-          </div>
-          <div class="ce-game">
-            <div class="ce-mu">${(e.team||'').toUpperCase()} ${e.opponent ? '@ '+(e.opponent||'').toUpperCase() : ''}</div>
-          </div>
+          <div class="ce-who"><div class="ce-nm">${e.hitterName}</div><div class="ce-meta">${e.hand ? e.hand + ' · ' : ''}${e.team || ''}</div></div>
+          <div class="ce-game"><div class="ce-mu">${(e.team||'').toUpperCase()} ${e.opponent ? '@ '+(e.opponent||'').toUpperCase() : ''}</div></div>
         </div>
         <div class="ce-verdict ${verdictClass}">
           <span class="ce-varrow">${arrow}</span>
           <div class="ce-vmain"><div class="ce-vdir">${c.verb}</div><div class="ce-vline">${c.prop}</div></div>
           ${wrBlock}
         </div>
-        ${sigChips.length ? `<div class="ce-signals">${sigChips.map(s=>s.startsWith('<')?s:`<span class="ce-sig warnflag">${s}</span>`).join('')}</div>` : ''}
+        ${sigChips.length ? `<div class="ce-signals">${sigChips.join('')}</div>` : ''}
         <div class="ce-why">${c.plain}</div>
         <div class="ce-expander">
           <button class="ce-exp-btn" onclick="document.getElementById('ce-card-${i}').classList.toggle('open')" type="button"><span>Why this play?</span><span class="ce-car">▾</span></button>
           <div class="ce-exp-body"><div class="ce-exp-inner">
             ${ignoreBox}
             <div class="ce-datahead">The evidence</div>
-            ${evRows}
-            ${ctxChipsHtml}
+            ${evRows}${ctxChipsHtml}
             <button class="ce-open-game" onclick="analyzeGame(${e.gamePk})" type="button">Open full game →</button>
           </div></div>
         </div>
       </div>`;
   }).join('');
-
   return `<div class="cleanest-edges">
     <div class="ce-head">
-      <div>
-        <div class="ce-eyebrow">Tonight · Live MLB</div>
-        <div class="ce-title">Tonight's Cleanest Edges</div>
-        <div class="ce-sub">The strongest plays on the slate, ranked. Tap any pick for the reasoning.</div>
-      </div>
+      <div><div class="ce-eyebrow">Tonight · Live MLB</div><div class="ce-title">Tonight's Cleanest Edges</div><div class="ce-sub">The strongest plays on the slate, ranked. Tap any pick for the reasoning.</div></div>
       <span class="ce-count">${edges.length}</span>
     </div>
     <div class="ce-cards">${cards}</div>
     <div class="ce-legend">
       <div class="ce-legend-h">What the badges mean</div>
-      <div class="ce-leg-row"><span class="ce-dot" style="background:var(--accent)"></span><span><b>Bet signals</b> — Platinum / Gold / Verified. These tell you to bet, and how confident to be.</span></div>
+      <div class="ce-leg-row"><span class="ce-dot" style="background:var(--accent)"></span><span><b>Bet signals</b> — Platinum / Gold / Verified. These tell you to bet, and how confident.</span></div>
       <div class="ce-leg-row"><span class="ce-dot" style="background:var(--dim)"></span><span><b>Context</b> — Elite, Hard-hit, Sharp. These describe the matchup, not the call.</span></div>
-      <div class="ce-leg-row"><span class="ce-dot" style="background:var(--warn)"></span><span><b>Warnings</b> — check your line, high-scoring game. Reasons to size down or skip.</span></div>
+      <div class="ce-leg-row"><span class="ce-dot" style="background:var(--warn,#e0a050)"></span><span><b>Warnings</b> — check your line, high-scoring game. Reasons to size down or skip.</span></div>
     </div>
   </div>`;
 }
@@ -6545,7 +6492,6 @@ function renderGames() {
       </div>`;
     return;
   }
-  const _cleanestEdgesHtml = renderCleanestEdges(state.currentDate);
 
   // Format game time as "7:05 PM" rather than the API's "7:05 PM ET" string
   const formatTime = (gameTime) => {
@@ -6568,7 +6514,7 @@ function renderGames() {
     }
   }
 
-  list.innerHTML = `${_cleanestEdgesHtml}<div class="lyrid-games-list">${slate.games.map((g, i) => {
+  list.innerHTML = `${renderCleanestEdges(state.currentDate)}<div class="lyrid-games-list">${slate.games.map((g, i) => {
     const awName = g.awayPitcher?.name || 'TBD';
     const hmName = g.homePitcher?.name || 'TBD';
     const awHand = g.awayPitcher?.hand || '?';
@@ -7261,28 +7207,43 @@ function renderAnalysis(data) {
   // candidates that survived fade override and demotes excess to ELITE.
   enforcePrimeSlateCap(data);
 
-  // (Drop #28 — June 12, 2026) TOP PICK SUPPRESSION FOR -EV COHORTS.
-  // The Isaac Collins bug (June 11, KC@TEX): HRR 1.5 OVER showed
-  // "★ TOP PICK · elite" while the EV chip on the same card said the
-  // cohort runs 43.5% live. The badge and the chip argued; the badge won
-  // and the pick lost (0-3, K). Rule: if a TOP PICK's headline prop is
-  // HRR "Multiple pathways" with no rescue tier (HARD-HIT or LYRID UNDER),
-  // the OVER is -EV in every market we track — strip the star and show
-  // PASS. We stamp _topPickSuppressed (not delete isTopPick) so
-  // logBestBets still records the pick and we can audit suppression
-  // accuracy later.
+  // (Drop #36 — June 21, 2026) TOP PICK ↔ VERDICT RECONCILIATION.
+  // ROOT-CAUSE FIX for the #1 audit bug: the "TOP PICK · STRONGEST EDGE"
+  // banner was selected on raw model edge (tier + xwOBA) with no reference
+  // to the cohort/EV verdict, so it promoted a player's OVER while that same
+  // player's grading three lines down said UNDER/PASS (Ben Rice, Benintendi).
+  //
+  // The fix: every TOP PICK is reconciled against its own best-prop verdict.
+  // We stamp _topPickVerdict so the banner reads the REAL call:
+  //   • fade (UNDER tier)  → banner says "FADE — bet under", never "over"
+  //   • suppressed/-EV     → banner says "PASS — no edge"
+  //   • verified/over edge → banner says "BET MORE"
+  // A pick whose verdict is fade or pass can NEVER render as "TOP PICK over."
   ['awayVsHome','homeVsAway'].forEach(sideKey => {
     const s = data[sideKey];
     if (!s?.mismatches) return;
     s.mismatches.forEach(m => {
       if (!m.isTopPick) return;
       const best = (m.propRecs || []).find(p => p.isBest) || (m.propRecs || [])[0];
-      if (!best) return;
+      if (!best) { m._topPickVerdict = 'pass'; m._topPickSuppressed = true; return; }
+      const fade = best._lyridUnderTier || m._lyridUnderTier;
       const isMultiPathwayHRR = best.key === 'HRR'
         && (best.reason || m.reason || '').toLowerCase().includes('multiple pathways');
       const hasRescueTier = best._hardHitTier || best._lyridUnderTier || m._hardHitTier || m._lyridUnderTier;
-      if (isMultiPathwayHRR && !hasRescueTier) {
+      const verified = best._verifiedCohort || m._verifiedCohort;
+
+      if (fade) {
+        // The headline edge is a FADE — the play is the UNDER, not the over.
+        m._topPickVerdict = 'fade';
+        m._topPickSuppressed = true;  // suppress the misleading "TOP PICK over" star
+      } else if (isMultiPathwayHRR && !hasRescueTier) {
+        // -EV cohort, no rescue (the original Collins rule)
+        m._topPickVerdict = 'pass';
         m._topPickSuppressed = true;
+      } else if (verified) {
+        m._topPickVerdict = 'bet';
+      } else {
+        m._topPickVerdict = 'lean';
       }
     });
   });
@@ -7481,25 +7442,16 @@ function renderAnalysis(data) {
                       ${p._lyridUnderTier === 'gold' ? `<span class="pp-lyrid-under gold" style="background:linear-gradient(135deg,#854d0e 0%,#ca8a04 35%,#fbbf24 50%,#a16207 65%,#92400e 100%);color:#fff;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(133,77,14,0.7);text-shadow:0 1px 1px rgba(0,0,0,0.4)" title="LYRID UNDER · GOLD&#10;&#10;FADE THE OVER — bet UNDER 1.5 H+R+RBI instead&#10;&#10;Live audit: 13W-9L = 59% on n=22&#10;Filter: HRR + L-hitter + bullpen edge&#10;Wilson 95% CI: [39%, 77%]&#10;Time thirds: 57/57/63&#10;OOS: 60% train (n=10), 58% test (n=12)&#10;&#10;PrizePicks EV at 59%:&#10;  2-pick: +5.0% (thin)&#10;  3-pick: +3.6% (thin)&#10;  4-pick: +20.7%&#10;&#10;⚠ n=22 is small — Wilson lower bound 39%. Marginal at PP 2/3-pick.">★ UNDER · GOLD</span>` : ''}
                       <span class="pp-key">${p.label}</span>
                       ${(() => {
-                        // (Drop #34 — June 20, 2026) MODEL-% TRAP FIX.
-                        // The raw per-game probability is the OVER probability,
-                        // and it is anti-calibrated (claims 95%, hits ~40%). On
-                        // a FADE pick (UNDER tier) showing a big "95%" next to
-                        // the prop made novices tap More and bet the exact
-                        // opposite of our edge. Rules:
-                        //   • If this prop is a fade (UNDER tier present): DO NOT
-                        //     show the over-%. Show the empirical UNDER win rate
-                        //     with the correct verb instead.
-                        //   • Otherwise show the model-% but de-emphasized as a
-                        //     small footnote, never the loudest element.
+                        // (Drop #36) MODEL-% TRAP FIX. The raw over-% is anti-calibrated.
+                        // On a fade, show the empirical UNDER rate with the correct verb;
+                        // otherwise keep model-% only as a small muted footnote.
                         const isFade = p._lyridUnderTier === 'platinum' || p._lyridUnderTier === 'gold';
                         if (isFade) {
                           const wr = p._lyridUnderTier === 'platinum' ? 62 : 59;
-                          return `<span class="pp-verdict-pct fade" title="Empirical UNDER win rate for this cohort. The model's over-% is hidden here because it points the wrong way on a fade.">BET LESS · ${wr}%</span>`;
+                          return `<span class="pp-verdict-pct fade" title="Empirical UNDER win rate for this cohort. The model over-% is hidden here because it points the wrong way on a fade.">BET LESS · ${wr}%</span>`;
                         }
                         if (p.probability == null) return '';
-                        // Non-fade: show model-% small + muted, with honest tooltip
-                        return `<span class="pp-prob-footnote ${probTier(p.probability, p.probabilityBaseline)}" title="Model per-game over-probability: ${(p.probability*100).toFixed(1)}% (baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(1) : '?'}%). NOTE: this raw model number runs hot — trust the empirical tier badge for the actual edge, not this %.">model ${(p.probability*100).toFixed(0)}%</span>`;
+                        return `<span class="pp-prob-footnote ${probTier(p.probability, p.probabilityBaseline)}" title="Model per-game over-probability: ${(p.probability*100).toFixed(1)}% (baseline ${p.probabilityBaseline != null ? (p.probabilityBaseline*100).toFixed(1) : '?'}%). NOTE: this raw model number runs hot — trust the empirical tier badge, not this %.">model ${(p.probability*100).toFixed(0)}%</span>`;
                       })()}
                       ${secondaryRankChip}
                       ${fragilityChip}
@@ -7534,13 +7486,6 @@ function renderAnalysis(data) {
                           if (isMultiPathway) {
                             evRow = `<span class="ev-chip ev-warn" title="HRR Multiple-pathways cohort live WR on the OVER: 44.9% (n=198).&#10;&#10;OVER does NOT clear -110 (need 52.4%) or PrizePicks (need 56-58%/leg).&#10;&#10;If a PLATINUM UNDER badge is present, the UNDER side is the play.">⚠ OVER -EV all markets</span>`;
                           }
-                        }
-                        // (Drop #34 — June 20, 2026) LINE-SHADING WARNING.
-                        // Hits-overs get "goblin'd" (👺 reduced-payout alt lines)
-                        // on PrizePicks, which quietly kills the +EV. Warn on any
-                        // HITS-based +EV play so users don't chase a dead edge.
-                        if (p.key === 'H' && (p._verifiedCohort === 'rarely-k-hits' || p._sharpHits)) {
-                          evRow += `<span class="ev-chip" style="background:rgba(251,191,36,0.12);color:#92400e;border:1px solid rgba(251,191,36,0.35);margin-left:4px" title="Hits-overs are frequently 'goblin'd' on PrizePicks — offered only as a reduced-payout (👺) alternate line, which erases the edge. This play is +EV only at a STANDARD line. If your book shows a demon/goblin or reduced payout, skip it.">⚠ standard line only — skip if 👺</span>`;
                         }
                         return evRow;
                       })()}
@@ -7657,7 +7602,7 @@ function renderAnalysis(data) {
               ${m._empUnderRec ? `<div style="padding:0 12px">${buildLyridBestBanner(m._empUnderRec.backtestWR, m._empUnderRec.backtestN, { kind: 'compact', label: 'LYRID UNDER · ' + m._empUnderRec.propLabel, tooltip: m._empUnderRec.reasoningLines.join(' · ') })}</div>` : ''}
               <div class="match-head">
                 <div class="match-hitter">
-                  ${m.isTopPick && !m._topPickSuppressed ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}${m.isTopPick && m._topPickSuppressed ? '<span style="background:rgba(120,113,108,0.15);color:#57534e;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em;cursor:help" title="Engine ranked this hitter #1 on matchup quality, but the pick\'s cohort (HRR Multiple-pathways, no rescue tier) runs 43.5% live — OVER is -EV in every market. Suppressed per Drop #28 (the Isaac Collins rule). The matchup analysis below is still valid; the 1.5 HRR OVER bet is not.">⚠ PASS — cohort -EV</span>' : ''}
+                  ${m.isTopPick && m._topPickVerdict === 'bet' ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}${m.isTopPick && m._topPickVerdict === 'fade' ? '<span style="background:rgba(59,130,246,0.18);color:#1e3a8a;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em;cursor:help" title="Engine ranked this hitter #1 on matchup quality, but the validated play is the FADE (bet the under), not the over. See the verdict banner above.">★ TOP FADE — bet under</span>' : ''}${m.isTopPick && (m._topPickVerdict === 'pass' || (m._topPickSuppressed && m._topPickVerdict !== 'fade')) ? '<span style="background:rgba(120,113,108,0.15);color:#57534e;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em;cursor:help" title="Engine ranked this hitter #1 on matchup quality, but the cohort is -EV. The over is not a bet. See the verdict banner above.">⚠ PASS — no edge</span>' : ''}${m.isTopPick && m._topPickVerdict === 'lean' ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}
                   <!-- Drop 25: ENGINE REFUSED chip removed -->
                   ${m.hrChance && data.deepMode ? (function renderHrBadge(hc) {
                     // PER-GAME TIER DISPLAY (May 23, 2026 — Item 7)
@@ -7755,8 +7700,6 @@ function renderAnalysis(data) {
                   </div>
                 </div>
               ` : ''}
-              <details class="why-expander">
-              <summary class="why-summary">Why this play — full matchup breakdown</summary>
               ${abTimingHtml}
               <div class="match-pitches">${pitchesTxt || '<span style="opacity:0.5">no pitch-level data</span>'}</div>
               ${dualTierHtml}
@@ -7950,7 +7893,6 @@ function renderAnalysis(data) {
                   </div>`;
               })() : ''}
               ${adjHtml}
-              </details>
               ${propsHtml}
               ${tagChipsHtml}
             </div>
@@ -8047,7 +7989,7 @@ function renderAnalysis(data) {
       <div class="hr-audit-panel">
         <div class="hr-audit-head">
           <span class="hr-audit-eyebrow">HR PROJECTION AUDIT · top 3 (diagnostic)</span>
-          <span class="hr-audit-baseline">league avg · 3.0% HR/PA · check console for full trace</span>
+          <span class="hr-audit-baseline">league avg · 3.0% HR/PA</span>
         </div>
         <div class="hr-audit-rows">
           ${hrAuditTop.map((b, i) => {
@@ -8074,7 +8016,7 @@ function renderAnalysis(data) {
             const bblDisplay = dbg ? (showRegression
               ? `bbl=${dbg.inputs.barrelPct}→${dbg.inputs.regressedBarrelPct} (${dbg.inputs.seasonPa ?? '?'} PA)`
               : `bbl=${dbg.inputs.barrelPct ?? '∅'} (${dbg.inputs.seasonPa ?? '?'} PA)`) : '';
-            const dbgLine = dbg ? `
+            const dbgLine = (LYRID_DEV && dbg) ? `
               <div class="hr-audit-debug">
                 <span class="hr-audit-debug-label">inputs:</span>
                 ${bblDisplay}
@@ -8993,7 +8935,7 @@ function renderAnalysis(data) {
       console.log('  interactions:', envInter);
       console.groupEnd();
     }
-    const envAuditHtml = (data.deepMode && envDbg) ? `
+    const envAuditHtml = (LYRID_DEV && data.deepMode && envDbg) ? `
       <div class="env-audit-panel ${envDbg.flagDisabled ? 'env-audit-flagged-off' : ''}">
         <div class="env-audit-head">
           <span class="env-audit-eyebrow">ENVIRONMENT AUDIT · diagnostic ${envDbg.flagDisabled ? '<span class="env-audit-flag-off">(flag off · passthrough)</span>' : ''}</span>
@@ -9397,20 +9339,27 @@ function renderAnalysis(data) {
           </div>
           <div class="glb-best">
             ${(() => {
-              // (Drop #13 — June 5, 2026) Lyrid's Best banner when empirical
-              // strategy fired on the overallBest pick (total or moneyline).
+              // (Drop #36 — June 21, 2026) BEST PLAY EDGE GATE.
+              // ROOT-CAUSE FIX for audit bug #2: a moneyline/spread was crowned
+              // "★ BEST PLAY · STRONG" while the same panel admits ML/spread have
+              // no proven edge (~49% SU). Only TOTALS (validated) or an ML/spread
+              // whose empirical strategy actually fired may be the headline play.
               const t = gl.overallBest.type;
-              const rec = t === 'total' ? gl.total : t === 'moneyline' ? gl.moneyline : null;
-              if (rec && rec._empStrategyFired && rec._empBacktestWR != null) {
-                return buildLyridBestBanner(rec._empBacktestWR, rec._empBacktestN);
+              const rec = t === 'total' ? gl.total : t === 'moneyline' ? gl.moneyline : t === 'spread' ? gl.spread : null;
+              const empFired = rec && rec._empStrategyFired && rec._empBacktestWR != null;
+              const isUnvalidatedLine = (t === 'moneyline' || t === 'spread') && !empFired;
+              if (isUnvalidatedLine) {
+                // Demote — show as reference, not as the boldest play on the card.
+                return `<div class="glb-best-label" style="opacity:0.65">FOR REFERENCE · ${typeLabel}</div>
+                  <div class="glb-best-pick" style="opacity:0.85"><b>${gl.overallBest.pick}</b>${gl.overallBest.price ? ` <span class="glb-best-price">${gl.overallBest.price > 0 ? '+' : ''}${gl.overallBest.price}</span>` : ''}</div>
+                  <div style="font-size:10px;color:var(--text-secondary,#6b7280);font-style:italic;margin-top:4px">Moneyline & spread have no proven model edge (~49% SU on 979 games). Shown for reference — not a recommended play.</div>`;
               }
-              return '';
+              const banner = empFired ? buildLyridBestBanner(rec._empBacktestWR, rec._empBacktestN) : '';
+              return `${banner}
+                <div class="glb-best-label">★ BEST PLAY · ${gl.overallBest.tier}</div>
+                <div class="glb-best-pick">${typeLabel} · <b>${gl.overallBest.pick}</b>${gl.overallBest.price ? ` <span class="glb-best-price">${gl.overallBest.price > 0 ? '+' : ''}${gl.overallBest.price}</span>` : ''}${gl.overallBest.units ? ` <span class="glb-best-units">${gl.overallBest.units}u</span>` : ''}</div>
+                <ul class="glb-best-reasons">${(gl.overallBest.reasoning || []).map(r => `<li>${r}</li>`).join('')}</ul>`;
             })()}
-            <div class="glb-best-label">★ BEST PLAY · ${gl.overallBest.tier}</div>
-            <div class="glb-best-pick">${typeLabel} · <b>${gl.overallBest.pick}</b>${gl.overallBest.price ? ` <span class="glb-best-price">${gl.overallBest.price > 0 ? '+' : ''}${gl.overallBest.price}</span>` : ''}${gl.overallBest.units ? ` <span class="glb-best-units">${gl.overallBest.units}u</span>` : ''}${gl.overallBest.probability != null ? ` <span class="glb-best-prob ${probTier(gl.overallBest.probability)}" title="Model probability this bet wins">${(gl.overallBest.probability*100).toFixed(0)}%</span>` : ''}</div>
-            <ul class="glb-best-reasons">
-              ${(gl.overallBest.reasoning || []).map(r => `<li>${r}</li>`).join('')}
-            </ul>
             <button class="glb-log-btn" onclick='logGameLineBet(${JSON.stringify({
               gamePk: data.gamePk,
               date: data.gameDateET,
@@ -9452,10 +9401,17 @@ function renderAnalysis(data) {
           <div class="glb-rows">
             ${rowFor(gl.total, 'TOTAL')}
             ${(() => {
-              // (Drop #31 — June 12, 2026) Pre-game total LEAN, driven by the
-              // rebuilt vs-line engine. Professional framing — surfaces the
-              // empirically-calibrated edge and notes the live F5 confirmation
-              // step without disparaging language.
+              // (Drop #36 — June 21, 2026) TOTALS LEAN — LINE-AWARE.
+              // ROOT-CAUSE FIX for audit bug #5: this previously printed
+              // "OVER 8.5 · 62% (n=95)" on EVERY game regardless of the real
+              // line (TOR@CHC's line was 7, not 8.5) and contradicted the
+              // model's own total call. The classifyInverseTotalSignal tiers
+              // are calibrated specifically against an 8.5 line, so:
+              //   • read the ACTUAL market line (gl.total.marketLine)
+              //   • only surface the calibrated lean when the real line is
+              //     within 0.5 of 8.5 (where the backtest applies)
+              //   • otherwise show a line-aware note, no false "8.5"
+              //   • reconcile with the model's own O/U so they never conflict
               if (!gl.total) return '';
               const _pt = (typeof gl.total.projectedTotal === 'number') ? gl.total.projectedTotal
                         : (typeof gl.projectedTotal === 'number') ? gl.projectedTotal
@@ -9463,14 +9419,23 @@ function renderAnalysis(data) {
               if (_pt === null) return '';
               const sig = classifyInverseTotalSignal(_pt);
               if (!sig) return '';
+              const realLine = (gl.total.marketLine != null && isFinite(Number(gl.total.marketLine)))
+                ? Number(gl.total.marketLine) : null;
               const isPlat = sig.tier === 'platinum';
               const isOver = sig.side === 'OVER';
               const bg = isOver ? 'rgba(16,185,129,0.10)' : 'rgba(59,130,246,0.10)';
               const fg = isOver ? '#065f46' : '#1e3a8a';
               const bd = isOver ? 'rgba(16,185,129,0.3)' : 'rgba(59,130,246,0.3)';
-              const tip = `LYRID TOTALS LEAN — ${sig.tier.toUpperCase()} ${sig.side}&#10;&#10;${sig.reasoning}&#10;&#10;Calibrated record: ${(sig.backtestWR*100).toFixed(0)}% vs 8.5 (n=${sig.backtestN}, Wilson lower ${(sig.wilsonLow*100).toFixed(0)}%, thirds ${sig.thirds}).&#10;&#10;Confirm live: the F5 engine sharpens this read to 90-94% once the game reaches the 5th inning.`;
+              // If we have a real line and it's far from 8.5, the 8.5 calibration
+              // doesn't transfer — show the directional lean but tied to the real line.
+              const lineLabel = realLine != null ? realLine : 8.5;
+              const calibApplies = realLine == null || Math.abs(realLine - 8.5) <= 0.5;
+              const tip = calibApplies
+                ? `LYRID TOTALS LEAN — ${sig.tier.toUpperCase()} ${sig.side} ${lineLabel}&#10;&#10;${sig.reasoning}&#10;&#10;Calibrated record: ${(sig.backtestWR*100).toFixed(0)}% vs ${lineLabel} (n=${sig.backtestN}, Wilson lower ${(sig.wilsonLow*100).toFixed(0)}%).&#10;&#10;Confirm live: the F5 engine sharpens this to 90-94% by the 5th.`
+                : `LYRID TOTALS LEAN — ${sig.side} (directional)&#10;&#10;The model leans ${sig.side} here. Our ${(sig.backtestWR*100).toFixed(0)}% calibration is measured at an 8.5 line; this game's line is ${lineLabel}, so treat this as a directional lean only and confirm with the live F5 read.`;
+              const pctTxt = calibApplies ? ` · ${(sig.backtestWR*100).toFixed(0)}% (n=${sig.backtestN})` : ' · directional';
               return `<div style="display:flex;align-items:center;gap:8px;background:${bg};border:1px solid ${bd};border-radius:5px;padding:5px 9px;margin:2px 0 6px;font-size:11px">
-                <span style="color:${fg};font-weight:700;letter-spacing:0.03em;cursor:help" title="${tip}">${isPlat ? '✦' : '★'} TOTALS LEAN · ${sig.side} 8.5 · ${(sig.backtestWR*100).toFixed(0)}% (n=${sig.backtestN})</span>
+                <span style="color:${fg};font-weight:700;letter-spacing:0.03em;cursor:help" title="${tip}">${isPlat ? '✦' : '★'} TOTALS LEAN · ${sig.side} ${lineLabel}${pctTxt}</span>
                 <span style="color:var(--text-secondary,#6b7280);font-size:10px">confirm with live F5 in the 5th</span>
               </div>`;
             })()}
@@ -10389,7 +10354,7 @@ function importJsonState(text) {
   }
 
   // Sanity check the shape — should have at least one expected top-level key
-  const expectedKeys = ['picks', 'taggedHitters', 'projectionAudit', 'gameLineBets', 'firstInningBets', 'pitcherPropBets'];
+  const expectedKeys = ['picks', 'taggedHitters', 'projectionAudit', 'gameLineBets', 'firstInningBets', 'pitcherPropBets', 'wnbaPropHistory', 'wnbaGameBets'];
   const hasExpectedShape = expectedKeys.some(k => k in parsed);
   if (!hasExpectedShape) {
     alert('JSON does not look like a Lyrid state backup. None of the expected keys (picks, taggedHitters, projectionAudit, etc.) are present.');
@@ -10403,7 +10368,9 @@ function importJsonState(text) {
     projectionAudit: parsed.projectionAudit ? Object.keys(parsed.projectionAudit).length : 0,
     gameLineBets: parsed.gameLineBets ? Object.keys(parsed.gameLineBets).length : 0,
     firstInningBets: parsed.firstInningBets ? Object.keys(parsed.firstInningBets).length : 0,
-    pitcherPropBets: parsed.pitcherPropBets ? Object.keys(parsed.pitcherPropBets).length : 0
+    pitcherPropBets: parsed.pitcherPropBets ? Object.keys(parsed.pitcherPropBets).length : 0,
+    wnbaProps: parsed.wnbaPropHistory ? Object.values(parsed.wnbaPropHistory).reduce((a, d) => a + Object.keys(d || {}).length, 0) : 0,
+    wnbaGames: parsed.wnbaGameBets ? Object.keys(parsed.wnbaGameBets).length : 0
   };
 
   const currentCounts = {
@@ -10412,7 +10379,9 @@ function importJsonState(text) {
     projectionAudit: state.projectionAudit ? Object.keys(state.projectionAudit).length : 0,
     gameLineBets: state.gameLineBets ? Object.keys(state.gameLineBets).length : 0,
     firstInningBets: state.firstInningBets ? Object.keys(state.firstInningBets).length : 0,
-    pitcherPropBets: state.pitcherPropBets ? Object.keys(state.pitcherPropBets).length : 0
+    pitcherPropBets: state.pitcherPropBets ? Object.keys(state.pitcherPropBets).length : 0,
+    wnbaProps: state.wnbaPropHistory ? Object.values(state.wnbaPropHistory).reduce((a, d) => a + Object.keys(d || {}).length, 0) : 0,
+    wnbaGames: state.wnbaGameBets ? Object.keys(state.wnbaGameBets).length : 0
   };
 
   const summary =
@@ -10422,7 +10391,9 @@ function importJsonState(text) {
     `  • projection audit: ${incomingCounts.projectionAudit} (current: ${currentCounts.projectionAudit})\n` +
     `  • game-line bets: ${incomingCounts.gameLineBets} (current: ${currentCounts.gameLineBets})\n` +
     `  • YRFI bets: ${incomingCounts.firstInningBets} (current: ${currentCounts.firstInningBets})\n` +
-    `  • pitcher bets: ${incomingCounts.pitcherPropBets} (current: ${currentCounts.pitcherPropBets})\n\n` +
+    `  • pitcher bets: ${incomingCounts.pitcherPropBets} (current: ${currentCounts.pitcherPropBets})\n` +
+    `  • WNBA props: ${incomingCounts.wnbaProps} (current: ${currentCounts.wnbaProps})\n` +
+    `  • WNBA game bets: ${incomingCounts.wnbaGames} (current: ${currentCounts.wnbaGames})\n\n` +
     `Choose merge strategy:\n` +
     `  • OK = MERGE (incoming wins on key conflicts)\n` +
     `  • Cancel = abort import`;
@@ -10447,6 +10418,18 @@ function importJsonState(text) {
   }
   if (parsed.pitcherPropBets && typeof parsed.pitcherPropBets === 'object') {
     state.pitcherPropBets = Object.assign({}, state.pitcherPropBets || {}, parsed.pitcherPropBets);
+  }
+  if (parsed.wnbaGameBets && typeof parsed.wnbaGameBets === 'object') {
+    state.wnbaGameBets = Object.assign({}, state.wnbaGameBets || {}, parsed.wnbaGameBets);
+  }
+  if (parsed.wnbaPropHistory && typeof parsed.wnbaPropHistory === 'object') {
+    // Nested by date → merge each date's entries so existing days aren't wiped.
+    state.wnbaPropHistory = state.wnbaPropHistory || {};
+    for (const [d, entries] of Object.entries(parsed.wnbaPropHistory)) {
+      if (entries && typeof entries === 'object') {
+        state.wnbaPropHistory[d] = Object.assign({}, state.wnbaPropHistory[d] || {}, entries);
+      }
+    }
   }
   if (Array.isArray(parsed.picks)) {
     // De-duplicate picks by id+date+gamePk+hitter signature where possible
@@ -11504,10 +11487,11 @@ function logBestBets(data) {
         lineupSupportComponents: m.lineupSupport?.components || null,
         lineupSupportAdjustment: bestBet.lineupSupportAdjustment || 0,
         rawProbability: bestBet.rawProbability || null,
-        // (Drop #35) game projected total, for the Cleanest Edges environment warning
+        // (Drop #36) fields the Cleanest Edges board reads
         _projTotal: (data.projection && Number.isFinite(parseFloat(data.projection.projTotal))) ? parseFloat(data.projection.projTotal) : null,
         recentFormLabel: bestBet._ctxRecentFormLabel || m.recentFormLabel || null,
         adjustedMaxXwoba: m.adjustedMaxXwoba || null,
+        _topPickVerdict: m._topPickVerdict || null,
         // (Phase 2) HITS-over-HRR preference flag
         hitsPreferenceApplied: bestBet._hitsPreferenceApplied || false,
         propKey: bestBet.key,
@@ -12418,6 +12402,9 @@ async function fetchLiveInnings(gamePk) {
     const currentInning = feed?.liveData?.linescore?.currentInning;
     const inningState = feed?.liveData?.linescore?.inningState;  // 'Top', 'Middle', 'Bottom', 'End'
     const isFinal = feed?.gameData?.status?.abstractGameState === 'Final';
+    // (publish bridge) capture team abbreviations from the feed for the publish payload
+    const awayTeam = feed?.gameData?.teams?.away?.abbreviation || null;
+    const homeTeam = feed?.gameData?.teams?.home?.abbreviation || null;
     if (!Array.isArray(rawInnings)) return null;
     const innings = rawInnings.map(i => ({
       num: i.num,
@@ -12426,7 +12413,7 @@ async function fetchLiveInnings(gamePk) {
       awayHits: i.away?.hits ?? null,
       homeHits: i.home?.hits ?? null
     }));
-    const data = { innings, currentInning, inningState, isFinal };
+    const data = { innings, currentInning, inningState, isFinal, awayTeam, homeTeam };
     liveInningsCache.set(gamePk, { data, fetchedAt: Date.now() });
     return data;
   } catch (err) {
@@ -12468,6 +12455,59 @@ async function pollLiveF5(gamePk, projTotal, homePark) {
   }
 }
 
+// ===========================================================================
+// Lyrid -> Discord + Facebook publish bridge (client side)
+// Sends a publish-worthy PLATINUM signal to /api/publish-insight, which fans it
+// out to Discord (immediate) and Zapier->Slack-approval->Facebook (gated).
+// The target URLs live server-side; nothing secret is in this file.
+// Same-origin /api/ call, so the auth wrapper attaches the founder bearer token.
+// ===========================================================================
+const _lyridPublished = new Set(); // per-session guard against double-fires
+
+async function lyridPublishInsight(insight) {
+  try {
+    if (!insight || !insight.insight_id) return;
+    if (_lyridPublished.has(insight.insight_id)) return; // already sent this session
+    _lyridPublished.add(insight.insight_id);
+
+    const res = await fetch('/api/publish-insight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify(insight)
+    });
+
+    if (!res.ok) {
+      // 401 = signed out, 403 = not the founder: don't retry, leave marked handled.
+      if (res.status === 401 || res.status === 403) return;
+      _lyridPublished.delete(insight.insight_id); // transient — allow retry later
+      console.warn('[lyrid-publish] failed:', res.status);
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    console.log('[lyrid-publish]', data.ok ? 'SENT' : (data.skipped || 'ok'), insight.insight_id);
+  } catch (err) {
+    _lyridPublished.delete(insight.insight_id);
+    console.warn('[lyrid-publish] error:', err.message);
+  }
+}
+
+// Build the fixed-shape insight from a LIVE F5 PLATINUM signal + game context.
+function buildTotalsInsight(signal, gamePk, liveData) {
+  const side = (signal.side || '').toUpperCase();
+  return {
+    insight_id: `f5-${gamePk}-${side.toLowerCase()}`,            // stable + unique per game
+    matchup: `${liveData.awayTeam} @ ${liveData.homeTeam}`,      // "NYY @ BOS"
+    market: 'Game Total',
+    lean: `${side} 8.5`,                                         // F5 engine baseline line
+    engine: 'LIVE F5',
+    signal: `F5=${signal.f5Runs}`,                              // e.g. "F5=2"
+    confidence: Math.round((signal.backtestWR || 0) * 100),     // 90
+    sample_n: signal.backtestN || '',                           // 62
+    tier: (signal.tier || '').toLowerCase()                      // "platinum"
+  };
+}
+
 function renderLiveF5Panel(gamePk, liveData, projTotal, homePark) {
   const el = document.getElementById(`liveF5_${gamePk}`);
   if (!el) return;
@@ -12507,6 +12547,8 @@ function renderLiveF5Panel(gamePk, liveData, projTotal, homePark) {
 
   // Compute the tier (only if F5 is complete)
   const signal = f5Complete ? classifyLiveF5Signal(f5Runs, projTotal, homePark) : null;
+
+  // (Live auto-post removed — promotion now runs through the Top Picks digest, not live games.)
 
   // Format inning-by-inning runs for visual scoreboard
   const inningCells = innings.slice(0, 9).map((i, idx) => {
@@ -13511,6 +13553,39 @@ function switchHistoryView(view) {
   });
   renderHistory();
 }
+
+// esc (HTML-escape) is also defined inside the WNBA module, but renderHistory and the
+// other top-level renderers run in a different scope and can't reach that copy — which
+// threw "Can't find variable: esc" and blanked the WNBA history tables. Define it here too,
+// and expose on window so any script block can resolve it.
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+if (typeof window !== 'undefined') window.esc = esc;
+
+// Empirical WNBA tier — what a market+direction ACTUALLY hits, from 134 graded
+// real-line picks (Jun 1–8 2026). Replaces the inverted finalEdgeScore label.
+// counts = [wins, n]. Update as more pricks grade.
+function wnbaEmpTier(market, lean) {
+  const m = String(market || '').toLowerCase();
+  const s = String(lean || '').toUpperCase();
+  const C = {
+    'assists|UNDER': [21, 24], 'rebounds|UNDER': [25, 38],
+    'assists|OVER': [5, 11], 'rebounds|OVER': [4, 7],
+    'points|UNDER': [2, 6], 'points|OVER': [22, 48],
+  };
+  const c = C[m + '|' + s];
+  if (!c) return { tier: 'UNGRADED', bet: false, wr: null, n: 0 };
+  const [w, n] = c, wr = w / n;
+  let tier;
+  if (m === 'points') tier = 'AVOID';          // 44%, +2.9 biased — off the board pending re-validation
+  else if (s === 'OVER') tier = 'PASS';        // overs show no validated edge (~47%)
+  else if (wr >= 0.80 && n >= 20) tier = 'PLATINUM';
+  else if (wr >= 0.60 && n >= 15) tier = 'GOLD';
+  else tier = 'LEAN';
+  return { tier, bet: (tier === 'PLATINUM' || tier === 'GOLD'), wr, n };
+}
+if (typeof window !== 'undefined') window.wnbaEmpTier = wnbaEmpTier;
 
 function renderHistory() {
   const container = document.getElementById('historyList');
@@ -15681,6 +15756,7 @@ window.captureWnbaPredictions = function(data) {
         env: p.scores.environment, def: p.scores.matchup,
         cov: p.scores.coverage, var: p.scores.variance
       } : null,
+      empTier: p.empTier ? { tier: p.empTier.tier, bet: !!p.empTier.recommend, wr: p.empTier.wr ?? null, n: p.empTier.n ?? null } : null,
       floor: p.floor ?? null, ceiling: p.ceiling ?? null,
       capturedAt: existing?.capturedAt || new Date().toISOString(),
       actual: null, result: null, error: null, graded: false
@@ -15694,6 +15770,70 @@ window.captureWnbaPredictions = function(data) {
 // which fires inside analyzeGame). Scoped to a single gameId; captures that
 // game's full pool, tags the strongest actionable pick per player as a best bet,
 // and marks them loggedFromAnalyze so we know they came from an explicit analyze.
+// Hoisted to top level so logWnbaBestBetsForGame (and any caller) can reach it.
+// buildBestBetReasons: a STRUCTURED list of every real advantage the engine
+// found for this pick — stored on the best-bet entry so the Best Bets tab can
+// show the full "why" without recomputing. Each item: { label, detail }.
+function buildBestBetReasons(p, projection) {
+  const out = [];
+  const mult = p.multipliers || {};
+  const dc = p.dataCompleteness || {};
+  const sc = p.scores || {};
+  const ctx = p.playerContext || {};
+  const market = String(p.market || '').toLowerCase();
+  const line = Number(p.line);
+  const dir = (projection != null && Number.isFinite(line) && projection >= line) ? 'OVER' : 'UNDER';
+
+  // Edge headline
+  if (projection != null && Number.isFinite(line)) {
+    const d = projection - line;
+    out.push({ label: 'PROJECTION EDGE', detail: `Model ${projection.toFixed(1)} vs ${line} line (${d >= 0 ? '+' : ''}${d.toFixed(1)}), leaning ${dir}.` });
+  }
+  if (p.probOver != null) {
+    const pr = dir === 'OVER' ? p.probOver : 1 - p.probOver;
+    out.push({ label: 'HIT PROBABILITY', detail: `${Math.round(pr * 100)}% to land ${dir.toLowerCase()}.` });
+  }
+  // Real multiplier advantages
+  const addMult = (m, real, up, down) => {
+    if (m == null || !Number.isFinite(m) || Math.abs(m - 1) < 0.015 || !real) return;
+    out.push({ label: m > 1 ? 'FAVORABLE MATCHUP' : 'TOUGH MATCHUP', detail: m > 1 ? up : down });
+  };
+  addMult(mult.matchup_opposingDefense, dc.opposingDefense === 'REAL', 'Soft opposing defense for this market.', 'Stingy opposing defense for this market.');
+  addMult(mult.usageFunnel, dc.usageFunnel === 'REAL', 'Extra usage funneling to this player.', 'Reduced usage share in this lineup.');
+  addMult(mult.environment, dc.environment === 'REAL', 'Up-tempo pace environment.', 'Slow-pace environment.');
+  addMult(mult.whistle, dc.whistle === 'REAL', 'Strong free-throw rate.', 'Low free-throw rate.');
+  // Player attributes (real per-player data)
+  if (ctx.primaryCreator || (ctx.usageRate != null && ctx.usageRate >= 26)) {
+    out.push({ label: 'ROLE', detail: `High usage role${ctx.usageRate != null ? ` (${ctx.usageRate.toFixed(0)}%)` : ' (primary option)'}.` });
+  }
+  if (sc.roleStability != null && sc.roleStability >= 70) {
+    out.push({ label: 'ROLE STABILITY', detail: `Locked rotation role (stability ${sc.roleStability}/100).` });
+  }
+  if (ctx.expectedMinutes != null && ctx.expectedMinutes >= 30) {
+    out.push({ label: 'MINUTES', detail: `Heavy minutes load (${ctx.expectedMinutes.toFixed(0)} MPG).` });
+  }
+  if (!market.includes('rebound') && !market.includes('assist') && ctx.tsPct != null && ctx.tsPct >= 0.58) {
+    out.push({ label: 'EFFICIENCY', detail: `Elite shooting efficiency (${(ctx.tsPct * 100).toFixed(0)}% TS).` });
+  }
+  if (!market.includes('rebound') && ctx.last5Avg != null && ctx.seasonAvg != null && ctx.seasonAvg > 0) {
+    const dp = (ctx.last5Avg - ctx.seasonAvg) / ctx.seasonAvg;
+    if (dp >= 0.10) out.push({ label: 'HOT FORM', detail: `Last 5 ${ctx.last5Avg.toFixed(1)} vs ${ctx.seasonAvg.toFixed(1)} season avg.` });
+    else if (dp <= -0.10) out.push({ label: 'COOLING FORM', detail: `Last 5 ${ctx.last5Avg.toFixed(1)} vs ${ctx.seasonAvg.toFixed(1)} season avg.` });
+  }
+  if (sc.variance != null && sc.variance >= 55) {
+    out.push({ label: 'STABLE OUTPUT', detail: `Low game-to-game variance (${sc.variance}/100).` });
+  }
+  // Rebound geometry
+  if (market.includes('rebound') && p.reboundEquity && p.reboundEquity.equityMultiplier >= 1.04) {
+    out.push({ label: 'REBOUND GEOMETRY', detail: `Opponent's miss profile favors this rebounder's zone.` });
+  }
+  // Teammate-out boost
+  if (p.benefitsFrom && Array.isArray(p.benefitsFrom.out) && p.benefitsFrom.out.length) {
+    out.push({ label: 'INJURY BOOST', detail: `+${p.benefitsFrom.minGain} projected minutes with ${p.benefitsFrom.out.join(', ')} out.` });
+  }
+  return out;
+}
+
 window.logWnbaBestBetsForGame = function(data, gameId) {
   if (!data || !gameId) return;
   const pool = [];
@@ -15761,6 +15901,7 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
         env: p.scores.environment, def: p.scores.matchup,
         cov: p.scores.coverage, var: p.scores.variance
       } : null,
+      empTier: p.empTier ? { tier: p.empTier.tier, bet: !!p.empTier.recommend, wr: p.empTier.wr ?? null, n: p.empTier.n ?? null } : null,
       floor: p.floor ?? null, ceiling: p.ceiling ?? null,
       capturedAt: existing?.capturedAt || new Date().toISOString(),
       actual: existing?.actual ?? null, result: existing?.result ?? null,
@@ -16647,68 +16788,6 @@ async function autoGradeOnAppOpen() {
   // buildPropRead: one or two sentences on why the engine leans over/under THIS
   // line, citing the real factors that moved the projection. Mirrors MLB's
   // narrative quote block. Returns '' when there's nothing real to say.
-  // buildBestBetReasons: a STRUCTURED list of every real advantage the engine
-  // found for this pick — stored on the best-bet entry so the Best Bets tab can
-  // show the full "why" without recomputing. Each item: { label, detail }.
-  function buildBestBetReasons(p, projection) {
-    const out = [];
-    const mult = p.multipliers || {};
-    const dc = p.dataCompleteness || {};
-    const sc = p.scores || {};
-    const ctx = p.playerContext || {};
-    const market = String(p.market || '').toLowerCase();
-    const line = Number(p.line);
-    const dir = (projection != null && Number.isFinite(line) && projection >= line) ? 'OVER' : 'UNDER';
-
-    // Edge headline
-    if (projection != null && Number.isFinite(line)) {
-      const d = projection - line;
-      out.push({ label: 'PROJECTION EDGE', detail: `Model ${projection.toFixed(1)} vs ${line} line (${d >= 0 ? '+' : ''}${d.toFixed(1)}), leaning ${dir}.` });
-    }
-    if (p.probOver != null) {
-      const pr = dir === 'OVER' ? p.probOver : 1 - p.probOver;
-      out.push({ label: 'HIT PROBABILITY', detail: `${Math.round(pr * 100)}% to land ${dir.toLowerCase()}.` });
-    }
-    // Real multiplier advantages
-    const addMult = (m, real, up, down) => {
-      if (m == null || !Number.isFinite(m) || Math.abs(m - 1) < 0.015 || !real) return;
-      out.push({ label: m > 1 ? 'FAVORABLE MATCHUP' : 'TOUGH MATCHUP', detail: m > 1 ? up : down });
-    };
-    addMult(mult.matchup_opposingDefense, dc.opposingDefense === 'REAL', 'Soft opposing defense for this market.', 'Stingy opposing defense for this market.');
-    addMult(mult.usageFunnel, dc.usageFunnel === 'REAL', 'Extra usage funneling to this player.', 'Reduced usage share in this lineup.');
-    addMult(mult.environment, dc.environment === 'REAL', 'Up-tempo pace environment.', 'Slow-pace environment.');
-    addMult(mult.whistle, dc.whistle === 'REAL', 'Strong free-throw rate.', 'Low free-throw rate.');
-    // Player attributes (real per-player data)
-    if (ctx.primaryCreator || (ctx.usageRate != null && ctx.usageRate >= 26)) {
-      out.push({ label: 'ROLE', detail: `High usage role${ctx.usageRate != null ? ` (${ctx.usageRate.toFixed(0)}%)` : ' (primary option)'}.` });
-    }
-    if (sc.roleStability != null && sc.roleStability >= 70) {
-      out.push({ label: 'ROLE STABILITY', detail: `Locked rotation role (stability ${sc.roleStability}/100).` });
-    }
-    if (ctx.expectedMinutes != null && ctx.expectedMinutes >= 30) {
-      out.push({ label: 'MINUTES', detail: `Heavy minutes load (${ctx.expectedMinutes.toFixed(0)} MPG).` });
-    }
-    if (!market.includes('rebound') && !market.includes('assist') && ctx.tsPct != null && ctx.tsPct >= 0.58) {
-      out.push({ label: 'EFFICIENCY', detail: `Elite shooting efficiency (${(ctx.tsPct * 100).toFixed(0)}% TS).` });
-    }
-    if (!market.includes('rebound') && ctx.last5Avg != null && ctx.seasonAvg != null && ctx.seasonAvg > 0) {
-      const dp = (ctx.last5Avg - ctx.seasonAvg) / ctx.seasonAvg;
-      if (dp >= 0.10) out.push({ label: 'HOT FORM', detail: `Last 5 ${ctx.last5Avg.toFixed(1)} vs ${ctx.seasonAvg.toFixed(1)} season avg.` });
-      else if (dp <= -0.10) out.push({ label: 'COOLING FORM', detail: `Last 5 ${ctx.last5Avg.toFixed(1)} vs ${ctx.seasonAvg.toFixed(1)} season avg.` });
-    }
-    if (sc.variance != null && sc.variance >= 55) {
-      out.push({ label: 'STABLE OUTPUT', detail: `Low game-to-game variance (${sc.variance}/100).` });
-    }
-    // Rebound geometry
-    if (market.includes('rebound') && p.reboundEquity && p.reboundEquity.equityMultiplier >= 1.04) {
-      out.push({ label: 'REBOUND GEOMETRY', detail: `Opponent's miss profile favors this rebounder's zone.` });
-    }
-    // Teammate-out boost
-    if (p.benefitsFrom && Array.isArray(p.benefitsFrom.out) && p.benefitsFrom.out.length) {
-      out.push({ label: 'INJURY BOOST', detail: `+${p.benefitsFrom.minGain} projected minutes with ${p.benefitsFrom.out.join(', ')} out.` });
-    }
-    return out;
-  }
 
   function buildPropRead(p, proj) {
     const projection = proj && proj.projection != null ? Number(proj.projection) : null;
@@ -17012,29 +17091,38 @@ async function autoGradeOnAppOpen() {
       };
       const sigBanner = (sig, label) => {
         if (!sig || sig.side !== 'UNDER') return '';
+        // (Drop #36 — June 21, 2026) ONE TIER, 70% BAR ENFORCED.
+        // Audit bug #6/#7: below-bar "proxy" signals cluttered every card and
+        // stacked multiple grades on one line, drowning the rare real edge
+        // (Iriafen). Now: if a signal doesn't clear the 70% threshold, it shows
+        // NO badge at all. Only genuine edges render — so they stand out.
+        if (!sig.meetsThreshold) return '';
         const c = tierColors[sig.tier] || { bg: 'var(--panel-2)', fg: 'var(--text-primary)', bar: 'var(--dim)', wash: 'var(--panel-2)' };
-        const belowBar = !sig.meetsThreshold;
         const pickStr = `UNDER ${p.line != null ? p.line : ''}${label ? ' ('+label+')' : ''}`.trim();
-        const barNote = belowBar ? 'below 70% bar' : 'meets 70% bar';
-        const tip = `${sig.tier} cold-form UNDER${label ? ' ('+label+')' : ''}. Recent ${sig.recent} vs ${sig.baseline} baseline (signal ${sig.signal}). Backtest ${sig.backtestWR}% (n=${sig.backtestN})${sig.sharpened ? ' · minutes-drop sharpening' : ''}. ${belowBar ? 'BELOW your 70% threshold — reference.' : 'Meets your 70% threshold.'} Proxy-grounded; confirming vs real book lines as live picks grade.`;
+        const tip = `${sig.tier} cold-form UNDER${label ? ' ('+label+')' : ''}. Recent ${sig.recent} vs ${sig.baseline} baseline (signal ${sig.signal}). Backtest ${sig.backtestWR}% (n=${sig.backtestN})${sig.sharpened ? ' · minutes-drop sharpening' : ''}. Meets the 70% threshold.`;
         if (sig.tier === 'PLATINUM') {
           return `
             <div style="margin:4px 0 8px 24px;border:1px solid var(--border-hairline, rgba(0,0,0,0.08));border-radius:8px;overflow:hidden" title="${esc(tip)}">
               <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:${c.bg}">
                 <span style="font-size:11px;font-weight:800;letter-spacing:0.1em;color:${c.fg}">⬢ ${sig.tier} · ${esc(pickStr)}</span>
-                <span style="font-size:11px;font-weight:700;color:${c.fg};opacity:0.85">${sig.backtestWR}%${sig.proxy ? ' · proxy' : ''}</span>
+                <span style="font-size:11px;font-weight:700;color:${c.fg};opacity:0.85">${sig.backtestWR}%</span>
               </div>
-              <div style="padding:6px 12px;font-size:10px;color:var(--text-secondary, var(--dim))">Recent <b style="color:var(--text-primary)">${sig.recent}</b> vs <b style="color:var(--text-primary)">${sig.baseline}</b> baseline (${sig.signal} cold)${sig.sharpened ? ' · role shrinking' : ''} · ${barNote}</div>
+              <div style="padding:6px 12px;font-size:10px;color:var(--text-secondary, var(--dim))">Recent <b style="color:var(--text-primary)">${sig.recent}</b> vs <b style="color:var(--text-primary)">${sig.baseline}</b> baseline (${sig.signal} cold)${sig.sharpened ? ' · role shrinking' : ''}</div>
             </div>`;
         }
         return `
-          <div style="margin:2px 0 7px 24px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:${c.wash};border-left:3px solid ${c.bar};border-radius:0 6px 6px 0;padding:5px 10px;opacity:${belowBar ? '0.78' : '1'}" title="${esc(tip)}">
+          <div style="margin:2px 0 7px 24px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:${c.wash};border-left:3px solid ${c.bar};border-radius:0 6px 6px 0;padding:5px 10px" title="${esc(tip)}">
             <span style="font-size:10px;font-weight:800;letter-spacing:0.07em;color:${c.fg}">⬢ ${sig.tier}</span>
             <span style="font-size:11px;font-weight:700;color:var(--text-primary)">${esc(pickStr)}</span>
-            <span style="font-size:10px;color:var(--text-secondary, var(--dim))">${sig.backtestWR}% hit · ${barNote}${sig.proxy ? ' · proxy' : ''}</span>
+            <span style="font-size:10px;color:var(--text-secondary, var(--dim))">${sig.backtestWR}% hit</span>
           </div>`;
       };
-      const sigTags = [sigBanner(p.propSignal, ''), (p.praSignal ? sigBanner(p.praSignal, 'PRA') : '')].filter(Boolean).join('');
+      // (Drop #36) ONE signal per prop — the single strongest that clears the
+      // bar. Never stack propSignal + praSignal on the same line.
+      const _candidates = [p.propSignal, p.praSignal].filter(s => s && s.side === 'UNDER' && s.meetsThreshold);
+      _candidates.sort((a,b) => (b.backtestWR||0) - (a.backtestWR||0));
+      const _winner = _candidates[0];
+      const sigTags = _winner ? sigBanner(_winner, _winner === p.praSignal ? 'PRA' : '') : '';
       // Clear lean: cold-form UNDER signal wins; else edge past a 0.5 threshold; else no edge.
       const _projN = (proj.projection != null && Number.isFinite(Number(proj.projection))) ? Number(proj.projection) : null;
       const _lineN = (p.line != null && Number.isFinite(Number(p.line))) ? Number(p.line) : null;
@@ -17050,6 +17138,21 @@ async function autoGradeOnAppOpen() {
       } else {
         _leanTxt = `LEAN UNDER ${_ea.toFixed(1)}`; _leanColor = '#7f1d1d'; _leanBg = '#fee2e2';
       }
+      const _leanDir = (p.propSignal && p.propSignal.side === 'UNDER') ? 'UNDER'
+                     : (p.recommendation === 'PASS' || _ea == null || _ea < 0.5) ? null
+                     : (_edge > 0 ? 'OVER' : 'UNDER');
+      const _emp = !_leanDir ? null
+        : ((p.empTier && p.empTier.tier)
+            ? { tier: p.empTier.tier, wr: (p.empTier.wr ?? null), bet: !!p.empTier.recommend }
+            : wnbaEmpTier(p.market, _leanDir));
+      const _empBadge = (() => {
+        if (!_emp) return '';
+        const S = { PLATINUM:['#0b5d3b','#d1fae5','✓'], GOLD:['#7a5c12','#fef3c7','✓'], LEAN:['#475569','#e2e8f0','~'], PASS:['#64748b','#f1f5f9','—'], AVOID:['#7f1d1d','#fee2e2','⚠'], UNGRADED:['#64748b','#f1f5f9','?'] };
+        const [fg,bg,ic] = S[_emp.tier] || S.UNGRADED;
+        const lbl = _emp.tier === 'AVOID' ? 'AVOID' : _emp.tier === 'PASS' ? 'NO EDGE' : `${_emp.tier}${_emp.wr != null ? ' ' + Math.round(_emp.wr*100) + '%' : ''}`;
+        return `<span title="what ${esc(p.market)} ${_leanDir} actually hits — empirical tier from 134 graded picks" style="font-size:9px;font-weight:800;letter-spacing:0.05em;color:${fg};background:${bg};padding:3px 8px;border-radius:100px;white-space:nowrap">${ic} ${lbl}</span>`;
+      })();
+      const _rowDim = (_emp && (_emp.tier === 'AVOID' || _emp.tier === 'PASS')) ? '0.62' : '1';
       const _hasBook = p.lineSource === 'provided';
       const _bookTag = _hasBook ? (p.lineBook ? esc(p.lineBook) : 'BOOK') : 'MODEL';
       const _reason = wnbaMarketReason(p, proj, _edge);
@@ -17066,12 +17169,13 @@ async function autoGradeOnAppOpen() {
             <span class="wnba-ppline-out" style="font-size:11px;color:var(--text-secondary, var(--dim))"></span>
           </div>`;
       return `
-        <div style="padding:9px 0;border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
+        <div style="padding:9px 0;opacity:${_rowDim};border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
           <div style="display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap">
             <span style="min-width:74px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-primary)">${i === 0 ? '<span style="color:var(--accent, #c9a45e)" title="strongest edge for this player">★</span> ' : ''}${esc(p.market)}</span>
             <span style="font-size:12px;color:var(--text-secondary, var(--dim))" title="what the tool projects this player finishes with">Tool <b style="font-size:16px;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${isOut ? 'OUT' : (_projN != null ? _projN.toFixed(1) : '—')}</b></span>
             <span style="font-size:12px;color:var(--text-secondary, var(--dim))" title="${_hasBook ? 'real sportsbook line' : 'no book line — engine-inferred'}">${_hasBook ? 'Book' : 'Model line'} <b style="font-size:16px;color:var(--text-primary);font-variant-numeric:tabular-nums">${_lineN != null ? _lineN : '—'}</b> <span style="font-size:8px;text-transform:uppercase;letter-spacing:0.04em;opacity:0.85">${_bookTag}</span></span>
             <span style="margin-left:auto;font-size:10px;font-weight:800;letter-spacing:0.04em;color:${_leanColor};background:${_leanBg};padding:3px 9px;border-radius:100px;white-space:nowrap" title="tool lean vs the line (gap between projection and line)">${esc(_leanTxt)}</span>
+            ${_empBadge}
           </div>
           ${_reason ? `<div style="margin-top:5px;font-size:11px;line-height:1.5;color:var(--text-secondary, var(--dim))">${_reason}</div>` : ''}
           ${_ppInput}
@@ -17257,6 +17361,551 @@ async function autoGradeOnAppOpen() {
   }
 })();
 
+</script>
+
+<!-- ===== CS2 TAB MODULE (styles + IIFE) ===== -->
+<style>
+  #cs2-panel .cs2-banner{background:var(--data-warning-surface);border:0.5px solid var(--border-hairline);border-left:3px solid var(--data-warning);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);border-radius:var(--radius-md)}
+  #cs2-panel .cs2-banner-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--data-warning);font-weight:var(--weight-medium);margin-bottom:var(--space-1)}
+  #cs2-panel .cs2-banner-text{font-size:var(--size-caption);color:var(--text-secondary);line-height:var(--line-caption)}
+  #cs2-panel .cs2-analysis-head{margin:var(--space-2) 0 var(--space-4);padding-bottom:var(--space-3);border-bottom:0.5px solid var(--border-hairline)}
+  #cs2-panel .cs2-analysis-title{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-medium);color:var(--text-primary)}
+  #cs2-panel .cs2-analysis-sub{font-size:var(--size-caption);color:var(--text-secondary);margin-top:var(--space-1)}
+  #cs2-panel .cs2-roundread{background:var(--surface-muted);border-radius:var(--radius-sm);padding:var(--space-3);margin-bottom:var(--space-3)}
+  #cs2-panel .cs2-rr-badge{font-family:var(--font-mono);font-size:10px;font-weight:600;padding:1px 6px;border-radius:var(--radius-xs,4px);margin-left:6px;text-transform:uppercase;letter-spacing:.04em}
+  #cs2-panel .cs2-rr-blowout{background:color-mix(in srgb,var(--data-negative) 18%,transparent);color:var(--data-negative)}
+  #cs2-panel .cs2-rr-ot{background:color-mix(in srgb,var(--data-positive) 18%,transparent);color:var(--data-positive)}
+  #cs2-panel .cs2-rr-top{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-1)}
+  #cs2-panel .cs2-rr-lean{font-family:var(--font-sans);font-size:10px;font-weight:600;letter-spacing:0.08em;padding:2px 8px;border-radius:var(--radius-pill)}
+  #cs2-panel .cs2-rr-under{background:var(--data-negative-surface);color:var(--data-negative)}
+  #cs2-panel .cs2-rr-over{background:var(--data-positive-surface);color:var(--data-positive)}
+  #cs2-panel .cs2-rr-neutral{background:var(--surface-card);color:var(--text-muted);border:0.5px solid var(--border-strong)}
+  #cs2-panel .cs2-rr-reason{font-size:var(--size-caption);color:var(--text-secondary)}
+  #cs2-panel .cs2-rr-splits{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-secondary)}
+  #cs2-panel .cs2-team-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--text-secondary);font-weight:var(--weight-medium);margin:var(--space-4) 0 var(--space-2)}
+  #cs2-panel .cs2-pcard{background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-2)}
+  #cs2-panel .cs2-pcard-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
+  #cs2-panel .cs2-nick{font-family:var(--font-sans);font-weight:500;font-size:var(--size-body-sm);color:var(--text-primary)}
+  #cs2-panel .cs2-role{font-size:10px;color:var(--text-secondary)}
+  #cs2-panel .cs2-lean-over{color:var(--data-positive);font-size:10px}
+  #cs2-panel .cs2-lean-under{color:var(--data-negative);font-size:10px}
+  #cs2-panel .cs2-lean-neutral{color:var(--text-muted);font-size:10px}
+  #cs2-panel .cs2-band-pass{font-family:var(--font-sans);font-size:9px;font-weight:500;letter-spacing:0.10em;padding:2px 7px;border-radius:var(--radius-sm);text-transform:uppercase;background:var(--surface-muted);color:var(--text-muted);border:0.5px solid var(--border-strong)}
+  #cs2-panel .cs2-score{margin-left:auto;display:inline-flex;align-items:center;gap:6px}
+  #cs2-panel .cs2-score-num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-secondary)}
+  #cs2-panel .cs2-statbar{display:flex;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--space-2)}
+  #cs2-panel .cs2-stat{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-primary)}
+  #cs2-panel .cs2-stat .k{color:var(--text-secondary);font-family:var(--font-sans);font-size:10px;margin-left:3px}
+  #cs2-panel .cs2-oppadj{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--data-warning);margin:2px 0 var(--space-1)}
+  #cs2-panel .cs2-range{display:flex;align-items:center;gap:var(--space-4);padding:var(--space-2) var(--space-3);background:var(--surface-muted);border-radius:var(--radius-sm);margin-bottom:var(--space-2)}
+  #cs2-panel .cs2-range-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-loose);text-transform:uppercase;color:var(--text-secondary)}
+  #cs2-panel .cs2-range-val{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-md);color:var(--text-primary)}
+  #cs2-panel .cs2-range-val .k{font-family:var(--font-sans);font-size:10px;color:var(--text-secondary);margin-left:3px}
+  #cs2-panel .cs2-mapfit{margin-left:auto;font-family:var(--font-mono);font-size:var(--size-mono-sm);color:var(--text-secondary)}
+  #cs2-panel .cs2-prop{font-size:var(--size-caption);color:var(--text-secondary)}
+  #cs2-panel .cs2-flag{font-size:var(--size-caption);color:var(--data-warning);background:var(--data-warning-surface);border-left:2px solid var(--data-warning);padding:var(--space-1) var(--space-2);margin-top:var(--space-1);border-radius:var(--radius-sm)}
+  #cs2-panel .cs2-thin{font-family:var(--font-sans);font-size:9px;letter-spacing:0.08em;color:var(--data-warning);border:0.5px solid var(--data-warning);border-radius:var(--radius-pill);padding:1px 6px}
+  #cs2-panel .cs2-low{color:var(--data-warning)}
+  #cs2-panel .cs2-foot{font-size:var(--size-caption);color:var(--text-muted);margin-top:var(--space-4);line-height:var(--line-caption)}
+  #cs2-panel .cs2-line-row{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-2);padding-top:var(--space-2);border-top:0.5px solid var(--border-hairline);flex-wrap:wrap}
+  #cs2-panel .cs2-line-label{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-loose);text-transform:uppercase;color:var(--text-secondary)}
+  #cs2-panel .cs2-line-input{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);width:64px;height:28px;padding:0 8px;border:0.5px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface-card);color:var(--text-primary)}
+  #cs2-panel .cs2-line-input:focus{outline:none;border-color:var(--brand-primary);box-shadow:var(--elevation-focus)}
+  #cs2-panel .cs2-line-res{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-primary)}
+  #cs2-panel .cs2-line-hint{font-size:var(--size-caption);color:var(--text-muted)}
+  #cs2-panel .cs2-line-delta{color:var(--text-secondary)}
+</style>
+<script>
+(function () {
+  const state = { raw: null, selectedMatchId: null, loaded: false, lines: {}, lineKeys: {}, lineP: {} };
+  try { state.lines = JSON.parse(localStorage.getItem('lyrid_cs2_lines') || '{}') || {}; } catch (_) { state.lines = {}; }
+  window._cs2State = state;
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const bandClass = (b) => b === 'STRONG' ? 'glb-tier-strong' : b === 'LEAN' ? 'glb-tier-moderate' : 'cs2-band-pass';
+  const leanClass = (l) => l === 'OVER-friendly' ? 'cs2-lean-over' : l === 'UNDER-friendly' ? 'cs2-lean-under' : 'cs2-lean-neutral';
+  const fmtTime = (iso) => { if (!iso) return null; const d = new Date(iso); if (isNaN(d)) return null; if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0) return null; return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
+  const erf = (x) => { const t = 1 / (1 + 0.3275911 * Math.abs(x)); const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x); return x >= 0 ? y : -y; };
+  const ncdf = (z) => 0.5 * (1 + erf(z / Math.SQRT2));
+
+  window.switchToCs2 = function () {
+    if (typeof switchTab === 'function') switchTab('cs2');
+    else {
+      document.querySelectorAll('.lyrid-nav-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector('.lyrid-nav-btn[data-tab="cs2"]')?.classList.add('active');
+      document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
+      document.getElementById('cs2-panel')?.classList.add('active');
+    }
+    if (!state.loaded) loadCs2Slate();
+  };
+
+  window.loadCs2Slate = async function () {
+    const list = document.getElementById('cs2GamesList');
+    const analysis = document.getElementById('cs2AnalysisContainer');
+    const meta = document.getElementById('cs2Meta');
+    if (list) list.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-text">Loading slate…</div></div>`;
+    if (analysis) analysis.innerHTML = '';
+    state.loaded = true;
+
+    let data = null;
+    for (const url of ['/api/cs2/slate', '/cs2_reads.json']) {
+      try { const res = await fetch(url, { cache: 'no-store' }); if (res.ok) { data = await res.json(); break; } }
+      catch (_) { /* try next */ }
+    }
+
+    if (!data || !Array.isArray(data.matches)) {
+      if (list) list.innerHTML = `
+        <div class="lyrid-empty">
+          <div class="lyrid-empty-title">No CS2 slate found</div>
+          <div class="lyrid-empty-text">Generate one with <code>node matchRead.mjs --match &lt;id&gt; --json --out cs2_reads.json</code>, then place it where the app can fetch it (repo root or /public).</div>
+        </div>`;
+      if (meta) meta.textContent = '';
+      return;
+    }
+    state.raw = data;
+    renderCs2Slate();
+  };
+
+  function renderCs2Slate() {
+    const data = state.raw;
+    const list = document.getElementById('cs2GamesList');
+    const banner = document.getElementById('cs2Banner');
+    const meta = document.getElementById('cs2Meta');
+    if (!data || !list) return;
+
+    if (meta) {
+      const gen = data.generatedAt ? new Date(data.generatedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+      const players = (data.matches || []).reduce((a, m) => a + (m.players ? m.players.length : 0), 0);
+      meta.textContent = `${(data.matches || []).length} MATCHES · ${players} PLAYERS${gen ? ' · ' + gen : ''}`;
+    }
+
+    if (banner) {
+      banner.innerHTML = `
+        <div class="cs2-banner">
+          <div class="cs2-banner-eyebrow">Research · not validated vs price</div>
+          <div class="cs2-banner-text">Projection-only reads (Maps 1+2 kills). Pick score is <b>PARTIAL</b> — it excludes opponent style and line value, which the data can't see yet. No edge has been proven against Underdog's number. Treat as a watchlist, not picks.</div>
+        </div>`;
+    }
+
+    const matches = data.matches || [];
+    if (!matches.length) {
+      list.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">No matches in slate</div><div class="lyrid-empty-text">Add matches with the --json generator.</div></div>`;
+      return;
+    }
+    list.innerHTML = `<div class="lyrid-games-list">${matches.map(renderCs2MatchRow).join('')}</div>`;
+    if (matches[0]) analyzeCs2Match(matches[0].matchId);
+  }
+
+  function renderCs2MatchRow(m) {
+    const vol = m.roundVolume || {};
+    const sub = `${esc(m.format || 'Bo3')}${m.tier ? ' · ' + esc(String(m.tier).toUpperCase()) : ''} · ${m.lan ? 'LAN' : 'ONLINE'}${m.doOrDie ? ' · ELIM' : ''}${m.stage ? ' · ' + esc(m.stage) : ''}`;
+    const mapsLine = (m.maps || []).map(esc).join(' + ') || '—';
+    const leanCount = (m.players || []).filter(p => p.band === 'LEAN' || p.band === 'STRONG').length;
+    const isSel = String(m.matchId) === String(state.selectedMatchId);
+    return `
+      <button class="lyrid-game-card${isSel ? ' signal' : ''}" type="button" onclick="analyzeCs2Match('${esc(m.matchId)}')" aria-label="Read ${esc(m.teamA)} vs ${esc(m.teamB)}">
+        <div class="lyrid-game-time">
+          <div class="lyrid-game-time-value">${esc(fmtTime(m.startTime) || (m.date || '').slice(5) || 'TBD')}</div>
+          <div class="lyrid-game-time-zone">${esc((fmtTime(m.startTime) ? (m.date || '').slice(5) + ' · ' : '') + (m.format || 'Bo3'))}</div>
+        </div>
+        <div class="lyrid-game-matchup">
+          <div class="lyrid-game-teams"><span>${m.rankA ? '#' + m.rankA + ' ' : ''}${esc(m.teamA || '?')}</span><span class="at">vs</span><span>${m.rankB ? '#' + m.rankB + ' ' : ''}${esc(m.teamB || '?')}</span></div>
+          <div class="lyrid-game-pitchers">${mapsLine} · ${sub} · E[rds] ${vol.erounds ?? '?'}${m.rosterSource === 'inferred' ? ' · inferred roster' : ''}</div>
+        </div>
+        <div class="lyrid-game-projection${isSel ? ' signal' : ''}">
+          <div class="lyrid-game-projection-label">${leanCount} lean${leanCount === 1 ? '' : 's'}</div>
+          <div class="lyrid-game-projection-value" aria-hidden="true">${isSel ? '★' : '→'}</div>
+        </div>
+      </button>`;
+  }
+
+  window.analyzeCs2Match = function (matchId) {
+    state.selectedMatchId = matchId;
+    const data = state.raw; if (!data) return;
+    const m = (data.matches || []).find(x => String(x.matchId) === String(matchId));
+    const container = document.getElementById('cs2AnalysisContainer');
+    if (!m || !container) return;
+
+    const list = document.getElementById('cs2GamesList');
+    if (list) list.innerHTML = `<div class="lyrid-games-list">${(data.matches || []).map(renderCs2MatchRow).join('')}</div>`;
+
+    const vol = m.roundVolume || {};
+    const pctOf = (x) => x != null ? Math.round(x * 100) + '%' : '?';
+    const byTeam = {};
+    for (const p of (m.players || [])) { const t = p.team || '—'; (byTeam[t] = byTeam[t] || []).push(p); }
+    for (const t in byTeam) byTeam[t].sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    const header = `
+      <div class="cs2-analysis-head">
+        <div class="cs2-analysis-title">${esc(m.teamA)} vs ${esc(m.teamB)}</div>
+        <div class="cs2-analysis-sub">Maps 1+2: <b style="color:var(--text-primary)">${(m.maps || []).map(esc).join(' + ') || '—'}</b> · E[rds/map] ${vol.erounds ?? '?'} · blowout ${pctOf(vol.blowout)} · OT ${pctOf(vol.ot)}${vol.killDensity && vol.killDensity !== 1 ? ' · kill-dens ×' + vol.killDensity : ''} <span class="cs2-low">[round volume LOW CONFIDENCE]</span>${m.lineupAsOf ? ' \u00b7 lineup as of ' + esc(m.lineupAsOf) : ''}${m.rosterChanged ? ' <span class="cs2-low">\u00b7 roster changed</span>' : ''}</div>
+      </div>`;
+
+    const rr = m.roundRead;
+    const roundReadHtml = !rr ? '' : `
+      <div class="cs2-roundread">
+        <div class="cs2-rr-top">
+          <span class="cs2-rr-lean cs2-rr-${(rr.totalsLean || 'neutral').toLowerCase()}">TOTALS ${esc(rr.totalsLean)}</span>
+          ${rr.blowoutRisk ? `<span class="cs2-rr-badge cs2-rr-blowout">BLOWOUT ${esc(rr.blowoutRisk)}</span>` : ''}${rr.otLean ? `<span class="cs2-rr-badge cs2-rr-ot">OT LIVE</span>` : ''}
+          <span class="cs2-rr-reason">${esc(rr.reason)}</span>
+        </div>
+        ${rr.teamA && rr.teamB ? `<div class="cs2-rr-splits">${esc(m.teamA)} — pistol ${rr.teamA.pistol}% · CT ${rr.teamA.ct}% · T ${rr.teamA.t}% &nbsp;|&nbsp; ${esc(m.teamB)} — pistol ${rr.teamB.pistol}% · CT ${rr.teamB.ct}% · T ${rr.teamB.t}%</div>` : ''}
+        ${rr.teamA && rr.teamB && rr.teamA.openingWin != null ? `<div class="cs2-rr-splits">${esc(m.teamA)} — opening ${rr.teamA.openingWin}% · trade ${rr.teamA.tradeRatio} · eco ${rr.teamA.ecoWin}% · streak ${rr.teamA.snowball} &nbsp;|&nbsp; ${esc(m.teamB)} — opening ${rr.teamB.openingWin}% · trade ${rr.teamB.tradeRatio} · eco ${rr.teamB.ecoWin}% · streak ${rr.teamB.snowball}</div>` : ''}
+      </div>`;
+    const teamsHtml = Object.keys(byTeam).map(t =>
+      `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(p => renderCs2PlayerCard(p, m.matchId)).join('')}`).join('');
+
+    container.innerHTML = header + roundReadHtml + teamsHtml +
+      `<div class="cs2-foot">UNPOWERED: opponent site/pace read, positional fit, deep economy discipline, day-of stand-ins. Pick score excludes opponent-style (15%) + line-value (10%).</div>`;
+  };
+
+  function cs2RenderLineResult(p, val) {
+    if (val === '' || val == null || isNaN(Number(val))) return '<span class="cs2-line-hint">enter Book line</span>';
+    const line = Number(val);
+    const sd = Math.max(1, (p.ceiling - p.floor) / 1.88);
+    const pOver = 1 - ncdf((line - p.median) / sd);
+    const over = pOver >= 0.5;
+    const prob = Math.round((over ? pOver : 1 - pOver) * 100);
+    const delta = p.median - line;
+    const cls = over ? 'cs2-lean-over' : 'cs2-lean-under';
+    return `Tool ${p.median} · Book ${esc(line)} → <span class="${cls}">${over ? 'OVER' : 'UNDER'} ${prob}%</span> <span class="cs2-line-delta">(${delta >= 0 ? '+' : ''}${delta.toFixed(1)})</span>`;
+  }
+
+  window.cs2SetLine = function (safeId, val) {
+    const key = state.lineKeys[safeId]; const p = state.lineP[safeId];
+    if (!key) return;
+    if (val === '' || val == null) delete state.lines[key]; else state.lines[key] = val;
+    try { localStorage.setItem('lyrid_cs2_lines', JSON.stringify(state.lines)); } catch (_) {}
+    const el = document.getElementById('lr_' + safeId);
+    if (el && p) el.innerHTML = cs2RenderLineResult(p, val);
+  };
+
+  function renderCs2PlayerCard(p, matchId) {
+    const mf = p.mapFitPct == null ? 'n/a' : (p.mapFitPct >= 0 ? '+' : '') + p.mapFitPct + '%';
+    const thin = p.thin ? `<span class="cs2-thin">THIN n=${p.n}</span>` : '';
+    const st = (v, k) => `<span class="cs2-stat">${v}<span class="k">${k}</span></span>`;
+    const flags = (p.flags || []).filter(f => !/^opponent-adjusted/.test(f)).map(f => `<div class="cs2-flag">⚠ ${esc(f)}</div>`).join('');
+    const mkRow = (statKey, label, proj) => {
+      if (proj.median == null) return '';
+      const key = `${matchId}|${p.nick}|${statKey}`;
+      const sid = 'cs2_' + key.replace(/[^A-Za-z0-9]/g, '_');
+      state.lineKeys[sid] = key; state.lineP[sid] = proj;
+      const cur = state.lines[key] == null ? '' : state.lines[key];
+      return `
+        <div class="cs2-line-row">
+          <span class="cs2-line-label">${esc(label)}</span>
+          <input class="cs2-line-input" type="number" step="0.5" inputmode="decimal" value="${esc(cur)}" placeholder="—" oninput="cs2SetLine('${sid}', this.value)">
+          <span class="cs2-line-res" id="lr_${sid}">${cs2RenderLineResult(proj, cur)}</span>
+        </div>`;
+    };
+    const oppAdj = p.oppFactor == null ? '' : `
+        <div class="cs2-oppadj">opp-adj ×${p.oppFactor}${(p.kprStrong != null && p.kprWeak != null) ? ` · ${p.kprStrong} KPR vs elite / ${p.kprWeak} vs field` : ''}</div>`;
+    const hsRange = p.hsMedian == null ? '' : `
+        <div class="cs2-range">
+          <span class="cs2-range-eyebrow">Maps 1+2 HS</span>
+          <span class="cs2-range-val">${p.hsFloor}<span class="k">floor</span></span>
+          <span class="cs2-range-val">${p.hsMedian}<span class="k">median</span></span>
+          <span class="cs2-range-val">${p.hsCeiling}<span class="k">ceiling</span></span>
+        </div>`;
+    return `
+      <div class="cs2-pcard">
+        <div class="cs2-pcard-head">
+          <span class="cs2-nick">${esc(p.nick)}</span>
+          <span class="cs2-role">${esc(p.role)}</span>
+          <span class="${leanClass(p.lean)}">${esc(p.lean)}</span>
+          ${thin}
+          <span class="cs2-score"><span class="cs2-score-num">${p.score}/100</span><span class="${bandClass(p.band)}">${esc(p.band)}</span></span>
+        </div>
+        <div class="cs2-statbar">
+          ${st(p.kpr, 'KPR')} ${st(p.recentKpr, 'recent')} ${st(p.hs == null ? '?' : p.hs + '%', 'HS')} ${st(p.kast == null ? '?' : p.kast + '%', 'KAST')} ${st(p.fkPerMap, 'FK/map')}${p.adr == null ? '' : ' ' + st(p.adr, 'ADR')}${p.survival == null ? '' : ' ' + st(p.survival + '%', 'surv')}${p.openingWin == null ? '' : ' ' + st(p.openingWin + '%', 'open-win')}${p.clutchPerMap == null ? '' : ' ' + st(p.clutchPerMap, 'clutch')}
+        </div>
+        <div class="cs2-range">
+          <span class="cs2-range-eyebrow">Maps 1+2 kills</span>
+          <span class="cs2-range-val">${p.floor}<span class="k">floor</span></span>
+          <span class="cs2-range-val">${p.median}<span class="k">median</span></span>
+          <span class="cs2-range-val">${p.ceiling}<span class="k">ceiling</span></span>
+          <span class="cs2-mapfit">map-fit ${mf}</span>
+        </div>
+        ${oppAdj}
+        ${hsRange}
+        <div class="cs2-prop">prop: ${esc(p.propType)}</div>
+        ${mkRow('kills', 'Kills line', { median: p.median, floor: p.floor, ceiling: p.ceiling })}
+        ${mkRow('hs', 'HS line', { median: p.hsMedian, floor: p.hsFloor, ceiling: p.hsCeiling })}
+        ${flags}
+      </div>`;
+  }
+})();
+</script>
+<script>
+// =============================================================================
+// Lyrid — Top Picks Digest publisher (CLIENT SIDE — paste into index.html)
+// -----------------------------------------------------------------------------
+// Sweeps the day's engines for PLATINUM/GOLD plays across sports, builds ONE
+// curated digest, and posts it to /api/publish-insight (type:"digest"), which
+// fans out to Discord (immediate) and Facebook (Slack approval). Promo tool to
+// drive subscriptions — NOT a live-bet feed.
+//
+// Reads only flat state stores the app already maintains:
+//   MLB totals  -> state.projectionAudit  (via classifyInverseTotalSignal/MarketSignal)
+//   MLB innings -> state.firstInningBets   (your logged YRFI/NRFI conviction plays)
+//   WNBA        -> state.wnbaPropHistory[currentDate]
+//   CS2         -> slot left for later; add a collector when that engine exists.
+// =============================================================================
+
+const DIGEST_TIERS = new Set(['platinum', 'gold']); // qualifying bar
+const DIGEST_MAX   = 6;                              // cap for a tight promo post
+const TIER_RANK    = { platinum: 0, gold: 1, elite: 0, verified: 1 };
+
+function _digestDate() {
+  try { return state.currentDate || (typeof getTodayStr === 'function' ? getTodayStr() : new Date().toISOString().slice(0,10)); }
+  catch { return new Date().toISOString().slice(0,10); }
+}
+function _pct(v) { // normalize 0-1 or 0-100 -> integer percent
+  if (v == null || v === '') return '';
+  const n = Number(v);
+  if (!isFinite(n)) return '';
+  return Math.round(n <= 1 ? n * 100 : n);
+}
+
+// --- MLB totals: derive tiered pregame signals from the projection audit ------
+function _collectTotals(date) {
+  const out = [];
+  try {
+    const audit = state.projectionAudit || {};
+    for (const k in audit) {
+      const e = audit[k];
+      if (!e || e.date !== date || typeof e.projTotal !== 'number') continue;
+      // Use the SAME source the dashboard's TOTALS LEAN uses (Drop #31): the
+      // pre-game lean is driven solely by classifyInverseTotalSignal(projTotal).
+      // Previously this preferred classifyInverseMarketSignal, which returns the
+      // OPPOSITE direction on high-projection games (proj >=10.5 reads OVER on the
+      // board, but the market-gap signal said UNDER) — flipping O/U in the post.
+      const sig = (typeof classifyInverseTotalSignal === 'function')
+                    ? classifyInverseTotalSignal(e.projTotal) : null;
+      if (!sig || !DIGEST_TIERS.has(String(sig.tier).toLowerCase())) continue;
+      out.push({
+        sport: 'MLB', market: 'Game Total',
+        matchup: `${e.awayTeam || ''} @ ${e.homeTeam || ''}`.trim(),
+        lean: `${sig.side} 8.5`,
+        tier: String(sig.tier).toLowerCase(),
+        confidence: _pct(sig.backtestWR),
+        sample_n: sig.backtestN || '',
+        _projTotal: e.projTotal   // internal: lets the guardrail re-derive direction
+      });
+    }
+  } catch (err) { console.warn('[digest] totals collect:', err.message); }
+  return out;
+}
+
+// --- MLB innings: your logged YRFI/NRFI plays --------------------------------
+function _collectInnings(date) {
+  const out = [];
+  try {
+    const fib = state.firstInningBets || {};
+    for (const k in fib) {
+      const e = fib[k];
+      if (!e || e.date !== date) continue;
+      const tier = String(e.tier || '').toLowerCase();
+      if (!DIGEST_TIERS.has(tier) && tier !== 'strong') continue;
+      out.push({
+        sport: 'MLB', market: '1st Inning',
+        matchup: `${e.away || ''} @ ${e.home || ''}`.trim(),
+        lean: e.pick || '',
+        tier: tier === 'strong' ? 'gold' : tier,
+        confidence: _pct(e.probability),
+        sample_n: ''
+      });
+    }
+  } catch (err) { console.warn('[digest] innings collect:', err.message); }
+  return out;
+}
+
+// --- WNBA: top tiered props ---------------------------------------------------
+function _collectWnba(date) {
+  const out = [];
+  try {
+    const day = (state.wnbaPropHistory || {})[date] || {};
+    for (const k in day) {
+      const e = day[k];
+      if (!e) continue;
+      const tier = String(e.tier || '').toLowerCase();
+      if (!DIGEST_TIERS.has(tier) && !e.isTopPick) continue;
+      const leanTxt = e.line != null && e.lean ? `${e.lean} ${e.line}` : (e.lean || '');
+      out.push({
+        sport: 'WNBA', market: e.market || 'Prop',
+        matchup: [e.player, e.opponent ? `vs ${e.opponent}` : ''].filter(Boolean).join(' '),
+        lean: leanTxt,
+        tier: DIGEST_TIERS.has(tier) ? tier : 'gold',
+        confidence: _pct(e.confidence),
+        sample_n: ''
+      });
+    }
+  } catch (err) { console.warn('[digest] wnba collect:', err.message); }
+  return out;
+}
+
+// --- MLB hitters: the verified/platinum plays the Cleanest Edges board uses --
+// (Drop #36 — June 21, 2026) The digest "broke" because it only read the
+// totals/innings/wnba stores, which are often empty in a session. This reads
+// the SAME logged best bets the board surfaces, so the promo digest always has
+// the day's real MLB edges (verified overs + platinum/gold fades).
+function _collectMlbHitters(date) {
+  const out = [];
+  try {
+    const day = (state.bestBetHistory || {})[date] || {};
+    for (const k in day) {
+      const e = day[k];
+      if (!e || !e.hitterName) continue;
+      let lean, tier, conf;
+      if (e._verifiedCohort) {
+        tier = 'platinum';
+        lean = `${e.hitterName} OVER ${e.propLabel || '0.5 Hits'}`;
+        conf = Math.round((e._verifiedWR || 0.72) * 100);
+      } else if (e._lyridUnderTier === 'platinum') {
+        tier = 'platinum';
+        lean = `${e.hitterName} UNDER 1.5 H+R+RBI`;
+        conf = 62;
+      } else if (e._lyridUnderTier === 'gold') {
+        tier = 'gold';
+        lean = `${e.hitterName} UNDER 1.5 H+R+RBI`;
+        conf = 59;
+      } else if (e._sharpHits) {
+        tier = 'gold';
+        lean = `${e.hitterName} OVER 0.5 Hits`;
+        conf = 68;
+      } else {
+        continue;
+      }
+      out.push({
+        sport: 'MLB', market: 'Hitter Prop',
+        matchup: `${e.team || ''} vs ${e.opponent || ''}`.trim(),
+        lean, tier, confidence: conf, sample_n: ''
+      });
+    }
+  } catch (err) { console.warn('[digest] mlb hitters collect:', err.message); }
+  return out;
+}
+
+// --- Guardrail: independently re-derive each totals play's direction and drop
+//     any that disagree with the canonical dashboard source. Fail-safe: omitting
+//     a play beats posting it backwards. Catches future drift (a reintroduced
+//     market signal, a label bug, a bad transform) before anything posts.
+function _validateDigest(plays) {
+  const clean = [], warnings = [];
+  for (const p of plays) {
+    if (p.sport === 'MLB' && p.market === 'Game Total' && typeof p._projTotal === 'number') {
+      const posted = String(p.lean || '').trim().split(/\s+/)[0].toUpperCase(); // OVER | UNDER
+      const canon = (typeof classifyInverseTotalSignal === 'function')
+        ? classifyInverseTotalSignal(p._projTotal) : null;
+      const canonSide = canon ? String(canon.side).toUpperCase() : null;
+      if (!canonSide || canonSide !== posted) {
+        console.error(`[digest GUARDRAIL] Totals direction mismatch for ${p.matchup} ` +
+          `(proj ${p._projTotal}): post says ${posted}, dashboard says ${canonSide || 'NO-SIGNAL'}. Play DROPPED.`);
+        warnings.push(`${p.matchup}: post ${posted} vs board ${canonSide || 'none'} — removed`);
+        continue;
+      }
+    }
+    clean.push(p);
+  }
+  return { clean, warnings };
+}
+
+// --- Assemble: combine, validate, rank (tier then hit rate), cap -------------
+function lyridBuildDigest() {
+  const date = _digestDate();
+  let plays = [..._collectTotals(date), ..._collectInnings(date), ..._collectMlbHitters(date), ..._collectWnba(date)]
+    .filter(p => p.matchup && p.lean);
+  // Guardrail before anything leaves the client.
+  const { clean, warnings } = _validateDigest(plays);
+  clean.sort((a, b) => {
+    const t = (TIER_RANK[a.tier] ?? 9) - (TIER_RANK[b.tier] ?? 9);
+    if (t !== 0) return t;
+    return (Number(b.confidence) || 0) - (Number(a.confidence) || 0);
+  });
+  // Strip internal (_-prefixed) fields so they never reach the relay / OG card.
+  const finalPlays = clean.slice(0, DIGEST_MAX).map(p => {
+    const o = {}; for (const k in p) if (k[0] !== '_') o[k] = p[k]; return o;
+  });
+  return { date, plays: finalPlays, warnings };
+}
+
+// --- Post the digest to the relay --------------------------------------------
+async function lyridPostDigest(digest) {
+  const res = await fetch('/api/publish-insight', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+    body: JSON.stringify({ type: 'digest', date: digest.date, plays: digest.plays })
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+
+// --- Floating "Post Top Picks" button ----------------------------------------
+function lyridMountDigestButton() {
+  if (document.getElementById('lyridDigestBtn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'lyridDigestBtn';
+  btn.textContent = '📣 Post Top Picks';
+  btn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;padding:12px 18px;' +
+    'border:none;border-radius:24px;background:#1e3a8a;color:#fff;font-weight:700;font-size:14px;' +
+    'box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;';
+  btn.onclick = async () => {
+    const digest = lyridBuildDigest();
+    if (digest.plays.length === 0) {
+      alert('No PLATINUM/GOLD plays found for ' + digest.date + '. Load the MLB/WNBA boards first.');
+      return;
+    }
+    const warnNote = (digest.warnings && digest.warnings.length)
+      ? `⚠️ ${digest.warnings.length} play(s) removed by the direction guardrail:\n` +
+        digest.warnings.map(w => '  • ' + w).join('\n') +
+        '\n(check the console — this means the assembler disagreed with the board)\n\n'
+      : '';
+    const preview = digest.plays
+      .map(p => `• [${p.sport}] ${p.lean} — ${p.matchup} (${p.tier.toUpperCase()}${p.confidence ? ' ' + p.confidence + '%' : ''})`)
+      .join('\n');
+    if (!confirm(`${warnNote}Post this digest (${digest.plays.length} plays) to Discord + Facebook approval?\n\n${preview}`)) return;
+    btn.disabled = true; btn.textContent = 'Posting…';
+    try {
+      const r = await lyridPostDigest(digest);
+      if (r.ok) {
+        const ch = r.data?.channels || {};
+        alert(`Sent.\nDiscord: ${ch.discord || '?'}\nFacebook: ${ch.facebook || '?'}`);
+      } else if (r.status === 403) {
+        alert('Only the founder account can post.');
+      } else {
+        alert('Failed: ' + (r.data?.error || r.status));
+      }
+    } catch (e) {
+      alert('Error: ' + e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = '📣 Post Top Picks';
+    }
+  };
+  document.body.appendChild(btn);
+}
+// Mount once the page is ready.
+if (document.readyState !== 'loading') lyridMountDigestButton();
+else document.addEventListener('DOMContentLoaded', lyridMountDigestButton);
+
+// --- Cache today's digest server-side for the noon cron ----------------------
+// Only the founder session succeeds (endpoint is founder-gated); members 403 silently.
+// Re-caches periodically so the stored digest reflects every board loaded this session.
+async function lyridCacheDigest() {
+  try {
+    const digest = lyridBuildDigest();
+    if (!digest.plays.length) return; // never overwrite a good cache with empty
+    await fetch('/api/digest/cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ date: digest.date, plays: digest.plays })
+    });
+  } catch (_) { /* silent — caching is best-effort */ }
+}
+setTimeout(lyridCacheDigest, 45000);      // after boards have had time to load
+setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 </script>
 </body>
 </html>
