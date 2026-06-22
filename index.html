@@ -3419,7 +3419,10 @@
   <div class="lyrid-page-header">
     <div class="lyrid-page-eyebrow" id="cs2PageEyebrow">Counter-Strike 2 · Maps 1+2</div>
     <div class="lyrid-date-nav">
-      <span class="lyrid-date-current" id="cs2DateDisplay">Slate</span>
+      <button class="lyrid-date-btn" type="button" onclick="cs2ChangeDate(-1)" aria-label="Previous day">‹</button>
+      <span class="lyrid-date-current" id="cs2DateDisplay">Today</span>
+      <button class="lyrid-date-btn" type="button" onclick="cs2ChangeDate(1)" aria-label="Next day">›</button>
+      <button class="lyrid-date-btn" type="button" onclick="cs2ChangeDate('today')" style="margin-left:4px">Today</button>
     </div>
     <button class="lyrid-btn primary" id="loadCs2Btn" onclick="loadCs2Slate()">Refresh</button>
     <span id="cs2Meta" class="lyrid-eyebrow" style="margin-left:auto"></span>
@@ -17595,6 +17598,7 @@ async function autoGradeOnAppOpen() {
   #cs2-panel .cs2-rr-reason{font-size:var(--size-caption);color:var(--text-secondary)}
   #cs2-panel .cs2-rr-splits{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-secondary)}
   #cs2-panel .cs2-team-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--text-secondary);font-weight:var(--weight-medium);margin:var(--space-4) 0 var(--space-2)}
+  #cs2-panel .cs2-pending{opacity:0.55;cursor:default}
   #cs2-panel .cs2-pcard{background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-2)}
   #cs2-panel .cs2-pcard-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
   #cs2-panel .cs2-nick{font-family:var(--font-sans);font-weight:500;font-size:var(--size-body-sm);color:var(--text-primary)}
@@ -17633,6 +17637,18 @@ async function autoGradeOnAppOpen() {
   try { state.lines = JSON.parse(localStorage.getItem('lyrid_cs2_lines') || '{}') || {}; } catch (_) { state.lines = {}; }
   window._cs2State = state;
 
+  const cs2TodayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  state.date = cs2TodayStr();
+  function setCs2DateDisplay() {
+    const el = document.getElementById('cs2DateDisplay'); if (!el) return;
+    el.textContent = state.date === cs2TodayStr() ? 'Today' : new Date(state.date + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+  window.cs2ChangeDate = function (delta) {
+    if (delta === 'today') state.date = cs2TodayStr();
+    else { const d = new Date(state.date + 'T12:00:00'); d.setDate(d.getDate() + delta); state.date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+    loadCs2Slate();
+  };
+
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const bandClass = (b) => b === 'STRONG' ? 'glb-tier-strong' : b === 'LEAN' ? 'glb-tier-moderate' : 'cs2-band-pass';
@@ -17659,23 +17675,48 @@ async function autoGradeOnAppOpen() {
     if (list) list.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-text">Loading slate…</div></div>`;
     if (analysis) analysis.innerHTML = '';
     state.loaded = true;
+    setCs2DateDisplay();
 
-    let data = null;
+    // 1) projections snapshot (generated offline by matchRead --today, deployed static)
+    let proj = null;
     for (const url of ['/api/cs2/slate', '/cs2_reads.json']) {
-      try { const res = await fetch(url, { cache: 'no-store' }); if (res.ok) { data = await res.json(); break; } }
+      try { const res = await fetch(url, { cache: 'no-store' }); if (res.ok) { proj = await res.json(); break; } }
       catch (_) { /* try next */ }
     }
+    const projMap = {};
+    if (proj && Array.isArray(proj.matches)) for (const m of proj.matches) projMap[String(m.matchId)] = m;
 
-    if (!data || !Array.isArray(data.matches)) {
+    // 2) live fixtures for the selected date (GOAT-gated; falls back gracefully)
+    let sched = null;
+    try {
+      const r = await fetch('/api/cs2/schedule?date=' + encodeURIComponent(state.date), { cache: 'no-store' });
+      if (r.ok) sched = await r.json();
+    } catch (_) { /* no live schedule available */ }
+
+    let matches = null;
+    if (sched && Array.isArray(sched.games)) {
+      // merge: each live fixture keeps its projection if one is deployed, else pending
+      matches = sched.games.map(g => projMap[String(g.matchId)] || ({
+        matchId: g.matchId, teamA: g.teamA, teamB: g.teamB, startTime: g.startTime,
+        tier: g.tier, lan: g.lan, stage: g.stage, doOrDie: g.doOrDie,
+        format: g.bestOf ? 'Bo' + g.bestOf : null, pending: true,
+      }));
+    } else if (proj && Array.isArray(proj.matches)) {
+      // no live schedule (ALL-STAR / function not deployed) — show the static snapshot
+      matches = proj.matches;
+    }
+
+    if (!matches) {
       if (list) list.innerHTML = `
         <div class="lyrid-empty">
-          <div class="lyrid-empty-title">No CS2 slate found</div>
-          <div class="lyrid-empty-text">Generate one with <code>node matchRead.mjs --match &lt;id&gt; --json --out cs2_reads.json</code>, then place it where the app can fetch it (repo root or /public).</div>
+          <div class="lyrid-empty-title">No CS2 games for ${esc(state.date)}</div>
+          <div class="lyrid-empty-text">Live fixtures come from <code>/api/cs2/schedule</code> (needs GOAT). Projections come from <code>matchRead --today</code> → <code>cs2_reads.json</code>. Neither returned games for this date.</div>
         </div>`;
       if (meta) meta.textContent = '';
       return;
     }
-    state.raw = data;
+    const projected = matches.filter(m => !m.pending).length;
+    state.raw = { ...(proj || {}), matches, _projected: projected, _total: matches.length };
     renderCs2Slate();
   };
 
@@ -17710,6 +17751,21 @@ async function autoGradeOnAppOpen() {
   }
 
   function renderCs2MatchRow(m) {
+    if (m.pending) {
+      const psub = `${esc(m.format || 'Bo3')}${m.tier ? ' · ' + esc(String(m.tier).toUpperCase()) : ''}${m.lan ? ' · LAN' : ''}${m.doOrDie ? ' · ELIM' : ''}`;
+      return `
+        <div class="lyrid-game-card cs2-pending" aria-label="${esc(m.teamA)} vs ${esc(m.teamB)} — projection pending">
+          <div class="lyrid-game-time">
+            <div class="lyrid-game-time-value">${esc(fmtTime(m.startTime) || 'TBD')}</div>
+            <div class="lyrid-game-time-zone">${esc(m.format || 'Bo3')}</div>
+          </div>
+          <div class="lyrid-game-matchup">
+            <div class="lyrid-game-teams"><span>${esc(m.teamA || '?')}</span><span class="at">vs</span><span>${esc(m.teamB || '?')}</span></div>
+            <div class="lyrid-game-pitchers">${psub} · projection pending — run matchRead --today</div>
+          </div>
+          <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">pending</div><div class="lyrid-game-projection-value" aria-hidden="true">·</div></div>
+        </div>`;
+    }
     const vol = m.roundVolume || {};
     const sub = `${esc(m.format || 'Bo3')}${m.tier ? ' · ' + esc(String(m.tier).toUpperCase()) : ''} · ${m.lan ? 'LAN' : 'ONLINE'}${m.doOrDie ? ' · ELIM' : ''}${m.stage ? ' · ' + esc(m.stage) : ''}`;
     const mapsLine = (m.maps || []).map(esc).join(' + ') || '—';
@@ -17751,7 +17807,7 @@ async function autoGradeOnAppOpen() {
     const header = `
       <div class="cs2-analysis-head">
         <div class="cs2-analysis-title">${esc(m.teamA)} vs ${esc(m.teamB)}</div>
-        <div class="cs2-analysis-sub">Maps 1+2: <b style="color:var(--text-primary)">${(m.maps || []).map(esc).join(' + ') || '—'}</b> · E[rds/map] ${vol.erounds ?? '?'} · blowout ${pctOf(vol.blowout)} · OT ${pctOf(vol.ot)}${vol.killDensity && vol.killDensity !== 1 ? ' · kill-dens ×' + vol.killDensity : ''} <span class="cs2-low">[round volume LOW CONFIDENCE]</span>${m.lineupAsOf ? ' \u00b7 lineup as of ' + esc(m.lineupAsOf) : ''}${m.rosterChanged ? ' <span class="cs2-low">\u00b7 roster changed</span>' : ''}</div>
+        <div class="cs2-analysis-sub">${esc(m.windowLabel || 'Maps 1+2')}: <b style="color:var(--text-primary)">${(m.maps || []).map(esc).join(' + ') || '—'}</b> · E[rds/map] ${vol.erounds ?? '?'} · blowout ${pctOf(vol.blowout)} · OT ${pctOf(vol.ot)}${vol.killDensity && vol.killDensity !== 1 ? ' · kill-dens ×' + vol.killDensity : ''} <span class="cs2-low">[round volume LOW CONFIDENCE]</span>${m.lineupAsOf ? ' \u00b7 lineup as of ' + esc(m.lineupAsOf) : ''}${m.rosterChanged ? ' <span class="cs2-low">\u00b7 roster changed</span>' : ''}</div>
       </div>`;
 
     const rr = m.roundRead;
@@ -17766,7 +17822,7 @@ async function autoGradeOnAppOpen() {
         ${rr.teamA && rr.teamB && rr.teamA.openingWin != null ? `<div class="cs2-rr-splits">${esc(m.teamA)} — opening ${rr.teamA.openingWin}% · trade ${rr.teamA.tradeRatio} · eco ${rr.teamA.ecoWin}% · streak ${rr.teamA.snowball} &nbsp;|&nbsp; ${esc(m.teamB)} — opening ${rr.teamB.openingWin}% · trade ${rr.teamB.tradeRatio} · eco ${rr.teamB.ecoWin}% · streak ${rr.teamB.snowball}</div>` : ''}
       </div>`;
     const teamsHtml = Object.keys(byTeam).map(t =>
-      `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(p => renderCs2PlayerCard(p, m.matchId)).join('')}`).join('');
+      `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(p => renderCs2PlayerCard(p, m.matchId, m.windowLabel)).join('')}`).join('');
 
     container.innerHTML = header + roundReadHtml + teamsHtml +
       `<div class="cs2-foot">UNPOWERED: opponent site/pace read, positional fit, deep economy discipline, day-of stand-ins. Pick score excludes opponent-style (15%) + line-value (10%).</div>`;
@@ -17793,7 +17849,7 @@ async function autoGradeOnAppOpen() {
     if (el && p) el.innerHTML = cs2RenderLineResult(p, val);
   };
 
-  function renderCs2PlayerCard(p, matchId) {
+  function renderCs2PlayerCard(p, matchId, windowLabel = 'Maps 1+2') {
     const mf = p.mapFitPct == null ? 'n/a' : (p.mapFitPct >= 0 ? '+' : '') + p.mapFitPct + '%';
     const thin = p.thin ? `<span class="cs2-thin">THIN n=${p.n}</span>` : '';
     const st = (v, k) => `<span class="cs2-stat">${v}<span class="k">${k}</span></span>`;
@@ -17811,11 +17867,11 @@ async function autoGradeOnAppOpen() {
           <span class="cs2-line-res" id="lr_${sid}">${cs2RenderLineResult(proj, cur)}</span>
         </div>`;
     };
-    const oppAdj = p.oppFactor == null ? '' : `
-        <div class="cs2-oppadj">opp-adj ×${p.oppFactor}${(p.kprStrong != null && p.kprWeak != null) ? ` · ${p.kprStrong} KPR vs elite / ${p.kprWeak} vs field` : ''}</div>`;
+    const oppAdj = (p.kprStrong == null || p.kprWeak == null) ? '' : `
+        <div class="cs2-oppadj">${p.kprStrong} KPR vs elite · ${p.kprWeak} vs field</div>`;
     const hsRange = p.hsMedian == null ? '' : `
         <div class="cs2-range">
-          <span class="cs2-range-eyebrow">Maps 1+2 HS</span>
+          <span class="cs2-range-eyebrow">${esc(windowLabel)} HS</span>
           <span class="cs2-range-val">${p.hsFloor}<span class="k">floor</span></span>
           <span class="cs2-range-val">${p.hsMedian}<span class="k">median</span></span>
           <span class="cs2-range-val">${p.hsCeiling}<span class="k">ceiling</span></span>
@@ -17833,7 +17889,7 @@ async function autoGradeOnAppOpen() {
           ${st(p.kpr, 'KPR')} ${st(p.recentKpr, 'recent')} ${st(p.hs == null ? '?' : p.hs + '%', 'HS')} ${st(p.kast == null ? '?' : p.kast + '%', 'KAST')} ${st(p.fkPerMap, 'FK/map')}${p.adr == null ? '' : ' ' + st(p.adr, 'ADR')}${p.survival == null ? '' : ' ' + st(p.survival + '%', 'surv')}${p.openingWin == null ? '' : ' ' + st(p.openingWin + '%', 'open-win')}${p.clutchPerMap == null ? '' : ' ' + st(p.clutchPerMap, 'clutch')}
         </div>
         <div class="cs2-range">
-          <span class="cs2-range-eyebrow">Maps 1+2 kills</span>
+          <span class="cs2-range-eyebrow">${esc(windowLabel)} kills</span>
           <span class="cs2-range-val">${p.floor}<span class="k">floor</span></span>
           <span class="cs2-range-val">${p.median}<span class="k">median</span></span>
           <span class="cs2-range-val">${p.ceiling}<span class="k">ceiling</span></span>

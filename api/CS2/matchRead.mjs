@@ -148,7 +148,7 @@ const target = matchById.get(MATCH_ID);
 const tmaps = mapsByMatch.get(MATCH_ID);
 if (!target || !tmaps?.[1] || !tmaps?.[2]) { console.error("Match not found / missing maps 1&2 in cache."); process.exit(1); }
 const tts = Date.parse(target.start_time);
-const expMaps = [tmaps[1].map_name, tmaps[2].map_name];
+const expMaps = [tmaps[1]?.map_name, tmaps[2]?.map_name].filter(Boolean);
 
 // players who played both maps 1&2 in the target match
 const k1 = new Set((mapStats.get(tmaps[1].id) ?? []).map((r) => r.player?.id ?? r.player_id));
@@ -162,7 +162,7 @@ if (!JSON_OUT) {
   console.log("=".repeat(70));
   console.log(`MATCH READ — ${target.team1?.name ?? "?"} vs ${target.team2?.name ?? "?"}   ${target.start_time?.slice(0, 10)}`);
   console.log(`format Bo${target.best_of} · tier ${target.tournament?.tier ?? "?"} · ${target.tournament?.is_online ? "ONLINE (higher variance)" : "LAN"}`);
-  console.log(`expected maps 1&2: ${expMaps.join(" + ")}`);
+  console.log(`expected ${target.best_of === 1 ? "map 1" : "maps 1&2"}: ${expMaps.slice(0, target.best_of === 1 ? 1 : 2).join(" + ")}`);
   console.log(`round volume [LOW CONFIDENCE]: E[rounds/map] ${vol.erounds}  blowout ${pct(vol.blowout)}  OT ${pct(vol.otRate)}`);
   console.log("=".repeat(70));
 }
@@ -182,14 +182,15 @@ for (const [, team] of byTeam) assignRolesRelative(team);
 for (const p of unresolved) p.role = inferRole(p); // fallback for unresolved players
 
 // collect every player (team-resolved first, then fallback) with their team name
+const nMaps = mapsWindow(target.best_of);
 const playersOut = [];
 for (const [teamId, team] of byTeam) {
   const tname = teamId === t1id ? target.team1?.name : target.team2?.name;
   const oppId = teamId === t1id ? t2id : t1id;
   const oppRank = rankingByTeam.get(oppId)?.rank ?? null;
-  for (const p of team) playersOut.push({ team: tname ?? null, ...computeRead(p, vol, { oppRank, oppId }) });
+  for (const p of team) playersOut.push({ team: tname ?? null, ...computeRead(p, vol, { oppRank, oppId }, nMaps) });
 }
-for (const p of unresolved) playersOut.push({ team: null, ...computeRead(p, vol) });
+for (const p of unresolved) playersOut.push({ team: null, ...computeRead(p, vol, {}, nMaps) });
 
 if (JSON_OUT) {
   // Upsert this match into a slate file the Lyrid CS2 tab fetches. One file = one slate.
@@ -200,9 +201,11 @@ if (JSON_OUT) {
     teamA: target.team1?.name ?? null,
     teamB: target.team2?.name ?? null,
     format: `Bo${target.best_of}`,
+    mapWindow: nMaps,
+    windowLabel: nMaps === 1 ? "Map 1" : "Maps 1+2",
     tier: target.tournament?.tier ?? null,
     lan: !target.tournament?.is_online,
-    maps: expMaps,
+    maps: expMaps.slice(0, nMaps),
     roundVolume: { erounds: vol.erounds, blowout: vol.blowout, ot: vol.otRate, confidence: "LOW" },
     roundRead: roundRead(target, expMaps, vol),
     players: playersOut,
@@ -228,11 +231,11 @@ for (const [teamId, team] of byTeam) {
   console.log(`\n──── ${tname ?? "team"} ────`);
   const oppId = teamId === t1id ? t2id : t1id;
   const oppRank = rankingByTeam.get(oppId)?.rank ?? null;
-  for (const p of team) printRead(p, vol, { oppRank, oppId });
+  for (const p of team) printRead(p, vol, { oppRank, oppId }, nMaps);
 }
 if (unresolved.length) {
   console.log(`\n──── (team unresolved — absolute role fallback) ────`);
-  for (const p of unresolved) printRead(p, vol);
+  for (const p of unresolved) printRead(p, vol, {}, nMaps);
 }
 
 console.log("\nUNPOWERED (not in this read — needs demo-level data): opponent site/pace");
@@ -290,11 +293,11 @@ function profile(pid, beforeTs, expectedMaps) {
   // scaled by expected series rounds in printRead. Ties floor/median/ceiling to the
   // validated rate model instead of noisy raw-kill percentiles.
   const kprSorted = [...kprs].sort((a, b) => a - b);
-  const kprP = { p20: pctl(kprSorted, 0.2), p50: pctl(kprSorted, 0.5), p85: pctl(kprSorted, 0.85) };
+  const kprP = { pLo: pctl(kprSorted, 0.15), p50: pctl(kprSorted, 0.5), pHi: pctl(kprSorted, 0.88) };
 
   return {
     pid, nick, n: hist.length, kpr, hs, kast, fkPerMap, role,
-    recentKpr, formDelta, mapFitRatio, expectedMaps, kprP,
+    recentKpr, formDelta, mapFitRatio, expectedMaps, kprP, kprSorted,
     kprStrong, kprStrongN: strongKprs.length, kprWeak,
     dpr, survival, adr, clutchPerMap, openingWin, openingShare,
     propType: propTypeFor(role, hs),
@@ -552,7 +555,7 @@ async function runToday(date) {
     cursor = page.meta?.next_cursor ?? null;
   } while (cursor);
 
-  const games = todays.filter((m) => (m.best_of ?? 0) >= 3); // Maps 1+2 markets are Bo3+
+  const games = todays.filter((m) => (m.best_of ?? 0) >= 1); // Bo1 = Map 1; Bo2/Bo3/Bo5 = Maps 1+2
   const out = {
     ok: true, generatedAt: new Date().toISOString(), validated: false,
     source: "BDL CS2 today's slate + matchRead forward projection — PARTIAL, NOT validated vs price",
@@ -564,12 +567,13 @@ async function runToday(date) {
     const ro2 = m.team2?.id != null ? forwardRoster(m.team2.id, nowTs) : { pids: [], source: "none", asOf: null, newPids: new Set() };
     const expMaps = expectedMapsForTeams(m.team1?.id, m.team2?.id, [...ro1.pids, ...ro2.pids], nowTs);
     const vol = roundVolume(m, nowTs);
+    const nMaps = mapsWindow(m.best_of);
     const build = (ro, teamName, oppId) => {
       const oppRank = rankingByTeam.get(oppId)?.rank ?? null;
       const profs = ro.pids.map((pid) => profile(pid, nowTs, expMaps)).filter(Boolean);
       assignRolesRelative(profs);
       return profs.map((p) => {
-        const r = { team: teamName ?? null, ...computeRead(p, vol, { oppRank, oppId }) };
+        const r = { team: teamName ?? null, ...computeRead(p, vol, { oppRank, oppId }, nMaps) };
         if (ro.newPids.has(p.pid)) r.flags = [...(r.flags || []), "new to the lineup since their prior series — confirm they're starting (CS2 rosters churn: transfer/stand-in/bench)"];
         return r;
       });
@@ -585,12 +589,14 @@ async function runToday(date) {
       rankA: rk(m.team1?.id),
       rankB: rk(m.team2?.id),
       format: `Bo${m.best_of}`,
+      mapWindow: nMaps,
+      windowLabel: nMaps === 1 ? "Map 1" : "Maps 1+2",
       tier: m.tournament?.tier ?? null,
       lan: !m.tournament?.is_online,
       stage: m.stage?.name ?? null,
       doOrDie: m.stage?.stage_type === "bracket",
       tournament: m.tournament?.name ?? null,
-      maps: expMaps,
+      maps: expMaps.slice(0, nMaps),
       rosterSource: (ro1.source === "official" && ro2.source === "official") ? "official" : ((ro1.source === "inferred" || ro2.source === "inferred") ? "inferred" : "mixed"),
       lineupAsOf: asOfTs ? new Date(asOfTs).toISOString().slice(0, 10) : null,
       rosterChanged: (ro1.newPids.size + ro2.newPids.size) > 0,
@@ -608,29 +614,20 @@ async function runToday(date) {
   }
 }
 
-function computeRead(p, vol, opp = {}) {
-  const Etot = 2 * vol.erounds;                       // expected combined rounds
-  let floor = Math.round(p.kprP.p20 * Etot);
+function mapsWindow(bestOf) { return bestOf === 1 ? 1 : 2; }   // Bo1 = Map 1 only; Bo2/Bo3/Bo5 = Maps 1+2
+function computeRead(p, vol, opp = {}, nMaps = 2) {
+  const Etot = nMaps * vol.erounds;                   // expected rounds across the betting window
+  const [loP, hiP] = nMaps === 1 ? [0.08, 0.92] : [0.15, 0.88];   // band calibrated per window (Bo1 wider: single-map variance)
+  let floor = Math.round(pctl(p.kprSorted, loP) * Etot);
   let median = Math.round(p.kprP.p50 * Etot);
-  let ceiling = Math.round(p.kprP.p85 * Etot);
+  let ceiling = Math.round(pctl(p.kprSorted, hiP) * Etot);
 
-  // OPPONENT-STRENGTH ADJUSTMENT — research: opponent quality is the discriminator.
-  // vs a top-10 side with a real elite sample, use the player's OWN elite-opp rate;
-  // otherwise a bounded generic adjustment by opponent rank.
-  let oppFactor = 1, oppNote = null;
-  const oppRank = opp.oppRank;
-  if (oppRank != null) {
-    if (oppRank <= 10 && p.kprStrongN >= 3 && p.kpr > 0 && p.kprStrong != null) {
-      oppFactor = clamp(p.kprStrong / p.kpr, 0.8, 1.2);
-      oppNote = `vs top-${oppRank}: own elite-opp form (${signedPct(oppFactor - 1)})`;
-    } else {
-      oppFactor = clamp(1 - 0.006 * (15 - oppRank), 0.88, 1.12);
-      oppNote = `vs #${oppRank}: ${signedPct(oppFactor - 1)}`;
-    }
-    floor = Math.round(floor * oppFactor);
-    median = Math.round(median * oppFactor);
-    ceiling = Math.round(ceiling * oppFactor);
-  }
+  // Opponent context is INFORMATIONAL ONLY. A walk-forward backtest on 1,110 graded
+  // Map1&2 player-matches showed that applying opponent strength as a projection
+  // multiplier DEGRADED accuracy (MAE 6.83 -> 6.89, bias 0 -> -0.46). So we surface
+  // the elite/field KPR split (kprStrong/kprWeak) for judgment but do not move the
+  // number with it. Revisit with a better-powered model + opponent-rank-at-time.
+
   // opening-duel ceiling shaping — winning openings -> survive to multi-frag.
   if (p.openingWin != null) ceiling = Math.round(ceiling * clamp(0.94 + 0.12 * p.openingWin, 0.94, 1.06));
   // clutch ability fattens the right tail (clutches are multi-kill situations)
@@ -668,7 +665,6 @@ function computeRead(p, vol, opp = {}) {
   if (p.openingWin != null && p.openingShare > 0.12 && p.openingWin >= 0.55) flags.push(`wins openings ${Math.round(p.openingWin * 100)}% — survives to multi-frag`);
   if (p.openingWin != null && p.openingShare > 0.12 && p.openingWin <= 0.45) flags.push(`loses openings ${Math.round(p.openingWin * 100)}% — dies early, ceiling capped`);
   if (p.clutchPerMap != null && p.clutchPerMap >= 0.6) flags.push(`clutch threat (${round2(p.clutchPerMap)}/map) — fat right tail, ceiling live`);
-  if (oppNote) flags.push(`opponent-adjusted ${oppNote}`);
 
   return {
     nick: p.nick,
@@ -688,7 +684,6 @@ function computeRead(p, vol, opp = {}) {
     clutchPerMap: p.clutchPerMap == null ? null : round2(p.clutchPerMap),
     openingWin: p.openingWin == null ? null : Math.round(p.openingWin * 100),
     deathsPerMap: round1(p.dpr * vol.erounds),
-    oppFactor: oppFactor === 1 ? null : round2(oppFactor),
     kprStrong: p.kprStrong == null ? null : round2(p.kprStrong),
     kprWeak: p.kprWeak == null ? null : round2(p.kprWeak),
     mapFitPct: p.mapFitRatio == null ? null : Math.round((p.mapFitRatio - 1) * 100),
@@ -699,13 +694,13 @@ function computeRead(p, vol, opp = {}) {
   };
 }
 
-function printRead(p, vol, opp) {
-  const r = computeRead(p, vol, opp);
+function printRead(p, vol, opp, nMaps = 2) {
+  const r = computeRead(p, vol, opp, nMaps);
   const thin = r.thin ? "  ⚠THIN" : "";
   console.log(`\n${r.nick}   [${r.role}, ${r.lean}]   n=${r.n} maps${thin}`);
   console.log(`  KPR ${r.kpr} (recent ${r.recentKpr})  HS ${r.hs == null ? "?" : r.hs + "%"}  KAST ${r.kast == null ? "?" : r.kast + "%"}  FK/map ${r.fkPerMap}`);
   console.log(`  ADR ${r.adr ?? "?"}  survival ${r.survival == null ? "?" : r.survival + "%"}  opening-win ${r.openingWin == null ? "?" : r.openingWin + "%"}`);
-  console.log(`  Map1&2 kills  floor ${r.floor} · median ${r.median} · ceiling ${r.ceiling}   map-fit ${r.mapFitPct == null ? "n/a" : (r.mapFitPct >= 0 ? "+" : "") + r.mapFitPct + "%"}${r.oppFactor ? "  opp×" + r.oppFactor : ""}`);
+  console.log(`  Map1&2 kills  floor ${r.floor} · median ${r.median} · ceiling ${r.ceiling}   map-fit ${r.mapFitPct == null ? "n/a" : (r.mapFitPct >= 0 ? "+" : "") + r.mapFitPct + "%"}`);
   console.log(`  Map1&2 HS  floor ${r.hsFloor ?? "?"} · median ${r.hsMedian ?? "?"} · ceiling ${r.hsCeiling ?? "?"}`);
   console.log(`  prop type: ${r.propType}`);
   console.log(`  pick score ${r.score}/100 → ${r.band}   [PARTIAL: excludes opponent-style 15% + line-value 10%]`);
