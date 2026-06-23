@@ -16583,6 +16583,96 @@ async function autoGradeOnAppOpen() {
   // -----------------------------------------------------------
   // SLATE RENDER — MLB-parity cards
   // -----------------------------------------------------------
+  // Tonight's Cleanest Edges — WNBA. Same shape as the MLB board (.ce-* classes):
+  // a ranked, deduped, plain-English list where the call leads. Only validated
+  // assists/rebounds UNDERs on real book lines; empirical tier is the bet signal;
+  // injury-bump unders are routed to a "Flagged — skip" section (the one WNBA trap
+  // that loses money). Points and every OVER/no-edge prop never reach this board.
+  function wnbaCleanestEdges(data) {
+    const cap = (s) => String(s || '').charAt(0).toUpperCase() + String(s || '').slice(1);
+    const pool = [...(data.analyses || []), ...(data.passes || []), ...(data.bestPlays || [])];
+    const seen = new Set(), props = [];
+    for (const p of pool) { const k = (p.player || '') + '_' + (p.market || ''); if (seen.has(k)) continue; seen.add(k); props.push(p); }
+    const gtime = {}, gmu = {};
+    for (const g of (data.games || [])) { gtime[g.gameId] = formatGameTime(g.gameTimeET); gmu[g.gameId] = `${teamAbbr(g.away)} @ ${teamAbbr(g.home)}`; }
+
+    const isBump = (p) => p.benefitsFrom && Array.isArray(p.benefitsFrom.out) && p.benefitsFrom.out.length;
+    const clean = [], traps = [];
+    for (const p of props) {
+      const m = (p.market || '').toLowerCase();
+      if (m !== 'assists' && m !== 'rebounds') continue;     // validated markets only
+      const proj = Number(p.projection), line = Number(p.line);
+      if (!isFinite(proj) || !isFinite(line)) continue;
+      if (p.lineSource !== 'provided') continue;             // real book lines only
+      if (proj >= line || (line - proj) < 0.3) continue;     // genuine UNDER lean
+      const to = (p.empTier && p.empTier.tier) ? p.empTier : wnbaEmpTier(m, 'UNDER');
+      if (to.tier !== 'PLATINUM' && to.tier !== 'GOLD') continue;
+      const wr = to.wr != null ? Math.round(to.wr <= 1 ? to.wr * 100 : to.wr) : null;
+      const r = { p, m, proj: +proj.toFixed(1), line, gap: +(line - proj).toFixed(1), tier: to.tier, wr,
+        game: gmu[p.gameId] || `${teamAbbr(p.team)} @ ${teamAbbr(p.opponent)}`, time: gtime[p.gameId] || '' };
+      (isBump(p) ? traps : clean).push(r);
+    }
+    const rk = { PLATINUM: 2, GOLD: 1 };
+    const byP = {};
+    for (const r of clean) { const e = byP[r.p.player]; if (!e || rk[r.tier] > rk[e.tier] || (rk[r.tier] === rk[e.tier] && r.gap > e.gap)) byP[r.p.player] = r; }
+    const ranked = Object.values(byP).sort((a, b) => rk[b.tier] - rk[a.tier] || b.gap - a.gap).slice(0, 7);
+
+    if (!ranked.length && !traps.length) {
+      return `<div class="cleanest-edges empty"><div class="ce-head"><div><div class="ce-eyebrow">Tonight · Live WNBA</div><div class="ce-title">Tonight's Cleanest Edges</div></div></div><div class="ce-empty-text">No validated unders on the board right now. Assists &amp; rebounds unders collect here automatically when the lines justify them.</div></div>`;
+    }
+
+    const why = (r) => {
+      const parts = [];
+      const ps = r.p.propSignal;
+      if (ps && ps.side === 'UNDER' && ps.recent != null) parts.push(`ice-cold — last 3 ≈ ${ps.recent} vs ${ps.baseline} baseline${ps.sharpened ? ', minutes shrinking' : ''}`);
+      parts.push(`projects ${r.proj} vs the ${r.line} line`);
+      return esc(parts.slice(0, 2).join('. ')) + '.';
+    };
+
+    const meta = (r) => esc((r.p.position || '') + (r.p.team ? (r.p.position ? ' · ' : '') + teamAbbr(r.p.team) : ''));
+
+    const card = (r, i) => {
+      const below = r.tier === 'GOLD';
+      const sigs = [];
+      sigs.push(below ? '<span class="ce-sig gold">◆ Gold</span>' : '<span class="ce-sig plat">◆ Platinum</span>');
+      if (below) sigs.push('<span class="ce-sig" style="background:#eee9de;color:#86827a">Below 70% bar · size down</span>');
+      sigs.push('<span class="ce-sig warnflag">⚠ Check your line</span>');
+      return `<div class="ce-card"${below ? ' style="opacity:0.82"' : ''}>
+        <div class="ce-card-top"><div class="ce-rank">${i + 1}</div>
+          <div class="ce-who"><div class="ce-nm">${esc(r.p.player)}</div><div class="ce-meta">${meta(r)}</div></div>
+          <div class="ce-game"><div class="ce-mu">${esc(r.game)}${r.time ? ' · ' + esc(r.time) : ''}</div></div></div>
+        <div class="ce-verdict less"><span class="ce-varrow">↓</span>
+          <div class="ce-vmain"><div class="ce-vdir">Bet Less</div><div class="ce-vline">${r.line} ${esc(cap(r.m))}</div></div>
+          ${r.wr != null ? `<div class="ce-rate"><div class="ce-pct">${r.wr}%</div><div class="ce-pctlbl">cash rate</div></div>` : ''}</div>
+        <div class="ce-signals">${sigs.join('')}</div>
+        <div class="ce-why">${why(r)}</div></div>`;
+    };
+
+    const trapCard = (r) => `<div class="ce-card" style="opacity:0.62">
+        <div class="ce-card-top"><div class="ce-rank">—</div>
+          <div class="ce-who"><div class="ce-nm">${esc(r.p.player)}</div><div class="ce-meta">${meta(r)}</div></div>
+          <div class="ce-game"><div class="ce-mu">${esc(r.game)}${r.time ? ' · ' + esc(r.time) : ''}</div></div></div>
+        <div class="ce-verdict less"><span class="ce-varrow">↓</span>
+          <div class="ce-vmain"><div class="ce-vdir">Bet Less</div><div class="ce-vline">${r.line} ${esc(cap(r.m))}</div></div>
+          ${r.wr != null ? `<div class="ce-rate"><div class="ce-pct">${r.wr}%</div><div class="ce-pctlbl">cash rate</div></div>` : ''}</div>
+        <div class="ce-signals"><span class="ce-sig" style="background:#f6d8d1;color:#a23b2f">⚠ Minutes up +${r.p.benefitsFrom.minGain} · ${esc(r.p.benefitsFrom.out.join(', '))} out</span></div>
+        <div class="ce-why">The ${r.wr ?? ''}% tier hasn't caught up to the bumped role — more minutes means more ${esc(r.m)}, not fewer. Skip.</div></div>`;
+
+    const trapBlock = traps.length
+      ? `<div style="display:flex;align-items:center;gap:8px;margin:18px 2px 8px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#a23b2f;font-weight:700">⚠ Flagged — strong on paper, skip</div><div class="ce-cards">${traps.map(trapCard).join('')}</div>`
+      : '';
+
+    return `<div class="cleanest-edges">
+      <div class="ce-head"><div><div class="ce-eyebrow">Tonight · Live WNBA</div><div class="ce-title">Tonight's Cleanest Edges</div><div class="ce-sub">The strongest plays on the slate, ranked. Tap any pick for the reasoning.</div></div><span class="ce-count">${ranked.length}</span></div>
+      <div class="ce-cards">${ranked.map(card).join('')}</div>
+      ${trapBlock}
+      <div class="ce-legend"><div class="ce-legend-h">What the badges mean</div>
+        <div class="ce-leg-row"><span class="ce-dot" style="background:var(--accent)"></span><span><b>◆ Platinum / Gold</b> — bet signals. Only ≥70% gets full color; below-bar plays render muted.</span></div>
+        <div class="ce-leg-row"><span class="ce-dot" style="background:var(--warn,#e0a050)"></span><span><b>⚠ Check your line</b> — verify it's standard on PrizePicks (no demon / goblin).</span></div>
+        <div class="ce-leg-row"><span class="ce-dot" style="background:#a23b2f"></span><span><b>⚠ Minutes up</b> — tier fired on an injury-bump player; the line is stale. Skip.</span></div>
+      </div></div>`;
+  }
+
   function renderWnbaSlate() {
     const data = state.raw;
     const list = document.getElementById('wnbaGamesList');
@@ -16636,7 +16726,7 @@ async function autoGradeOnAppOpen() {
 
     const signalGameId = pickSignalGameId(games, data.passes || []);
 
-    list.innerHTML = `<div class="lyrid-games-list">${games.map(g => {
+    list.innerHTML = `${wnbaCleanestEdges(data)}<div class="lyrid-games-list">${games.map(g => {
       return renderWnbaGameRow(g, data.passes || [], g.gameId === signalGameId);
     }).join('')}</div>`;
   }
