@@ -6572,57 +6572,141 @@ async function loadLiveSlate() {
 // is now actually wired into renderGames() and reads today's logged best
 // bets. Ranked, verdict-leading, plain English, collapsible evidence.
 // ====================================================================
+// ====================================================================
+// (Drop #38 — June 23, 2026) CLEANEST EDGES — gather from the FULL slate.
+//
+// FIX: the board previously read state.bestBetHistory, which stores only
+// ONE pick per team per game (the isTopPick row) and is capped at 8. So
+// after analyzing the whole slate it could never show all the strong
+// edges — most were never in that store to begin with.
+//
+// Now it gathers from analysisCache (every hitter on both sides of every
+// analyzed game), dedupes by hitterId preferring deep analysis, reads the
+// tier flags off each hitter's BEST prop, and surfaces every qualifying
+// edge — verified overs, platinum/gold fades, sharp hits — ranked.
+// ====================================================================
 function gatherCleanestEdges(date) {
-  const day = state.bestBetHistory && state.bestBetHistory[date];
-  if (!day) return [];
-  const picks = Object.values(day).filter(p => p && p.hitterName);
-  const ranked = picks.map(p => {
-    let kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, evidence;
+  // Collect every analyzed hitter across all cached games (fast + deep),
+  // deduped by hitterId with deep preferred.
+  const byHitter = new Map();
+  try {
+    Object.entries(analysisCache || {}).forEach(([cacheKey, data]) => {
+      if (!data || !data.gamePk) return;
+      // Only today's slate: cached analyses are for the current slate, but
+      // guard on date when the analysis carries one.
+      if (data.gameDate && date && data.gameDate !== date) return;
+      const isDeep = cacheKey.endsWith('-deep');
+      const awayTeam = data.awayTeam?.abbreviation || data.awayTeam || 'AWAY';
+      const homeTeam = data.homeTeam?.abbreviation || data.homeTeam || 'HOME';
+      ['awayVsHome', 'homeVsAway'].forEach(sideKey => {
+        const side = data[sideKey];
+        if (!side?.mismatches) return;
+        const hitTeam = sideKey === 'awayVsHome' ? awayTeam : homeTeam;
+        const oppTeam = sideKey === 'awayVsHome' ? homeTeam : awayTeam;
+        side.mismatches.forEach(m => {
+          const id = m.hitterId || m.hitter || m.hitterName;
+          if (!id) return;
+          const existing = byHitter.get(id);
+          if (existing && existing._deep && !isDeep) return; // keep deep over fast
+          byHitter.set(id, {
+            _deep: isDeep,
+            gamePk: data.gamePk,
+            hitterName: m.hitter || m.hitterName,
+            hand: m.hand,
+            team: hitTeam,
+            opponent: oppTeam,
+            isTopPick: m.isTopPick,
+            _topPickSuppressed: m._topPickSuppressed,
+            _topPickVerdict: m._topPickVerdict,
+            recentFormLabel: m.recentFormLabel || m.recentForm?.label || null,
+            adjustedMaxXwoba: m.adjustedMaxXwoba || m.maxXwoba || null,
+            propRecs: m.propRecs || [],
+          });
+        });
+      });
+    });
+  } catch (e) { console.warn('[cleanest edges] gather:', e && e.message); }
+
+  // Fallback: if no analyses are cached yet (e.g. fresh load), use the
+  // logged bestBetHistory so the board still shows the day's top picks.
+  if (byHitter.size === 0) {
+    const day = state.bestBetHistory && state.bestBetHistory[date];
+    if (day) {
+      Object.values(day).filter(p => p && p.hitterName).forEach(p => {
+        byHitter.set(p.hitterId || p.hitterName, { ...p, propRecs: p.propRecs || [], _fromHistory: true });
+      });
+    }
+  }
+
+  const ranked = [];
+  for (const p of byHitter.values()) {
+    // Resolve the hitter's best prop and read tier flags off it (same source
+    // the per-card verdict uses), falling back to flags on the row itself.
+    const best = (p.propRecs || []).find(x => x.isBest) || (p.propRecs || [])[0] || {};
+    const verifiedCohort = best._verifiedCohort || p._verifiedCohort || null;
+    const lyridUnderTier = best._lyridUnderTier || p._lyridUnderTier || null;
+    const sharpHits = best._sharpHits || p._sharpHits || false;
+    const hardHitTier = best._hardHitTier || p._hardHitTier || false;
+    const verifiedWR = best._verifiedWR || p._verifiedWR || null;
+    const verifiedN = best._verifiedN || p._verifiedN || null;
+    const rawProbability = (typeof best.probability === 'number') ? best.probability
+      : (typeof p.rawProbability === 'number') ? p.rawProbability : null;
+
+    let kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, lineWarn, evidence;
     const ctxChips = [];
     if (p.adjustedMaxXwoba && p.adjustedMaxXwoba >= 0.40) ctxChips.push(`ELITE ${(+p.adjustedMaxXwoba).toFixed(3)} adj xwOBA`);
-    if (p._sharpHits) ctxChips.push('SHARP contact');
-    if (p._hardHitTier) ctxChips.push('HARD-HIT');
+    if (sharpHits) ctxChips.push('SHARP contact');
+    if (hardHitTier) ctxChips.push('HARD-HIT');
     if (p.recentFormLabel && p.recentFormLabel !== 'NEUTRAL') ctxChips.push(p.recentFormLabel + ' form');
-    modelPct = (typeof p.rawProbability === 'number') ? Math.round(p.rawProbability * 100) : null;
+    const modelPct = (typeof rawProbability === 'number') ? Math.round(rawProbability * 100) : null;
 
-    if (p._verifiedCohort) {
-      const isHits = p._verifiedCohort === 'rarely-k-hits';
+    if (verifiedCohort) {
+      const isHits = verifiedCohort === 'rarely-k-hits';
       kind='verified'; dir='more'; verb='Bet More'; tier='VERIFIED';
-      wr=Math.round((p._verifiedWR||0.7)*100); rank=isHits?100:92; tone='go';
+      wr=Math.round((verifiedWR||0.7)*100); rank=isHits?100:92; tone='go';
       prop=isHits?'0.5 Hits':'Over'; edgeType=isHits?'Rarely-K verified cohort':'Elite pitch-type edge';
       plain=isHits?'Rarely strikes out in a soft matchup — our single most reliable bet type. Take the over.':'Elite arsenal matchup for a right-handed bat — a validated profile that beats the line.';
       lineWarn = isHits;
-      evidence=[['Hit rate (verified)', wr+'%'], ['Sample', 'n='+(p._verifiedN||25)], ['Best price', '+EV at standard \u2212110']];
-    } else if (p._lyridUnderTier==='platinum') {
+      evidence=[['Hit rate (verified)', wr+'%'], ['Sample', 'n='+(verifiedN||25)], ['Best price', '+EV at standard \u2212110']];
+    } else if (lyridUnderTier==='platinum') {
       kind='fade'; dir='less'; verb='Bet Less'; tier='PLATINUM'; wr=62; rank=88; tone='fade';
       prop='1.5 Hits + Runs + RBIs'; edgeType='Bullpen-inverse fade';
       plain='Looks great on paper — projected to mash — but this exact profile quietly underperforms in our data. The smart bet is the under.';
       lineWarn = true;
       evidence=[['Edge type', 'Bullpen-inverse fade'], ['Hit rate (live)', '62% \u00b7 58 graded'], ['Best price', '+EV at standard \u2212110']];
-    } else if (p._sharpHits) {
+    } else if (sharpHits) {
       kind='over'; dir='more'; verb='Bet More'; tier='SHARP'; wr=68; rank=84; tone='go';
       prop='0.5 Hits'; edgeType='Sharp-hits contact filter';
       plain='Strong contact profile against this pitcher — our sharp-hits filter, 68% in testing. Take the over.';
       lineWarn = true;
       evidence=[['Hit rate', '68%'], ['Sample', 'n=63'], ['Best price', '+EV at standard \u2212110']];
-    } else if (p._lyridUnderTier==='gold') {
+    } else if (lyridUnderTier==='gold') {
       kind='fade'; dir='less'; verb='Bet Less'; tier='GOLD'; wr=59; rank=72; tone='fade';
       prop='1.5 Hits + Runs + RBIs'; edgeType='Soft bullpen fade';
       plain='A fade — bet the under, but size down. Thinner edge than the platinum plays above.';
       lineWarn = true;
       evidence=[['Edge type', 'Bullpen fade (soft)'], ['Hit rate (live)', '59% \u00b7 22 graded'], ['Best price', '+EV \u2212110, thin PP']];
-    } else if (p._hardHitTier) {
+    } else if (hardHitTier) {
       kind='watch'; dir='watch'; verb='Watch'; tier='HARD-HIT'; wr=null; rank=40; tone='stop';
       prop='0.5 Hits'; edgeType='Hard-hit (cooling)';
       plain='Was strong in backtest but cooling live (50% recently). Watch — don\u2019t hammer.';
       evidence=[['Backtest', '75% (n=12)'], ['Live', '50% (3-6)'], ['Status', 'Downgraded to watch']];
     } else {
-      return null;
+      continue; // no qualifying edge
     }
-    return { ...p, _ce: { kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, ctxChips, evidence } };
-  }).filter(Boolean);
+    ranked.push({ ...p, _ce: { kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, ctxChips, evidence } });
+  }
   ranked.sort((a,b) => b._ce.rank - a._ce.rank || (b._ce.wr||0) - (a._ce.wr||0));
-  return ranked.slice(0, 8);
+  // (Drop #38) No hard 8-cap — show every qualifying edge on the slate.
+  // A generous ceiling only as a sanity guard against pathological dupes.
+  return ranked.slice(0, 40);
+}
+
+// (Drop #38) Re-render only the Cleanest Edges board in place, so it fills in
+// as each game on the slate is analyzed without disturbing the rest of the view.
+function refreshCleanestEdges() {
+  const mount = document.getElementById('cleanestEdgesMount');
+  if (mount) mount.innerHTML = renderCleanestEdges(state.currentDate);
 }
 
 function renderCleanestEdges(date) {
@@ -6729,7 +6813,7 @@ function renderGames() {
     }
   }
 
-  list.innerHTML = `${renderCleanestEdges(state.currentDate)}<div class="lyrid-games-list">${slate.games.map((g, i) => {
+  list.innerHTML = `<div id="cleanestEdgesMount">${renderCleanestEdges(state.currentDate)}</div><div class="lyrid-games-list">${slate.games.map((g, i) => {
     const awName = g.awayPitcher?.name || 'TBD';
     const hmName = g.homePitcher?.name || 'TBD';
     const awHand = g.awayPitcher?.hand || '?';
@@ -6833,6 +6917,9 @@ async function analyzeGame(gamePk, forceDeep) {
       analysisCache[cacheKey] = await res.json();
     }
     renderAnalysis(analysisCache[cacheKey]);
+    // (Drop #38) Refresh the Cleanest Edges board as each game is analyzed,
+    // so it fills in across the slate instead of staying empty until reload.
+    try { refreshCleanestEdges(); } catch (_) {}
   } catch(err) {
     console.error(err);
     container.innerHTML = `
