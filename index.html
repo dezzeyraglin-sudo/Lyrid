@@ -6698,12 +6698,12 @@ function gatherCleanestEdges(date) {
       plain='A fade — bet the under, but size down. Thinner edge than the platinum plays above.';
       lineWarn = true;
       evidence=[['Edge type', 'Bullpen fade (soft)'], ['Hit rate (live)', '59% \u00b7 22 graded'], ['Best price', '+EV \u2212110, thin PP']];
-    } else if (hardHitTier) {
-      kind='watch'; dir='watch'; verb='Watch'; tier='HARD-HIT'; wr=null; rank=40; tone='stop';
-      prop='0.5 Hits'; edgeType='Hard-hit (cooling)';
-      plain='Was strong in backtest but cooling live (50% recently). Watch — don\u2019t hammer.';
-      evidence=[['Backtest', '75% (n=12)'], ['Live', '50% (3-6)'], ['Status', 'Downgraded to watch']];
     } else {
+      // (Drop #40 — June 23, 2026) HARD-HIT "WATCH" cards removed from the
+      // board. They aren't bets — they're cooling-off notes — and they were
+      // crowding out the actual plays (Marsh/Wood/Crews all showed as WATCH).
+      // The HARD-HIT tag still appears on individual game cards for context;
+      // it just no longer takes a slot on Tonight's Cleanest Edges.
       continue; // no qualifying edge
     }
     ranked.push({ ...p, _ce: { kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, ctxChips, evidence } });
