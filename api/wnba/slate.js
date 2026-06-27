@@ -57,7 +57,7 @@
 import { analyzeBasketballProp } from "../_lib/basketball/basketballProps.js";
 import { analyzeUnifiedProp } from "../_lib/basketball/unifiedPointsEngine.js";
 import { analyzeReboundProp } from "../_lib/basketball/reboundEnvironmentEngine.js";
-import { classifyWnbaEmpiricalTier } from "../_lib/basketball/wnbaEmpiricalTier.js";
+import { classifyWnbaPlay, detectPRA, computePRAProjection } from "../_lib/basketball/wnbaUnderModel.js";
 import { analyzeGameLine } from "../_lib/basketball/gameLineEngine.js";
 import { buildWnbaDefenseTable, defenseMultiplier, teamDefenseFor } from "../_lib/wnba/wnbaDefenseFeed.js";
 import { externalCoverageSignal, externalFoulRate, externalPaceSignal } from "../_lib/wnba/wnbaExternalSignals.js";
@@ -422,21 +422,44 @@ async function generateSlate(opts = {}) {
     removedOut.push({ player: a.player, team: a.team, detail: a.injuryDetail || null });
   }
 
-  // Stamp the empirical tier (what this market+direction actually hits across graded
-  // history, with a Wilson floor) onto every analysis. Direction-aware; this is the
-  // honest bet signal and replaces the inverted finalEdgeScore label.
+  // Stamp the unified bet model onto every analysis. classifyWnbaPlay encodes the
+  // three validated edges (GUARANTEED/PLATINUM/GOLD) from 264 graded picks, plus
+  // player bans (Mabrey), opponent modifiers (CHI/TOR), and watches (Howard/Austin).
+  // PRA detection: an "assists" line > 8.0 is a mislabeled combo line → re-route to
+  // GUARANTEED when the edge ≥ 4. This is the honest bet signal; it replaces the
+  // inverted finalEdgeScore label.
+  const praByPlayerGame = {};
   for (const a of allAnalyses) {
     if (a.error) continue;
     const lean = (a.projection != null && a.line != null)
       ? (Number(a.projection) >= Number(a.line) ? 'OVER' : 'UNDER')
       : null;
-    a.empTier = classifyWnbaEmpiricalTier({
-      market: a.market,
+    const effectiveMarket = detectPRA(a.market, a.line) ? 'pra' : a.market;
+    if (effectiveMarket !== a.market) a.detectedAsPRA = true;
+    a.empTier = classifyWnbaPlay({
+      market: effectiveMarket,
       lean,
-      projection: a.projection,
-      line: a.line,
-      paceScore: a.scores?.env ?? a.scores?.environment,
+      line: Number(a.line),
+      projection: Number(a.projection),
+      role: a.scores?.roleStability ?? a.scores?.role ?? 50,
+      player: a.player,
+      opponent: a.opponent,
     });
+    // Accumulate components for a PRA composite projection.
+    const pgKey = `${a.player}|${a.gameId || a.opponent}`;
+    if (!praByPlayerGame[pgKey]) praByPlayerGame[pgKey] = {};
+    const mk = (a.market || '').toLowerCase();
+    if (mk === 'points') praByPlayerGame[pgKey].ptsProj = Number(a.projection);
+    if (mk === 'rebounds') praByPlayerGame[pgKey].rebProj = Number(a.projection);
+    if (mk === 'assists') praByPlayerGame[pgKey].astProj = Number(a.projection);
+  }
+  // Attach the PRA composite projection where all three components exist.
+  for (const a of allAnalyses) {
+    if (a.error) continue;
+    const pg = praByPlayerGame[`${a.player}|${a.gameId || a.opponent}`];
+    if (pg && pg.ptsProj != null && pg.rebProj != null && pg.astProj != null) {
+      a.praProjection = computePRAProjection(pg.ptsProj, pg.rebProj, pg.astProj);
+    }
   }
 
   // STEP 5: Organize output
@@ -447,7 +470,7 @@ async function generateSlate(opts = {}) {
   // Rank by EMPIRICAL tier first (what actually hits), then finalEdge as tiebreak.
   // The old finalEdge-only sort floated points-overs to the top because finalEdge
   // rewarded the inflated projection; this puts validated assists/rebounds unders first.
-  const EMP_RANK = { PLATINUM: 5, GOLD: 4, LEAN: 3, UNGRADED: 2, PASS: 1, AVOID: 0 };
+  const EMP_RANK = { GUARANTEED: 6, PLATINUM: 5, GOLD: 4, LEAN: 3, UNGRADED: 2, PASS: 1, AVOID: 0, BANNED: 0 };
   successful.sort((a, b) => {
     const ar = EMP_RANK[a.empTier?.tier] ?? 2;
     const br = EMP_RANK[b.empTier?.tier] ?? 2;
