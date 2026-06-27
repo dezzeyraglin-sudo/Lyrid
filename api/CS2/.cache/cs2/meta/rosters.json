@@ -439,13 +439,6 @@
       "full_name": "Kristijan Stojmanovski"
     }
   ],
-  "77": [
-    {
-      "id": 10295,
-      "nickname": "HYPER1",
-      "full_name": "Butrint Gashi"
-    }
-  ],
   "80": [
     {
       "id": 3397,
@@ -1043,11 +1036,6 @@
     }
   ],
   "122": [
-    {
-      "id": 9961,
-      "nickname": "kurtaliz",
-      "full_name": "Albin Karlsson"
-    },
     {
       "id": 2277,
       "nickname": "shateri",
@@ -2684,9 +2672,19 @@
       "full_name": "Dinis Jalles"
     },
     {
+      "id": 10409,
+      "nickname": "M1KA",
+      "full_name": "Miguel Moreira"
+    },
+    {
       "id": 17211,
       "nickname": "Mowzassa",
       "full_name": "Tiago Rodrigues"
+    },
+    {
+      "id": 9047,
+      "nickname": "snowiee",
+      "full_name": "Guilherme Martins"
     },
     {
       "id": 2746,
@@ -2919,6 +2917,11 @@
       "id": 10885,
       "nickname": "JBOEN",
       "full_name": "Jason Boe Nielsen"
+    },
+    {
+      "id": 3270,
+      "nickname": "kyuubii",
+      "full_name": "Can Kamber"
     },
     {
       "id": 1371,
@@ -3251,11 +3254,6 @@
       "id": 12963,
       "nickname": "hfah",
       "full_name": "Oskar Wroński"
-    },
-    {
-      "id": 10968,
-      "nickname": "KAD1M",
-      "full_name": "Radim Vojkůvka"
     },
     {
       "id": 3375,
@@ -4422,16 +4420,6 @@
       "full_name": "Jonathan Bodenmalm"
     },
     {
-      "id": 4525,
-      "nickname": "bsover",
-      "full_name": "Oliwer Ekbäck"
-    },
-    {
-      "id": 5789,
-      "nickname": "dezt",
-      "full_name": "Rasmus Nystrom"
-    },
-    {
       "id": 9820,
       "nickname": "doobs",
       "full_name": "Daniel Gurarslan"
@@ -4515,19 +4503,14 @@
   ],
   "483": [
     {
+      "id": 2204,
+      "nickname": "b1elany",
+      "full_name": "Maciej Biliński"
+    },
+    {
       "id": 206,
       "nickname": "BERRY",
       "full_name": "Danny Krüger"
-    },
-    {
-      "id": 3025,
-      "nickname": "bnox",
-      "full_name": "Bartosz Niebisz"
-    },
-    {
-      "id": 8948,
-      "nickname": "cej0t",
-      "full_name": "Jan Dyl"
     },
     {
       "id": 6490,
@@ -4543,6 +4526,11 @@
       "id": 4015,
       "nickname": "raalz",
       "full_name": "Rasmus Steensborg"
+    },
+    {
+      "id": 15875,
+      "nickname": "St0m4k",
+      "full_name": "Vladyslav Lykhoshva"
     }
   ],
   "484": [
@@ -5050,6 +5038,11 @@
       "id": 4946,
       "nickname": "Hezz",
       "full_name": "Leandro Barrios"
+    },
+    {
+      "id": 11490,
+      "nickname": "rzk",
+      "full_name": "Santiago Pucheta"
     }
   ],
   "580": [
@@ -5421,33 +5414,6 @@
       "full_name": "Sean Gares"
     }
   ],
-  "630": [
-    {
-      "id": 7963,
-      "nickname": "Boye",
-      "full_name": "Jonas Boye Østergaard"
-    },
-    {
-      "id": 1798,
-      "nickname": "IceBerg",
-      "full_name": "Oliver Berg"
-    },
-    {
-      "id": 7961,
-      "nickname": "Leakz",
-      "full_name": "Jamie Jensen"
-    },
-    {
-      "id": 15675,
-      "nickname": "NickyB",
-      "full_name": "Nicky Bruhn"
-    },
-    {
-      "id": 4067,
-      "nickname": "Rejin",
-      "full_name": "Allan Petersen"
-    }
-  ],
   "631": [
     {
       "id": 2,
@@ -5676,14 +5642,14 @@
   ],
   "678": [
     {
-      "id": 3190,
-      "nickname": "Ex3rcice",
-      "full_name": "Pierre Bulinge"
-    },
-    {
       "id": 4781,
       "nickname": "Graviti",
       "full_name": "Filip Brankovic"
+    },
+    {
+      "id": 2563,
+      "nickname": "Kursy",
+      "full_name": "Jeremy Gast"
     },
     {
       "id": 370,
@@ -5716,11 +5682,6 @@
       "id": 3716,
       "nickname": "dZ",
       "full_name": "Dennis Zetterlund"
-    },
-    {
-      "id": 1882,
-      "nickname": "hemzk9",
-      "full_name": "Jonas Rantamäki"
     },
     {
       "id": 3478,
@@ -5876,11 +5837,6 @@
   ],
   "732": [
     {
-      "id": 3233,
-      "nickname": "br0",
-      "full_name": "Alexander Bro"
-    },
-    {
       "id": 65,
       "nickname": "daps",
       "full_name": "Damian Steele"
@@ -5958,6 +5914,11 @@
       "id": 3677,
       "nickname": "LNZ",
       "full_name": "Linus Holtäng"
+    },
+    {
+      "id": 3594,
+      "nickname": "nqz",
+      "full_name": "Lucas Soarez"
     },
     {
       "id": 5041,
@@ -6134,6 +6095,11 @@
   ],
   "756": [
     {
+      "id": 1711,
+      "nickname": "ckzao",
+      "full_name": "Cristopher Chalus"
+    },
+    {
       "id": 1922,
       "nickname": "CutzMeretz",
       "full_name": "Lucas Freitas"
@@ -6154,11 +6120,6 @@
       "full_name": "João Guedes"
     },
     {
-      "id": 1758,
-      "nickname": "naitte",
-      "full_name": "João Maia"
-    },
-    {
       "id": 9379,
       "nickname": "xureba",
       "full_name": "Bruno Sigwalt"
@@ -6177,11 +6138,6 @@
     }
   ],
   "763": [
-    {
-      "id": 13811,
-      "nickname": "cairne",
-      "full_name": "Artem Mushynskyi"
-    },
     {
       "id": 410,
       "nickname": "sjuush",
@@ -6233,6 +6189,11 @@
       "id": 10110,
       "nickname": "jambo",
       "full_name": "Dmytro Semera"
+    },
+    {
+      "id": 55,
+      "nickname": "KRIMZ",
+      "full_name": "Freddy Johansson"
     }
   ],
   "765": [
@@ -6301,11 +6262,6 @@
   ],
   "769": [
     {
-      "id": 396,
-      "nickname": "broky",
-      "full_name": "Helvijs Saukants"
-    },
-    {
       "id": 405,
       "nickname": "frozen",
       "full_name": "David Čerňanský"
@@ -6314,11 +6270,6 @@
       "id": 9131,
       "nickname": "jcobbb",
       "full_name": "Jakub Pietruszewski"
-    },
-    {
-      "id": 4782,
-      "nickname": "Neityu",
-      "full_name": "Ryan Aubry"
     },
     {
       "id": 32,
@@ -6353,6 +6304,11 @@
       "id": 1124,
       "nickname": "Nertz",
       "full_name": "Guy Iluz"
+    },
+    {
+      "id": 2866,
+      "nickname": "r1nkle",
+      "full_name": "Artem Moroz"
     },
     {
       "id": 633,
@@ -6964,11 +6920,6 @@
     }
   ],
   "834": [
-    {
-      "id": 2473,
-      "nickname": "Altekz",
-      "full_name": "Alexander Givskov"
-    },
     {
       "id": 1567,
       "nickname": "birdfromsky",
@@ -7641,11 +7592,6 @@
       "id": 5389,
       "nickname": "looky",
       "full_name": null
-    },
-    {
-      "id": 9954,
-      "nickname": "Timothybtw",
-      "full_name": "Timothy Andreasson"
     }
   ],
   "895": [
@@ -9550,6 +9496,11 @@
   ],
   "1153": [
     {
+      "id": 1231,
+      "nickname": "Crazyy",
+      "full_name": "Ondřej Švec"
+    },
+    {
       "id": 8947,
       "nickname": "Kozlik",
       "full_name": "Jiří Kozel"
@@ -9563,6 +9514,11 @@
       "id": 5071,
       "nickname": "sAvana1",
       "full_name": "Lucas Linter"
+    },
+    {
+      "id": 17572,
+      "nickname": "tuzy",
+      "full_name": null
     }
   ],
   "1155": [
@@ -9929,6 +9885,11 @@
       "full_name": "Balázs Török"
     },
     {
+      "id": 4367,
+      "nickname": "Kamion",
+      "full_name": "Jurus Zsolt"
+    },
+    {
       "id": 4384,
       "nickname": "kewS",
       "full_name": "Dávid Szabadkai"
@@ -10082,34 +10043,14 @@
   ],
   "1231": [
     {
-      "id": 5791,
-      "nickname": "agoz",
-      "full_name": "Martin Sätherström"
-    },
-    {
       "id": 4426,
       "nickname": "desire",
       "full_name": null
     },
     {
-      "id": 11036,
-      "nickname": "Leon1das",
-      "full_name": "Leon Andersson Tönners"
-    },
-    {
-      "id": 9949,
-      "nickname": "Majkn",
-      "full_name": "Marcus Lars Tidblom"
-    },
-    {
       "id": 4429,
       "nickname": "R1teks",
       "full_name": null
-    },
-    {
-      "id": 8620,
-      "nickname": "siz",
-      "full_name": "Armin Sukurica"
     }
   ],
   "1232": [
@@ -10235,6 +10176,11 @@
   ],
   "1244": [
     {
+      "id": 17778,
+      "nickname": "k0gaSs",
+      "full_name": null
+    },
+    {
       "id": 16577,
       "nickname": "Kidofpain",
       "full_name": null
@@ -10248,11 +10194,6 @@
       "id": 15697,
       "nickname": "mazay",
       "full_name": "Volodymyr Iorhachov"
-    },
-    {
-      "id": 337,
-      "nickname": "S0TF1k",
-      "full_name": "Dmitry Forostyanko"
     },
     {
       "id": 17863,
@@ -10891,6 +10832,23 @@
       "id": 4704,
       "nickname": "Wincent",
       "full_name": null
+    }
+  ],
+  "1309": [
+    {
+      "id": 4286,
+      "nickname": "history",
+      "full_name": "Allan Lawrenz Santi Botton"
+    },
+    {
+      "id": 5046,
+      "nickname": "mlhzin",
+      "full_name": "Matheus Marçola"
+    },
+    {
+      "id": 5050,
+      "nickname": "t9rnay",
+      "full_name": "Henrique Menacho"
     }
   ],
   "1311": [
@@ -12192,6 +12150,11 @@
       "full_name": "Alex James"
     },
     {
+      "id": 5420,
+      "nickname": "F1zzy",
+      "full_name": null
+    },
+    {
       "id": 14346,
       "nickname": "Flicky",
       "full_name": "James Errington"
@@ -12200,6 +12163,16 @@
       "id": 17414,
       "nickname": "onder",
       "full_name": "Önder Tekin"
+    },
+    {
+      "id": 16767,
+      "nickname": "sonder",
+      "full_name": null
+    },
+    {
+      "id": 17064,
+      "nickname": "swerzieN",
+      "full_name": "Buğra Budak"
     }
   ],
   "1469": [
@@ -13191,6 +13164,11 @@
       "full_name": "Lucas Vicente"
     },
     {
+      "id": 15999,
+      "nickname": "revoltz",
+      "full_name": "Caio Okada"
+    },
+    {
       "id": 10228,
       "nickname": "-stormzin",
       "full_name": "Vitor Yamauchi Ferreira dos Santos"
@@ -13348,11 +13326,6 @@
       "full_name": "Erdenebat Tuvshintugs"
     },
     {
-      "id": 9238,
-      "nickname": "mathiaski",
-      "full_name": "Mathias Carlsen"
-    },
-    {
       "id": 3800,
       "nickname": "Ryxxo",
       "full_name": "Thomas Nielsen"
@@ -13508,11 +13481,6 @@
     }
   ],
   "1689": [
-    {
-      "id": 5092,
-      "nickname": "EMSTAR",
-      "full_name": "Emrecan Çalışkan"
-    },
     {
       "id": 17751,
       "nickname": "GAYEW",
@@ -13764,6 +13732,13 @@
       "id": 3858,
       "nickname": "Swahn",
       "full_name": "Christopher Swahn"
+    }
+  ],
+  "1796": [
+    {
+      "id": 2683,
+      "nickname": "Fizzy",
+      "full_name": "Fizan Anjum"
     }
   ],
   "1801": [
@@ -14873,11 +14848,6 @@
   ],
   "2024": [
     {
-      "id": 17226,
-      "nickname": "1zz",
-      "full_name": "Roman Sultanov"
-    },
-    {
       "id": 9311,
       "nickname": "44xdd",
       "full_name": "Dmitry Dzucev"
@@ -14915,11 +14885,6 @@
   ],
   "2025": [
     {
-      "id": 1604,
-      "nickname": "dukefissura",
-      "full_name": "Suleımen Orazaly"
-    },
-    {
       "id": 8772,
       "nickname": "Dwushka",
       "full_name": "Aleksandr Pakhnevich"
@@ -14933,11 +14898,6 @@
       "id": 2263,
       "nickname": "kade0",
       "full_name": "Aydos Khairzhan"
-    },
-    {
-      "id": 11814,
-      "nickname": "kAlash",
-      "full_name": "Altair Askarov"
     },
     {
       "id": 5117,
@@ -15086,11 +15046,6 @@
       "full_name": "Michael Fury"
     },
     {
-      "id": 222,
-      "nickname": "Robiin",
-      "full_name": "Robin Sjögren"
-    },
-    {
       "id": 3676,
       "nickname": "Tadpole",
       "full_name": "Kirk Stephens"
@@ -15147,6 +15102,11 @@
       "id": 9171,
       "nickname": "CloN7",
       "full_name": "Victor Mackieviez"
+    },
+    {
+      "id": 362,
+      "nickname": "pancc",
+      "full_name": "Fillipe Martins"
     },
     {
       "id": 1303,
@@ -15404,6 +15364,11 @@
       "full_name": null
     },
     {
+      "id": 14137,
+      "nickname": "matz",
+      "full_name": null
+    },
+    {
       "id": 7506,
       "nickname": "Orava",
       "full_name": null
@@ -15656,6 +15621,11 @@
       "id": 12075,
       "nickname": "GREATEST",
       "full_name": "Maksim Kapralov"
+    },
+    {
+      "id": 195902,
+      "nickname": "k9ppy",
+      "full_name": "Aleksandr Myatechkin"
     },
     {
       "id": 17141,
@@ -16799,11 +16769,6 @@
       "full_name": "Caso de Mello Santos"
     },
     {
-      "id": 15999,
-      "nickname": "revoltz",
-      "full_name": "Caio Okada"
-    },
-    {
       "id": 16778,
       "nickname": "tele",
       "full_name": "Vinicius Morozini"
@@ -16994,16 +16959,6 @@
       "id": 11478,
       "nickname": "Ltz",
       "full_name": "João Bonetti"
-    },
-    {
-      "id": 649,
-      "nickname": "Lucaozy",
-      "full_name": "Lucas Neves"
-    },
-    {
-      "id": 5046,
-      "nickname": "mlhzin",
-      "full_name": "Matheus Marçola"
     },
     {
       "id": 3518,
@@ -17270,11 +17225,6 @@
       "full_name": "Jakub Krausko"
     },
     {
-      "id": 1691,
-      "nickname": "NEOFRAG",
-      "full_name": "Adam Zouhar"
-    },
-    {
       "id": 4515,
       "nickname": "replay",
       "full_name": "Pavel Vaněk"
@@ -17283,11 +17233,6 @@
       "id": 7962,
       "nickname": "Scr0b",
       "full_name": "Rasmus Poulsen"
-    },
-    {
-      "id": 8469,
-      "nickname": "woozzzi",
-      "full_name": "Ruslan Aliev"
     }
   ],
   "2963": [
@@ -17339,6 +17284,11 @@
       "id": 13383,
       "nickname": "Markz",
       "full_name": "Marco Antonio"
+    },
+    {
+      "id": 13379,
+      "nickname": "misfit",
+      "full_name": "Ulric Pereira"
     },
     {
       "id": 18579,
@@ -17509,19 +17459,9 @@
       "full_name": "Bebu Aadil"
     },
     {
-      "id": 3577,
-      "nickname": "CacaNito",
-      "full_name": "Aleksandar Kjulukoski"
-    },
-    {
       "id": 4760,
       "nickname": "m1N1",
       "full_name": "Hussein Hijazi"
-    },
-    {
-      "id": 606,
-      "nickname": "sinnopsyy",
-      "full_name": "Dionis Budeci"
     }
   ],
   "2999": [
@@ -17613,11 +17553,6 @@
       "full_name": "Anton Jakobsson"
     },
     {
-      "id": 7136,
-      "nickname": "didde6",
-      "full_name": null
-    },
-    {
       "id": 9948,
       "nickname": "LABBE",
       "full_name": "Philip Lamberth"
@@ -17677,6 +17612,11 @@
       "id": 7575,
       "nickname": "ksloks",
       "full_name": "Italo Meinberg"
+    },
+    {
+      "id": 1758,
+      "nickname": "naitte",
+      "full_name": "João Maia"
     },
     {
       "id": 1031,
@@ -18324,11 +18264,6 @@
       "id": 15384,
       "nickname": "tako",
       "full_name": "Tor Emil Bye"
-    },
-    {
-      "id": 11959,
-      "nickname": "Willi",
-      "full_name": "William Haugen"
     }
   ],
   "3973": [
@@ -18983,13 +18918,6 @@
       "full_name": "Junior Bianchi"
     }
   ],
-  "4229": [
-    {
-      "id": 5420,
-      "nickname": "F1zzy",
-      "full_name": null
-    }
-  ],
   "4230": [
     {
       "id": 10911,
@@ -19033,9 +18961,34 @@
   ],
   "4278": [
     {
+      "id": 9961,
+      "nickname": "kurtaliz",
+      "full_name": "Albin Karlsson"
+    },
+    {
+      "id": 9238,
+      "nickname": "mathiaski",
+      "full_name": "Mathias Carlsen"
+    },
+    {
       "id": 3017,
       "nickname": "Pellyy",
       "full_name": "Anders Bredahl Laursen"
+    },
+    {
+      "id": 5478,
+      "nickname": "royal",
+      "full_name": null
+    },
+    {
+      "id": 1568,
+      "nickname": "thamlike",
+      "full_name": "Jacob Holm"
+    },
+    {
+      "id": 11959,
+      "nickname": "Willi",
+      "full_name": "William Haugen"
     }
   ],
   "4298": [
@@ -19121,6 +19074,28 @@
       "full_name": null
     }
   ],
+  "4323": [
+    {
+      "id": 11083,
+      "nickname": "BloodyImp",
+      "full_name": null
+    },
+    {
+      "id": 11040,
+      "nickname": "Junctions",
+      "full_name": null
+    },
+    {
+      "id": 11041,
+      "nickname": "PANDEV1CH",
+      "full_name": null
+    },
+    {
+      "id": 11037,
+      "nickname": "SplyZzZ",
+      "full_name": null
+    }
+  ],
   "4336": [
     {
       "id": 1606,
@@ -19200,11 +19175,6 @@
     }
   ],
   "4391": [
-    {
-      "id": 1701,
-      "nickname": "Jelo",
-      "full_name": "Joel Lentonen"
-    },
     {
       "id": 11119,
       "nickname": "Kollo",
@@ -19659,11 +19629,6 @@
   ],
   "4640": [
     {
-      "id": 4499,
-      "nickname": "Askan",
-      "full_name": "Marc Deterding"
-    },
-    {
       "id": 5769,
       "nickname": "AwaykeN",
       "full_name": "Slaven Lyubenov"
@@ -19672,11 +19637,6 @@
       "id": 15862,
       "nickname": "Mané",
       "full_name": "André Silva"
-    },
-    {
-      "id": 14137,
-      "nickname": "matz",
-      "full_name": null
     },
     {
       "id": 13891,
@@ -19702,11 +19662,6 @@
       "id": 11958,
       "nickname": "sirius",
       "full_name": "Emil Standal"
-    },
-    {
-      "id": 9665,
-      "nickname": "Tree60",
-      "full_name": "Jamie Callan"
     },
     {
       "id": 4700,
@@ -19895,6 +19850,21 @@
   ],
   "4736": [
     {
+      "id": 2358,
+      "nickname": "Brillo",
+      "full_name": "David Lehrman"
+    },
+    {
+      "id": 6774,
+      "nickname": "delle",
+      "full_name": "Jonathan Ahlstedt"
+    },
+    {
+      "id": 5789,
+      "nickname": "dezt",
+      "full_name": "Rasmus Nystrom"
+    },
+    {
       "id": 7071,
       "nickname": "papp",
       "full_name": "Daniel Hart"
@@ -19903,6 +19873,21 @@
       "id": 10432,
       "nickname": "Silence",
       "full_name": "Leo Ingvarsson"
+    },
+    {
+      "id": 10791,
+      "nickname": "TIMhehe",
+      "full_name": "Tim Hennichs"
+    },
+    {
+      "id": 2366,
+      "nickname": "tvs",
+      "full_name": "Timothy Sjöberg"
+    },
+    {
+      "id": 10793,
+      "nickname": "upE",
+      "full_name": "Markus Johansson"
     },
     {
       "id": 8945,
@@ -20574,11 +20559,6 @@
   ],
   "5049": [
     {
-      "id": 696,
-      "nickname": "BRACE",
-      "full_name": "Toby Barnes"
-    },
-    {
       "id": 13511,
       "nickname": "c4put",
       "full_name": "Cameron  Head"
@@ -20587,11 +20567,6 @@
       "id": 18751,
       "nickname": "JLB",
       "full_name": "Jason Bartonek"
-    },
-    {
-      "id": 710,
-      "nickname": "micalis",
-      "full_name": "Michael McAlister"
     },
     {
       "id": 4627,
@@ -20607,16 +20582,6 @@
       "id": 12388,
       "nickname": "Supers",
       "full_name": "Gerard Ostini"
-    },
-    {
-      "id": 2212,
-      "nickname": "yourwombat",
-      "full_name": "Will Allchin"
-    },
-    {
-      "id": 269,
-      "nickname": "zeph",
-      "full_name": "Charlie Dodd"
     },
     {
       "id": 18906,
@@ -20734,6 +20699,11 @@
     }
   ],
   "5146": [
+    {
+      "id": 5872,
+      "nickname": "bishop",
+      "full_name": "Timur Sengül"
+    },
     {
       "id": 18901,
       "nickname": "davy",
@@ -20950,11 +20920,6 @@
       "id": 2874,
       "nickname": "HYPERI",
       "full_name": "Butrint Gashi"
-    },
-    {
-      "id": 2875,
-      "nickname": "vAloN",
-      "full_name": "Valon Etemi"
     }
   ],
   "5214": [
@@ -21078,21 +21043,6 @@
       "full_name": "Tristan Sanaye"
     },
     {
-      "id": 17582,
-      "nickname": "Damsi",
-      "full_name": "Damian Sokulski"
-    },
-    {
-      "id": 15678,
-      "nickname": "Mizi",
-      "full_name": "Lucas Mirza"
-    },
-    {
-      "id": 11439,
-      "nickname": "Mol011",
-      "full_name": "Email Wurtz"
-    },
-    {
       "id": 16531,
       "nickname": "NifloX",
       "full_name": "Simon Borregaard Steffensen"
@@ -21106,11 +21056,6 @@
       "id": 17743,
       "nickname": "rosen",
       "full_name": "Alexander Rosengaard"
-    },
-    {
-      "id": 52192,
-      "nickname": "Thom",
-      "full_name": "Thomas Hedemann"
     }
   ],
   "5271": [
@@ -21153,11 +21098,6 @@
     }
   ],
   "5279": [
-    {
-      "id": 15268,
-      "nickname": "alkarenn",
-      "full_name": "Älımjan Bıtımbai"
-    },
     {
       "id": 2857,
       "nickname": "alpha",
@@ -21266,11 +21206,6 @@
       "full_name": "Kirill Mikhailov"
     },
     {
-      "id": 2971,
-      "nickname": "d1Ledez",
-      "full_name": "Daniil Kustov"
-    },
-    {
       "id": 3461,
       "nickname": "Fierce",
       "full_name": "Artem Ivanov"
@@ -21291,6 +21226,11 @@
       "full_name": "Artem Gradovich"
     },
     {
+      "id": 3328,
+      "nickname": "s1ren",
+      "full_name": "Pavel Ogloblin"
+    },
+    {
       "id": 720,
       "nickname": "zorte",
       "full_name": "Alexandr Zagodyrenko"
@@ -21306,13 +21246,6 @@
       "id": 13576,
       "nickname": "TarRenzz",
       "full_name": null
-    }
-  ],
-  "5356": [
-    {
-      "id": 10403,
-      "nickname": "TiiREX",
-      "full_name": "Jonas Gunnarsson"
     }
   ],
   "5362": [
@@ -21791,11 +21724,6 @@
       "full_name": "Bruno Rebelatto"
     },
     {
-      "id": 2814,
-      "nickname": "n1ssim",
-      "full_name": "Vinicius Pereira"
-    },
-    {
       "id": 9151,
       "nickname": "saadzin",
       "full_name": "Guilherme Pacheco"
@@ -21803,24 +21731,19 @@
   ],
   "5567": [
     {
-      "id": 3277,
-      "nickname": "BELCHONOKK",
-      "full_name": "Andrey Yasinskiy"
-    },
-    {
       "id": 4912,
       "nickname": "dastan",
       "full_name": "Dastan Akbayev"
     },
     {
+      "id": 36,
+      "nickname": "HObbit",
+      "full_name": "Abay Khasenov"
+    },
+    {
       "id": 176,
       "nickname": "Jame",
       "full_name": "Ali Djami"
-    },
-    {
-      "id": 11072,
-      "nickname": "nota",
-      "full_name": "Emil Moskvitin"
     },
     {
       "id": 9745,
@@ -21877,11 +21800,6 @@
       "id": 42,
       "nickname": "twist",
       "full_name": "Simon Eliasson"
-    },
-    {
-      "id": 10793,
-      "nickname": "upE",
-      "full_name": "Markus Johansson"
     }
   ],
   "5593": [
@@ -22219,6 +22137,11 @@
     }
   ],
   "5692": [
+    {
+      "id": 1764,
+      "nickname": "Annihilation",
+      "full_name": "Tuvshintugs Nyamdorj"
+    },
     {
       "id": 1786,
       "nickname": "Bart4k",
@@ -22602,6 +22525,23 @@
       "id": 6326,
       "nickname": "Viresse",
       "full_name": "Ayberk Serin"
+    }
+  ],
+  "5907": [
+    {
+      "id": 3703,
+      "nickname": "MistFire",
+      "full_name": "Lukas Poromaa"
+    },
+    {
+      "id": 2343,
+      "nickname": "redzy",
+      "full_name": "Alexander Johansson"
+    },
+    {
+      "id": 2826,
+      "nickname": "SHiNE",
+      "full_name": "Casper Wennerberg"
     }
   ],
   "5914": [
@@ -23616,11 +23556,6 @@
       "full_name": "Milan Libbrecht"
     },
     {
-      "id": 339,
-      "nickname": "neaLaN",
-      "full_name": "Sanzhar Ishkakov"
-    },
-    {
       "id": 2131,
       "nickname": "ReFuZR",
       "full_name": "Nils Groot"
@@ -24002,11 +23937,6 @@
       "full_name": "Emil Stolz"
     },
     {
-      "id": 1568,
-      "nickname": "thamlike",
-      "full_name": "Jacob Holm"
-    },
-    {
       "id": 5352,
       "nickname": "Zanto",
       "full_name": "André Christiansen"
@@ -24170,19 +24100,9 @@
       "id": 4519,
       "nickname": "Mix",
       "full_name": "Tomáš Bílík"
-    },
-    {
-      "id": 17572,
-      "nickname": "tuzy",
-      "full_name": null
     }
   ],
   "6388": [
-    {
-      "id": 9959,
-      "nickname": "Realyummy",
-      "full_name": "Jesper Svensson"
-    },
     {
       "id": 2349,
       "nickname": "s1ck",
@@ -24522,11 +24442,6 @@
       "full_name": null
     },
     {
-      "id": 3703,
-      "nickname": "MistFire",
-      "full_name": "Lukas Poromaa"
-    },
-    {
       "id": 13804,
       "nickname": "Tuff",
       "full_name": null
@@ -24615,11 +24530,6 @@
       "id": 111,
       "nickname": "electronic",
       "full_name": "Denis Sharipov"
-    },
-    {
-      "id": 8823,
-      "nickname": "krazy",
-      "full_name": "Adones Nobry"
     },
     {
       "id": 41,
@@ -24819,11 +24729,6 @@
       "id": 219,
       "nickname": "LETN1",
       "full_name": "Nestor Tanić"
-    },
-    {
-      "id": 2826,
-      "nickname": "SHiNE",
-      "full_name": "Casper Wennerberg"
     },
     {
       "id": 7068,
@@ -25093,6 +24998,11 @@
       "id": 2260,
       "nickname": "Prism",
       "full_name": "Wojciech Zięba"
+    },
+    {
+      "id": 7803,
+      "nickname": "Qlocuu",
+      "full_name": "Konrad Klocek"
     }
   ],
   "6659": [
@@ -25214,11 +25124,6 @@
       "full_name": "Jakob Åberg"
     },
     {
-      "id": 1880,
-      "nickname": "PALM1",
-      "full_name": "Alex Palm"
-    },
-    {
       "id": 4716,
       "nickname": "slinger",
       "full_name": "Emil Ternander"
@@ -25254,13 +25159,6 @@
       "id": 12385,
       "nickname": "Zyppe",
       "full_name": "Samuel Martinsson"
-    }
-  ],
-  "6667": [
-    {
-      "id": 4956,
-      "nickname": "DeeP",
-      "full_name": "Liam Kauppi"
     }
   ],
   "6681": [
@@ -25516,6 +25414,11 @@
       "full_name": "Nazareno Romero"
     },
     {
+      "id": 15867,
+      "nickname": "ninro",
+      "full_name": "Agustin Valenti"
+    },
+    {
       "id": 12251,
       "nickname": "RUGO",
       "full_name": "Lorenzo Rugo"
@@ -25597,11 +25500,6 @@
       "full_name": "Lucas Luan"
     },
     {
-      "id": 537,
-      "nickname": "f4stzin",
-      "full_name": "Arthur Schmitt"
-    },
-    {
       "id": 8944,
       "nickname": "nyezin",
       "full_name": "Marcelo Ramos"
@@ -25629,6 +25527,11 @@
       "full_name": "Vladimir Boldyrev"
     },
     {
+      "id": 3550,
+      "nickname": "KENSI",
+      "full_name": "Aleksandr Gurkin"
+    },
+    {
       "id": 10990,
       "nickname": "m3wsu",
       "full_name": "Timur Korenev"
@@ -25637,6 +25540,11 @@
       "id": 16366,
       "nickname": "StRoGo",
       "full_name": "Ivan Shurpatov"
+    },
+    {
+      "id": 11096,
+      "nickname": "tried",
+      "full_name": "Gleb Kholmogorov"
     },
     {
       "id": 17213,
@@ -26138,24 +26046,9 @@
   ],
   "6855": [
     {
-      "id": 8223,
-      "nickname": "ammar",
-      "full_name": "Ammar Grashtica"
-    },
-    {
-      "id": 2873,
-      "nickname": "BledarD",
-      "full_name": "Bledar Dula"
-    },
-    {
       "id": 16622,
       "nickname": "Caleyy",
       "full_name": "Ensar Ersuzi"
-    },
-    {
-      "id": 2872,
-      "nickname": "cerber",
-      "full_name": "Serdar Mahmuti"
     },
     {
       "id": 9234,
@@ -26166,11 +26059,6 @@
       "id": 931,
       "nickname": "SENER1",
       "full_name": "Sener Mahmuti"
-    },
-    {
-      "id": 15852,
-      "nickname": "xonn1k",
-      "full_name": "Egzon Behluli"
     }
   ],
   "6862": [
@@ -26200,6 +26088,11 @@
     }
   ],
   "6875": [
+    {
+      "id": 173,
+      "nickname": "buster",
+      "full_name": "Timur Tulepov"
+    },
     {
       "id": 18587,
       "nickname": "icyvl0ne",
@@ -26443,11 +26336,6 @@
   ],
   "6939": [
     {
-      "id": 1711,
-      "nickname": "ckzao",
-      "full_name": "Cristopher Chalus"
-    },
-    {
       "id": 3355,
       "nickname": "detr0ittJ",
       "full_name": "Patrick Carvalho"
@@ -26456,6 +26344,11 @@
       "id": 553,
       "nickname": "hardzao",
       "full_name": "Wesley Lopes"
+    },
+    {
+      "id": 1859,
+      "nickname": "pesadelo",
+      "full_name": "Matheus Panisset"
     },
     {
       "id": 144,
@@ -26485,19 +26378,9 @@
       "full_name": null
     },
     {
-      "id": 19060,
-      "nickname": "plushax",
-      "full_name": "Zhandos Akatayev"
-    },
-    {
       "id": 10953,
       "nickname": "python52",
       "full_name": "Peter KIryakov"
-    },
-    {
-      "id": 657,
-      "nickname": "smiley",
-      "full_name": "Algat Abdul"
     },
     {
       "id": 18116,
@@ -27214,11 +27097,6 @@
       "full_name": null
     },
     {
-      "id": 16032,
-      "nickname": "h0kz",
-      "full_name": "Hakan Sarıçam"
-    },
-    {
       "id": 19073,
       "nickname": "hyp3rrrr",
       "full_name": null
@@ -27244,11 +27122,6 @@
       "id": 1188,
       "nickname": "KEi",
       "full_name": "Kamil Pietkun"
-    },
-    {
-      "id": 17640,
-      "nickname": "Kunai",
-      "full_name": "Jakub Gieremek"
     },
     {
       "id": 1189,
@@ -27346,6 +27219,11 @@
       "id": 8141,
       "nickname": "empathy",
       "full_name": "Lucy Verkaik"
+    },
+    {
+      "id": 14373,
+      "nickname": "Phoebe",
+      "full_name": "Phoebe Winter"
     },
     {
       "id": 16430,
@@ -27635,13 +27513,6 @@
       "full_name": "Maxim Sergeev"
     }
   ],
-  "7145": [
-    {
-      "id": 3039,
-      "nickname": "Rezst",
-      "full_name": "Jacob Hemming"
-    }
-  ],
   "7146": [
     {
       "id": 419,
@@ -27682,9 +27553,29 @@
   ],
   "7154": [
     {
+      "id": 34,
+      "nickname": "AdreN",
+      "full_name": "Dauren Kystaubayev"
+    },
+    {
       "id": 18699,
       "nickname": "anv1k",
       "full_name": "Anvar Nasyrov"
+    },
+    {
+      "id": 11814,
+      "nickname": "kAlash",
+      "full_name": "Altair Askarov"
+    },
+    {
+      "id": 199908,
+      "nickname": "keeN",
+      "full_name": "Adlet Nyrseytov"
+    },
+    {
+      "id": 339,
+      "nickname": "neaLaN",
+      "full_name": "Sanzhar Ishkakov"
     },
     {
       "id": 11497,
@@ -27904,9 +27795,9 @@
       "full_name": "Aleksey Gusev"
     },
     {
-      "id": 5594,
-      "nickname": "k4nfuz",
-      "full_name": "Vladislav Shilov"
+      "id": 2796,
+      "nickname": "Forester",
+      "full_name": "Igor Bezotecheskiy"
     },
     {
       "id": 582,
@@ -27943,13 +27834,6 @@
       "id": 128,
       "nickname": "xartE",
       "full_name": "Mikko Välimaa"
-    }
-  ],
-  "7198": [
-    {
-      "id": 6143,
-      "nickname": "Skitt",
-      "full_name": null
     }
   ],
   "7203": [
@@ -28032,14 +27916,19 @@
   ],
   "7209": [
     {
+      "id": 6755,
+      "nickname": "7kick",
+      "full_name": "Radut Dragos Cristian"
+    },
+    {
+      "id": 2473,
+      "nickname": "Altekz",
+      "full_name": "Alexander Givskov"
+    },
+    {
       "id": 275,
       "nickname": "k1to",
       "full_name": "Nils Gruhne"
-    },
-    {
-      "id": 4931,
-      "nickname": "L00m1",
-      "full_name": "Lucas Haukland"
     },
     {
       "id": 2261,
@@ -28138,11 +28027,6 @@
       "full_name": "Maciej Mordal"
     },
     {
-      "id": 15875,
-      "nickname": "St0m4k",
-      "full_name": "Vladyslav Lykhoshva"
-    },
-    {
       "id": 17027,
       "nickname": "Yoghi",
       "full_name": "Arba Ionut"
@@ -28153,6 +28037,11 @@
       "id": 15365,
       "nickname": "fajrness",
       "full_name": "Pavel Tůma"
+    },
+    {
+      "id": 10968,
+      "nickname": "KAD1M",
+      "full_name": "Radim Vojkůvka"
     },
     {
       "id": 15338,
@@ -28183,6 +28072,11 @@
       "id": 11160,
       "nickname": "Snaxieee",
       "full_name": "Tomáš Matějovic"
+    },
+    {
+      "id": 8469,
+      "nickname": "woozzzi",
+      "full_name": "Ruslan Aliev"
     }
   ],
   "7221": [
@@ -28310,26 +28204,6 @@
       "full_name": "Denis Adamovich"
     },
     {
-      "id": 2796,
-      "nickname": "Forester",
-      "full_name": "Igor Bezotecheskiy"
-    },
-    {
-      "id": 609,
-      "nickname": "Krad",
-      "full_name": "Vladislav Kravchenko"
-    },
-    {
-      "id": 10969,
-      "nickname": "riskyb0b",
-      "full_name": "Maksim Churikov"
-    },
-    {
-      "id": 5354,
-      "nickname": "salazar",
-      "full_name": "Jason Salazar"
-    },
-    {
       "id": 18272,
       "nickname": "Salazar",
       "full_name": "Kirill Rautskiy"
@@ -28356,11 +28230,6 @@
   ],
   "7231": [
     {
-      "id": 2358,
-      "nickname": "Brillo",
-      "full_name": "David Lehrman"
-    },
-    {
       "id": 139,
       "nickname": "fejtZ",
       "full_name": "Kristjan Allsaar"
@@ -28369,6 +28238,11 @@
       "id": 14838,
       "nickname": "Folke",
       "full_name": "Magnus Lind"
+    },
+    {
+      "id": 1701,
+      "nickname": "Jelo",
+      "full_name": "Joel Lentonen"
     },
     {
       "id": 14026,
@@ -28425,19 +28299,19 @@
       "full_name": null
     },
     {
+      "id": 15207,
+      "nickname": "JLK",
+      "full_name": "João Ricci"
+    },
+    {
       "id": 17532,
       "nickname": "mastx",
       "full_name": null
     },
     {
-      "id": 16826,
-      "nickname": "Swords",
-      "full_name": null
-    },
-    {
-      "id": 17745,
-      "nickname": "Xina",
-      "full_name": null
+      "id": 4275,
+      "nickname": "ph1",
+      "full_name": "Pedro Henrique"
     }
   ],
   "7238": [
@@ -28722,11 +28596,6 @@
       "full_name": null
     },
     {
-      "id": 17778,
-      "nickname": "k0gaSs",
-      "full_name": null
-    },
-    {
       "id": 3593,
       "nickname": "k4sl-",
       "full_name": "Tamerlan Geraev"
@@ -28775,6 +28644,11 @@
   ],
   "7286": [
     {
+      "id": 14270,
+      "nickname": "Aliot",
+      "full_name": "Nikita Kovalev"
+    },
+    {
       "id": 15695,
       "nickname": "B3LOF",
       "full_name": null
@@ -28820,11 +28694,6 @@
       "id": 12888,
       "nickname": "suisha",
       "full_name": "Nuri Odacı"
-    },
-    {
-      "id": 17064,
-      "nickname": "swerzieN",
-      "full_name": "Buğra Budak"
     }
   ],
   "7290": [
@@ -28912,11 +28781,6 @@
   ],
   "7302": [
     {
-      "id": 14270,
-      "nickname": "Aliot",
-      "full_name": "Nikita Kovalev"
-    },
-    {
       "id": 6281,
       "nickname": "Aura",
       "full_name": "Ahmet Özkan"
@@ -28925,6 +28789,11 @@
       "id": 16183,
       "nickname": "Ckanic",
       "full_name": "Serdar Akıncı"
+    },
+    {
+      "id": 5092,
+      "nickname": "EMSTAR",
+      "full_name": "Emrecan Çalışkan"
     },
     {
       "id": 18258,
@@ -29118,11 +28987,6 @@
   ],
   "7318": [
     {
-      "id": 2204,
-      "nickname": "b1elany",
-      "full_name": "Maciej Biliński"
-    },
-    {
       "id": 6773,
       "nickname": "Ex1st",
       "full_name": "Mateusz Witman"
@@ -29141,11 +29005,6 @@
       "id": 10912,
       "nickname": "nikitea",
       "full_name": "Nikita Chakhovskiy"
-    },
-    {
-      "id": 7803,
-      "nickname": "Qlocuu",
-      "full_name": "Konrad Klocek"
     }
   ],
   "7323": [
@@ -29306,9 +29165,19 @@
       "full_name": null
     },
     {
+      "id": 140,
+      "nickname": "HS",
+      "full_name": "Kevin Tarn"
+    },
+    {
       "id": 9346,
       "nickname": "ShockwavertM",
       "full_name": "Oleksandr Netreba"
+    },
+    {
+      "id": 8347,
+      "nickname": "Skejs",
+      "full_name": "Rasmus Munch Christensen"
     },
     {
       "id": 15955,
@@ -29399,11 +29268,6 @@
       "id": 4661,
       "nickname": "rage",
       "full_name": "Hao Yu"
-    },
-    {
-      "id": 983,
-      "nickname": "rAge",
-      "full_name": "Dmitry Bolotov"
     },
     {
       "id": 9621,
@@ -30008,11 +29872,6 @@
       "full_name": "Bruno Sousa"
     },
     {
-      "id": 10409,
-      "nickname": "M1KA",
-      "full_name": "Miguel Moreira"
-    },
-    {
       "id": 4476,
       "nickname": "P3R3IIRA",
       "full_name": "David Pereira"
@@ -30583,24 +30442,14 @@
       "full_name": "Lucas Rodrigues"
     },
     {
-      "id": 1030,
-      "nickname": "mawth",
-      "full_name": "Matheus Gonçalves"
-    },
-    {
       "id": 14375,
       "nickname": "n1cks",
       "full_name": "Nicolas Paixão"
     },
     {
-      "id": 5038,
-      "nickname": "perez",
-      "full_name": "Henrique Perez"
-    },
-    {
-      "id": 93922,
-      "nickname": "phc",
-      "full_name": "Phelippe Cousseau"
+      "id": 551,
+      "nickname": "prt",
+      "full_name": "Matheus Scuvero"
     },
     {
       "id": 11023,
@@ -30614,11 +30463,6 @@
     }
   ],
   "7452": [
-    {
-      "id": 162,
-      "nickname": "bubble",
-      "full_name": "Kamen Kostadinov"
-    },
     {
       "id": 2287,
       "nickname": "hyskeee",
@@ -31241,11 +31085,6 @@
   ],
   "7540": [
     {
-      "id": 12969,
-      "nickname": "AdrieN",
-      "full_name": "Adrian Mucha"
-    },
-    {
       "id": 18526,
       "nickname": "benog",
       "full_name": "Gracjan Góral"
@@ -31259,11 +31098,6 @@
       "id": 7103,
       "nickname": "KhanCzesio",
       "full_name": "Michał Piotrowski"
-    },
-    {
-      "id": 3058,
-      "nickname": "maaryy",
-      "full_name": "Martin Nakonieczny"
     },
     {
       "id": 784,
@@ -31284,11 +31118,6 @@
       "id": 3061,
       "nickname": "tomiko",
       "full_name": "Tomasz Uroda"
-    },
-    {
-      "id": 15838,
-      "nickname": "yvro",
-      "full_name": "Hubert Kapcewicz"
     }
   ],
   "7542": [
@@ -31413,11 +31242,6 @@
       "id": 15778,
       "nickname": "balencyy",
       "full_name": "Nathan Marques"
-    },
-    {
-      "id": 17835,
-      "nickname": "busan",
-      "full_name": null
     },
     {
       "id": 17073,
@@ -31694,14 +31518,14 @@
       "full_name": "Artur Syzdykov"
     },
     {
+      "id": 17784,
+      "nickname": "Shoke",
+      "full_name": null
+    },
+    {
       "id": 17617,
       "nickname": "SquEzxc",
       "full_name": "Maxim Grebenko"
-    },
-    {
-      "id": 11096,
-      "nickname": "tried",
-      "full_name": "Gleb Kholmogorov"
     },
     {
       "id": 18702,
@@ -31796,6 +31620,11 @@
       "full_name": "Vladislav Bykov"
     },
     {
+      "id": 335,
+      "nickname": "Jyo",
+      "full_name": "Rassim Valijev"
+    },
+    {
       "id": 17860,
       "nickname": "Netrix",
       "full_name": null
@@ -31842,11 +31671,6 @@
   ],
   "7612": [
     {
-      "id": 6755,
-      "nickname": "7kick",
-      "full_name": "Radut Dragos Cristian"
-    },
-    {
       "id": 261,
       "nickname": "CRUC1AL",
       "full_name": "Joey Steusel"
@@ -31860,11 +31684,6 @@
       "id": 634,
       "nickname": "Maden",
       "full_name": "Pavle Bošković"
-    },
-    {
-      "id": 3574,
-      "nickname": "shalfey",
-      "full_name": "Alexandr Marenov"
     },
     {
       "id": 4418,
@@ -32103,13 +31922,6 @@
       "full_name": "Vladimir Osipov"
     }
   ],
-  "7623": [
-    {
-      "id": 2366,
-      "nickname": "tvs",
-      "full_name": "Timothy Sjöberg"
-    }
-  ],
   "7624": [
     {
       "id": 18767,
@@ -32314,11 +32126,6 @@
     }
   ],
   "7642": [
-    {
-      "id": 13379,
-      "nickname": "misfit",
-      "full_name": "Ulric Pereira"
-    },
     {
       "id": 8824,
       "nickname": "stAx",
@@ -32553,11 +32360,6 @@
     }
   ],
   "7655": [
-    {
-      "id": 18834,
-      "nickname": "enko-",
-      "full_name": null
-    },
     {
       "id": 2084,
       "nickname": "xhoci",
@@ -33185,11 +32987,6 @@
       "full_name": "Daniil Nikitin"
     },
     {
-      "id": 3580,
-      "nickname": "Norwi",
-      "full_name": "Evgeny Ermolin"
-    },
-    {
       "id": 4052,
       "nickname": "OverDrive",
       "full_name": "Alexey Birukov"
@@ -33258,11 +33055,6 @@
   ],
   "7764": [
     {
-      "id": 4432,
-      "nickname": "andr1x",
-      "full_name": "Andrija Ljubić"
-    },
-    {
       "id": 401,
       "nickname": "aVN",
       "full_name": "Filip Belojica"
@@ -33283,19 +33075,9 @@
       "full_name": "Nikola Boskovic"
     },
     {
-      "id": 218,
-      "nickname": "emi",
-      "full_name": "Luka Vuković"
-    },
-    {
       "id": 4965,
       "nickname": "fajkus",
       "full_name": "Filip Konatarevic"
-    },
-    {
-      "id": 18011,
-      "nickname": "KiMaRR",
-      "full_name": "Filip Sokolov"
     },
     {
       "id": 2869,
@@ -34137,13 +33919,6 @@
       "full_name": "Asker Dutschke"
     }
   ],
-  "22675": [
-    {
-      "id": 8347,
-      "nickname": "Skejs",
-      "full_name": "Rasmus Munch Christensen"
-    }
-  ],
   "22679": [
     {
       "id": 5072,
@@ -34454,11 +34229,6 @@
   ],
   "28816": [
     {
-      "id": 932,
-      "nickname": "gejmzilla",
-      "full_name": "Atif Mustafa"
-    },
-    {
       "id": 18295,
       "nickname": "Lewis",
       "full_name": "Diart Zhushi"
@@ -34508,6 +34278,28 @@
       "id": 18317,
       "nickname": "h0sster",
       "full_name": null
+    }
+  ],
+  "29605": [
+    {
+      "id": 4499,
+      "nickname": "Askan",
+      "full_name": "Marc Deterding"
+    },
+    {
+      "id": 18011,
+      "nickname": "KiMaRR",
+      "full_name": "Filip Sokolov"
+    },
+    {
+      "id": 3039,
+      "nickname": "Rezst",
+      "full_name": "Jacob Hemming"
+    },
+    {
+      "id": 9665,
+      "nickname": "Tree60",
+      "full_name": "Jamie Callan"
     }
   ],
   "29608": [
@@ -34566,6 +34358,11 @@
       "id": 13889,
       "nickname": "aRTYSAN",
       "full_name": "Daniel Vinichenko"
+    },
+    {
+      "id": 3538,
+      "nickname": "fl1peR",
+      "full_name": "Daniil Salamakha"
     },
     {
       "id": 13554,
@@ -34679,11 +34476,6 @@
       "id": 18256,
       "nickname": "oNESTLY",
       "full_name": "Artem Kobziev"
-    },
-    {
-      "id": 16767,
-      "nickname": "sonder",
-      "full_name": null
     }
   ],
   "31707": [
@@ -34742,6 +34534,11 @@
     }
   ],
   "32913": [
+    {
+      "id": 4432,
+      "nickname": "andr1x",
+      "full_name": "Andrija Ljubić"
+    },
     {
       "id": 4546,
       "nickname": "choiv7",
@@ -34943,11 +34740,6 @@
       "full_name": "Sebastian Righi"
     },
     {
-      "id": 11490,
-      "nickname": "rzk",
-      "full_name": "Santiago Pucheta"
-    },
-    {
       "id": 16278,
       "nickname": "toto",
       "full_name": "Tomas Lautaro Miguel"
@@ -35017,11 +34809,6 @@
       "id": 319,
       "nickname": "Jerry",
       "full_name": "Andrey Mekhryakov"
-    },
-    {
-      "id": 3550,
-      "nickname": "KENSI",
-      "full_name": "Aleksandr Gurkin"
     }
   ],
   "36829": [
@@ -35131,6 +34918,11 @@
   ],
   "38336": [
     {
+      "id": 3512,
+      "nickname": "Aaron",
+      "full_name": "Áron Homoki"
+    },
+    {
       "id": 3374,
       "nickname": "Svedjehed",
       "full_name": "Leo Svedjehed"
@@ -35149,16 +34941,6 @@
     }
   ],
   "38934": [
-    {
-      "id": 3512,
-      "nickname": "Aaron",
-      "full_name": "Áron Homoki"
-    },
-    {
-      "id": 5223,
-      "nickname": "Burmylov",
-      "full_name": "Denis Buraga"
-    },
     {
       "id": 3699,
       "nickname": "c0llins",
@@ -35241,6 +35023,28 @@
       "id": 12007,
       "nickname": "vanilla",
       "full_name": null
+    }
+  ],
+  "40742": [
+    {
+      "id": 696,
+      "nickname": "BRACE",
+      "full_name": "Toby Barnes"
+    },
+    {
+      "id": 710,
+      "nickname": "micalis",
+      "full_name": "Michael McAlister"
+    },
+    {
+      "id": 2212,
+      "nickname": "yourwombat",
+      "full_name": "Will Allchin"
+    },
+    {
+      "id": 269,
+      "nickname": "zeph",
+      "full_name": "Charlie Dodd"
     }
   ],
   "40744": [
@@ -35413,6 +35217,11 @@
       "full_name": null
     },
     {
+      "id": 14837,
+      "nickname": "Doku",
+      "full_name": "Christian Sebastian Nielsen"
+    },
+    {
       "id": 6087,
       "nickname": "Inspire",
       "full_name": "David Rasmussen"
@@ -35498,6 +35307,11 @@
       "id": 13999,
       "nickname": "7tetsu",
       "full_name": "Aleksei Divin"
+    },
+    {
+      "id": 5594,
+      "nickname": "k4nfuz",
+      "full_name": "Vladislav Shilov"
     },
     {
       "id": 14868,
@@ -35932,6 +35746,11 @@
   ],
   "48645": [
     {
+      "id": 162,
+      "nickname": "bubble",
+      "full_name": "Kamen Kostadinov"
+    },
+    {
       "id": 6250,
       "nickname": "Kat",
       "full_name": "Katarína Vašková"
@@ -35958,11 +35777,6 @@
     }
   ],
   "48944": [
-    {
-      "id": 2343,
-      "nickname": "redzy",
-      "full_name": "Alexander Johansson"
-    },
     {
       "id": 5799,
       "nickname": "zerc",
@@ -36087,11 +35901,6 @@
       "full_name": null
     },
     {
-      "id": 135,
-      "nickname": "devoduvek",
-      "full_name": "David Dobrosavljevic"
-    },
-    {
       "id": 3803,
       "nickname": "jeyN",
       "full_name": "Jérémy Nguyen"
@@ -36134,6 +35943,11 @@
       "full_name": "François Delaunay"
     },
     {
+      "id": 1122,
+      "nickname": "BOROS",
+      "full_name": "Mohammad Malhas"
+    },
+    {
       "id": 3656,
       "nickname": "Empera",
       "full_name": "Husain Chehab"
@@ -36169,6 +35983,11 @@
       "id": 12725,
       "nickname": "timid",
       "full_name": "Lucas Pimentel"
+    },
+    {
+      "id": 13304,
+      "nickname": "trindade",
+      "full_name": "Vinícius Trindade"
     }
   ],
   "50450": [
@@ -36203,11 +36022,6 @@
       "id": 11228,
       "nickname": "DEBRE",
       "full_name": "Mads Ryttersgaard Stabel"
-    },
-    {
-      "id": 14837,
-      "nickname": "Doku",
-      "full_name": "Christian Sebastian Nielsen"
     },
     {
       "id": 17729,
@@ -36278,11 +36092,6 @@
       "full_name": "Patryk Woźniak"
     },
     {
-      "id": 1487,
-      "nickname": "reiko",
-      "full_name": "Kamil Cegiełko"
-    },
-    {
       "id": 3125,
       "nickname": "SaMey",
       "full_name": "Dawid Stańczak"
@@ -36291,6 +36100,11 @@
       "id": 4940,
       "nickname": "Sk1tt",
       "full_name": "Szymon Rogoziński"
+    },
+    {
+      "id": 6143,
+      "nickname": "Skitt",
+      "full_name": null
     }
   ],
   "54555": [
@@ -36305,11 +36119,6 @@
       "id": 17051,
       "nickname": "kairo",
       "full_name": "Kai Brooks"
-    },
-    {
-      "id": 14373,
-      "nickname": "Phoebe",
-      "full_name": "Phoebe Winter"
     },
     {
       "id": 3819,
@@ -36407,13 +36216,6 @@
       "full_name": null
     }
   ],
-  "57785": [
-    {
-      "id": 2683,
-      "nickname": "Fizzy",
-      "full_name": "Fizan Anjum"
-    }
-  ],
   "57791": [
     {
       "id": 162790,
@@ -36504,6 +36306,26 @@
       "id": 17270,
       "nickname": "brain",
       "full_name": "Stepan Sivoronov"
+    },
+    {
+      "id": 7840,
+      "nickname": "danistzz",
+      "full_name": "Danil Roslyakov"
+    },
+    {
+      "id": 609,
+      "nickname": "Krad",
+      "full_name": "Vladislav Kravchenko"
+    },
+    {
+      "id": 3580,
+      "nickname": "Norwi",
+      "full_name": "Evgeny Ermolin"
+    },
+    {
+      "id": 3574,
+      "nickname": "shalfey",
+      "full_name": "Alexandr Marenov"
     }
   ],
   "64703": [
@@ -36516,6 +36338,11 @@
       "id": 16030,
       "nickname": "bekker",
       "full_name": "Tobias Bekker"
+    },
+    {
+      "id": 2016,
+      "nickname": "Maze",
+      "full_name": "Mikkel Sparvath"
     },
     {
       "id": 2318,
@@ -36617,6 +36444,11 @@
       "id": 17942,
       "nickname": "modesavage",
       "full_name": "Adil Tleuliyev"
+    },
+    {
+      "id": 199904,
+      "nickname": "Rui",
+      "full_name": "Amir Zhanat"
     }
   ],
   "65504": [
@@ -36726,6 +36558,28 @@
       "full_name": "Marcelo Augusto"
     }
   ],
+  "68208": [
+    {
+      "id": 1604,
+      "nickname": "dukefissura",
+      "full_name": "Suleımen Orazaly"
+    },
+    {
+      "id": 175829,
+      "nickname": "F1NNN",
+      "full_name": "Rohatov Ramziddin"
+    },
+    {
+      "id": 19060,
+      "nickname": "plushax",
+      "full_name": "Zhandos Akatayev"
+    },
+    {
+      "id": 657,
+      "nickname": "smiley",
+      "full_name": "Algat Abdul"
+    }
+  ],
   "69200": [
     {
       "id": 14333,
@@ -36777,6 +36631,48 @@
       "id": 147,
       "nickname": "gade",
       "full_name": "Nicklas Gade"
+    }
+  ],
+  "71497": [
+    {
+      "id": 8223,
+      "nickname": "ammar",
+      "full_name": "Ammar Grashtica"
+    },
+    {
+      "id": 2873,
+      "nickname": "BledarD",
+      "full_name": "Bledar Dula"
+    },
+    {
+      "id": 2872,
+      "nickname": "cerber",
+      "full_name": "Serdar Mahmuti"
+    },
+    {
+      "id": 18834,
+      "nickname": "enko-",
+      "full_name": null
+    },
+    {
+      "id": 932,
+      "nickname": "gejmzilla",
+      "full_name": "Atif Mustafa"
+    },
+    {
+      "id": 10295,
+      "nickname": "HYPER1",
+      "full_name": "Butrint Gashi"
+    },
+    {
+      "id": 2875,
+      "nickname": "vAloN",
+      "full_name": "Valon Etemi"
+    },
+    {
+      "id": 15852,
+      "nickname": "xonn1k",
+      "full_name": "Egzon Behluli"
     }
   ],
   "72398": [
@@ -36833,6 +36729,150 @@
       "id": 17611,
       "nickname": "Naginat",
       "full_name": null
+    }
+  ],
+  "72609": [
+    {
+      "id": 3032,
+      "nickname": "DGL",
+      "full_name": "Brajan Lemecha"
+    }
+  ],
+  "73607": [
+    {
+      "id": 17730,
+      "nickname": "GA1De",
+      "full_name": "Mads Nielsen"
+    }
+  ],
+  "74007": [
+    {
+      "id": 7963,
+      "nickname": "Boye",
+      "full_name": "Jonas Boye Østergaard"
+    },
+    {
+      "id": 1798,
+      "nickname": "IceBerg",
+      "full_name": "Oliver Berg"
+    },
+    {
+      "id": 7961,
+      "nickname": "Leakz",
+      "full_name": "Jamie Jensen"
+    },
+    {
+      "id": 15675,
+      "nickname": "NickyB",
+      "full_name": "Nicky Bruhn"
+    },
+    {
+      "id": 4067,
+      "nickname": "Rejin",
+      "full_name": "Allan Petersen"
+    },
+    {
+      "id": 5354,
+      "nickname": "salazar",
+      "full_name": "Jason Salazar"
+    }
+  ],
+  "74311": [
+    {
+      "id": 1882,
+      "nickname": "hemzk9",
+      "full_name": "Jonas Rantamäki"
+    },
+    {
+      "id": 1880,
+      "nickname": "PALM1",
+      "full_name": "Alex Palm"
+    },
+    {
+      "id": 9959,
+      "nickname": "Realyummy",
+      "full_name": "Jesper Svensson"
+    },
+    {
+      "id": 222,
+      "nickname": "Robiin",
+      "full_name": "Robin Sjögren"
+    },
+    {
+      "id": 10403,
+      "nickname": "TiiREX",
+      "full_name": "Jonas Gunnarsson"
+    }
+  ],
+  "74312": [
+    {
+      "id": 5791,
+      "nickname": "agoz",
+      "full_name": "Martin Sätherström"
+    },
+    {
+      "id": 4525,
+      "nickname": "bsover",
+      "full_name": "Oliwer Ekbäck"
+    },
+    {
+      "id": 11036,
+      "nickname": "Leon1das",
+      "full_name": "Leon Andersson Tönners"
+    },
+    {
+      "id": 9949,
+      "nickname": "Majkn",
+      "full_name": "Marcus Lars Tidblom"
+    },
+    {
+      "id": 8620,
+      "nickname": "siz",
+      "full_name": "Armin Sukurica"
+    },
+    {
+      "id": 9954,
+      "nickname": "Timothybtw",
+      "full_name": "Timothy Andreasson"
+    }
+  ],
+  "74313": [
+    {
+      "id": 4956,
+      "nickname": "DeeP",
+      "full_name": "Liam Kauppi"
+    },
+    {
+      "id": 7136,
+      "nickname": "didde6",
+      "full_name": null
+    },
+    {
+      "id": 858,
+      "nickname": "Kronkzz",
+      "full_name": "Max Gustafsson"
+    }
+  ],
+  "75606": [
+    {
+      "id": 17582,
+      "nickname": "Damsi",
+      "full_name": "Damian Sokulski"
+    },
+    {
+      "id": 15678,
+      "nickname": "Mizi",
+      "full_name": "Lucas Mirza"
+    },
+    {
+      "id": 11439,
+      "nickname": "Mol011",
+      "full_name": "Email Wurtz"
+    },
+    {
+      "id": 52192,
+      "nickname": "Thom",
+      "full_name": "Thomas Hedemann"
     }
   ]
 }

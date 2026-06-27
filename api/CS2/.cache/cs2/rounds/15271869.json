@@ -1,0 +1,282 @@
+{
+  "match_map_id": 15271869,
+  "map_name": "de_inferno",
+  "rounds": [
+    {
+      "id": 37606331,
+      "round_number": 1,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 71,
+      "team_stats": [
+        {
+          "id": 72673840,
+          "team": {
+            "id": 728,
+            "name": "Sharks",
+            "short_name": "SHK"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": true,
+          "kills": 5,
+          "deaths": 1,
+          "assists": 0,
+          "headshots": 5,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 500,
+          "utility_value": 200,
+          "equipment_value": 4000,
+          "money_spent": 2750,
+          "money_saved": 2250,
+          "loss_bonus_streak": 1,
+          "win_streak": 1,
+          "clutches": 0,
+          "clutch_attempts": 0
+        },
+        {
+          "id": 72673841,
+          "team": {
+            "id": 737,
+            "name": "TYLOO",
+            "short_name": "TYLOO"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": true,
+          "kills": 1,
+          "deaths": 5,
+          "assists": 1,
+          "headshots": 1,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 100,
+          "utility_value": 200,
+          "equipment_value": 4550,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 1,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 37606332,
+      "round_number": 2,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 113,
+      "team_stats": [
+        {
+          "id": 72673842,
+          "team": {
+            "id": 728,
+            "name": "Sharks",
+            "short_name": "SHK"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 0,
+          "assists": 1,
+          "headshots": 3,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 500,
+          "utility_value": 1100,
+          "equipment_value": 22750,
+          "money_spent": 19100,
+          "money_saved": 20450,
+          "loss_bonus_streak": 0,
+          "win_streak": 2,
+          "clutches": 0,
+          "clutch_attempts": 0
+        },
+        {
+          "id": 72673843,
+          "team": {
+            "id": 737,
+            "name": "TYLOO",
+            "short_name": "TYLOO"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 0,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 0,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 18,
+          "utility_value": 0,
+          "equipment_value": 1000,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 2,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 37594186,
+      "round_number": 3,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": null,
+      "team_stats": []
+    },
+    {
+      "id": 37594187,
+      "round_number": 4,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 80,
+      "team_stats": []
+    },
+    {
+      "id": 37594189,
+      "round_number": 5,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 129,
+      "team_stats": []
+    },
+    {
+      "id": 37594190,
+      "round_number": 6,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "TargetSaved",
+      "duration_seconds": 115,
+      "team_stats": []
+    },
+    {
+      "id": 37594191,
+      "round_number": 7,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 98,
+      "team_stats": []
+    },
+    {
+      "id": 37594192,
+      "round_number": 8,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 76,
+      "team_stats": []
+    },
+    {
+      "id": 37594194,
+      "round_number": 9,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 145,
+      "team_stats": []
+    },
+    {
+      "id": 37594195,
+      "round_number": 10,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 112,
+      "team_stats": []
+    },
+    {
+      "id": 37594196,
+      "round_number": 11,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 106,
+      "team_stats": []
+    },
+    {
+      "id": 37594198,
+      "round_number": 12,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 117,
+      "team_stats": []
+    },
+    {
+      "id": 37594199,
+      "round_number": 13,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 112,
+      "team_stats": []
+    },
+    {
+      "id": 37594200,
+      "round_number": 14,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 86,
+      "team_stats": []
+    },
+    {
+      "id": 37594202,
+      "round_number": 15,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 101,
+      "team_stats": []
+    },
+    {
+      "id": 37594203,
+      "round_number": 16,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 100,
+      "team_stats": []
+    },
+    {
+      "id": 37594204,
+      "round_number": 17,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 59,
+      "team_stats": []
+    },
+    {
+      "id": 37594205,
+      "round_number": 18,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 31,
+      "team_stats": []
+    }
+  ]
+}

@@ -1,0 +1,195 @@
+{
+  "match_map_id": 9299327,
+  "map_name": "de_mirage",
+  "rounds": [
+    {
+      "id": 22916193,
+      "round_number": 1,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 91,
+      "team_stats": []
+    },
+    {
+      "id": 22916195,
+      "round_number": 2,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 103,
+      "team_stats": []
+    },
+    {
+      "id": 22916196,
+      "round_number": 3,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 80,
+      "team_stats": []
+    },
+    {
+      "id": 22916197,
+      "round_number": 4,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 98,
+      "team_stats": []
+    },
+    {
+      "id": 22916199,
+      "round_number": 5,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 90,
+      "team_stats": []
+    },
+    {
+      "id": 22916200,
+      "round_number": 6,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 72,
+      "team_stats": []
+    },
+    {
+      "id": 22916201,
+      "round_number": 7,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 145,
+      "team_stats": []
+    },
+    {
+      "id": 22916203,
+      "round_number": 8,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 127,
+      "team_stats": []
+    },
+    {
+      "id": 22916204,
+      "round_number": 9,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 120,
+      "team_stats": []
+    },
+    {
+      "id": 22916205,
+      "round_number": 10,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 51,
+      "team_stats": []
+    },
+    {
+      "id": 22916207,
+      "round_number": 11,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "TargetSaved",
+      "duration_seconds": 115,
+      "team_stats": []
+    },
+    {
+      "id": 22916208,
+      "round_number": 12,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 104,
+      "team_stats": []
+    },
+    {
+      "id": 22916209,
+      "round_number": 13,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 67,
+      "team_stats": []
+    },
+    {
+      "id": 22916211,
+      "round_number": 14,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 79,
+      "team_stats": []
+    },
+    {
+      "id": 22916212,
+      "round_number": 15,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 48,
+      "team_stats": []
+    },
+    {
+      "id": 22916214,
+      "round_number": 16,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 33,
+      "team_stats": []
+    },
+    {
+      "id": 22916216,
+      "round_number": 17,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 78,
+      "team_stats": []
+    },
+    {
+      "id": 22916217,
+      "round_number": 18,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 113,
+      "team_stats": []
+    },
+    {
+      "id": 22916218,
+      "round_number": 19,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 101,
+      "team_stats": []
+    },
+    {
+      "id": 22916220,
+      "round_number": 20,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 92,
+      "team_stats": []
+    },
+    {
+      "id": 22916221,
+      "round_number": 21,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 95,
+      "team_stats": []
+    }
+  ]
+}

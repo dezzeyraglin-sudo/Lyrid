@@ -1,0 +1,766 @@
+{
+  "match_map_id": 12626255,
+  "map_name": "de_anubis",
+  "rounds": [
+    {
+      "id": 31827927,
+      "round_number": 1,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 84,
+      "team_stats": [
+        {
+          "id": 61557693,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": true,
+          "kills": 4,
+          "deaths": 5,
+          "assists": 1,
+          "headshots": 3,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 459,
+          "utility_value": 700,
+          "equipment_value": 4300,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 1,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827928,
+      "round_number": 2,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 117,
+      "team_stats": [
+        {
+          "id": 61557695,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 0,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 0,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 110,
+          "utility_value": 0,
+          "equipment_value": 1100,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 2,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827929,
+      "round_number": 3,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 153,
+      "team_stats": [
+        {
+          "id": 61557697,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 4,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 3,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 457,
+          "utility_value": 1000,
+          "equipment_value": 23500,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 3,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827930,
+      "round_number": 4,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 124,
+      "team_stats": [
+        {
+          "id": 61557699,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 3,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 3,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 2,
+          "trade_deaths": 3,
+          "damage": 323,
+          "utility_value": 0,
+          "equipment_value": 19750,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 4,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827931,
+      "round_number": 5,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 176,
+      "team_stats": [
+        {
+          "id": 61557701,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 3,
+          "deaths": 5,
+          "assists": 1,
+          "headshots": 1,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 3,
+          "trade_deaths": 3,
+          "damage": 300,
+          "utility_value": 1200,
+          "equipment_value": 20550,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 4,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827932,
+      "round_number": 6,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 76,
+      "team_stats": [
+        {
+          "id": 61557703,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 1,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 1,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 1,
+          "trade_deaths": 2,
+          "damage": 177,
+          "utility_value": 600,
+          "equipment_value": 11150,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 4,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827933,
+      "round_number": 7,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 198,
+      "team_stats": [
+        {
+          "id": 61557704,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "T",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 3,
+          "deaths": 2,
+          "assists": 0,
+          "headshots": 1,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 300,
+          "utility_value": 1100,
+          "equipment_value": 27350,
+          "money_spent": 14900,
+          "money_saved": 11500,
+          "loss_bonus_streak": 3,
+          "win_streak": 1,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31827934,
+      "round_number": 8,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 106,
+      "team_stats": [
+        {
+          "id": 61557707,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 1,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 0,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 183,
+          "utility_value": 800,
+          "equipment_value": 24900,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 3,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827935,
+      "round_number": 9,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 100,
+      "team_stats": [
+        {
+          "id": 61557708,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "T",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 2,
+          "deaths": 2,
+          "assists": 0,
+          "headshots": 1,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 200,
+          "utility_value": 1300,
+          "equipment_value": 23300,
+          "money_spent": 14450,
+          "money_saved": 14250,
+          "loss_bonus_streak": 2,
+          "win_streak": 1,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31827936,
+      "round_number": 10,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 128,
+      "team_stats": [
+        {
+          "id": 61557711,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 3,
+          "deaths": 5,
+          "assists": 1,
+          "headshots": 2,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 328,
+          "utility_value": 1200,
+          "equipment_value": 27750,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 2,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827937,
+      "round_number": 11,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 130,
+      "team_stats": [
+        {
+          "id": 61557713,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 2,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 2,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 300,
+          "utility_value": 1200,
+          "equipment_value": 19900,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 3,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827938,
+      "round_number": 12,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 150,
+      "team_stats": [
+        {
+          "id": 61557714,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "T",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 4,
+          "deaths": 5,
+          "assists": 2,
+          "headshots": 1,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 1,
+          "trade_deaths": 2,
+          "damage": 467,
+          "utility_value": 700,
+          "equipment_value": 14900,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 2,
+          "win_streak": 1,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827939,
+      "round_number": 13,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 119,
+      "team_stats": [
+        {
+          "id": 61557717,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "CT",
+          "won": false,
+          "is_pistol_round": true,
+          "kills": 3,
+          "deaths": 5,
+          "assists": 1,
+          "headshots": 3,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 2,
+          "trade_deaths": 3,
+          "damage": 332,
+          "utility_value": 0,
+          "equipment_value": 4300,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 1,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827940,
+      "round_number": 14,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 115,
+      "team_stats": [
+        {
+          "id": 61557719,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "CT",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 4,
+          "deaths": 5,
+          "assists": 2,
+          "headshots": 2,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 453,
+          "utility_value": 900,
+          "equipment_value": 12400,
+          "money_spent": 2200,
+          "money_saved": 0,
+          "loss_bonus_streak": 2,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827941,
+      "round_number": 15,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 140,
+      "team_stats": [
+        {
+          "id": 61557721,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "CT",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 3,
+          "deaths": 4,
+          "assists": 2,
+          "headshots": 2,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 336,
+          "utility_value": 900,
+          "equipment_value": 15550,
+          "money_spent": 5600,
+          "money_saved": 2250,
+          "loss_bonus_streak": 3,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31827942,
+      "round_number": 16,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 110,
+      "team_stats": [
+        {
+          "id": 61557722,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 3,
+          "assists": 0,
+          "headshots": 4,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 500,
+          "utility_value": 1500,
+          "equipment_value": 19850,
+          "money_spent": 6600,
+          "money_saved": 8300,
+          "loss_bonus_streak": 2,
+          "win_streak": 1,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31827943,
+      "round_number": 17,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 77,
+      "team_stats": [
+        {
+          "id": 61557724,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 2,
+          "assists": 0,
+          "headshots": 3,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 2,
+          "trade_deaths": 2,
+          "damage": 500,
+          "utility_value": 800,
+          "equipment_value": 28200,
+          "money_spent": 9800,
+          "money_saved": 15750,
+          "loss_bonus_streak": 1,
+          "win_streak": 2,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31827944,
+      "round_number": 18,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 117,
+      "team_stats": [
+        {
+          "id": 61557726,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 0,
+          "assists": 1,
+          "headshots": 4,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 500,
+          "utility_value": 1100,
+          "equipment_value": 29650,
+          "money_spent": 12900,
+          "money_saved": 24050,
+          "loss_bonus_streak": 0,
+          "win_streak": 3,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31827945,
+      "round_number": 19,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 109,
+      "team_stats": [
+        {
+          "id": 61557728,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 3,
+          "assists": 1,
+          "headshots": 4,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 500,
+          "utility_value": 600,
+          "equipment_value": 29850,
+          "money_spent": 2700,
+          "money_saved": 9700,
+          "loss_bonus_streak": 0,
+          "win_streak": 4,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31827946,
+      "round_number": 20,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 113,
+      "team_stats": [
+        {
+          "id": 61557731,
+          "team": {
+            "id": 5567,
+            "name": "PARIVISION",
+            "short_name": "PRV"
+          },
+          "team_side": "CT",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 4,
+          "deaths": 5,
+          "assists": 2,
+          "headshots": 3,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 495,
+          "utility_value": 1600,
+          "equipment_value": 30750,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 0,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    }
+  ]
+}

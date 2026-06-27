@@ -1,0 +1,804 @@
+{
+  "match_map_id": 12423914,
+  "map_name": "de_nuke",
+  "rounds": [
+    {
+      "id": 31390080,
+      "round_number": 1,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 69,
+      "team_stats": [
+        {
+          "id": 60706605,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": true,
+          "kills": 1,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 1,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 121,
+          "utility_value": 300,
+          "equipment_value": 5050,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 1,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31390081,
+      "round_number": 2,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 113,
+      "team_stats": [
+        {
+          "id": 60706607,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 0,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 0,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 154,
+          "utility_value": 0,
+          "equipment_value": 1000,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 2,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31390082,
+      "round_number": 3,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 145,
+      "team_stats": [
+        {
+          "id": 60706608,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "T",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 4,
+          "deaths": 2,
+          "assists": 3,
+          "headshots": 1,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 2,
+          "trade_deaths": 2,
+          "damage": 416,
+          "utility_value": 1100,
+          "equipment_value": 21400,
+          "money_spent": 12100,
+          "money_saved": 10400,
+          "loss_bonus_streak": 1,
+          "win_streak": 1,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31390083,
+      "round_number": 4,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 110,
+      "team_stats": [
+        {
+          "id": 60706610,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "T",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 3,
+          "deaths": 2,
+          "assists": 1,
+          "headshots": 1,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 300,
+          "utility_value": 700,
+          "equipment_value": 24200,
+          "money_spent": 6900,
+          "money_saved": 12800,
+          "loss_bonus_streak": 0,
+          "win_streak": 2,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31390084,
+      "round_number": 5,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 100,
+      "team_stats": [
+        {
+          "id": 60706612,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "T",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 3,
+          "assists": 3,
+          "headshots": 4,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 2,
+          "trade_deaths": 2,
+          "damage": 506,
+          "utility_value": 300,
+          "equipment_value": 23550,
+          "money_spent": 5900,
+          "money_saved": 8200,
+          "loss_bonus_streak": 0,
+          "win_streak": 3,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31390085,
+      "round_number": 6,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 164,
+      "team_stats": [
+        {
+          "id": 60706614,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "T",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 4,
+          "deaths": 3,
+          "assists": 0,
+          "headshots": 4,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 455,
+          "utility_value": 900,
+          "equipment_value": 25100,
+          "money_spent": 6900,
+          "money_saved": 8300,
+          "loss_bonus_streak": 0,
+          "win_streak": 4,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31390086,
+      "round_number": 7,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 172,
+      "team_stats": [
+        {
+          "id": 60706617,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 2,
+          "deaths": 5,
+          "assists": 2,
+          "headshots": 0,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 2,
+          "trade_deaths": 2,
+          "damage": 227,
+          "utility_value": 400,
+          "equipment_value": 25300,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 0,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31390087,
+      "round_number": 8,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 99,
+      "team_stats": [
+        {
+          "id": 60706619,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 3,
+          "deaths": 5,
+          "assists": 1,
+          "headshots": 1,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 300,
+          "utility_value": 800,
+          "equipment_value": 26850,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 1,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31390088,
+      "round_number": 9,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 74,
+      "team_stats": [
+        {
+          "id": 60706621,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 2,
+          "deaths": 5,
+          "assists": 1,
+          "headshots": 2,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 307,
+          "utility_value": 0,
+          "equipment_value": 2750,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 2,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31390089,
+      "round_number": 10,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 101,
+      "team_stats": [
+        {
+          "id": 60706623,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 1,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 1,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 118,
+          "utility_value": 600,
+          "equipment_value": 24500,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 3,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31390090,
+      "round_number": 11,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 99,
+      "team_stats": [
+        {
+          "id": 60706625,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 0,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 0,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 180,
+          "utility_value": 500,
+          "equipment_value": 11100,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 4,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31390091,
+      "round_number": 12,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 81,
+      "team_stats": [
+        {
+          "id": 60706626,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "T",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 1,
+          "assists": 0,
+          "headshots": 4,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 477,
+          "utility_value": 1000,
+          "equipment_value": 25800,
+          "money_spent": 20300,
+          "money_saved": 12600,
+          "loss_bonus_streak": 3,
+          "win_streak": 1,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31390092,
+      "round_number": 13,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 80,
+      "team_stats": [
+        {
+          "id": 60706629,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "CT",
+          "won": false,
+          "is_pistol_round": true,
+          "kills": 3,
+          "deaths": 5,
+          "assists": 1,
+          "headshots": 3,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 426,
+          "utility_value": 200,
+          "equipment_value": 4200,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 1,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31390093,
+      "round_number": 14,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 59,
+      "team_stats": [
+        {
+          "id": 60706630,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 4,
+          "deaths": 2,
+          "assists": 2,
+          "headshots": 4,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 1,
+          "trade_deaths": 2,
+          "damage": 477,
+          "utility_value": 800,
+          "equipment_value": 11300,
+          "money_spent": 6650,
+          "money_saved": 7100,
+          "loss_bonus_streak": 0,
+          "win_streak": 1,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31390094,
+      "round_number": 15,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 140,
+      "team_stats": [
+        {
+          "id": 60706632,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 2,
+          "assists": 2,
+          "headshots": 2,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 500,
+          "utility_value": 700,
+          "equipment_value": 21500,
+          "money_spent": 7050,
+          "money_saved": 14000,
+          "loss_bonus_streak": 0,
+          "win_streak": 2,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31390095,
+      "round_number": 16,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 83,
+      "team_stats": [
+        {
+          "id": 60706634,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 0,
+          "assists": 1,
+          "headshots": 3,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 500,
+          "utility_value": 900,
+          "equipment_value": 28500,
+          "money_spent": 14600,
+          "money_saved": 25800,
+          "loss_bonus_streak": 0,
+          "win_streak": 3,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31390096,
+      "round_number": 17,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "TargetSaved",
+      "duration_seconds": 135,
+      "team_stats": [
+        {
+          "id": 60706636,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 4,
+          "deaths": 4,
+          "assists": 0,
+          "headshots": 2,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 467,
+          "utility_value": 500,
+          "equipment_value": 29500,
+          "money_spent": 300,
+          "money_saved": 5500,
+          "loss_bonus_streak": 0,
+          "win_streak": 4,
+          "clutches": 1,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 31390097,
+      "round_number": 18,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "TargetSaved",
+      "duration_seconds": 173,
+      "team_stats": [
+        {
+          "id": 60706638,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 3,
+          "deaths": 2,
+          "assists": 4,
+          "headshots": 2,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 400,
+          "utility_value": 300,
+          "equipment_value": 29950,
+          "money_spent": 12100,
+          "money_saved": 13900,
+          "loss_bonus_streak": 0,
+          "win_streak": 5,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31390098,
+      "round_number": 19,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 94,
+      "team_stats": [
+        {
+          "id": 60706640,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 2,
+          "assists": 1,
+          "headshots": 2,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 500,
+          "utility_value": 1100,
+          "equipment_value": 30750,
+          "money_spent": 10000,
+          "money_saved": 17350,
+          "loss_bonus_streak": 0,
+          "win_streak": 6,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31390099,
+      "round_number": 20,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 93,
+      "team_stats": [
+        {
+          "id": 60706642,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 0,
+          "assists": 0,
+          "headshots": 1,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 500,
+          "utility_value": 1400,
+          "equipment_value": 30450,
+          "money_spent": 13400,
+          "money_saved": 26650,
+          "loss_bonus_streak": 0,
+          "win_streak": 7,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 31390101,
+      "round_number": 21,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 135,
+      "team_stats": [
+        {
+          "id": 60706647,
+          "team": {
+            "id": 739,
+            "name": "HEROIC",
+            "short_name": "HERO"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 2,
+          "assists": 0,
+          "headshots": 1,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 500,
+          "utility_value": 700,
+          "equipment_value": 31350,
+          "money_spent": 3600,
+          "money_saved": 16500,
+          "loss_bonus_streak": 0,
+          "win_streak": 8,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    }
+  ]
+}

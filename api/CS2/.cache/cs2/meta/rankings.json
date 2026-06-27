@@ -1,9 +1,9 @@
 [
   {
     "rank": 1,
-    "points": 1994.27,
+    "points": 1987.64,
     "ranking_type": "bo3",
-    "ranking_date": "2026-06-12",
+    "ranking_date": "2026-06-27",
     "team": {
       "id": 637,
       "name": "Spirit",
@@ -12,20 +12,9 @@
   },
   {
     "rank": 2,
-    "points": 1991.87,
+    "points": 1984.58,
     "ranking_type": "bo3",
-    "ranking_date": "2026-06-12",
-    "team": {
-      "id": 650,
-      "name": "Vitality",
-      "short_name": "VIT"
-    }
-  },
-  {
-    "rank": 3,
-    "points": 1948.72,
-    "ranking_type": "bo3",
-    "ranking_date": "2026-06-12",
+    "ranking_date": "2026-06-27",
     "team": {
       "id": 2018,
       "name": "Falcons",
@@ -33,10 +22,21 @@
     }
   },
   {
-    "rank": 4,
-    "points": 1933.41,
+    "rank": 3,
+    "points": 1924.55,
     "ranking_type": "bo3",
-    "ranking_date": "2026-06-12",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 650,
+      "name": "Vitality",
+      "short_name": "VIT"
+    }
+  },
+  {
+    "rank": 4,
+    "points": 1849.19,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
     "team": {
       "id": 765,
       "name": "Natus Vincere",
@@ -45,64 +45,9 @@
   },
   {
     "rank": 5,
-    "points": 1854.94,
+    "points": 1801.03,
     "ranking_type": "bo3",
-    "ranking_date": "2026-06-12",
-    "team": {
-      "id": 745,
-      "name": "MOUZ",
-      "short_name": "MOUZ"
-    }
-  },
-  {
-    "rank": 6,
-    "points": 1823.69,
-    "ranking_type": "bo3",
-    "ranking_date": "2026-06-12",
-    "team": {
-      "id": 5556,
-      "name": "Legacy",
-      "short_name": "LGC"
-    }
-  },
-  {
-    "rank": 7,
-    "points": 1726.17,
-    "ranking_type": "bo3",
-    "ranking_date": "2026-06-12",
-    "team": {
-      "id": 717,
-      "name": "The MongolZ",
-      "short_name": "MGLZ"
-    }
-  },
-  {
-    "rank": 8,
-    "points": 1721.23,
-    "ranking_type": "bo3",
-    "ranking_date": "2026-06-12",
-    "team": {
-      "id": 7278,
-      "name": "FUT",
-      "short_name": "FUT"
-    }
-  },
-  {
-    "rank": 9,
-    "points": 1701.22,
-    "ranking_type": "bo3",
-    "ranking_date": "2026-06-12",
-    "team": {
-      "id": 2766,
-      "name": "Aurora",
-      "short_name": "AUR"
-    }
-  },
-  {
-    "rank": 10,
-    "points": 1676.34,
-    "ranking_type": "bo3",
-    "ranking_date": "2026-06-12",
+    "ranking_date": "2026-06-27",
     "team": {
       "id": 631,
       "name": "FURIA",
@@ -110,10 +55,43 @@
     }
   },
   {
-    "rank": 11,
-    "points": 1675.3,
+    "rank": 6,
+    "points": 1770.64,
     "ranking_type": "bo3",
-    "ranking_date": "2026-06-12",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 745,
+      "name": "MOUZ",
+      "short_name": "MOUZ"
+    }
+  },
+  {
+    "rank": 7,
+    "points": 1737.55,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5556,
+      "name": "Legacy",
+      "short_name": "LGC"
+    }
+  },
+  {
+    "rank": 8,
+    "points": 1731.65,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
+    }
+  },
+  {
+    "rank": 9,
+    "points": 1696.95,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
     "team": {
       "id": 771,
       "name": "G2",
@@ -121,14 +99,3369 @@
     }
   },
   {
-    "rank": 12,
-    "points": 1674.58,
+    "rank": 10,
+    "points": 1691.95,
     "ranking_type": "bo3",
-    "ranking_date": "2026-06-12",
+    "ranking_date": "2026-06-27",
     "team": {
       "id": 316,
       "name": "9z",
       "short_name": "9z"
+    }
+  },
+  {
+    "rank": 11,
+    "points": 1690.93,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5343,
+      "name": "BetBoom",
+      "short_name": "BB"
+    }
+  },
+  {
+    "rank": 12,
+    "points": 1671.16,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7278,
+      "name": "FUT",
+      "short_name": "FUT"
+    }
+  },
+  {
+    "rank": 13,
+    "points": 1652.63,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 717,
+      "name": "The MongolZ",
+      "short_name": "MGLZ"
+    }
+  },
+  {
+    "rank": 14,
+    "points": 1585.77,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 580,
+      "name": "GamerLegion",
+      "short_name": "GL"
+    }
+  },
+  {
+    "rank": 15,
+    "points": 1555.81,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 772,
+      "name": "Astralis",
+      "short_name": "AST"
+    }
+  },
+  {
+    "rank": 16,
+    "points": 1533.55,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1456,
+      "name": "B8",
+      "short_name": "B8"
+    }
+  },
+  {
+    "rank": 17,
+    "points": 1501.84,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5567,
+      "name": "PARIVISION",
+      "short_name": "PRV"
+    }
+  },
+  {
+    "rank": 18,
+    "points": 1493.86,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2751,
+      "name": "Monte",
+      "short_name": "MNTE"
+    }
+  },
+  {
+    "rank": 19,
+    "points": 1484.83,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 735,
+      "name": "MIBR",
+      "short_name": "MIBR"
+    }
+  },
+  {
+    "rank": 20,
+    "points": 1425.15,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 621,
+      "name": "paiN",
+      "short_name": "paiN"
+    }
+  },
+  {
+    "rank": 21,
+    "points": 1417.22,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7783,
+      "name": "magic",
+      "short_name": "MGC"
+    }
+  },
+  {
+    "rank": 22,
+    "points": 1378.76,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 737,
+      "name": "TYLOO",
+      "short_name": "TYLOO"
+    }
+  },
+  {
+    "rank": 23,
+    "points": 1347.57,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5280,
+      "name": "M80",
+      "short_name": "M80"
+    }
+  },
+  {
+    "rank": 24,
+    "points": 1347.41,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 769,
+      "name": "FaZe",
+      "short_name": "FaZe"
+    }
+  },
+  {
+    "rank": 25,
+    "points": 1347.15,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 763,
+      "name": "Ninjas in Pyjamas",
+      "short_name": "NIP"
+    }
+  },
+  {
+    "rank": 26,
+    "points": 1344.37,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 736,
+      "name": "BIG",
+      "short_name": "BIG"
+    }
+  },
+  {
+    "rank": 27,
+    "points": 1315,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 465,
+      "name": "Lynn Vision",
+      "short_name": "LVG"
+    }
+  },
+  {
+    "rank": 28,
+    "points": 1312.22,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 4959,
+      "name": "Wildcard",
+      "short_name": "WC"
+    }
+  },
+  {
+    "rank": 29,
+    "points": 1282.56,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 678,
+      "name": "3DMAX",
+      "short_name": "3DMAX"
+    }
+  },
+  {
+    "rank": 30,
+    "points": 1270.75,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5577,
+      "name": "Alliance",
+      "short_name": "ALL"
+    }
+  },
+  {
+    "rank": 31,
+    "points": 1250.64,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7432,
+      "name": "Nemesis",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 32,
+    "points": 1248.19,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 739,
+      "name": "HEROIC",
+      "short_name": "HERO"
+    }
+  },
+  {
+    "rank": 33,
+    "points": 1244.72,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2025,
+      "name": "HOTU",
+      "short_name": "HOTU"
+    }
+  },
+  {
+    "rank": 34,
+    "points": 1244.34,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7438,
+      "name": "Gentle Mates",
+      "short_name": "M8"
+    }
+  },
+  {
+    "rank": 35,
+    "points": 1238.7,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 453,
+      "name": "100 Thieves",
+      "short_name": "100T"
+    }
+  },
+  {
+    "rank": 36,
+    "points": 1222.27,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2489,
+      "name": "EYEBALLERS",
+      "short_name": "EYE"
+    }
+  },
+  {
+    "rank": 37,
+    "points": 1220.44,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7763,
+      "name": "FOKUS",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 38,
+    "points": 1215.9,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 728,
+      "name": "Sharks",
+      "short_name": "SHK"
+    }
+  },
+  {
+    "rank": 39,
+    "points": 1208.56,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6810,
+      "name": "Nuclear TigeRES",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 40,
+    "points": 1207.45,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 768,
+      "name": "Liquid",
+      "short_name": "TL"
+    }
+  },
+  {
+    "rank": 41,
+    "points": 1194.98,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6474,
+      "name": "K27",
+      "short_name": "K27"
+    }
+  },
+  {
+    "rank": 42,
+    "points": 1188.63,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 54151,
+      "name": "Walczaki",
+      "short_name": "WAL"
+    }
+  },
+  {
+    "rank": 43,
+    "points": 1186.79,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 638,
+      "name": "Nemiga",
+      "short_name": "NEMI"
+    }
+  },
+  {
+    "rank": 44,
+    "points": 1186.59,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7046,
+      "name": "Inner Circle",
+      "short_name": "ICE"
+    }
+  },
+  {
+    "rank": 45,
+    "points": 1184.57,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2995,
+      "name": "JiJieHao",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 46,
+    "points": 1182.29,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 22679,
+      "name": "TDK",
+      "short_name": "TDK"
+    }
+  },
+  {
+    "rank": 47,
+    "points": 1182.25,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 199,
+      "name": "SINNERS",
+      "short_name": "SIN"
+    }
+  },
+  {
+    "rank": 48,
+    "points": 1125.7,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 732,
+      "name": "NRG",
+      "short_name": "NRG"
+    }
+  },
+  {
+    "rank": 49,
+    "points": 1124.49,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6350,
+      "name": "STATE",
+      "short_name": "STA"
+    }
+  },
+  {
+    "rank": 50,
+    "points": 1110.37,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 74007,
+      "name": "Echo",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 51,
+    "points": 1105.43,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 234,
+      "name": "1win",
+      "short_name": "1WIN"
+    }
+  },
+  {
+    "rank": 52,
+    "points": 1105.06,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 21892,
+      "name": "ex-RUBY",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 53,
+    "points": 1097.54,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 983,
+      "name": "INFINITE",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 54,
+    "points": 1096.48,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1445,
+      "name": "Eternal Fire",
+      "short_name": "EF"
+    }
+  },
+  {
+    "rank": 55,
+    "points": 1093.32,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5459,
+      "name": "Passion UA",
+      "short_name": "PSSN.UA"
+    }
+  },
+  {
+    "rank": 56,
+    "points": 1082.04,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6714,
+      "name": "ShindeN",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 57,
+    "points": 1079.74,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6303,
+      "name": "FlyQuest",
+      "short_name": "FLY"
+    }
+  },
+  {
+    "rank": 58,
+    "points": 1076.3,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7611,
+      "name": "Voca",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 59,
+    "points": 1073.28,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7672,
+      "name": "THUNDER dOWNUNDER",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 60,
+    "points": 1069.49,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7644,
+      "name": "Acend",
+      "short_name": "ACE"
+    }
+  },
+  {
+    "rank": 61,
+    "points": 1067.61,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 4627,
+      "name": "BESTIA",
+      "short_name": "BST"
+    }
+  },
+  {
+    "rank": 62,
+    "points": 1062.14,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7612,
+      "name": "illwill",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 63,
+    "points": 1060.54,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 384,
+      "name": "OG",
+      "short_name": "OG"
+    }
+  },
+  {
+    "rank": 64,
+    "points": 1056.28,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5974,
+      "name": "Johnny Speeds",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 65,
+    "points": 1053.85,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6734,
+      "name": "WW",
+      "short_name": "WW"
+    }
+  },
+  {
+    "rank": 66,
+    "points": 1048.48,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2329,
+      "name": "Sashi",
+      "short_name": "SASHI"
+    }
+  },
+  {
+    "rank": 67,
+    "points": 1045.73,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 55653,
+      "name": "INOX Division",
+      "short_name": "INOX"
+    }
+  },
+  {
+    "rank": 68,
+    "points": 1040.6,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7318,
+      "name": "KOLESIE",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 69,
+    "points": 1032.43,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5279,
+      "name": "CYBERSHOKE",
+      "short_name": "CS"
+    }
+  },
+  {
+    "rank": 70,
+    "points": 1028.49,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7058,
+      "name": "Phantom",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 71,
+    "points": 1026.83,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2271,
+      "name": "LP",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 72,
+    "points": 1022.85,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 541,
+      "name": "RED Canids",
+      "short_name": "RED"
+    }
+  },
+  {
+    "rank": 73,
+    "points": 1022.32,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 764,
+      "name": "fnatic",
+      "short_name": "FNC"
+    }
+  },
+  {
+    "rank": 74,
+    "points": 1018.03,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7096,
+      "name": "BASEMENT BOYS",
+      "short_name": "BMB"
+    }
+  },
+  {
+    "rank": 75,
+    "points": 1008.13,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2005,
+      "name": "Gaimin Gladiators",
+      "short_name": "Gladiators"
+    }
+  },
+  {
+    "rank": 76,
+    "points": 1005.55,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6133,
+      "name": "Galorys",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 77,
+    "points": 1000.03,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7209,
+      "name": "AM",
+      "short_name": "AM"
+    }
+  },
+  {
+    "rank": 78,
+    "points": 991.15,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 483,
+      "name": "9INE",
+      "short_name": "9INE"
+    }
+  },
+  {
+    "rank": 79,
+    "points": 989.14,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1339,
+      "name": "GenOne",
+      "short_name": "G1"
+    }
+  },
+  {
+    "rank": 80,
+    "points": 986.57,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6655,
+      "name": "Betclic",
+      "short_name": "BAE"
+    }
+  },
+  {
+    "rank": 81,
+    "points": 986.33,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 701,
+      "name": "Virtus.pro",
+      "short_name": "VP"
+    }
+  },
+  {
+    "rank": 82,
+    "points": 986.19,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1909,
+      "name": "ARCRED",
+      "short_name": "ARC"
+    }
+  },
+  {
+    "rank": 83,
+    "points": 985.43,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 3230,
+      "name": "Turma do Pagode",
+      "short_name": "TdP"
+    }
+  },
+  {
+    "rank": 84,
+    "points": 981.88,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 43520,
+      "name": "Lavked",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 85,
+    "points": 976.74,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7769,
+      "name": "BET-M",
+      "short_name": "33"
+    }
+  },
+  {
+    "rank": 86,
+    "points": 974.4,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5692,
+      "name": "The Huns",
+      "short_name": "THE"
+    }
+  },
+  {
+    "rank": 87,
+    "points": 973.93,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1634,
+      "name": "ECSTATIC",
+      "short_name": "ECS"
+    }
+  },
+  {
+    "rank": 88,
+    "points": 967.55,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2820,
+      "name": "Fluxo",
+      "short_name": "FX"
+    }
+  },
+  {
+    "rank": 89,
+    "points": 967.08,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6619,
+      "name": "SemperFi",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 90,
+    "points": 961.54,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6976,
+      "name": "Chicken Coop",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 91,
+    "points": 961.29,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7047,
+      "name": "Marsborne",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 92,
+    "points": 957.09,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 69394,
+      "name": "DragonClaw",
+      "short_name": "DC"
+    }
+  },
+  {
+    "rank": 93,
+    "points": 955.42,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1353,
+      "name": "Imperial",
+      "short_name": "IMP"
+    }
+  },
+  {
+    "rank": 94,
+    "points": 955.4,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 36,
+      "name": "Sangal",
+      "short_name": "SNG"
+    }
+  },
+  {
+    "rank": 95,
+    "points": 950.35,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7585,
+      "name": "CYBERSHOKE Prospects",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 96,
+    "points": 945.48,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6049,
+      "name": "Rebels",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 97,
+    "points": 943.19,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5173,
+      "name": "Bounty Hunters",
+      "short_name": "BHE"
+    }
+  },
+  {
+    "rank": 98,
+    "points": 931.07,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7191,
+      "name": "SPARTA",
+      "short_name": "SPARTA"
+    }
+  },
+  {
+    "rank": 99,
+    "points": 924.13,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 64703,
+      "name": "EAC",
+      "short_name": "EAC"
+    }
+  },
+  {
+    "rank": 100,
+    "points": 916.89,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 51964,
+      "name": "Washed",
+      "short_name": "Washed"
+    }
+  },
+  {
+    "rank": 101,
+    "points": 916.81,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5262,
+      "name": "Sashi Academy",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 102,
+    "points": 913.66,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6294,
+      "name": "Fisher College",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 103,
+    "points": 909.69,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 26594,
+      "name": "Atreides",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 105,
+    "points": 890.18,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6074,
+      "name": "Chinggis Warriors",
+      "short_name": "CW"
+    }
+  },
+  {
+    "rank": 106,
+    "points": 890.1,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1493,
+      "name": "Metizport",
+      "short_name": "MZP"
+    }
+  },
+  {
+    "rank": 107,
+    "points": 889.73,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 45627,
+      "name": "Just Players",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 108,
+    "points": 888.63,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6939,
+      "name": "Fake do Biru",
+      "short_name": "FDB"
+    }
+  },
+  {
+    "rank": 109,
+    "points": 887.35,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7154,
+      "name": "NOVAQ",
+      "short_name": "NVQ"
+    }
+  },
+  {
+    "rank": 110,
+    "points": 885.71,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2044,
+      "name": "The Last Resort",
+      "short_name": "TLR"
+    }
+  },
+  {
+    "rank": 111,
+    "points": 885.53,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 4841,
+      "name": "Leo",
+      "short_name": " L&G"
+    }
+  },
+  {
+    "rank": 112,
+    "points": 879.88,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1376,
+      "name": "MOUZ NXT",
+      "short_name": "MOUZ.N"
+    }
+  },
+  {
+    "rank": 113,
+    "points": 877.47,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7228,
+      "name": "Ursa",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 114,
+    "points": 875.31,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 22674,
+      "name": "Fortress",
+      "short_name": "FOR"
+    }
+  },
+  {
+    "rank": 115,
+    "points": 871.39,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7344,
+      "name": "Kaleido",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 116,
+    "points": 868.56,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7759,
+      "name": "Bebop",
+      "short_name": "BBP"
+    }
+  },
+  {
+    "rank": 117,
+    "points": 868.15,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5871,
+      "name": "HYPERSPIRIT",
+      "short_name": "HS"
+    }
+  },
+  {
+    "rank": 118,
+    "points": 867.89,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 869,
+      "name": "Young Ninjas",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 119,
+    "points": 867.01,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1845,
+      "name": "Rare Atom",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 120,
+    "points": 866.64,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 4628,
+      "name": "Rune Eaters",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 121,
+    "points": 865.9,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6415,
+      "name": "FAVBET",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 122,
+    "points": 863.9,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 359,
+      "name": "BRUTE",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 123,
+    "points": 861.12,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7665,
+      "name": "Omega",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 124,
+    "points": 860.34,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7540,
+      "name": "TNC",
+      "short_name": "TNC"
+    }
+  },
+  {
+    "rank": 125,
+    "points": 859.35,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 4418,
+      "name": "brazylijski luz",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 126,
+    "points": 857.22,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2057,
+      "name": "UNO MILLE",
+      "short_name": "UNO"
+    }
+  },
+  {
+    "rank": 127,
+    "points": 855.55,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 756,
+      "name": "Keyd Stars",
+      "short_name": "Keyd"
+    }
+  },
+  {
+    "rank": 128,
+    "points": 853.79,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 41428,
+      "name": "5star",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 129,
+    "points": 848.57,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 50450,
+      "name": "PsychoFace",
+      "short_name": "PF"
+    }
+  },
+  {
+    "rank": 130,
+    "points": 848.09,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5878,
+      "name": "Oxuji",
+      "short_name": "OXUJI"
+    }
+  },
+  {
+    "rank": 131,
+    "points": 841.79,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1016,
+      "name": "MASONIC",
+      "short_name": "MSC"
+    }
+  },
+  {
+    "rank": 132,
+    "points": 837.58,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6600,
+      "name": "G2 Ares",
+      "short_name": "G2.A"
+    }
+  },
+  {
+    "rank": 133,
+    "points": 835.5,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7352,
+      "name": "ASTRAL",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 134,
+    "points": 835.3,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2024,
+      "name": "QUAZAR",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 135,
+    "points": 834.76,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 577,
+      "name": "Isurus",
+      "short_name": "ISG"
+    }
+  },
+  {
+    "rank": 136,
+    "points": 830.08,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 734,
+      "name": "ENCE",
+      "short_name": "ENCE"
+    }
+  },
+  {
+    "rank": 137,
+    "points": 824.94,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7270,
+      "name": "Bushido Wildcats",
+      "short_name": "BW"
+    }
+  },
+  {
+    "rank": 138,
+    "points": 820.1,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6317,
+      "name": "RUSTEC",
+      "short_name": "RUSTEC"
+    }
+  },
+  {
+    "rank": 139,
+    "points": 818.93,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2790,
+      "name": "Yawara",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 140,
+    "points": 816.88,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 22671,
+      "name": "WAZABI",
+      "short_name": "WAZ"
+    }
+  },
+  {
+    "rank": 141,
+    "points": 816.2,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 31105,
+      "name": "Inner Circle Academy",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 142,
+    "points": 812.56,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 4298,
+      "name": "LAG",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 143,
+    "points": 811.61,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7764,
+      "name": "ex-Zero Tenacity",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 144,
+    "points": 809.32,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 46064,
+      "name": "ex-ENCE",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 145,
+    "points": 807.91,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7130,
+      "name": "ALGO",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 146,
+    "points": 805.9,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 570,
+      "name": "Ground Zero",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 147,
+    "points": 805.47,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 899,
+      "name": "Entropy",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 148,
+    "points": 803.23,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 28398,
+      "name": "NEXVOID",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 149,
+    "points": 790.47,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6579,
+      "name": "Enjoy",
+      "short_name": "ENJOY"
+    }
+  },
+  {
+    "rank": 150,
+    "points": 780.8,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6855,
+      "name": "MANA",
+      "short_name": "MANA"
+    }
+  },
+  {
+    "rank": 151,
+    "points": 776.39,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2959,
+      "name": "UNiTY",
+      "short_name": "UNiTY"
+    }
+  },
+  {
+    "rank": 152,
+    "points": 767.73,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5815,
+      "name": "BOSS",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 153,
+    "points": 766.16,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5146,
+      "name": "PCIFIC",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 154,
+    "points": 762.92,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6517,
+      "name": "BC.Game",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 155,
+    "points": 762.46,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7661,
+      "name": "Phantom Academy",
+      "short_name": " Phantom Academy"
+    }
+  },
+  {
+    "rank": 156,
+    "points": 762.2,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 47731,
+      "name": "insane players",
+      "short_name": "IP"
+    }
+  },
+  {
+    "rank": 157,
+    "points": 761.26,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1814,
+      "name": "MIBR fe",
+      "short_name": "MIBR.F"
+    }
+  },
+  {
+    "rank": 158,
+    "points": 758.11,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 38934,
+      "name": "Hashiras",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 159,
+    "points": 757.87,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7668,
+      "name": "Strael Bora",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 160,
+    "points": 752.84,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 4344,
+      "name": "Lazer Cats",
+      "short_name": "LC"
+    }
+  },
+  {
+    "rank": 161,
+    "points": 751.51,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6717,
+      "name": "Fire Flux",
+      "short_name": "FF"
+    }
+  },
+  {
+    "rank": 162,
+    "points": 751.49,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 41427,
+      "name": "Haunted House",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 163,
+    "points": 751.24,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6936,
+      "name": "FengDa",
+      "short_name": "FDG"
+    }
+  },
+  {
+    "rank": 164,
+    "points": 751.12,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1630,
+      "name": "MIBR Academy",
+      "short_name": "MIBR.A"
+    }
+  },
+  {
+    "rank": 165,
+    "points": 750.66,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 67503,
+      "name": "Iowa Stormboar",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 166,
+    "points": 749.43,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6338,
+      "name": "F5",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 167,
+    "points": 748.87,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5875,
+      "name": "regain",
+      "short_name": "REGAIN"
+    }
+  },
+  {
+    "rank": 169,
+    "points": 740.93,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6160,
+      "name": "Vexar",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 170,
+    "points": 740.91,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6917,
+      "name": "DONSTU",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 171,
+    "points": 740.78,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6107,
+      "name": "aimclub",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 172,
+    "points": 738.49,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6488,
+      "name": "Aether",
+      "short_name": "TA"
+    }
+  },
+  {
+    "rank": 173,
+    "points": 737.94,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5472,
+      "name": "Change The Game",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 174,
+    "points": 733.81,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1050,
+      "name": "los kogutos",
+      "short_name": "LK"
+    }
+  },
+  {
+    "rank": 175,
+    "points": 733.04,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 4665,
+      "name": "Zomblers",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 176,
+    "points": 731.84,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 860,
+      "name": "Procyon",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 177,
+    "points": 731.13,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 59821,
+      "name": "NEW VISION",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 178,
+    "points": 728.28,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6733,
+      "name": "GameHunters",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 179,
+    "points": 725.18,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2436,
+      "name": "Mindfreak",
+      "short_name": "MF"
+    }
+  },
+  {
+    "rank": 181,
+    "points": 713.99,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 35923,
+      "name": "ex-KRÜ",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 182,
+    "points": 713.53,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7302,
+      "name": "Misa",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 183,
+    "points": 711.85,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7565,
+      "name": "OLDBOYS PL",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 184,
+    "points": 709.79,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2967,
+      "name": "paiN Academy",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 185,
+    "points": 706.47,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 611,
+      "name": "HAVU",
+      "short_name": "HAVU"
+    }
+  },
+  {
+    "rank": 186,
+    "points": 702.78,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 35622,
+      "name": "ex-Fingers Crossed",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 187,
+    "points": 700.28,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7213,
+      "name": "HEROIC Academy",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 188,
+    "points": 698.58,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 56959,
+      "name": "cirahvi",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 189,
+    "points": 698.51,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 31110,
+      "name": "Abyssal",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 190,
+    "points": 697.04,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7567,
+      "name": "FOLHA AMARELA",
+      "short_name": "FA"
+    }
+  },
+  {
+    "rank": 191,
+    "points": 693.14,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6958,
+      "name": "Just Swing",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 192,
+    "points": 692.4,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 150,
+      "name": "Rooster",
+      "short_name": "RSTR"
+    }
+  },
+  {
+    "rank": 193,
+    "points": 691.37,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 3273,
+      "name": "Alter Ego",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 194,
+    "points": 690.05,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5492,
+      "name": "OlyBet",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 195,
+    "points": 689.76,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2860,
+      "name": "XI",
+      "short_name": "XI"
+    }
+  },
+  {
+    "rank": 196,
+    "points": 689.36,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7458,
+      "name": "Rave",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 197,
+    "points": 688.94,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 28399,
+      "name": "BMZ",
+      "short_name": "BMZ"
+    }
+  },
+  {
+    "rank": 198,
+    "points": 687.63,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 305,
+      "name": "SAW",
+      "short_name": "SAW"
+    }
+  },
+  {
+    "rank": 199,
+    "points": 687.19,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1214,
+      "name": "Honvéd",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 200,
+    "points": 685.38,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7497,
+      "name": "SportsBetExpert",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 201,
+    "points": 683.62,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1166,
+      "name": "megoshort",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 202,
+    "points": 683.41,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7744,
+      "name": "FarmVille",
+      "short_name": "S2K"
+    }
+  },
+  {
+    "rank": 203,
+    "points": 681.65,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7330,
+      "name": "Falcons Force",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 204,
+    "points": 680.92,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 32612,
+      "name": "Back to Back",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 205,
+    "points": 679.09,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 3278,
+      "name": "Arcade",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 206,
+    "points": 677.16,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7793,
+      "name": "benched gods",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 207,
+    "points": 673.71,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7451,
+      "name": "Vasco",
+      "short_name": "VSC"
+    }
+  },
+  {
+    "rank": 208,
+    "points": 673.7,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2048,
+      "name": "Dripmen",
+      "short_name": "DRIP"
+    }
+  },
+  {
+    "rank": 209,
+    "points": 672.78,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 32306,
+      "name": "Fuzos",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 210,
+    "points": 671.56,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 35926,
+      "name": "Club 333",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 211,
+    "points": 664.89,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7055,
+      "name": "Persona Grata",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 212,
+    "points": 663.12,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 40745,
+      "name": "ALKA",
+      "short_name": "ALKAa"
+    }
+  },
+  {
+    "rank": 213,
+    "points": 659.98,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5623,
+      "name": "The QUBE",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 214,
+    "points": 659.5,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1175,
+      "name": "bankaPEPSI",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 215,
+    "points": 655.74,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 22672,
+      "name": "Invicta",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 216,
+    "points": 654,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7286,
+      "name": "Endless Journey",
+      "short_name": "EJ"
+    }
+  },
+  {
+    "rank": 217,
+    "points": 651.64,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6766,
+      "name": "BESTIA Academy",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 218,
+    "points": 649.48,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7471,
+      "name": "yngods",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 219,
+    "points": 649.18,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 19671,
+      "name": "ReThink",
+      "short_name": "RT"
+    }
+  },
+  {
+    "rank": 220,
+    "points": 644.36,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 318,
+      "name": "Nexus",
+      "short_name": "NXS"
+    }
+  },
+  {
+    "rank": 221,
+    "points": 640.84,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 62004,
+      "name": "SHISHKA",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 222,
+    "points": 640.19,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 31113,
+      "name": "METANOIA Wolves",
+      "short_name": "MW"
+    }
+  },
+  {
+    "rank": 223,
+    "points": 639.3,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7466,
+      "name": "Reign Above",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 224,
+    "points": 639.13,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 322,
+      "name": "BIG Academy",
+      "short_name": "BIG.A"
+    }
+  },
+  {
+    "rank": 226,
+    "points": 632.12,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7478,
+      "name": "Last Bullet",
+      "short_name": "LB"
+    }
+  },
+  {
+    "rank": 227,
+    "points": 629.78,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7231,
+      "name": "Prestige",
+      "short_name": "PRE"
+    }
+  },
+  {
+    "rank": 228,
+    "points": 627.95,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6473,
+      "name": "ALLINNERS",
+      "short_name": "ALLIN"
+    }
+  },
+  {
+    "rank": 229,
+    "points": 627.03,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7082,
+      "name": "Shimmer",
+      "short_name": "SHIM"
+    }
+  },
+  {
+    "rank": 230,
+    "points": 626.42,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 31108,
+      "name": "WBT",
+      "short_name": "WBT"
+    }
+  },
+  {
+    "rank": 231,
+    "points": 624.61,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 4391,
+      "name": "ROUNDS",
+      "short_name": "RGG"
+    }
+  },
+  {
+    "rank": 232,
+    "points": 619.06,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6467,
+      "name": "FORZE Reload",
+      "short_name": "FORZE.R"
+    }
+  },
+  {
+    "rank": 233,
+    "points": 616.89,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7331,
+      "name": "R2",
+      "short_name": "R2"
+    }
+  },
+  {
+    "rank": 234,
+    "points": 612.77,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5276,
+      "name": "Let Her Cook",
+      "short_name": "LHC"
+    }
+  },
+  {
+    "rank": 235,
+    "points": 612.31,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6875,
+      "name": "DEPO",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 237,
+    "points": 609.86,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 48645,
+      "name": "Clutchain fe",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 238,
+    "points": 608.56,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 65503,
+      "name": "Dark Moon",
+      "short_name": "DM"
+    }
+  },
+  {
+    "rank": 239,
+    "points": 608.35,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2468,
+      "name": "Players",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 240,
+    "points": 608.28,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2150,
+      "name": "KUUSAMO",
+      "short_name": "KSM"
+    }
+  },
+  {
+    "rank": 241,
+    "points": 607.72,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 34415,
+      "name": "boyband",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 242,
+    "points": 605.42,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7329,
+      "name": "Crashers",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 243,
+    "points": 603.86,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 44424,
+      "name": "playersclub",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 244,
+    "points": 602.74,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7633,
+      "name": "A Great Chaos",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 245,
+    "points": 598.78,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 42037,
+      "name": "Basement Bobs",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 246,
+    "points": 596.79,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5371,
+      "name": "Wanted Goons",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 247,
+    "points": 595.48,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 65726,
+      "name": "Eternal 21",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 248,
+    "points": 595.37,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 49541,
+      "name": "Project 91",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 249,
+    "points": 592.88,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 25988,
+      "name": "Ding Cuts",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 250,
+    "points": 590.56,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6502,
+      "name": "BORING PLAYERS",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 251,
+    "points": 586.92,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5905,
+      "name": "Banger Gang",
+      "short_name": "BG"
+    }
+  },
+  {
+    "rank": 253,
+    "points": 582.7,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5780,
+      "name": "Atrix",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 254,
+    "points": 582.3,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7563,
+      "name": "VEXA",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 255,
+    "points": 579.59,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5049,
+      "name": "DXA",
+      "short_name": "DXA"
+    }
+  },
+  {
+    "rank": 256,
+    "points": 578.25,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7431,
+      "name": "Overpeek",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 257,
+    "points": 576.98,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 475,
+      "name": "Lilmix",
+      "short_name": "LILMIX"
+    }
+  },
+  {
+    "rank": 258,
+    "points": 575.82,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7406,
+      "name": "Famalicão",
+      "short_name": "FCF"
+    }
+  },
+  {
+    "rank": 259,
+    "points": 574.47,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 48942,
+      "name": "Arch",
+      "short_name": "ARCH"
+    }
+  },
+  {
+    "rank": 260,
+    "points": 573.45,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 32913,
+      "name": "Drama",
+      "short_name": "DRAMA"
+    }
+  },
+  {
+    "rank": 262,
+    "points": 562.2,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1501,
+      "name": "FURIA fe",
+      "short_name": "FURIA.F"
+    }
+  },
+  {
+    "rank": 263,
+    "points": 560.45,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 3158,
+      "name": "aAa",
+      "short_name": "aAa"
+    }
+  },
+  {
+    "rank": 264,
+    "points": 552.23,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2804,
+      "name": "Partizan",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 265,
+    "points": 552.17,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7249,
+      "name": "Mousquetaires",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 266,
+    "points": 549.69,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 323,
+      "name": "EMPIRE",
+      "short_name": "EMP"
+    }
+  },
+  {
+    "rank": 267,
+    "points": 549.62,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 42029,
+      "name": "MTX",
+      "short_name": "Matrix"
+    }
+  },
+  {
+    "rank": 268,
+    "points": 548.88,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5144,
+      "name": "FlyQuest RED",
+      "short_name": "FLY"
+    }
+  },
+  {
+    "rank": 269,
+    "points": 541.32,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 26291,
+      "name": "home",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 270,
+    "points": 540.63,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 49340,
+      "name": "900FPSvsECO",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 271,
+    "points": 539.47,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 28816,
+      "name": "M1X KS",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 272,
+    "points": 535.24,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 2469,
+      "name": "BIG EQUIPA",
+      "short_name": "BIG.E"
+    }
+  },
+  {
+    "rank": 273,
+    "points": 533.19,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1053,
+      "name": "Incognito",
+      "short_name": "IE"
+    }
+  },
+  {
+    "rank": 274,
+    "points": 532.59,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6937,
+      "name": "GUARA",
+      "short_name": "GE"
+    }
+  },
+  {
+    "rank": 275,
+    "points": 524.52,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 31109,
+      "name": "Skele",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 276,
+    "points": 520.54,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 4923,
+      "name": "Aurora Young Blud",
+      "short_name": "AUR.YB"
+    }
+  },
+  {
+    "rank": 278,
+    "points": 518.3,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 17572,
+      "name": "rottweilers",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 279,
+    "points": 516.61,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 27197,
+      "name": "ex-FUT Academy",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 280,
+    "points": 516.18,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 34417,
+      "name": "BOJONG",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 281,
+    "points": 514.12,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 26592,
+      "name": "mouse",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 283,
+    "points": 510.54,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 25385,
+      "name": "LAGUNA",
+      "short_name": "LAG"
+    }
+  },
+  {
+    "rank": 284,
+    "points": 503.83,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 40742,
+      "name": "MARKandLARRY",
+      "short_name": "MnL"
+    }
+  },
+  {
+    "rank": 285,
+    "points": 502.12,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5168,
+      "name": "ZOTIX",
+      "short_name": "ZOTIX"
+    }
+  },
+  {
+    "rank": 286,
+    "points": 501.75,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 57776,
+      "name": "OKSUCC",
+      "short_name": "OKS"
+    }
+  },
+  {
+    "rank": 287,
+    "points": 499.95,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7428,
+      "name": "hindsight",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 288,
+    "points": 497.77,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7306,
+      "name": "Legion",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 289,
+    "points": 491.95,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7794,
+      "name": "ALTAY",
+      "short_name": "ALT"
+    }
+  },
+  {
+    "rank": 290,
+    "points": 490.33,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 50152,
+      "name": "QUINTESSENCIA",
+      "short_name": "QUIN"
+    }
+  },
+  {
+    "rank": 291,
+    "points": 486.92,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 29003,
+      "name": "IDoPieca",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 292,
+    "points": 484.34,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7650,
+      "name": "Young TigeRES",
+      "short_name": "Y.TigeRES"
+    }
+  },
+  {
+    "rank": 293,
+    "points": 482.99,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7372,
+      "name": "Bad Luck",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 294,
+    "points": 481.56,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 44422,
+      "name": "ACROBATS",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 295,
+    "points": 475.92,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7155,
+      "name": "MAGICOS",
+      "short_name": "MAG"
+    }
+  },
+  {
+    "rank": 296,
+    "points": 475.91,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7619,
+      "name": "Arise",
+      "short_name": "ARISE"
+    }
+  },
+  {
+    "rank": 297,
+    "points": 474.05,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7638,
+      "name": "B8 Academy",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 298,
+    "points": 471.22,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 3361,
+      "name": "Blitzkrieg",
+      "short_name": "BK"
+    }
+  },
+  {
+    "rank": 299,
+    "points": 462.6,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 972,
+      "name": "OverKnight",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 300,
+    "points": 461.96,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 36828,
+      "name": "5Actors",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 301,
+    "points": 461.16,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 45326,
+      "name": "Z7",
+      "short_name": "Z7"
+    }
+  },
+  {
+    "rank": 302,
+    "points": 458.17,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6915,
+      "name": "eternal premium",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 303,
+    "points": 452.25,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 785,
+      "name": "VP.Prodigy",
+      "short_name": "VP.P"
+    }
+  },
+  {
+    "rank": 304,
+    "points": 450.83,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 49841,
+      "name": "Clutchain",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 305,
+    "points": 448.46,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 45931,
+      "name": "FRZ",
+      "short_name": "FRZ"
+    }
+  },
+  {
+    "rank": 306,
+    "points": 447.04,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7452,
+      "name": "Imperial Academy",
+      "short_name": "Imperial.A"
+    }
+  },
+  {
+    "rank": 307,
+    "points": 443.95,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 6627,
+      "name": "Wingman",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 308,
+    "points": 443.06,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 42634,
+      "name": "bond1e",
+      "short_name": "BND"
+    }
+  },
+  {
+    "rank": 309,
+    "points": 441.71,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 45935,
+      "name": "PURE",
+      "short_name": "PURE"
+    }
+  },
+  {
+    "rank": 310,
+    "points": 439.08,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5927,
+      "name": "Diamant",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 311,
+    "points": 438.59,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 5650,
+      "name": "NuTorious",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 312,
+    "points": 425.84,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 830,
+      "name": "Ølgod Efterskole",
+      "short_name": "Ølgod"
+    }
+  },
+  {
+    "rank": 313,
+    "points": 423.32,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1664,
+      "name": "EC BANGA",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 314,
+    "points": 420.37,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 100,
+      "name": "Red Feet",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 315,
+    "points": 416.25,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 4064,
+      "name": "Grindas",
+      "short_name": "GRIND"
+    }
+  },
+  {
+    "rank": 318,
+    "points": 403.69,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7474,
+      "name": "JUMBO",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 319,
+    "points": 400.11,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 50150,
+      "name": "Julie&Cie",
+      "short_name": "JUL"
+    }
+  },
+  {
+    "rank": 320,
+    "points": 398.91,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 935,
+      "name": "777",
+      "short_name": "777"
+    }
+  },
+  {
+    "rank": 321,
+    "points": 395.41,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 1198,
+      "name": "BBBMBCBS",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 322,
+    "points": 393.3,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 13973,
+      "name": "Qual4",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 323,
+    "points": 389.57,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 48944,
+      "name": "tincan",
+      "short_name": "TIN"
+    }
+  },
+  {
+    "rank": 325,
+    "points": 386.41,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 50149,
+      "name": "Subtop De France",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 326,
+    "points": 379.11,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 409,
+      "name": "ENRAGE",
+      "short_name": null
+    }
+  },
+  {
+    "rank": 327,
+    "points": 368.29,
+    "ranking_type": "bo3",
+    "ranking_date": "2026-06-27",
+    "team": {
+      "id": 7671,
+      "name": "Time Waves",
+      "short_name": null
     }
   }
 ]

@@ -1,0 +1,537 @@
+{
+  "match_map_id": 15624115,
+  "map_name": "de_mirage",
+  "rounds": [
+    {
+      "id": 38178792,
+      "round_number": 1,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 50,
+      "team_stats": [
+        {
+          "id": 73728065,
+          "team": {
+            "id": 736,
+            "name": "BIG",
+            "short_name": "BIG"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": true,
+          "kills": 5,
+          "deaths": 0,
+          "assists": 0,
+          "headshots": 5,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 500,
+          "utility_value": 500,
+          "equipment_value": 4200,
+          "money_spent": 3400,
+          "money_saved": 3500,
+          "loss_bonus_streak": 1,
+          "win_streak": 1,
+          "clutches": 0,
+          "clutch_attempts": 0
+        },
+        {
+          "id": 73728067,
+          "team": {
+            "id": 771,
+            "name": "G2",
+            "short_name": "G2"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": true,
+          "kills": 0,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 0,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 30,
+          "utility_value": 400,
+          "equipment_value": 4350,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 1,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 38178796,
+      "round_number": 2,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 96,
+      "team_stats": [
+        {
+          "id": 73728074,
+          "team": {
+            "id": 736,
+            "name": "BIG",
+            "short_name": "BIG"
+          },
+          "team_side": "CT",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 0,
+          "assists": 1,
+          "headshots": 1,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 489,
+          "utility_value": 300,
+          "equipment_value": 23200,
+          "money_spent": 19350,
+          "money_saved": 20800,
+          "loss_bonus_streak": 0,
+          "win_streak": 2,
+          "clutches": 0,
+          "clutch_attempts": 0
+        },
+        {
+          "id": 73728075,
+          "team": {
+            "id": 771,
+            "name": "G2",
+            "short_name": "G2"
+          },
+          "team_side": "T",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 0,
+          "deaths": 5,
+          "assists": 0,
+          "headshots": 0,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 118,
+          "utility_value": 0,
+          "equipment_value": 1000,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 2,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 38178800,
+      "round_number": 3,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 168,
+      "team_stats": [
+        {
+          "id": 73728081,
+          "team": {
+            "id": 771,
+            "name": "G2",
+            "short_name": "G2"
+          },
+          "team_side": "T",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 3,
+          "deaths": 3,
+          "assists": 1,
+          "headshots": 2,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 355,
+          "utility_value": 700,
+          "equipment_value": 23400,
+          "money_spent": 8800,
+          "money_saved": 7700,
+          "loss_bonus_streak": 1,
+          "win_streak": 1,
+          "clutches": 0,
+          "clutch_attempts": 0
+        },
+        {
+          "id": 73728083,
+          "team": {
+            "id": 736,
+            "name": "BIG",
+            "short_name": "BIG"
+          },
+          "team_side": "CT",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 3,
+          "deaths": 3,
+          "assists": 0,
+          "headshots": 0,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 335,
+          "utility_value": 500,
+          "equipment_value": 27200,
+          "money_spent": 2100,
+          "money_saved": 7700,
+          "loss_bonus_streak": 0,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 38178804,
+      "round_number": 4,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 95,
+      "team_stats": [
+        {
+          "id": 73728087,
+          "team": {
+            "id": 771,
+            "name": "G2",
+            "short_name": "G2"
+          },
+          "team_side": "T",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 2,
+          "deaths": 1,
+          "assists": 1,
+          "headshots": 1,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 192,
+          "utility_value": 700,
+          "equipment_value": 23900,
+          "money_spent": 13000,
+          "money_saved": 15000,
+          "loss_bonus_streak": 0,
+          "win_streak": 2,
+          "clutches": 0,
+          "clutch_attempts": 0
+        },
+        {
+          "id": 73728091,
+          "team": {
+            "id": 736,
+            "name": "BIG",
+            "short_name": "BIG"
+          },
+          "team_side": "CT",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 1,
+          "deaths": 2,
+          "assists": 0,
+          "headshots": 0,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 220,
+          "utility_value": 0,
+          "equipment_value": 27350,
+          "money_spent": 9550,
+          "money_saved": 14500,
+          "loss_bonus_streak": 1,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 0
+        }
+      ]
+    },
+    {
+      "id": 38178808,
+      "round_number": 5,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 156,
+      "team_stats": [
+        {
+          "id": 73728097,
+          "team": {
+            "id": 771,
+            "name": "G2",
+            "short_name": "G2"
+          },
+          "team_side": "T",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 4,
+          "deaths": 2,
+          "assists": 0,
+          "headshots": 3,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 401,
+          "utility_value": 1400,
+          "equipment_value": 25200,
+          "money_spent": 5900,
+          "money_saved": 13750,
+          "loss_bonus_streak": 0,
+          "win_streak": 3,
+          "clutches": 0,
+          "clutch_attempts": 0
+        },
+        {
+          "id": 73728099,
+          "team": {
+            "id": 736,
+            "name": "BIG",
+            "short_name": "BIG"
+          },
+          "team_side": "CT",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 2,
+          "deaths": 4,
+          "assists": 1,
+          "headshots": 1,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 243,
+          "utility_value": 1700,
+          "equipment_value": 27400,
+          "money_spent": 600,
+          "money_saved": 4300,
+          "loss_bonus_streak": 2,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 38178811,
+      "round_number": 6,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 136,
+      "team_stats": [
+        {
+          "id": 73728102,
+          "team": {
+            "id": 771,
+            "name": "G2",
+            "short_name": "G2"
+          },
+          "team_side": "T",
+          "won": true,
+          "is_pistol_round": false,
+          "kills": 5,
+          "deaths": 3,
+          "assists": 2,
+          "headshots": 4,
+          "first_kills": 0,
+          "first_deaths": 1,
+          "trade_kills": 1,
+          "trade_deaths": 1,
+          "damage": 500,
+          "utility_value": 1300,
+          "equipment_value": 26950,
+          "money_spent": 6000,
+          "money_saved": 10150,
+          "loss_bonus_streak": 0,
+          "win_streak": 4,
+          "clutches": 0,
+          "clutch_attempts": 0
+        },
+        {
+          "id": 73728106,
+          "team": {
+            "id": 736,
+            "name": "BIG",
+            "short_name": "BIG"
+          },
+          "team_side": "CT",
+          "won": false,
+          "is_pistol_round": false,
+          "kills": 3,
+          "deaths": 5,
+          "assists": 2,
+          "headshots": 2,
+          "first_kills": 1,
+          "first_deaths": 0,
+          "trade_kills": 0,
+          "trade_deaths": 0,
+          "damage": 378,
+          "utility_value": 300,
+          "equipment_value": 8200,
+          "money_spent": 0,
+          "money_saved": 0,
+          "loss_bonus_streak": 3,
+          "win_streak": 0,
+          "clutches": 0,
+          "clutch_attempts": 1
+        }
+      ]
+    },
+    {
+      "id": 38175797,
+      "round_number": 7,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": null,
+      "team_stats": []
+    },
+    {
+      "id": 38175799,
+      "round_number": 8,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 100,
+      "team_stats": []
+    },
+    {
+      "id": 38175801,
+      "round_number": 9,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 150,
+      "team_stats": []
+    },
+    {
+      "id": 38175803,
+      "round_number": 10,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 94,
+      "team_stats": []
+    },
+    {
+      "id": 38175805,
+      "round_number": 11,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 91,
+      "team_stats": []
+    },
+    {
+      "id": 38175807,
+      "round_number": 12,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 70,
+      "team_stats": []
+    },
+    {
+      "id": 38175809,
+      "round_number": 13,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 73,
+      "team_stats": []
+    },
+    {
+      "id": 38175811,
+      "round_number": 14,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 39,
+      "team_stats": []
+    },
+    {
+      "id": 38175813,
+      "round_number": 15,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 62,
+      "team_stats": []
+    },
+    {
+      "id": 38175815,
+      "round_number": 16,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 45,
+      "team_stats": []
+    },
+    {
+      "id": 38175818,
+      "round_number": 17,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 47,
+      "team_stats": []
+    },
+    {
+      "id": 38175820,
+      "round_number": 18,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 144,
+      "team_stats": []
+    },
+    {
+      "id": 38175822,
+      "round_number": 19,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TargetBombed",
+      "duration_seconds": 72,
+      "team_stats": []
+    },
+    {
+      "id": 38175823,
+      "round_number": 20,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 47,
+      "team_stats": []
+    },
+    {
+      "id": 38175824,
+      "round_number": 21,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "BombDefused",
+      "duration_seconds": 61,
+      "team_stats": []
+    }
+  ]
+}

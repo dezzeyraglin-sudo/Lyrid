@@ -1,0 +1,33 @@
+{
+  "match_map_id": 13192970,
+  "map_name": "de_dust2",
+  "rounds": [
+    {
+      "id": 33042106,
+      "round_number": 1,
+      "winner_side": "T",
+      "loser_side": "CT",
+      "end_reason": "TerroristsWin",
+      "duration_seconds": 63,
+      "team_stats": []
+    },
+    {
+      "id": 33042107,
+      "round_number": 2,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 61,
+      "team_stats": []
+    },
+    {
+      "id": 33042108,
+      "round_number": 3,
+      "winner_side": "CT",
+      "loser_side": "T",
+      "end_reason": "CTWin",
+      "duration_seconds": 34,
+      "team_stats": []
+    }
+  ]
+}
