@@ -11092,144 +11092,144 @@
     "overtime_rounds": null
   },
   {
-    "id": 15683998,
-    "match_id": 10662173,
+    "id": 16459418,
+    "match_id": 10829334,
     "map_name": "de_nuke",
     "map_number": 1,
     "team1_score": 13,
-    "team2_score": 5,
+    "team2_score": 6,
     "winner": {
-      "id": 2751,
-      "name": "Monte",
-      "short_name": "MNTE"
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
     },
-    "duration_seconds": 2411,
+    "duration_seconds": 2368,
     "overtime_rounds": null
   },
   {
-    "id": 15683999,
-    "match_id": 10662173,
+    "id": 16459422,
+    "match_id": 10829334,
+    "map_name": "de_anubis",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 9,
+    "winner": {
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
+    },
+    "duration_seconds": 2960,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16470111,
+    "match_id": 10829333,
     "map_name": "de_dust2",
-    "map_number": 2,
-    "team1_score": 13,
-    "team2_score": 11,
+    "map_number": 1,
+    "team1_score": 8,
+    "team2_score": 13,
     "winner": {
-      "id": 2751,
-      "name": "Monte",
-      "short_name": "MNTE"
+      "id": 316,
+      "name": "9z",
+      "short_name": "9z"
     },
-    "duration_seconds": 3372,
+    "duration_seconds": 3170,
     "overtime_rounds": null
   },
   {
-    "id": 15693997,
-    "match_id": 10662172,
+    "id": 16470112,
+    "match_id": 10829333,
     "map_name": "de_mirage",
-    "map_number": 1,
-    "team1_score": 7,
-    "team2_score": 13,
-    "winner": {
-      "id": 5556,
-      "name": "Legacy",
-      "short_name": "LGC"
-    },
-    "duration_seconds": 2879,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15693998,
-    "match_id": 10662172,
-    "map_name": "de_inferno",
     "map_number": 2,
-    "team1_score": 4,
-    "team2_score": 13,
-    "winner": {
-      "id": 5556,
-      "name": "Legacy",
-      "short_name": "LGC"
-    },
-    "duration_seconds": 2324,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15702605,
-    "match_id": 10662171,
-    "map_name": "de_ancient",
-    "map_number": 1,
     "team1_score": 13,
-    "team2_score": 7,
+    "team2_score": 9,
     "winner": {
-      "id": 736,
-      "name": "BIG",
-      "short_name": "BIG"
+      "id": 631,
+      "name": "FURIA",
+      "short_name": "FURIA"
     },
-    "duration_seconds": 2417,
+    "duration_seconds": 2261,
     "overtime_rounds": null
   },
   {
-    "id": 15702607,
-    "match_id": 10662171,
+    "id": 16528821,
+    "match_id": 10829330,
     "map_name": "de_overpass",
-    "map_number": 2,
-    "team1_score": 6,
+    "map_number": 1,
+    "team1_score": 9,
     "team2_score": 13,
     "winner": {
-      "id": 1456,
-      "name": "B8",
-      "short_name": "B8"
+      "id": 771,
+      "name": "G2",
+      "short_name": "G2"
     },
-    "duration_seconds": 2525,
+    "duration_seconds": 3230,
     "overtime_rounds": null
   },
   {
-    "id": 15839101,
-    "match_id": 11074842,
-    "map_name": "de_mirage",
-    "map_number": 1,
-    "team1_score": 13,
-    "team2_score": 10,
-    "winner": {
-      "id": 631,
-      "name": "FURIA",
-      "short_name": "FURIA"
-    },
-    "duration_seconds": 2998,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15839102,
-    "match_id": 11074842,
-    "map_name": "de_inferno",
-    "map_number": 2,
-    "team1_score": 13,
-    "team2_score": 4,
-    "winner": {
-      "id": 631,
-      "name": "FURIA",
-      "short_name": "FURIA"
-    },
-    "duration_seconds": 2527,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15854397,
-    "match_id": 11074838,
+    "id": 16528822,
+    "match_id": 10829330,
     "map_name": "de_dust2",
-    "map_number": 1,
-    "team1_score": 1,
-    "team2_score": 13,
+    "map_number": 2,
+    "team1_score": 16,
+    "team2_score": 14,
     "winner": {
       "id": 637,
       "name": "Spirit",
       "short_name": "TS"
     },
-    "duration_seconds": 2057,
+    "duration_seconds": 4227,
     "overtime_rounds": null
   },
   {
-    "id": 15854399,
-    "match_id": 11074838,
+    "id": 16544379,
+    "match_id": 10829329,
     "map_name": "de_anubis",
+    "map_number": 1,
+    "team1_score": 11,
+    "team2_score": 13,
+    "winner": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "duration_seconds": 2508,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16544380,
+    "match_id": 10829329,
+    "map_name": "de_inferno",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 11,
+    "winner": {
+      "id": 650,
+      "name": "Vitality",
+      "short_name": "VIT"
+    },
+    "duration_seconds": 3529,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16612610,
+    "match_id": 10829326,
+    "map_name": "de_anubis",
+    "map_number": 1,
+    "team1_score": 16,
+    "team2_score": 14,
+    "winner": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "duration_seconds": 4265,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16612611,
+    "match_id": 10829326,
+    "map_name": "de_mirage",
     "map_number": 2,
     "team1_score": 8,
     "team2_score": 13,
@@ -11238,247 +11238,67 @@
       "name": "Spirit",
       "short_name": "TS"
     },
-    "duration_seconds": 3071,
+    "duration_seconds": 2879,
     "overtime_rounds": null
   },
   {
-    "id": 15843976,
-    "match_id": 11074843,
-    "map_name": "de_inferno",
-    "map_number": 1,
-    "team1_score": 10,
-    "team2_score": 13,
-    "winner": {
-      "id": 771,
-      "name": "G2",
-      "short_name": "G2"
-    },
-    "duration_seconds": 3226,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15843978,
-    "match_id": 11074843,
-    "map_name": "de_dust2",
-    "map_number": 2,
-    "team1_score": 13,
-    "team2_score": 8,
-    "winner": {
-      "id": 2018,
-      "name": "Falcons",
-      "short_name": "FLC"
-    },
-    "duration_seconds": 3003,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15829183,
-    "match_id": 11074839,
-    "map_name": "de_anubis",
-    "map_number": 1,
-    "team1_score": 5,
-    "team2_score": 13,
-    "winner": {
-      "id": 7278,
-      "name": "FUT",
-      "short_name": "FUT"
-    },
-    "duration_seconds": 2531,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15829184,
-    "match_id": 11074839,
-    "map_name": "de_overpass",
-    "map_number": 2,
-    "team1_score": 13,
-    "team2_score": 2,
-    "winner": {
-      "id": 650,
-      "name": "Vitality",
-      "short_name": "VIT"
-    },
-    "duration_seconds": 2100,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15813983,
-    "match_id": 11074837,
+    "id": 16600872,
+    "match_id": 10829325,
     "map_name": "de_dust2",
     "map_number": 1,
     "team1_score": 13,
-    "team2_score": 11,
-    "winner": {
-      "id": 717,
-      "name": "The MongolZ",
-      "short_name": "MGLZ"
-    },
-    "duration_seconds": 3052,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15813984,
-    "match_id": 11074837,
-    "map_name": "de_mirage",
-    "map_number": 2,
-    "team1_score": 6,
-    "team2_score": 13,
-    "winner": {
-      "id": 5343,
-      "name": "BetBoom",
-      "short_name": "BB"
-    },
-    "duration_seconds": 2270,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15814000,
-    "match_id": 11074840,
-    "map_name": "de_overpass",
-    "map_number": 1,
-    "team1_score": 1,
-    "team2_score": 13,
-    "winner": {
-      "id": 316,
-      "name": "9z",
-      "short_name": "9z"
-    },
-    "duration_seconds": 2119,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15814001,
-    "match_id": 11074840,
-    "map_name": "de_dust2",
-    "map_number": 2,
-    "team1_score": 13,
-    "team2_score": 8,
-    "winner": {
-      "id": 5567,
-      "name": "PARIVISION",
-      "short_name": "PRV"
-    },
-    "duration_seconds": 2803,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15850554,
-    "match_id": 11074844,
-    "map_name": "de_nuke",
-    "map_number": 1,
-    "team1_score": 13,
-    "team2_score": 10,
-    "winner": {
-      "id": 2766,
-      "name": "Aurora",
-      "short_name": "AUR"
-    },
-    "duration_seconds": 2950,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15850555,
-    "match_id": 11074844,
-    "map_name": "de_anubis",
-    "map_number": 2,
-    "team1_score": 13,
-    "team2_score": 7,
-    "winner": {
-      "id": 2766,
-      "name": "Aurora",
-      "short_name": "AUR"
-    },
-    "duration_seconds": 2905,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15826759,
-    "match_id": 11074841,
-    "map_name": "de_dust2",
-    "map_number": 1,
-    "team1_score": 13,
-    "team2_score": 5,
-    "winner": {
-      "id": 745,
-      "name": "MOUZ",
-      "short_name": "MOUZ"
-    },
-    "duration_seconds": 2526,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15826761,
-    "match_id": 11074841,
-    "map_name": "de_nuke",
-    "map_number": 2,
-    "team1_score": 13,
-    "team2_score": 6,
-    "winner": {
-      "id": 745,
-      "name": "MOUZ",
-      "short_name": "MOUZ"
-    },
-    "duration_seconds": 2143,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15896434,
-    "match_id": 11074828,
-    "map_name": "de_mirage",
-    "map_number": 1,
-    "team1_score": 16,
-    "team2_score": 14,
-    "winner": {
-      "id": 717,
-      "name": "The MongolZ",
-      "short_name": "MGLZ"
-    },
-    "duration_seconds": 3599,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15896435,
-    "match_id": 11074828,
-    "map_name": "de_overpass",
-    "map_number": 2,
-    "team1_score": 13,
-    "team2_score": 3,
-    "winner": {
-      "id": 717,
-      "name": "The MongolZ",
-      "short_name": "MGLZ"
-    },
-    "duration_seconds": 2109,
-    "overtime_rounds": null
-  },
-  {
-    "id": 15896449,
-    "match_id": 11074827,
-    "map_name": "de_nuke",
-    "map_number": 1,
-    "team1_score": 13,
-    "team2_score": 5,
+    "team2_score": 9,
     "winner": {
       "id": 631,
       "name": "FURIA",
       "short_name": "FURIA"
     },
-    "duration_seconds": 2125,
+    "duration_seconds": 3151,
     "overtime_rounds": null
   },
   {
-    "id": 15896450,
-    "match_id": 11074827,
-    "map_name": "de_inferno",
+    "id": 16600873,
+    "match_id": 10829325,
+    "map_name": "de_nuke",
     "map_number": 2,
-    "team1_score": 5,
+    "team1_score": 13,
+    "team2_score": 4,
+    "winner": {
+      "id": 631,
+      "name": "FURIA",
+      "short_name": "FURIA"
+    },
+    "duration_seconds": 2439,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16674066,
+    "match_id": 10829322,
+    "map_name": "de_mirage",
+    "map_number": 1,
+    "team1_score": 8,
     "team2_score": 13,
     "winner": {
-      "id": 745,
-      "name": "MOUZ",
-      "short_name": "MOUZ"
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
     },
-    "duration_seconds": 2665,
+    "duration_seconds": 2718,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16674067,
+    "match_id": 10829322,
+    "map_name": "de_anubis",
+    "map_number": 2,
+    "team1_score": 8,
+    "team2_score": 13,
+    "winner": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "duration_seconds": 3068,
     "overtime_rounds": null
   },
   {
@@ -11899,6 +11719,666 @@
       "short_name": "FURIA"
     },
     "duration_seconds": 2432,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16156376,
+    "match_id": 11074793,
+    "map_name": "de_ancient",
+    "map_number": 1,
+    "team1_score": 11,
+    "team2_score": 13,
+    "winner": {
+      "id": 7278,
+      "name": "FUT",
+      "short_name": "FUT"
+    },
+    "duration_seconds": 3424,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16156377,
+    "match_id": 11074793,
+    "map_name": "de_nuke",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 10,
+    "winner": {
+      "id": 745,
+      "name": "MOUZ",
+      "short_name": "MOUZ"
+    },
+    "duration_seconds": 2977,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16156310,
+    "match_id": 11074792,
+    "map_name": "de_nuke",
+    "map_number": 1,
+    "team1_score": 9,
+    "team2_score": 13,
+    "winner": {
+      "id": 2751,
+      "name": "Monte",
+      "short_name": "MNTE"
+    },
+    "duration_seconds": 3146,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16156311,
+    "match_id": 11074792,
+    "map_name": "de_inferno",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 7,
+    "winner": {
+      "id": 717,
+      "name": "The MongolZ",
+      "short_name": "MGLZ"
+    },
+    "duration_seconds": 2482,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16172392,
+    "match_id": 11074788,
+    "map_name": "de_nuke",
+    "map_number": 1,
+    "team1_score": 13,
+    "team2_score": 1,
+    "winner": {
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
+    },
+    "duration_seconds": 1709,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16172393,
+    "match_id": 11074788,
+    "map_name": "de_dust2",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 5,
+    "winner": {
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
+    },
+    "duration_seconds": 2153,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16173795,
+    "match_id": 11074789,
+    "map_name": "de_overpass",
+    "map_number": 1,
+    "team1_score": 8,
+    "team2_score": 13,
+    "winner": {
+      "id": 650,
+      "name": "Vitality",
+      "short_name": "VIT"
+    },
+    "duration_seconds": 2871,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16173796,
+    "match_id": 11074789,
+    "map_name": "de_nuke",
+    "map_number": 2,
+    "team1_score": 11,
+    "team2_score": 13,
+    "winner": {
+      "id": 650,
+      "name": "Vitality",
+      "short_name": "VIT"
+    },
+    "duration_seconds": 3206,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16183092,
+    "match_id": 11074785,
+    "map_name": "de_dust2",
+    "map_number": 1,
+    "team1_score": 13,
+    "team2_score": 7,
+    "winner": {
+      "id": 771,
+      "name": "G2",
+      "short_name": "G2"
+    },
+    "duration_seconds": 2652,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16183093,
+    "match_id": 11074785,
+    "map_name": "de_overpass",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 4,
+    "winner": {
+      "id": 771,
+      "name": "G2",
+      "short_name": "G2"
+    },
+    "duration_seconds": 2213,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16188827,
+    "match_id": 11074786,
+    "map_name": "de_dust2",
+    "map_number": 1,
+    "team1_score": 3,
+    "team2_score": 13,
+    "winner": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "duration_seconds": 2282,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16188828,
+    "match_id": 11074786,
+    "map_name": "de_mirage",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 7,
+    "winner": {
+      "id": 765,
+      "name": "Natus Vincere",
+      "short_name": "NAVI"
+    },
+    "duration_seconds": 2645,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16241771,
+    "match_id": 11074778,
+    "map_name": "de_inferno",
+    "map_number": 1,
+    "team1_score": 13,
+    "team2_score": 8,
+    "winner": {
+      "id": 316,
+      "name": "9z",
+      "short_name": "9z"
+    },
+    "duration_seconds": 3178,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16241773,
+    "match_id": 11074778,
+    "map_name": "de_overpass",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 8,
+    "winner": {
+      "id": 316,
+      "name": "9z",
+      "short_name": "9z"
+    },
+    "duration_seconds": 2889,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16251636,
+    "match_id": 11074775,
+    "map_name": "de_mirage",
+    "map_number": 1,
+    "team1_score": 13,
+    "team2_score": 7,
+    "winner": {
+      "id": 5343,
+      "name": "BetBoom",
+      "short_name": "BB"
+    },
+    "duration_seconds": 2383,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16251637,
+    "match_id": 11074775,
+    "map_name": "de_dust2",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 7,
+    "winner": {
+      "id": 5343,
+      "name": "BetBoom",
+      "short_name": "BB"
+    },
+    "duration_seconds": 2870,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16259734,
+    "match_id": 11074774,
+    "map_name": "de_dust2",
+    "map_number": 1,
+    "team1_score": 13,
+    "team2_score": 11,
+    "winner": {
+      "id": 765,
+      "name": "Natus Vincere",
+      "short_name": "NAVI"
+    },
+    "duration_seconds": 3489,
+    "overtime_rounds": null
+  },
+  {
+    "id": 16259735,
+    "match_id": 11074774,
+    "map_name": "de_inferno",
+    "map_number": 2,
+    "team1_score": 14,
+    "team2_score": 16,
+    "winner": {
+      "id": 771,
+      "name": "G2",
+      "short_name": "G2"
+    },
+    "duration_seconds": 4321,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15683998,
+    "match_id": 10662173,
+    "map_name": "de_nuke",
+    "map_number": 1,
+    "team1_score": 13,
+    "team2_score": 5,
+    "winner": {
+      "id": 2751,
+      "name": "Monte",
+      "short_name": "MNTE"
+    },
+    "duration_seconds": 2411,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15683999,
+    "match_id": 10662173,
+    "map_name": "de_dust2",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 11,
+    "winner": {
+      "id": 2751,
+      "name": "Monte",
+      "short_name": "MNTE"
+    },
+    "duration_seconds": 3372,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15693997,
+    "match_id": 10662172,
+    "map_name": "de_mirage",
+    "map_number": 1,
+    "team1_score": 7,
+    "team2_score": 13,
+    "winner": {
+      "id": 5556,
+      "name": "Legacy",
+      "short_name": "LGC"
+    },
+    "duration_seconds": 2879,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15693998,
+    "match_id": 10662172,
+    "map_name": "de_inferno",
+    "map_number": 2,
+    "team1_score": 4,
+    "team2_score": 13,
+    "winner": {
+      "id": 5556,
+      "name": "Legacy",
+      "short_name": "LGC"
+    },
+    "duration_seconds": 2324,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15702605,
+    "match_id": 10662171,
+    "map_name": "de_ancient",
+    "map_number": 1,
+    "team1_score": 13,
+    "team2_score": 7,
+    "winner": {
+      "id": 736,
+      "name": "BIG",
+      "short_name": "BIG"
+    },
+    "duration_seconds": 2417,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15702607,
+    "match_id": 10662171,
+    "map_name": "de_overpass",
+    "map_number": 2,
+    "team1_score": 6,
+    "team2_score": 13,
+    "winner": {
+      "id": 1456,
+      "name": "B8",
+      "short_name": "B8"
+    },
+    "duration_seconds": 2525,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15839101,
+    "match_id": 11074842,
+    "map_name": "de_mirage",
+    "map_number": 1,
+    "team1_score": 13,
+    "team2_score": 10,
+    "winner": {
+      "id": 631,
+      "name": "FURIA",
+      "short_name": "FURIA"
+    },
+    "duration_seconds": 2998,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15839102,
+    "match_id": 11074842,
+    "map_name": "de_inferno",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 4,
+    "winner": {
+      "id": 631,
+      "name": "FURIA",
+      "short_name": "FURIA"
+    },
+    "duration_seconds": 2527,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15854397,
+    "match_id": 11074838,
+    "map_name": "de_dust2",
+    "map_number": 1,
+    "team1_score": 1,
+    "team2_score": 13,
+    "winner": {
+      "id": 637,
+      "name": "Spirit",
+      "short_name": "TS"
+    },
+    "duration_seconds": 2057,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15854399,
+    "match_id": 11074838,
+    "map_name": "de_anubis",
+    "map_number": 2,
+    "team1_score": 8,
+    "team2_score": 13,
+    "winner": {
+      "id": 637,
+      "name": "Spirit",
+      "short_name": "TS"
+    },
+    "duration_seconds": 3071,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15843976,
+    "match_id": 11074843,
+    "map_name": "de_inferno",
+    "map_number": 1,
+    "team1_score": 10,
+    "team2_score": 13,
+    "winner": {
+      "id": 771,
+      "name": "G2",
+      "short_name": "G2"
+    },
+    "duration_seconds": 3226,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15843978,
+    "match_id": 11074843,
+    "map_name": "de_dust2",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 8,
+    "winner": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "duration_seconds": 3003,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15829183,
+    "match_id": 11074839,
+    "map_name": "de_anubis",
+    "map_number": 1,
+    "team1_score": 5,
+    "team2_score": 13,
+    "winner": {
+      "id": 7278,
+      "name": "FUT",
+      "short_name": "FUT"
+    },
+    "duration_seconds": 2531,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15829184,
+    "match_id": 11074839,
+    "map_name": "de_overpass",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 2,
+    "winner": {
+      "id": 650,
+      "name": "Vitality",
+      "short_name": "VIT"
+    },
+    "duration_seconds": 2100,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15813983,
+    "match_id": 11074837,
+    "map_name": "de_dust2",
+    "map_number": 1,
+    "team1_score": 13,
+    "team2_score": 11,
+    "winner": {
+      "id": 717,
+      "name": "The MongolZ",
+      "short_name": "MGLZ"
+    },
+    "duration_seconds": 3052,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15813984,
+    "match_id": 11074837,
+    "map_name": "de_mirage",
+    "map_number": 2,
+    "team1_score": 6,
+    "team2_score": 13,
+    "winner": {
+      "id": 5343,
+      "name": "BetBoom",
+      "short_name": "BB"
+    },
+    "duration_seconds": 2270,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15814000,
+    "match_id": 11074840,
+    "map_name": "de_overpass",
+    "map_number": 1,
+    "team1_score": 1,
+    "team2_score": 13,
+    "winner": {
+      "id": 316,
+      "name": "9z",
+      "short_name": "9z"
+    },
+    "duration_seconds": 2119,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15814001,
+    "match_id": 11074840,
+    "map_name": "de_dust2",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 8,
+    "winner": {
+      "id": 5567,
+      "name": "PARIVISION",
+      "short_name": "PRV"
+    },
+    "duration_seconds": 2803,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15850554,
+    "match_id": 11074844,
+    "map_name": "de_nuke",
+    "map_number": 1,
+    "team1_score": 13,
+    "team2_score": 10,
+    "winner": {
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
+    },
+    "duration_seconds": 2950,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15850555,
+    "match_id": 11074844,
+    "map_name": "de_anubis",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 7,
+    "winner": {
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
+    },
+    "duration_seconds": 2905,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15826759,
+    "match_id": 11074841,
+    "map_name": "de_dust2",
+    "map_number": 1,
+    "team1_score": 13,
+    "team2_score": 5,
+    "winner": {
+      "id": 745,
+      "name": "MOUZ",
+      "short_name": "MOUZ"
+    },
+    "duration_seconds": 2526,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15826761,
+    "match_id": 11074841,
+    "map_name": "de_nuke",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 6,
+    "winner": {
+      "id": 745,
+      "name": "MOUZ",
+      "short_name": "MOUZ"
+    },
+    "duration_seconds": 2143,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15896434,
+    "match_id": 11074828,
+    "map_name": "de_mirage",
+    "map_number": 1,
+    "team1_score": 16,
+    "team2_score": 14,
+    "winner": {
+      "id": 717,
+      "name": "The MongolZ",
+      "short_name": "MGLZ"
+    },
+    "duration_seconds": 3599,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15896435,
+    "match_id": 11074828,
+    "map_name": "de_overpass",
+    "map_number": 2,
+    "team1_score": 13,
+    "team2_score": 3,
+    "winner": {
+      "id": 717,
+      "name": "The MongolZ",
+      "short_name": "MGLZ"
+    },
+    "duration_seconds": 2109,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15896449,
+    "match_id": 11074827,
+    "map_name": "de_nuke",
+    "map_number": 1,
+    "team1_score": 13,
+    "team2_score": 5,
+    "winner": {
+      "id": 631,
+      "name": "FURIA",
+      "short_name": "FURIA"
+    },
+    "duration_seconds": 2125,
+    "overtime_rounds": null
+  },
+  {
+    "id": 15896450,
+    "match_id": 11074827,
+    "map_name": "de_inferno",
+    "map_number": 2,
+    "team1_score": 5,
+    "team2_score": 13,
+    "winner": {
+      "id": 745,
+      "name": "MOUZ",
+      "short_name": "MOUZ"
+    },
+    "duration_seconds": 2665,
     "overtime_rounds": null
   }
 ]

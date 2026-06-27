@@ -1,0 +1,5 @@
+.env
+.cache/
+*.zip
+underdog*.curl
+underdog_lines.jsonl

@@ -14800,6 +14800,646 @@
     "end_time": "2026-05-15T07:16:17.000Z"
   },
   {
+    "id": 10829322,
+    "slug": "furia-vs-falcons-esports-21-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 631,
+      "name": "FURIA",
+      "short_name": "FURIA"
+    },
+    "team2": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "team1_score": 0,
+    "team2_score": 3,
+    "winner": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "best_of": 5,
+    "status": "finished",
+    "start_time": "2026-06-21T15:00:00.000Z",
+    "end_time": "2026-06-21T18:05:50.246Z"
+  },
+  {
+    "id": 10829326,
+    "slug": "spirit-vs-falcons-esports-20-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "team2": {
+      "id": 637,
+      "name": "Spirit",
+      "short_name": "TS"
+    },
+    "team1_score": 2,
+    "team2_score": 1,
+    "winner": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-20T17:00:00.000Z",
+    "end_time": "2026-06-20T20:38:15.922Z"
+  },
+  {
+    "id": 10829325,
+    "slug": "aurora-gaming-vs-furia-20-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 631,
+      "name": "FURIA",
+      "short_name": "FURIA"
+    },
+    "team2": {
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
+    },
+    "team1_score": 2,
+    "team2_score": 0,
+    "winner": {
+      "id": 631,
+      "name": "FURIA",
+      "short_name": "FURIA"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-20T13:45:00.000Z",
+    "end_time": "2026-06-20T15:38:05.303Z"
+  },
+  {
+    "id": 10829329,
+    "slug": "vitality-vs-falcons-esports-19-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 650,
+      "name": "Vitality",
+      "short_name": "VIT"
+    },
+    "team2": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "team1_score": 1,
+    "team2_score": 2,
+    "winner": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-19T19:25:00.000Z",
+    "end_time": "2026-06-19T23:08:45.598Z"
+  },
+  {
+    "id": 10829330,
+    "slug": "spirit-vs-g2-19-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 637,
+      "name": "Spirit",
+      "short_name": "TS"
+    },
+    "team2": {
+      "id": 771,
+      "name": "G2",
+      "short_name": "G2"
+    },
+    "team1_score": 2,
+    "team2_score": 1,
+    "winner": {
+      "id": 637,
+      "name": "Spirit",
+      "short_name": "TS"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-19T13:45:00.000Z",
+    "end_time": "2026-06-19T18:31:59.562Z"
+  },
+  {
+    "id": 10829333,
+    "slug": "furia-vs-9z-18-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 631,
+      "name": "FURIA",
+      "short_name": "FURIA"
+    },
+    "team2": {
+      "id": 316,
+      "name": "9z",
+      "short_name": "9z"
+    },
+    "team1_score": 2,
+    "team2_score": 1,
+    "winner": {
+      "id": 631,
+      "name": "FURIA",
+      "short_name": "FURIA"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-18T17:00:00.000Z",
+    "end_time": "2026-06-18T20:12:03.924Z"
+  },
+  {
+    "id": 10829334,
+    "slug": "aurora-gaming-vs-betboom-team-18-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
+    },
+    "team2": {
+      "id": 5343,
+      "name": "BetBoom",
+      "short_name": "BB"
+    },
+    "team1_score": 2,
+    "team2_score": 0,
+    "winner": {
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-18T13:45:00.000Z",
+    "end_time": "2026-06-18T15:35:35.984Z"
+  },
+  {
+    "id": 11074774,
+    "slug": "natus-vincere-vs-g2-15-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 765,
+      "name": "Natus Vincere",
+      "short_name": "NAVI"
+    },
+    "team2": {
+      "id": 771,
+      "name": "G2",
+      "short_name": "G2"
+    },
+    "team1_score": 1,
+    "team2_score": 2,
+    "winner": {
+      "id": 771,
+      "name": "G2",
+      "short_name": "G2"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-15T17:00:00.000Z",
+    "end_time": "2026-06-15T20:39:07.371Z"
+  },
+  {
+    "id": 11074775,
+    "slug": "betboom-team-vs-fut-cs2-15-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 5343,
+      "name": "BetBoom",
+      "short_name": "BB"
+    },
+    "team2": {
+      "id": 7278,
+      "name": "FUT",
+      "short_name": "FUT"
+    },
+    "team1_score": 2,
+    "team2_score": 0,
+    "winner": {
+      "id": 5343,
+      "name": "BetBoom",
+      "short_name": "BB"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-15T14:30:00.000Z",
+    "end_time": "2026-06-15T16:13:29.672Z"
+  },
+  {
+    "id": 11074778,
+    "slug": "9z-vs-the-mongolz-15-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 316,
+      "name": "9z",
+      "short_name": "9z"
+    },
+    "team2": {
+      "id": 717,
+      "name": "The MongolZ",
+      "short_name": "MGLZ"
+    },
+    "team1_score": 2,
+    "team2_score": 0,
+    "winner": {
+      "id": 316,
+      "name": "9z",
+      "short_name": "9z"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-15T12:00:00.000Z",
+    "end_time": "2026-06-15T13:57:55.920Z"
+  },
+  {
+    "id": 11074786,
+    "slug": "natus-vincere-vs-falcons-esports-14-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 765,
+      "name": "Natus Vincere",
+      "short_name": "NAVI"
+    },
+    "team2": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "team1_score": 1,
+    "team2_score": 2,
+    "winner": {
+      "id": 2018,
+      "name": "Falcons",
+      "short_name": "FLC"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-14T17:40:00.000Z",
+    "end_time": "2026-06-14T21:01:07.904Z"
+  },
+  {
+    "id": 11074785,
+    "slug": "g2-vs-legacy-br-14-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 771,
+      "name": "G2",
+      "short_name": "G2"
+    },
+    "team2": {
+      "id": 5556,
+      "name": "Legacy",
+      "short_name": "LGC"
+    },
+    "team1_score": 2,
+    "team2_score": 0,
+    "winner": {
+      "id": 771,
+      "name": "G2",
+      "short_name": "G2"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-14T17:00:00.000Z",
+    "end_time": "2026-06-14T18:37:34.716Z"
+  },
+  {
+    "id": 11074788,
+    "slug": "aurora-gaming-vs-9z-14-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
+    },
+    "team2": {
+      "id": 316,
+      "name": "9z",
+      "short_name": "9z"
+    },
+    "team1_score": 2,
+    "team2_score": 0,
+    "winner": {
+      "id": 2766,
+      "name": "Aurora",
+      "short_name": "AUR"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-14T15:20:00.000Z",
+    "end_time": "2026-06-14T16:39:31.013Z"
+  },
+  {
+    "id": 11074789,
+    "slug": "betboom-team-vs-vitality-14-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 5343,
+      "name": "BetBoom",
+      "short_name": "BB"
+    },
+    "team2": {
+      "id": 650,
+      "name": "Vitality",
+      "short_name": "VIT"
+    },
+    "team1_score": 0,
+    "team2_score": 2,
+    "winner": {
+      "id": 650,
+      "name": "Vitality",
+      "short_name": "VIT"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-14T15:15:00.000Z",
+    "end_time": "2026-06-14T17:19:10.670Z"
+  },
+  {
+    "id": 11074792,
+    "slug": "the-mongolz-vs-monte-14-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 717,
+      "name": "The MongolZ",
+      "short_name": "MGLZ"
+    },
+    "team2": {
+      "id": 2751,
+      "name": "Monte",
+      "short_name": "MNTE"
+    },
+    "team1_score": 2,
+    "team2_score": 1,
+    "winner": {
+      "id": 717,
+      "name": "The MongolZ",
+      "short_name": "MGLZ"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-14T12:00:00.000Z",
+    "end_time": "2026-06-14T14:59:28.351Z"
+  },
+  {
+    "id": 11074793,
+    "slug": "mousesports-vs-fut-cs2-14-06-2026",
+    "tournament": {
+      "id": 2336,
+      "name": "Intel Extreme Masters Cologne Major 2026",
+      "slug": "intel-extreme-masters-cologne-major-2026",
+      "tier": "s",
+      "start_date": "2026-06-11",
+      "end_date": "2026-06-21",
+      "prize_pool": 1170000,
+      "prize_pool_currency": "USD",
+      "location": null,
+      "country": null,
+      "is_online": false,
+      "status": "finished"
+    },
+    "stage": null,
+    "team1": {
+      "id": 745,
+      "name": "MOUZ",
+      "short_name": "MOUZ"
+    },
+    "team2": {
+      "id": 7278,
+      "name": "FUT",
+      "short_name": "FUT"
+    },
+    "team1_score": 1,
+    "team2_score": 2,
+    "winner": {
+      "id": 7278,
+      "name": "FUT",
+      "short_name": "FUT"
+    },
+    "best_of": 3,
+    "status": "finished",
+    "start_time": "2026-06-14T12:00:00.000Z",
+    "end_time": "2026-06-14T15:05:42.722Z"
+  },
+  {
     "id": 11074803,
     "slug": "spirit-vs-9z-13-06-2026",
     "tournament": {
@@ -14814,7 +15454,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -14854,7 +15494,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -14894,7 +15534,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -14934,7 +15574,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -14974,7 +15614,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15014,7 +15654,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15054,7 +15694,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15094,7 +15734,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15134,7 +15774,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15174,7 +15814,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15214,7 +15854,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15254,7 +15894,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15294,7 +15934,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15334,7 +15974,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15374,7 +16014,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15414,7 +16054,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15454,7 +16094,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15494,7 +16134,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15534,7 +16174,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15574,7 +16214,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15614,7 +16254,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15654,7 +16294,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15694,7 +16334,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
@@ -15734,7 +16374,7 @@
       "location": null,
       "country": null,
       "is_online": false,
-      "status": "current"
+      "status": "finished"
     },
     "stage": null,
     "team1": {
