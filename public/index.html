@@ -17641,7 +17641,7 @@ async function autoGradeOnAppOpen() {
   state.date = cs2TodayStr();
   function setCs2DateDisplay() {
     const el = document.getElementById('cs2DateDisplay'); if (!el) return;
-    el.textContent = state.date === cs2TodayStr() ? 'Today' : new Date(state.date + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' });
+    el.textContent = state.date === cs2TodayStr() ? 'Today · ' + new Date(state.date + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' }) : new Date(state.date + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
   window.cs2ChangeDate = function (delta) {
     if (delta === 'today') state.date = cs2TodayStr();
@@ -17737,7 +17737,7 @@ async function autoGradeOnAppOpen() {
       banner.innerHTML = `
         <div class="cs2-banner">
           <div class="cs2-banner-eyebrow">Research · not validated vs price</div>
-          <div class="cs2-banner-text">Projection-only reads (Maps 1+2 kills). Pick score is <b>PARTIAL</b> — it excludes opponent style and line value, which the data can't see yet. No edge has been proven against Underdog's number. Treat as a watchlist, not picks.</div>
+          <div class="cs2-banner-text">These are Maps 1+2 kill projections — a watchlist, not locks. In backtesting the edge shows up on <b>LESS (unders) only</b>; overs haven't beaten the line. Always check the real number on Underdog before you play.</div>
         </div>`;
     }
 
@@ -17747,7 +17747,12 @@ async function autoGradeOnAppOpen() {
       return;
     }
     list.innerHTML = `<div class="lyrid-games-list">${matches.map(renderCs2MatchRow).join('')}</div>`;
-    if (matches[0]) analyzeCs2Match(matches[0].matchId);
+    // Auto-open the strongest read (most leans), not just the first game — otherwise
+    // the featured "TONIGHT'S SIGNAL" card can be an empty 0-lean match. Don't scroll
+    // on this initial open so the user still lands at the top of the slate.
+    const leansOf = (m) => (m.players || []).filter(p => p.band === 'LEAN' || p.band === 'STRONG').length;
+    const featured = (matches || []).slice().sort((a, b) => leansOf(b) - leansOf(a))[0];
+    if (featured) analyzeCs2Match(featured.matchId, false);
   }
 
   function renderCs2MatchRow(m) {
@@ -17779,7 +17784,7 @@ async function autoGradeOnAppOpen() {
         </div>
         <div class="lyrid-game-matchup">
           <div class="lyrid-game-teams"><span>${m.rankA ? '#' + m.rankA + ' ' : ''}${esc(m.teamA || '?')}</span><span class="at">vs</span><span>${m.rankB ? '#' + m.rankB + ' ' : ''}${esc(m.teamB || '?')}</span></div>
-          <div class="lyrid-game-pitchers">${mapsLine} · ${sub} · E[rds] ${vol.erounds ?? '?'}${m.rosterSource === 'inferred' ? ' · inferred roster' : ''}</div>
+          <div class="lyrid-game-pitchers">${mapsLine} · ${sub}${m.rosterSource === 'inferred' ? ' · inferred roster' : ''}</div>
         </div>
         <div class="lyrid-game-projection${isSel ? ' signal' : ''}">
           <div class="lyrid-game-projection-label">${leanCount} lean${leanCount === 1 ? '' : 's'}</div>
@@ -17788,7 +17793,7 @@ async function autoGradeOnAppOpen() {
       </button>`;
   }
 
-  window.analyzeCs2Match = function (matchId) {
+  window.analyzeCs2Match = function (matchId, scroll = true) {
     state.selectedMatchId = matchId;
     const data = state.raw; if (!data) return;
     const m = (data.matches || []).find(x => String(x.matchId) === String(matchId));
@@ -17825,7 +17830,10 @@ async function autoGradeOnAppOpen() {
       `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(p => renderCs2PlayerCard(p, m.matchId, m.windowLabel)).join('')}`).join('');
 
     container.innerHTML = header + roundReadHtml + teamsHtml +
-      `<div class="cs2-foot">UNPOWERED: opponent site/pace read, positional fit, deep economy discipline, day-of stand-ins. Pick score excludes opponent-style (15%) + line-value (10%).</div>`;
+      `<div class="cs2-foot">Reads cover Maps 1+2 kills only, and aren't yet weighed against the live Underdog line — use as a watchlist, not locks.</div>`;
+    // Bring the read into view. The games list above can be long, so without this
+    // the analysis renders far below the fold and a click looks like it did nothing.
+    try { if (scroll) container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
   };
 
   function cs2RenderLineResult(p, val) {
@@ -17882,6 +17890,18 @@ async function autoGradeOnAppOpen() {
           <span class="cs2-range-val">${p.hsMedian}<span class="k">median</span></span>
           <span class="cs2-range-val">${p.hsCeiling}<span class="k">ceiling</span></span>
         </div>`;
+    const leanWord = /UNDER/i.test(p.lean || '') ? 'LESS' : /OVER/i.test(p.lean || '') ? 'MORE' : null;
+    const actionable = (p.band === 'STRONG' || p.band === 'LEAN');
+    const verdictMain = !actionable ? 'No strong lean — watchlist only'
+      : leanWord === 'LESS' ? 'Lean LESS'
+      : leanWord === 'MORE' ? 'Lean MORE — overs unproven, be cautious'
+      : 'Lean ' + esc(p.lean || '');
+    const vReason = (p.flags || []).filter(f => !/^opponent-adjusted/.test(f))[0]
+      || (/fantasy/i.test(p.propType || '') ? 'kills unreliable for this role — prefer fantasy' : (p.role || ''));
+    const vColor = !actionable ? 'var(--dim)' : leanWord === 'MORE' ? 'var(--danger)' : 'var(--ink)';
+    const statbar = `<div class="cs2-statbar">
+          ${st(p.kpr, 'KPR')} ${st(p.recentKpr, 'recent')} ${st(p.hs == null ? '?' : p.hs + '%', 'HS')} ${st(p.kast == null ? '?' : p.kast + '%', 'KAST')} ${st(p.fkPerMap, 'FK/map')}${p.adr == null ? '' : ' ' + st(p.adr, 'ADR')}${p.survival == null ? '' : ' ' + st(p.survival + '%', 'surv')}${p.openingWin == null ? '' : ' ' + st(p.openingWin + '%', 'open-win')}${p.clutchPerMap == null ? '' : ' ' + st(p.clutchPerMap, 'clutch')}
+        </div>`;
     return `
       <div class="cs2-pcard">
         <div class="cs2-pcard-head">
@@ -17891,9 +17911,7 @@ async function autoGradeOnAppOpen() {
           ${thin}
           <span class="cs2-score"><span class="cs2-score-num">${p.score}/100</span><span class="${bandClass(p.band)}">${esc(p.band)}</span></span>
         </div>
-        <div class="cs2-statbar">
-          ${st(p.kpr, 'KPR')} ${st(p.recentKpr, 'recent')} ${st(p.hs == null ? '?' : p.hs + '%', 'HS')} ${st(p.kast == null ? '?' : p.kast + '%', 'KAST')} ${st(p.fkPerMap, 'FK/map')}${p.adr == null ? '' : ' ' + st(p.adr, 'ADR')}${p.survival == null ? '' : ' ' + st(p.survival + '%', 'surv')}${p.openingWin == null ? '' : ' ' + st(p.openingWin + '%', 'open-win')}${p.clutchPerMap == null ? '' : ' ' + st(p.clutchPerMap, 'clutch')}
-        </div>
+        <div class="cs2-verdict" style="margin:6px 0 4px;font-weight:600;color:${vColor}">${verdictMain}${vReason ? ` <span style="font-weight:400;color:var(--dim)">· ${esc(vReason)}</span>` : ''}</div>
         <div class="cs2-range">
           <span class="cs2-range-eyebrow">${esc(windowLabel)} kills</span>
           <span class="cs2-range-val">${p.floor}<span class="k">floor</span></span>
@@ -17901,12 +17919,18 @@ async function autoGradeOnAppOpen() {
           <span class="cs2-range-val">${p.ceiling}<span class="k">ceiling</span></span>
           <span class="cs2-mapfit">map-fit ${mf}</span>
         </div>
-        ${oppAdj}
-        ${hsRange}
         <div class="cs2-prop">prop: ${esc(p.propType)}</div>
         ${mkRow('kills', 'Kills line', { median: p.median, floor: p.floor, ceiling: p.ceiling })}
         ${mkRow('hs', 'HS line', { median: p.hsMedian, floor: p.hsFloor, ceiling: p.hsCeiling })}
         ${flags}
+        <details class="cs2-details" style="margin-top:8px">
+          <summary style="cursor:pointer;font-size:11px;color:var(--dim);letter-spacing:0.04em">Player stats &amp; splits</summary>
+          <div style="margin-top:6px">
+            ${statbar}
+            ${oppAdj}
+            ${hsRange}
+          </div>
+        </details>
       </div>`;
   }
 })();
