@@ -4375,29 +4375,17 @@ function applySharpHitsOverride(propRecs, hitterContext) {
     : (hitterContext.adjustedMaxXwoba || 0);
   const hand = hitterContext.hand || '';
   const pitcherHand = hitterContext.pitcherHand || '';
-  const reason = (hitsProp.reason || '').toLowerCase();
 
-  // (Drop #39 — June 23, 2026) ARSENAL-DESTROYER GATE.
-  // The old rules (esp. "any hitter vs LHP, xwOBA >= 0.45") fired on most
-  // lefties facing a LHP and FLOODED the board with weak 0.5-hit SHARP tags.
-  // SHARP now requires a genuine elite arsenal mismatch — the same
-  // "elite pitch-type edge" signal that powers the verified elite-PTE cohort —
-  // AND a high adjusted xwOBA. It should fire rarely, only when a hitter truly
-  // destroys that pitcher's arsenal.
-  const hasArsenalEdge = reason.includes('elite pitch-type edge')
-    || reason.includes('arsenal');
-
-  // Rule 1: R hitter vs RHP with a confirmed elite arsenal edge + high xwOBA.
-  const rule1 = (hand === 'R' && pitcherHand === 'R' && hasArsenalEdge && xwoba >= 0.60);
-  // Rule 2: vs LHP — tightened from 0.45 to require the arsenal edge AND a
-  //         much higher xwOBA bar (0.55), so it no longer fires on every lefty.
-  const rule2 = (pitcherHand === 'L' && hasArsenalEdge && xwoba >= 0.55);
+  // Rule 1: R hitter vs RHP, xwoba >= 0.60 (backtest 17-7 / 71%)
+  const rule1 = (hand === 'R' && pitcherHand === 'R' && xwoba >= 0.60);
+  // Rule 2: any hitter vs LHP, xwoba >= 0.45 (backtest 26-13 / 67%)
+  const rule2 = (pitcherHand === 'L' && xwoba >= 0.45);
 
   if (!rule1 && !rule2) return null;
 
   // Mark the HITS prop so it can be visually tagged downstream
   hitsProp._sharpHits = true;
-  hitsProp._sharpHitsRule = rule1 ? 'R-vs-RHP-arsenal' : 'vs-LHP-arsenal';
+  hitsProp._sharpHitsRule = rule1 ? 'R-vs-RHP-high-xwoba' : 'vs-LHP-mid-xwoba';
   hitsProp._sharpHitsBacktestWR = 0.68;
   hitsProp._sharpHitsBacktestN = 63;
 
@@ -6584,141 +6572,57 @@ async function loadLiveSlate() {
 // is now actually wired into renderGames() and reads today's logged best
 // bets. Ranked, verdict-leading, plain English, collapsible evidence.
 // ====================================================================
-// ====================================================================
-// (Drop #38 — June 23, 2026) CLEANEST EDGES — gather from the FULL slate.
-//
-// FIX: the board previously read state.bestBetHistory, which stores only
-// ONE pick per team per game (the isTopPick row) and is capped at 8. So
-// after analyzing the whole slate it could never show all the strong
-// edges — most were never in that store to begin with.
-//
-// Now it gathers from analysisCache (every hitter on both sides of every
-// analyzed game), dedupes by hitterId preferring deep analysis, reads the
-// tier flags off each hitter's BEST prop, and surfaces every qualifying
-// edge — verified overs, platinum/gold fades, sharp hits — ranked.
-// ====================================================================
 function gatherCleanestEdges(date) {
-  // Collect every analyzed hitter across all cached games (fast + deep),
-  // deduped by hitterId with deep preferred.
-  const byHitter = new Map();
-  try {
-    Object.entries(analysisCache || {}).forEach(([cacheKey, data]) => {
-      if (!data || !data.gamePk) return;
-      // Only today's slate: cached analyses are for the current slate, but
-      // guard on date when the analysis carries one.
-      if (data.gameDate && date && data.gameDate !== date) return;
-      const isDeep = cacheKey.endsWith('-deep');
-      const awayTeam = data.awayTeam?.abbreviation || data.awayTeam || 'AWAY';
-      const homeTeam = data.homeTeam?.abbreviation || data.homeTeam || 'HOME';
-      ['awayVsHome', 'homeVsAway'].forEach(sideKey => {
-        const side = data[sideKey];
-        if (!side?.mismatches) return;
-        const hitTeam = sideKey === 'awayVsHome' ? awayTeam : homeTeam;
-        const oppTeam = sideKey === 'awayVsHome' ? homeTeam : awayTeam;
-        side.mismatches.forEach(m => {
-          const id = m.hitterId || m.hitter || m.hitterName;
-          if (!id) return;
-          const existing = byHitter.get(id);
-          if (existing && existing._deep && !isDeep) return; // keep deep over fast
-          byHitter.set(id, {
-            _deep: isDeep,
-            gamePk: data.gamePk,
-            hitterName: m.hitter || m.hitterName,
-            hand: m.hand,
-            team: hitTeam,
-            opponent: oppTeam,
-            isTopPick: m.isTopPick,
-            _topPickSuppressed: m._topPickSuppressed,
-            _topPickVerdict: m._topPickVerdict,
-            recentFormLabel: m.recentFormLabel || m.recentForm?.label || null,
-            adjustedMaxXwoba: m.adjustedMaxXwoba || m.maxXwoba || null,
-            propRecs: m.propRecs || [],
-          });
-        });
-      });
-    });
-  } catch (e) { console.warn('[cleanest edges] gather:', e && e.message); }
-
-  // Fallback: if no analyses are cached yet (e.g. fresh load), use the
-  // logged bestBetHistory so the board still shows the day's top picks.
-  if (byHitter.size === 0) {
-    const day = state.bestBetHistory && state.bestBetHistory[date];
-    if (day) {
-      Object.values(day).filter(p => p && p.hitterName).forEach(p => {
-        byHitter.set(p.hitterId || p.hitterName, { ...p, propRecs: p.propRecs || [], _fromHistory: true });
-      });
-    }
-  }
-
-  const ranked = [];
-  for (const p of byHitter.values()) {
-    // Resolve the hitter's best prop and read tier flags off it (same source
-    // the per-card verdict uses), falling back to flags on the row itself.
-    const best = (p.propRecs || []).find(x => x.isBest) || (p.propRecs || [])[0] || {};
-    const verifiedCohort = best._verifiedCohort || p._verifiedCohort || null;
-    const lyridUnderTier = best._lyridUnderTier || p._lyridUnderTier || null;
-    const sharpHits = best._sharpHits || p._sharpHits || false;
-    const hardHitTier = best._hardHitTier || p._hardHitTier || false;
-    const verifiedWR = best._verifiedWR || p._verifiedWR || null;
-    const verifiedN = best._verifiedN || p._verifiedN || null;
-    const rawProbability = (typeof best.probability === 'number') ? best.probability
-      : (typeof p.rawProbability === 'number') ? p.rawProbability : null;
-
-    let kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, lineWarn, evidence;
+  const day = state.bestBetHistory && state.bestBetHistory[date];
+  if (!day) return [];
+  const picks = Object.values(day).filter(p => p && p.hitterName);
+  const ranked = picks.map(p => {
+    let kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, evidence;
     const ctxChips = [];
     if (p.adjustedMaxXwoba && p.adjustedMaxXwoba >= 0.40) ctxChips.push(`ELITE ${(+p.adjustedMaxXwoba).toFixed(3)} adj xwOBA`);
-    if (sharpHits) ctxChips.push('SHARP contact');
-    if (hardHitTier) ctxChips.push('HARD-HIT');
+    if (p._sharpHits) ctxChips.push('SHARP contact');
+    if (p._hardHitTier) ctxChips.push('HARD-HIT');
     if (p.recentFormLabel && p.recentFormLabel !== 'NEUTRAL') ctxChips.push(p.recentFormLabel + ' form');
-    const modelPct = (typeof rawProbability === 'number') ? Math.round(rawProbability * 100) : null;
+    modelPct = (typeof p.rawProbability === 'number') ? Math.round(p.rawProbability * 100) : null;
 
-    if (verifiedCohort) {
-      const isHits = verifiedCohort === 'rarely-k-hits';
+    if (p._verifiedCohort) {
+      const isHits = p._verifiedCohort === 'rarely-k-hits';
       kind='verified'; dir='more'; verb='Bet More'; tier='VERIFIED';
-      wr=Math.round((verifiedWR||0.7)*100); rank=isHits?100:92; tone='go';
+      wr=Math.round((p._verifiedWR||0.7)*100); rank=isHits?100:92; tone='go';
       prop=isHits?'0.5 Hits':'Over'; edgeType=isHits?'Rarely-K verified cohort':'Elite pitch-type edge';
       plain=isHits?'Rarely strikes out in a soft matchup — our single most reliable bet type. Take the over.':'Elite arsenal matchup for a right-handed bat — a validated profile that beats the line.';
       lineWarn = isHits;
-      evidence=[['Hit rate (verified)', wr+'%'], ['Sample', 'n='+(verifiedN||25)], ['Best price', '+EV at standard \u2212110']];
-    } else if (lyridUnderTier==='platinum') {
+      evidence=[['Hit rate (verified)', wr+'%'], ['Sample', 'n='+(p._verifiedN||25)], ['Best price', '+EV at standard \u2212110']];
+    } else if (p._lyridUnderTier==='platinum') {
       kind='fade'; dir='less'; verb='Bet Less'; tier='PLATINUM'; wr=62; rank=88; tone='fade';
       prop='1.5 Hits + Runs + RBIs'; edgeType='Bullpen-inverse fade';
       plain='Looks great on paper — projected to mash — but this exact profile quietly underperforms in our data. The smart bet is the under.';
       lineWarn = true;
       evidence=[['Edge type', 'Bullpen-inverse fade'], ['Hit rate (live)', '62% \u00b7 58 graded'], ['Best price', '+EV at standard \u2212110']];
-    } else if (sharpHits) {
+    } else if (p._sharpHits) {
       kind='over'; dir='more'; verb='Bet More'; tier='SHARP'; wr=68; rank=84; tone='go';
       prop='0.5 Hits'; edgeType='Sharp-hits contact filter';
       plain='Strong contact profile against this pitcher — our sharp-hits filter, 68% in testing. Take the over.';
       lineWarn = true;
       evidence=[['Hit rate', '68%'], ['Sample', 'n=63'], ['Best price', '+EV at standard \u2212110']];
-    } else if (lyridUnderTier==='gold') {
+    } else if (p._lyridUnderTier==='gold') {
       kind='fade'; dir='less'; verb='Bet Less'; tier='GOLD'; wr=59; rank=72; tone='fade';
       prop='1.5 Hits + Runs + RBIs'; edgeType='Soft bullpen fade';
       plain='A fade — bet the under, but size down. Thinner edge than the platinum plays above.';
       lineWarn = true;
       evidence=[['Edge type', 'Bullpen fade (soft)'], ['Hit rate (live)', '59% \u00b7 22 graded'], ['Best price', '+EV \u2212110, thin PP']];
+    } else if (p._hardHitTier) {
+      kind='watch'; dir='watch'; verb='Watch'; tier='HARD-HIT'; wr=null; rank=40; tone='stop';
+      prop='0.5 Hits'; edgeType='Hard-hit (cooling)';
+      plain='Was strong in backtest but cooling live (50% recently). Watch — don\u2019t hammer.';
+      evidence=[['Backtest', '75% (n=12)'], ['Live', '50% (3-6)'], ['Status', 'Downgraded to watch']];
     } else {
-      // (Drop #40 — June 23, 2026) HARD-HIT "WATCH" cards removed from the
-      // board. They aren't bets — they're cooling-off notes — and they were
-      // crowding out the actual plays (Marsh/Wood/Crews all showed as WATCH).
-      // The HARD-HIT tag still appears on individual game cards for context;
-      // it just no longer takes a slot on Tonight's Cleanest Edges.
-      continue; // no qualifying edge
+      return null;
     }
-    ranked.push({ ...p, _ce: { kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, ctxChips, evidence } });
-  }
+    return { ...p, _ce: { kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, ctxChips, evidence } };
+  }).filter(Boolean);
   ranked.sort((a,b) => b._ce.rank - a._ce.rank || (b._ce.wr||0) - (a._ce.wr||0));
-  // (Drop #38) No hard 8-cap — show every qualifying edge on the slate.
-  // A generous ceiling only as a sanity guard against pathological dupes.
-  return ranked.slice(0, 40);
-}
-
-// (Drop #38) Re-render only the Cleanest Edges board in place, so it fills in
-// as each game on the slate is analyzed without disturbing the rest of the view.
-function refreshCleanestEdges() {
-  const mount = document.getElementById('cleanestEdgesMount');
-  if (mount) mount.innerHTML = renderCleanestEdges(state.currentDate);
+  return ranked.slice(0, 8);
 }
 
 function renderCleanestEdges(date) {
@@ -6825,7 +6729,7 @@ function renderGames() {
     }
   }
 
-  list.innerHTML = `<div id="cleanestEdgesMount">${renderCleanestEdges(state.currentDate)}</div><div class="lyrid-games-list">${slate.games.map((g, i) => {
+  list.innerHTML = `${renderCleanestEdges(state.currentDate)}<div class="lyrid-games-list">${slate.games.map((g, i) => {
     const awName = g.awayPitcher?.name || 'TBD';
     const hmName = g.homePitcher?.name || 'TBD';
     const awHand = g.awayPitcher?.hand || '?';
@@ -6929,9 +6833,6 @@ async function analyzeGame(gamePk, forceDeep) {
       analysisCache[cacheKey] = await res.json();
     }
     renderAnalysis(analysisCache[cacheKey]);
-    // (Drop #38) Refresh the Cleanest Edges board as each game is analyzed,
-    // so it fills in across the slate instead of staying empty until reload.
-    try { refreshCleanestEdges(); } catch (_) {}
   } catch(err) {
     console.error(err);
     container.innerHTML = `
@@ -7750,7 +7651,7 @@ function renderAnalysis(data) {
                     <div class="prop-pill ${p.isBest ? 'best' : ''} ${p._lyridUnderTier === 'platinum' ? 'lyrid-under-platinum' : ''} ${p._lyridUnderTier === 'gold' ? 'lyrid-under-gold' : ''}">
                       ${p.platform ? `<span class="pp-platform ${p.platform}">${p.platform}</span>` : ''}
                       ${p._verifiedCohort ? `<span style="background:linear-gradient(135deg,#92710a 0%,#d4af37 50%,#b8901f 100%);color:#fff;font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:100px;letter-spacing:0.07em;cursor:help;text-shadow:0 1px 1px rgba(0,0,0,0.25)" title="LYRID VERIFIED COHORT — ${p._verifiedCohort === 'rarely-k-hits' ? 'RARELY-K HITS' : 'ELITE PITCH-TYPE EDGE + R-HITTER'}&#10;&#10;Live record: ${(p._verifiedWR*100).toFixed(0)}% (n=${p._verifiedN}), time-thirds ${p._verifiedThirds}.&#10;&#10;${p._verifiedNote}&#10;&#10;June 12 audit: one of only two OVER cohorts that cleared validation out of 247 graded picks.">✓ VERIFIED ${(p._verifiedWR*100).toFixed(0)}%</span>` : ''}
-                      ${p._sharpHits ? `<span class="pp-sharp-hits" style="background:linear-gradient(135deg,#e8e9eb 0%,#c6c9cd 35%,#f5f6f8 50%,#b5b8bc 65%,#d8dadd 100%);color:#1a1d22;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.1em;margin-right:4px;border:1px solid rgba(155,158,162,0.6);text-shadow:0 0 1px rgba(255,255,255,0.5)" title="Lyrid's Sharp HITS&#10;&#10;Empirical override: backtest 43-20 (68% WR) on n=63 graded bets&#10;Rule: ${p._sharpHitsRule === 'R-vs-RHP-arsenal' ? 'R hitter vs RHP, elite arsenal edge + xwOBA ≥ 0.60' : 'vs LHP, elite arsenal edge + xwOBA ≥ 0.55'}&#10;Wilson 95% CI: [56%, 78%]&#10;Only fires on a confirmed arsenal mismatch — should be rare.">✦ SHARP</span>` : ''}
+                      ${p._sharpHits ? `<span class="pp-sharp-hits" style="background:linear-gradient(135deg,#e8e9eb 0%,#c6c9cd 35%,#f5f6f8 50%,#b5b8bc 65%,#d8dadd 100%);color:#1a1d22;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.1em;margin-right:4px;border:1px solid rgba(155,158,162,0.6);text-shadow:0 0 1px rgba(255,255,255,0.5)" title="Lyrid's Sharp HITS&#10;&#10;Empirical override: backtest 43-20 (68% WR) on n=63 graded bets&#10;Rule: ${p._sharpHitsRule === 'R-vs-RHP-high-xwoba' ? 'R hitter vs RHP, xwOBA ≥ 0.60' : 'any hitter vs LHP, xwOBA ≥ 0.45'}&#10;Wilson 95% CI: [56%, 78%]&#10;Stable across time thirds: 67/71/67">✦ SHARP</span>` : ''}
                       ${p._hardHitTier ? `<span class="pp-hard-hit" style="background:linear-gradient(135deg,#fef3c7 0%,#fbbf24 35%,#fde68a 50%,#f59e0b 65%,#fcd34d 100%);color:#451a03;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(180,83,9,0.6);text-shadow:0 0 1px rgba(255,255,255,0.4)" title="LYRID HARD-HIT TIER&#10;&#10;Live audit (Drop #23): ${p._hardHitBacktestW}W-${p._hardHitBacktestL}L = ${(p._hardHitBacktestWR*100).toFixed(0)}% on n=${p._hardHitBacktestN}&#10;Filter: HITS prop where hitter season hard-hit % ≥ 45&#10;Wilson 95% CI: [${(p._hardHitWilsonLow*100).toFixed(0)}%, ${(p._hardHitWilsonHigh*100).toFixed(0)}%]&#10;Time stability: 75/75/75 across thirds&#10;Out-of-sample: 75% train (n=4), 75% test (n=8)&#10;&#10;⚠ Small sample — true WR could be 47-91%. Bet sized accordingly.">◆ HARD-HIT</span>` : ''}
                       ${p._lyridUnderTier === 'platinum' ? `<span class="pp-lyrid-under platinum" style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 35%,#60a5fa 50%,#2563eb 65%,#1d4ed8 100%);color:#fff;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(30,58,138,0.7);text-shadow:0 1px 1px rgba(0,0,0,0.4)" title="LYRID UNDER · PLATINUM&#10;&#10;FADE THE OVER — bet UNDER 1.5 H+R+RBI instead&#10;&#10;Live audit: 20W-10L = 67% on n=30&#10;Filter: HRR pick + recentFormLabel = SCORCHING&#10;Mechanism: hot streak regression — hitter's recent form inflates projection, mean-reversion is the bet&#10;Wilson 95% CI: [49%, 81%]&#10;Time thirds: 70/70/60&#10;OOS: 67% train (n=18), 67% test (n=12)&#10;&#10;PrizePicks EV at 67%:&#10;  2-pick: +33.5%&#10;  3-pick: +48.4%&#10;  4-pick: +97.9%&#10;  5-pick: +164%&#10;&#10;⚠ n=30 is small — Wilson lower bound 49%. Size bets accordingly.">✦ UNDER · PLATINUM</span>` : ''}
                       ${p._lyridUnderTier === 'gold' ? `<span class="pp-lyrid-under gold" style="background:linear-gradient(135deg,#854d0e 0%,#ca8a04 35%,#fbbf24 50%,#a16207 65%,#92400e 100%);color:#fff;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(133,77,14,0.7);text-shadow:0 1px 1px rgba(0,0,0,0.4)" title="LYRID UNDER · GOLD&#10;&#10;FADE THE OVER — bet UNDER 1.5 H+R+RBI instead&#10;&#10;Live audit: 13W-9L = 59% on n=22&#10;Filter: HRR + L-hitter + bullpen edge&#10;Wilson 95% CI: [39%, 77%]&#10;Time thirds: 57/57/63&#10;OOS: 60% train (n=10), 58% test (n=12)&#10;&#10;PrizePicks EV at 59%:&#10;  2-pick: +5.0% (thin)&#10;  3-pick: +3.6% (thin)&#10;  4-pick: +20.7%&#10;&#10;⚠ n=22 is small — Wilson lower bound 39%. Marginal at PP 2/3-pick.">★ UNDER · GOLD</span>` : ''}
@@ -13880,88 +13781,26 @@ if (typeof window !== 'undefined') window.esc = esc;
 // Empirical WNBA tier — what a market+direction ACTUALLY hits, from 134 graded
 // real-line picks (Jun 1–8 2026). Replaces the inverted finalEdgeScore label.
 // counts = [wins, n]. Update as more pricks grade.
-// ── WNBA Unified Under Model ──────────────────────────────────────────────────
-// Encodes the three validated edges from 264 graded real-line picks (Jun 2026).
-// Mirrors api/_lib/basketball/wnbaUnderModel.js — single source of truth.
-//   GUARANTEED  assists/PRA under, |edge| ≥ 4    16-0  100%  (inflated combo line)
-//   PLATINUM    assists under, line 4-8, edge 1-4, role ≥ 80   27-1  96.4%
-//   GOLD        rebounds under, proj 3-5, role ≥ 55, not Mabrey 23-4  85.2%
-// Bans: Mabrey rebounds-under (0-4). Opp CHI/TOR allow stats → rebounds LEAN.
-// Watches (display only, n<6): Rhyne Howard pts-over, Shakira Austin reb-over.
-// PRA detection: an "assists" line > 8.0 is a mislabeled combo line → reclassify.
-const _WNBA_BANS_REB = new Set(['marina mabrey']);
-const _WNBA_OPP_ALLOWS = new Set(['CHI', 'TOR']);
-const _WNBA_OPP_SUPPRESS = new Set(['SEA', 'LVA', 'GSV', 'MIN']);
-const _WNBA_WATCHES = {
-  'rhyne howard':   { market: 'points',   side: 'OVER', n: 3, note: 'Tool consistently under-projects her scoring. Watch — n=3, do not bet.' },
-  'shakira austin': { market: 'rebounds', side: 'OVER', n: 5, note: 'Tool under-projects her board rate. Watch — n=5, do not bet.' },
-};
-function _wnbaWilsonLo(w, n, z = 1.96) {
-  if (!n) return 0;
-  const p = w / n, d = 1 + z * z / n;
-  return (p + z * z / (2 * n) - z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))) / d;
-}
-function wnbaDetectPRA(market, line) {
+function wnbaEmpTier(market, lean) {
   const m = String(market || '').toLowerCase();
-  const l = Number(line);
-  return (m === 'assists' && Number.isFinite(l) && l > 8.0);
+  const s = String(lean || '').toUpperCase();
+  const C = {
+    'assists|UNDER': [21, 24], 'rebounds|UNDER': [25, 38],
+    'assists|OVER': [5, 11], 'rebounds|OVER': [4, 7],
+    'points|UNDER': [2, 6], 'points|OVER': [22, 48],
+  };
+  const c = C[m + '|' + s];
+  if (!c) return { tier: 'UNGRADED', bet: false, wr: null, n: 0 };
+  const [w, n] = c, wr = w / n;
+  let tier;
+  if (m === 'points') tier = 'AVOID';          // 44%, +2.9 biased — off the board pending re-validation
+  else if (s === 'OVER') tier = 'PASS';        // overs show no validated edge (~47%)
+  else if (wr >= 0.80 && n >= 20) tier = 'PLATINUM';
+  else if (wr >= 0.60 && n >= 15) tier = 'GOLD';
+  else tier = 'LEAN';
+  return { tier, bet: (tier === 'PLATINUM' || tier === 'GOLD'), wr, n };
 }
-function wnbaClassify({ market, lean, line, projection, role, player, opponent } = {}) {
-  const m   = String(market || '').toLowerCase();
-  const dir = String(lean || '').toUpperCase();
-  const l = Number(line), p = Number(projection), r = Number(role ?? 50);
-  const pl = String(player || '').toLowerCase();
-  const opp = String(opponent || '').toUpperCase();
-  const edge = Math.abs(l - p);
-  const oppFlag = _WNBA_OPP_SUPPRESS.has(opp) ? 'SUPPRESSES' : (_WNBA_OPP_ALLOWS.has(opp) ? 'ALLOWS' : null);
-  const watchKey = Object.keys(_WNBA_WATCHES).find(k => pl.includes(k));
-  const watch = watchKey ? _WNBA_WATCHES[watchKey] : null;
-  const em = wnbaDetectPRA(m, l) ? 'pra' : m;
-
-  // GUARANTEED: assists/PRA under, edge ≥ 4 (16-0)
-  if (dir === 'UNDER' && (em === 'assists' || em === 'pra') && edge >= 4.0)
-    return { tier: 'GUARANTEED', bet: true, wr: 1.0, n: 16, lo: _wnbaWilsonLo(16, 16),
-      reason: `Book line ${l} is far above this player's range (proj ${p.toFixed(1)}, ${edge.toFixed(1)} gap). Inflated combo lines are 16-0 in graded history.`,
-      watch, oppFlag, isPRA: em === 'pra' };
-
-  // PLATINUM: assists under, line 4-8, edge 1-4, role ≥ 80 (27-1)
-  if (dir === 'UNDER' && em === 'assists' && l >= 4.0 && l < 8.0 && edge >= 1.0 && edge < 4.0) {
-    if (r < 80) return { tier: 'BANNED', bet: false, wr: null, n: 0, lo: 0,
-      reason: `Role ${r} < 80 — floating role, assist count unpredictable. Banned.`, watch, oppFlag };
-    return { tier: 'PLATINUM', bet: true, wr: 27 / 28, n: 28, lo: _wnbaWilsonLo(27, 28),
-      reason: `Primary creator cold in a locked role (${r}). Line ${l} vs proj ${p.toFixed(1)}, ${edge.toFixed(1)} gap. 96% historically.`,
-      watch, oppFlag };
-  }
-
-  // GOLD: rebounds under, proj 3-5, role ≥ 55, not Mabrey (23-4)
-  if (dir === 'UNDER' && em === 'rebounds') {
-    if (_WNBA_BANS_REB.has(pl)) return { tier: 'BANNED', bet: false, wr: 0, n: 4, lo: 0,
-      reason: 'Marina Mabrey rebounds-under: 0-4 in graded history. Crashes harder than stats show. Permanent ban.', watch, oppFlag };
-    if (!Number.isFinite(p) || p < 3.0) return { tier: 'BANNED', bet: false, wr: null, n: 0, lo: 0,
-      reason: `Proj ${Number.isFinite(p) ? p.toFixed(1) : '—'} < 3.0 — too noisy (47% hit rate). Banned.`, watch, oppFlag };
-    if (p >= 5.0) return { tier: 'BANNED', bet: false, wr: null, n: 0, lo: 0,
-      reason: `Proj ${p.toFixed(1)} ≥ 5.0 — primary rebounder, hits floor regardless of line (7-7 in backtest). Banned.`, watch, oppFlag };
-    if (r < 55) return { tier: 'BANNED', bet: false, wr: null, n: 0, lo: 0,
-      reason: `Role ${r} < 55 — situational player, board total unpredictable. Banned.`, watch, oppFlag };
-    if (oppFlag === 'ALLOWS') return { tier: 'LEAN', bet: false, wr: 0.50, n: 5, lo: 0.20,
-      reason: `${opp} allows stat accumulation (33-50% rebounds-under hit rate vs CHI/TOR). Skip or size way down.`, watch, oppFlag };
-    return { tier: 'GOLD', bet: true, wr: 23 / 27, n: 27, lo: _wnbaWilsonLo(23, 27),
-      reason: `Wing/guard rebound ceiling — proj ${p.toFixed(1)}, line ${l}, ${(l - p).toFixed(1)} gap. Positional role prevents reaching the line. 85% historically.`,
-      watch, oppFlag };
-  }
-
-  if (em === 'points') return { tier: 'AVOID', bet: false, wr: 0.468, n: 94, lo: 0,
-    reason: 'Points: 44% overall, +2.84 projection bias. Off the board pending de-biased engine validation.', watch, oppFlag };
-  if (dir === 'OVER') return { tier: 'PASS', bet: false, wr: 0.47, n: 28, lo: _wnbaWilsonLo(13, 28),
-    reason: 'OVER direction: 47% overall in graded history. No validated structural edge.', watch, oppFlag };
-  return { tier: 'UNGRADED', bet: false, wr: null, n: 0, lo: 0,
-    reason: `No validated cohort for ${em} ${dir}. Track and grade before betting.`, watch, oppFlag };
-}
-// Backward-compatible 2-arg alias (market, lean[, projection]) used by older callers.
-function wnbaEmpTier(market, lean, projection) {
-  return wnbaClassify({ market, lean, line: null, projection, role: 50, player: '', opponent: '' });
-}
-if (typeof window !== 'undefined') { window.wnbaClassify = wnbaClassify; window.wnbaEmpTier = wnbaEmpTier; window.wnbaDetectPRA = wnbaDetectPRA; }
+if (typeof window !== 'undefined') window.wnbaEmpTier = wnbaEmpTier;
 
 function renderHistory() {
   const container = document.getElementById('historyList');
@@ -16132,52 +15971,13 @@ window.captureWnbaPredictions = function(data) {
         env: p.scores.environment, def: p.scores.matchup,
         cov: p.scores.coverage, var: p.scores.variance
       } : null,
-      empTier: p.empTier ? { tier: p.empTier.tier, bet: !!p.empTier.bet, wr: p.empTier.wr ?? null, n: p.empTier.n ?? null, reason: p.empTier.reason ?? null } : null,
-      praProjection: p.praProjection ?? null,
-      detectedAsPRA: p.detectedAsPRA ?? false,
+      empTier: p.empTier ? { tier: p.empTier.tier, bet: !!p.empTier.recommend, wr: p.empTier.wr ?? null, n: p.empTier.n ?? null } : null,
       floor: p.floor ?? null, ceiling: p.ceiling ?? null,
       capturedAt: existing?.capturedAt || new Date().toISOString(),
       actual: null, result: null, error: null, graded: false
     };
     added++;
   });
-
-  // ── PRA COMPOSITE CAPTURE ────────────────────────────────────────────────
-  // PrizePicks posts PRA as a market but the feed splits it into points+rebounds+
-  // assists. Reconstruct a synthetic 'pra' entry per player-game so PRA becomes
-  // trackable in history (it's currently invisible). Once ~20-30 of these grade,
-  // the same audit that validated assists/rebounds can validate PRA.
-  const praGroups = {};
-  for (const k of Object.keys(day)) {
-    const e = day[k];
-    if (!e || e.market === 'pra') continue;
-    const pg = `${e.player}|${e.opponent}`;
-    (praGroups[pg] = praGroups[pg] || {})[e.market] = e;
-  }
-  for (const mkts of Object.values(praGroups)) {
-    if (!mkts.points || !mkts.rebounds || !mkts.assists) continue;
-    const praKey = `${mkts.points.player}_pra`;
-    if (day[praKey] && day[praKey].graded) continue;
-    const praProj = (Number(mkts.points.projection) || 0) + (Number(mkts.rebounds.projection) || 0) + (Number(mkts.assists.projection) || 0);
-    const allReal = mkts.points.lineSource === 'provided' && mkts.rebounds.lineSource === 'provided' && mkts.assists.lineSource === 'provided';
-    const praLine = (mkts.points.line != null && mkts.rebounds.line != null && mkts.assists.line != null)
-      ? (Number(mkts.points.line) + Number(mkts.rebounds.line) + Number(mkts.assists.line)) : null;
-    const praLean = praLine != null ? (praProj >= praLine ? 'OVER' : 'UNDER') : null;
-    const praEdge = praLine != null ? Math.abs(praLine - praProj) : null;
-    const praTier = (praLine != null && praLean === 'UNDER')
-      ? wnbaClassify({ market: 'pra', lean: 'UNDER', line: praLine, projection: praProj, role: 50, player: mkts.points.player, opponent: mkts.points.opponent })
-      : null;
-    day[praKey] = {
-      date, player: mkts.points.player, team: mkts.points.team, opponent: mkts.points.opponent,
-      market: 'pra', line: praLine, projection: Number(praProj.toFixed(2)),
-      edge: praEdge != null ? Number(praEdge.toFixed(2)) : null, lean: praLean,
-      lineSource: allReal ? 'provided' : 'composite',
-      empTier: praTier ? { tier: praTier.tier, bet: !!praTier.bet, wr: praTier.wr ?? null, n: praTier.n ?? null, reason: praTier.reason ?? null } : null,
-      capturedAt: day[praKey]?.capturedAt || new Date().toISOString(),
-      actual: null, result: null, error: null, graded: false, syntheticPRA: true
-    };
-    added++;
-  }
   if (added > 0) saveState();
 };
 
@@ -16783,120 +16583,6 @@ async function autoGradeOnAppOpen() {
   // -----------------------------------------------------------
   // SLATE RENDER — MLB-parity cards
   // -----------------------------------------------------------
-  // Tonight's Cleanest Edges — WNBA. Same shape as the MLB board (.ce-* classes):
-  // a ranked, deduped, plain-English list where the call leads. Only validated
-  // assists/rebounds UNDERs on real book lines; empirical tier is the bet signal;
-  // injury-bump unders are routed to a "Flagged — skip" section (the one WNBA trap
-  // that loses money). Points and every OVER/no-edge prop never reach this board.
-  function wnbaCleanestEdges(data) {
-    const cap = (s) => String(s || '').charAt(0).toUpperCase() + String(s || '').slice(1);
-    const pool = [...(data.analyses || []), ...(data.passes || []), ...(data.bestPlays || [])];
-    const seen = new Set(), props = [];
-    for (const p of pool) { const k = (p.player || '') + '_' + (p.market || ''); if (seen.has(k)) continue; seen.add(k); props.push(p); }
-    const gtime = {}, gmu = {};
-    for (const g of (data.games || [])) { gtime[g.gameId] = formatGameTime(g.gameTimeET); gmu[g.gameId] = `${teamAbbr(g.away)} @ ${teamAbbr(g.home)}`; }
-
-    const isBump = (p) => p.benefitsFrom && Array.isArray(p.benefitsFrom.out) && p.benefitsFrom.out.length;
-    const clean = [], traps = [];
-    for (const p of props) {
-      const m = (p.market || '').toLowerCase();
-      if (m === 'points') continue;                          // points off the board
-      const proj = Number(p.projection), line = Number(p.line);
-      if (!isFinite(proj) || !isFinite(line)) continue;
-      if (p.lineSource !== 'provided') continue;             // real book lines only
-      if (proj >= line || (line - proj) < 0.3) continue;     // genuine UNDER lean
-      const to = (p.empTier && p.empTier.tier) ? p.empTier
-        : wnbaClassify({ market: m, lean: 'UNDER', line, projection: proj,
-            role: p.scores?.roleStability ?? 50, player: p.player, opponent: p.opponent });
-      // Only validated bet tiers reach the board; LEAN (opp-allows) is a flagged trap.
-      if (to.tier !== 'GUARANTEED' && to.tier !== 'PLATINUM' && to.tier !== 'GOLD' && to.tier !== 'LEAN') continue;
-      const wr = to.wr != null ? Math.round(to.wr <= 1 ? to.wr * 100 : to.wr) : null;
-      const isPRA = to.isPRA || wnbaDetectPRA(m, line);
-      const r = { p, m: isPRA ? 'pra' : m, proj: +proj.toFixed(1), line, gap: +(line - proj).toFixed(1), tier: to.tier, wr,
-        reason: to.reason, isPRA, oppFlag: to.oppFlag,
-        game: gmu[p.gameId] || `${teamAbbr(p.team)} @ ${teamAbbr(p.opponent)}`, time: gtime[p.gameId] || '' };
-      // Injury-bump unders and opponent-allows LEANs both route to the flagged section.
-      (isBump(p) || to.tier === 'LEAN' ? traps : clean).push(r);
-    }
-    const rk = { GUARANTEED: 3, PLATINUM: 2, GOLD: 1 };
-    const byP = {};
-    for (const r of clean) { const e = byP[r.p.player]; if (!e || (rk[r.tier] || 0) > (rk[e.tier] || 0) || ((rk[r.tier] || 0) === (rk[e.tier] || 0) && r.gap > e.gap)) byP[r.p.player] = r; }
-    const ranked = Object.values(byP).sort((a, b) => (rk[b.tier] || 0) - (rk[a.tier] || 0) || b.gap - a.gap).slice(0, 7);
-
-    if (!ranked.length && !traps.length) {
-      return `<div class="cleanest-edges empty"><div class="ce-head"><div><div class="ce-eyebrow">Tonight · Live WNBA</div><div class="ce-title">Tonight's Cleanest Edges</div></div></div><div class="ce-empty-text">No validated unders on the board right now. Assists &amp; rebounds unders collect here automatically when the lines justify them.</div></div>`;
-    }
-
-    const why = (r) => {
-      if (r.reason) return esc(r.reason);
-      const parts = [];
-      const ps = r.p.propSignal;
-      if (ps && ps.side === 'UNDER' && ps.recent != null) parts.push(`ice-cold — last 3 ≈ ${ps.recent} vs ${ps.baseline} baseline${ps.sharpened ? ', minutes shrinking' : ''}`);
-      parts.push(`projects ${r.proj} vs the ${r.line} line`);
-      return esc(parts.slice(0, 2).join('. ')) + '.';
-    };
-
-    const meta = (r) => esc((r.p.position || '') + (r.p.team ? (r.p.position ? ' · ' : '') + teamAbbr(r.p.team) : ''));
-    const TIER_SIG = {
-      GUARANTEED: '<span class="ce-sig" style="background:#bbf7d0;color:#0b3d2b">★ Guaranteed</span>',
-      PLATINUM:   '<span class="ce-sig plat">◆ Platinum</span>',
-      GOLD:       '<span class="ce-sig gold">◆ Gold</span>',
-    };
-    const mktLabel = (r) => r.isPRA ? 'PRA' : cap(r.m);
-
-    const card = (r, i) => {
-      const below = r.tier === 'GOLD';
-      const sigs = [];
-      sigs.push(TIER_SIG[r.tier] || TIER_SIG.GOLD);
-      if (below) sigs.push('<span class="ce-sig" style="background:#eee9de;color:#86827a">Below 70% bar · size down</span>');
-      if (r.isPRA) sigs.push('<span class="ce-sig" style="background:#ede9fe;color:#5b21b6">PRA line</span>');
-      if (r.oppFlag === 'SUPPRESSES') sigs.push('<span class="ce-sig" style="background:#dbeafe;color:#1e40af">Defense suppresses stats</span>');
-      sigs.push('<span class="ce-sig warnflag">⚠ Check your line</span>');
-      return `<div class="ce-card"${below ? ' style="opacity:0.82"' : ''}>
-        <div class="ce-card-top"><div class="ce-rank">${i + 1}</div>
-          <div class="ce-who"><div class="ce-nm">${esc(r.p.player)}</div><div class="ce-meta">${meta(r)}</div></div>
-          <div class="ce-game"><div class="ce-mu">${esc(r.game)}${r.time ? ' · ' + esc(r.time) : ''}</div></div></div>
-        <div class="ce-verdict less"><span class="ce-varrow">↓</span>
-          <div class="ce-vmain"><div class="ce-vdir">Bet Less</div><div class="ce-vline">${r.line} ${esc(mktLabel(r))}</div></div>
-          ${r.wr != null ? `<div class="ce-rate"><div class="ce-pct">${r.wr}%</div><div class="ce-pctlbl">cash rate</div></div>` : ''}</div>
-        <div class="ce-signals">${sigs.join('')}</div>
-        <div class="ce-why">${why(r)}</div></div>`;
-    };
-
-    const trapCard = (r) => {
-      const bump = isBump(r.p);
-      const flagTxt = bump
-        ? `⚠ Minutes up +${r.p.benefitsFrom.minGain} · ${esc(r.p.benefitsFrom.out.join(', '))} out`
-        : `⚠ ${esc(r.p.opponent || '')} allows stats`;
-      const whyTxt = bump
-        ? `The ${r.wr ?? ''}% tier hasn't caught up to the bumped role — more minutes means more ${esc(r.m)}, not fewer. Skip.`
-        : why(r);
-      return `<div class="ce-card" style="opacity:0.62">
-        <div class="ce-card-top"><div class="ce-rank">—</div>
-          <div class="ce-who"><div class="ce-nm">${esc(r.p.player)}</div><div class="ce-meta">${meta(r)}</div></div>
-          <div class="ce-game"><div class="ce-mu">${esc(r.game)}${r.time ? ' · ' + esc(r.time) : ''}</div></div></div>
-        <div class="ce-verdict less"><span class="ce-varrow">↓</span>
-          <div class="ce-vmain"><div class="ce-vdir">Bet Less</div><div class="ce-vline">${r.line} ${esc(mktLabel(r))}</div></div>
-          ${r.wr != null ? `<div class="ce-rate"><div class="ce-pct">${r.wr}%</div><div class="ce-pctlbl">cash rate</div></div>` : ''}</div>
-        <div class="ce-signals"><span class="ce-sig" style="background:#f6d8d1;color:#a23b2f">${flagTxt}</span></div>
-        <div class="ce-why">${whyTxt}</div></div>`;
-    };
-
-    const trapBlock = traps.length
-      ? `<div style="display:flex;align-items:center;gap:8px;margin:18px 2px 8px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#a23b2f;font-weight:700">⚠ Flagged — strong on paper, skip</div><div class="ce-cards">${traps.map(trapCard).join('')}</div>`
-      : '';
-
-    return `<div class="cleanest-edges">
-      <div class="ce-head"><div><div class="ce-eyebrow">Tonight · Live WNBA</div><div class="ce-title">Tonight's Cleanest Edges</div><div class="ce-sub">Ranked by validated hit rate (264 graded picks). Tap any pick for the reasoning.</div></div><span class="ce-count">${ranked.length}</span></div>
-      <div class="ce-cards">${ranked.map(card).join('')}</div>
-      ${trapBlock}
-      <div class="ce-legend"><div class="ce-legend-h">What the badges mean</div>
-        <div class="ce-leg-row"><span class="ce-dot" style="background:#22c55e"></span><span><b>★ Guaranteed</b> — inflated PRA/combo line, proj gap ≥ 4. 16-0 (100%).</span></div>
-        <div class="ce-leg-row"><span class="ce-dot" style="background:var(--accent)"></span><span><b>◆ Platinum</b> — primary creator cold, line 4-8. 27-1 (96%). <b>◆ Gold</b> — wing rebound ceiling, proj 3-5. 23-4 (85%), size down.</span></div>
-        <div class="ce-leg-row"><span class="ce-dot" style="background:#a23b2f"></span><span><b>⚠ Flagged</b> — injury-bump role or opponent allows stats. The line is stale. Skip.</span></div>
-      </div></div>`;
-  }
-
   function renderWnbaSlate() {
     const data = state.raw;
     const list = document.getElementById('wnbaGamesList');
@@ -16950,7 +16636,7 @@ async function autoGradeOnAppOpen() {
 
     const signalGameId = pickSignalGameId(games, data.passes || []);
 
-    list.innerHTML = `${wnbaCleanestEdges(data)}<div class="lyrid-games-list">${games.map(g => {
+    list.innerHTML = `<div class="lyrid-games-list">${games.map(g => {
       return renderWnbaGameRow(g, data.passes || [], g.gameId === signalGameId);
     }).join('')}</div>`;
   }
@@ -17667,38 +17353,21 @@ async function autoGradeOnAppOpen() {
       } else {
         _leanTxt = `LEAN UNDER ${_ea.toFixed(1)}`; _leanColor = '#7f1d1d'; _leanBg = '#fee2e2';
       }
-      const _leanDir = (_projN != null && _lineN != null)
-        ? (_projN >= _lineN ? 'OVER' : 'UNDER')
-        : ((p.propSignal && p.propSignal.side === 'UNDER') ? 'UNDER'
-           : (p.recommendation === 'PASS' || _ea == null || _ea < 0.5) ? null
-           : (_edge > 0 ? 'OVER' : 'UNDER'));
+      const _leanDir = (p.propSignal && p.propSignal.side === 'UNDER') ? 'UNDER'
+                     : (p.recommendation === 'PASS' || _ea == null || _ea < 0.5) ? null
+                     : (_edge > 0 ? 'OVER' : 'UNDER');
       const _emp = !_leanDir ? null
         : ((p.empTier && p.empTier.tier)
-            ? { tier: p.empTier.tier, wr: (p.empTier.wr ?? null), bet: !!p.empTier.bet,
-                reason: p.empTier.reason ?? null, isPRA: p.detectedAsPRA ?? false, watch: null }
-            : wnbaClassify({ market: p.market, lean: _leanDir, line: _lineN, projection: _projN,
-                role: p.scores?.roleStability ?? 50, player: p.player, opponent: p.opponent }));
+            ? { tier: p.empTier.tier, wr: (p.empTier.wr ?? null), bet: !!p.empTier.recommend }
+            : wnbaEmpTier(p.market, _leanDir));
       const _empBadge = (() => {
         if (!_emp) return '';
-        const S = {
-          GUARANTEED: ['#0b3d2b','#bbf7d0','★'], PLATINUM: ['#0b5d3b','#d1fae5','✓'],
-          GOLD: ['#7a5c12','#fef3c7','✓'], LEAN: ['#475569','#e2e8f0','~'],
-          PASS: ['#64748b','#f1f5f9','—'], AVOID: ['#7f1d1d','#fee2e2','⚠'],
-          BANNED: ['#7f1d1d','#fee2e2','⊘'], UNGRADED: ['#64748b','#f1f5f9','?'],
-        };
+        const S = { PLATINUM:['#0b5d3b','#d1fae5','✓'], GOLD:['#7a5c12','#fef3c7','✓'], LEAN:['#475569','#e2e8f0','~'], PASS:['#64748b','#f1f5f9','—'], AVOID:['#7f1d1d','#fee2e2','⚠'], UNGRADED:['#64748b','#f1f5f9','?'] };
         const [fg,bg,ic] = S[_emp.tier] || S.UNGRADED;
-        const wr = _emp.wr != null ? Math.round((_emp.wr <= 1 ? _emp.wr * 100 : _emp.wr)) + '%' : null;
-        const lbl = _emp.tier === 'GUARANTEED' ? `GUARANTEED${wr ? ' ' + wr : ''}`
-          : _emp.tier === 'AVOID'  ? 'AVOID (POINTS)'
-          : _emp.tier === 'PASS'   ? 'NO EDGE'
-          : _emp.tier === 'BANNED' ? 'SKIP'
-          : `${_emp.tier}${wr ? ' ' + wr : ''}`;
-        const tip = _emp.reason || `what ${p.market} ${_leanDir} actually hits — empirical tier from 264 graded picks`;
-        const praLabel = (_emp.isPRA || p.detectedAsPRA) ? '<span style="font-size:9px;font-weight:700;color:#6366f1;background:#ede9fe;padding:2px 6px;border-radius:8px;margin-left:4px">PRA</span>' : '';
-        const watchBadge = _emp.watch ? `<span title="${esc(_emp.watch.note)}" style="font-size:9px;font-weight:700;color:#b45309;background:#fef3c7;padding:2px 7px;border-radius:8px;margin-left:4px">👁 WATCH OVER</span>` : '';
-        return `<span title="${esc(tip)}" style="font-size:9px;font-weight:800;letter-spacing:0.05em;color:${fg};background:${bg};padding:3px 8px;border-radius:100px;white-space:nowrap">${ic} ${lbl}</span>${praLabel}${watchBadge}`;
+        const lbl = _emp.tier === 'AVOID' ? 'AVOID' : _emp.tier === 'PASS' ? 'NO EDGE' : `${_emp.tier}${_emp.wr != null ? ' ' + Math.round(_emp.wr*100) + '%' : ''}`;
+        return `<span title="what ${esc(p.market)} ${_leanDir} actually hits — empirical tier from 134 graded picks" style="font-size:9px;font-weight:800;letter-spacing:0.05em;color:${fg};background:${bg};padding:3px 8px;border-radius:100px;white-space:nowrap">${ic} ${lbl}</span>`;
       })();
-      const _rowDim = (_emp && (_emp.tier === 'AVOID' || _emp.tier === 'PASS' || _emp.tier === 'BANNED')) ? '0.55' : '1';
+      const _rowDim = (_emp && (_emp.tier === 'AVOID' || _emp.tier === 'PASS')) ? '0.62' : '1';
       const _hasBook = p.lineSource === 'provided';
       const _bookTag = _hasBook ? (p.lineBook ? esc(p.lineBook) : 'BOOK') : 'MODEL';
       const _reason = wnbaMarketReason(p, proj, _edge);
@@ -18160,7 +17829,7 @@ async function autoGradeOnAppOpen() {
   };
 
   function cs2RenderLineResult(p, val) {
-    if (val === '' || val == null || isNaN(Number(val))) return '<span class="cs2-line-hint">enter Book line</span>';
+    if (val === '' || val == null || isNaN(Number(val))) return '<span class="cs2-line-hint">type the Underdog line → MORE / LESS</span>';
     const line = Number(val);
     const sd = Math.max(1, (p.ceiling - p.floor) / 1.88);
     const pOver = 1 - ncdf((line - p.median) / sd);
@@ -18168,7 +17837,13 @@ async function autoGradeOnAppOpen() {
     const prob = Math.round((over ? pOver : 1 - pOver) * 100);
     const delta = p.median - line;
     const cls = over ? 'cs2-lean-over' : 'cs2-lean-under';
-    return `Tool ${p.median} · Book ${esc(line)} → <span class="${cls}">${over ? 'OVER' : 'UNDER'} ${prob}%</span> <span class="cs2-line-delta">(${delta >= 0 ? '+' : ''}${delta.toFixed(1)})</span>`;
+    const call = over ? 'MORE' : 'LESS';
+    // Backtest on 2948 graded Map1&2: the directional edge is UNDER-only. LESS hit ~57%
+    // vs a naive line; MORE was a coin flip (~48-51%). So flag overs as unproven.
+    const note = over
+      ? ' <span class="cs2-line-delta">· overs unproven in backtest (~48%) — skip</span>'
+      : (prob < 60 ? ' <span class="cs2-line-delta">· thin</span>' : ' <span class="cs2-line-delta">· LESS is the tested side (~57% vs naive)</span>');
+    return `<span class="${cls}" style="font-weight:700;font-size:13px">${call} ${prob}%</span> <span class="cs2-line-delta">· proj ${p.median} vs line ${esc(line)} (${delta >= 0 ? '+' : ''}${delta.toFixed(1)})</span>${note}`;
   }
 
   window.cs2SetLine = function (safeId, val) {

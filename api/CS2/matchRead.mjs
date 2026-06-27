@@ -33,7 +33,7 @@ const CFG = {
   THIN_N: 10,            // reads below this flagged as thin sample
   MIN_ROUNDS: 13,        // drop forfeits/incompletes below a full regulation map
   MAX_ROUNDS: 40,        // drop anomalies above a plausible double-OT map
-  LEAGUE_ROUNDS: 22,     // fallback expected rounds
+  LEAGUE_ROUNDS: 23.5,   // recalibrated on 2948 graded Map1&2 (was 22; -1.8 bias)
 };
 
 const args = parseArgs(process.argv.slice(2));
@@ -420,7 +420,7 @@ function roundVolume(match, beforeTs) {
   const blowout = pm.filter((x) => x.rounds <= 17).length / Math.max(1, pm.length);
   // kill density — elimination-heavy teams produce more kills/round than defuse/time-expiry teams
   const ea = roundsByTeam.get(match.team1?.id)?.elimRate, eb = roundsByTeam.get(match.team2?.id)?.elimRate;
-  const killDensity = (ea != null && eb != null) ? clamp(1 + 0.3 * ((ea + eb) / 2 - 0.55), 0.95, 1.06) : 1;
+  const killDensity = 1; // RETIRED: corr(elimRate, kills/round)=+0.011 on 791 real maps — no signal
   return { erounds: round1(erounds), gap: round1(gap), otRate, blowout, ranked, killDensity: round2(killDensity),
     blowoutRisk: dt.blowoutRisk, otLean: dt.otLean, controlEdge: dt.controlEdge, controlBy: dt.controlBy };
 }
