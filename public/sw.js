@@ -6,7 +6,7 @@
 // API responses are NOT cached long-term (projections change throughout the day),
 // but served stale-while-revalidate so the user sees something immediately.
 
-const VERSION = 'v1.0.0';
+const VERSION = 'v1.0.1';
 const SHELL_CACHE = `mf-shell-${VERSION}`;
 const RUNTIME_CACHE = `mf-runtime-${VERSION}`;
 
