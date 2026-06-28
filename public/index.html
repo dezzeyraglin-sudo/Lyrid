@@ -17683,7 +17683,9 @@ async function autoGradeOnAppOpen() {
   #cs2-panel .cs2-rr-reason{font-size:var(--size-caption);color:var(--text-secondary)}
   #cs2-panel .cs2-rr-splits{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-sm);color:var(--text-secondary)}
   #cs2-panel .cs2-team-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--text-secondary);font-weight:var(--weight-medium);margin:var(--space-4) 0 var(--space-2)}
-  #cs2-panel .cs2-pending{opacity:0.55;cursor:default}
+  #cs2-panel .cs2-pending{opacity:0.9;cursor:pointer}
+  #cs2-panel .cs2-pending:hover{opacity:1}
+  #cs2-panel .cs2-pending:disabled{opacity:0.45;cursor:default}
   #cs2-panel .cs2-pcard{background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-2)}
   #cs2-panel .cs2-pcard-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
   #cs2-panel .cs2-nick{font-family:var(--font-sans);font-weight:500;font-size:var(--size-body-sm);color:var(--text-primary)}
@@ -17783,6 +17785,7 @@ async function autoGradeOnAppOpen() {
       // merge: each live fixture keeps its projection if one is deployed, else pending
       matches = sched.games.map(g => projMap[String(g.matchId)] || ({
         matchId: g.matchId, teamA: g.teamA, teamB: g.teamB, startTime: g.startTime,
+        teamAId: g.teamAId, teamBId: g.teamBId, bestOf: g.bestOf,
         tier: g.tier, lan: g.lan, stage: g.stage, doOrDie: g.doOrDie,
         format: g.bestOf ? 'Bo' + g.bestOf : null, pending: true,
       }));
@@ -17843,18 +17846,19 @@ async function autoGradeOnAppOpen() {
   function renderCs2MatchRow(m) {
     if (m.pending) {
       const psub = `${esc(m.format || 'Bo3')}${m.tier ? ' · ' + esc(String(m.tier).toUpperCase()) : ''}${m.lan ? ' · LAN' : ''}${m.doOrDie ? ' · ELIM' : ''}`;
+      const canAnalyze = m.teamAId != null && m.teamBId != null;
       return `
-        <div class="lyrid-game-card cs2-pending" aria-label="${esc(m.teamA)} vs ${esc(m.teamB)} — projection pending">
+        <button class="lyrid-game-card cs2-pending" type="button"${canAnalyze ? ` onclick="analyzeCs2Live('${esc(m.matchId)}')"` : ' disabled'} aria-label="Analyze ${esc(m.teamA)} vs ${esc(m.teamB)}">
           <div class="lyrid-game-time">
             <div class="lyrid-game-time-value">${esc(fmtTime(m.startTime) || 'TBD')}</div>
             <div class="lyrid-game-time-zone">${esc(m.format || 'Bo3')}</div>
           </div>
           <div class="lyrid-game-matchup">
             <div class="lyrid-game-teams"><span>${esc(m.teamA || '?')}</span><span class="at">vs</span><span>${esc(m.teamB || '?')}</span></div>
-            <div class="lyrid-game-pitchers">${psub} · projection pending — run matchRead --today</div>
+            <div class="lyrid-game-pitchers">${psub} · ${canAnalyze ? 'tap to analyze' : 'no team data'}</div>
           </div>
-          <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">pending</div><div class="lyrid-game-projection-value" aria-hidden="true">·</div></div>
-        </div>`;
+          <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">${canAnalyze ? 'analyze' : 'pending'}</div><div class="lyrid-game-projection-value" aria-hidden="true">${canAnalyze ? '→' : '·'}</div></div>
+        </button>`;
     }
     const vol = m.roundVolume || {};
     const sub = `${esc(m.format || 'Bo3')}${m.tier ? ' · ' + esc(String(m.tier).toUpperCase()) : ''} · ${m.lan ? 'LAN' : 'ONLINE'}${m.doOrDie ? ' · ELIM' : ''}${m.stage ? ' · ' + esc(m.stage) : ''}`;
@@ -17919,6 +17923,36 @@ async function autoGradeOnAppOpen() {
     // Bring the read into view. The games list above can be long, so without this
     // the analysis renders far below the fold and a click looks like it did nothing.
     try { if (scroll) container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+  };
+
+  // Live click-to-analyze: a pending fixture has no projection yet, so fetch one from
+  // /api/cs2/analyze (which runs the same engine off the precomputed team index),
+  // merge it into the match, then render with the normal cards. Cached per match.
+  window.analyzeCs2Live = async function (matchId) {
+    const data = state.raw; if (!data) return;
+    const m = (data.matches || []).find(x => String(x.matchId) === String(matchId));
+    if (!m) return;
+    if (m.players && m.players.length) return analyzeCs2Match(matchId, true); // already projected
+    const container = document.getElementById('cs2AnalysisContainer');
+    state.liveCache = state.liveCache || {};
+    state.selectedMatchId = matchId;
+    const showMsg = (sub) => { if (container) { container.innerHTML = `<div class="cs2-analysis-head"><div class="cs2-analysis-title">${esc(m.teamA || '?')} vs ${esc(m.teamB || '?')}</div><div class="cs2-analysis-sub">${sub}</div></div>`; try { container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {} } };
+    if (state.liveCache[matchId]) { Object.assign(m, state.liveCache[matchId]); return analyzeCs2Match(matchId, true); }
+    if (m.teamAId == null || m.teamBId == null) return showMsg('Can\u2019t analyze \u2014 this fixture is missing team IDs.');
+    showMsg('Analyzing\u2026 pulling both rosters and projecting Maps 1+2.');
+    try {
+      const qs = new URLSearchParams({ teamAId: String(m.teamAId), teamBId: String(m.teamBId), bestOf: String(m.bestOf || 3), matchId: String(matchId), teamA: m.teamA || '', teamB: m.teamB || '' });
+      const r = await fetch('/api/cs2/analyze?' + qs.toString(), { cache: 'no-store' });
+      const j = await r.json().catch(() => null);
+      if (j && j.analyzable === false) return showMsg(`Can\u2019t project this one \u2014 ${esc(j.reason || 'not enough history')}. The engine needs a recent map history for <b>both</b> teams; most lower-tier fringe teams aren\u2019t covered yet.`);
+      if (!j || !Array.isArray(j.players) || !j.players.length) return showMsg('No read came back for this matchup. Try Refresh, or it may be uncovered.');
+      const merge = { players: j.players, roundVolume: j.roundVolume, windowLabel: j.windowLabel, mapWindow: j.mapWindow, format: j.format || m.format, rankA: j.rankA, rankB: j.rankB, rosterSource: j.rosterSource, lineupAsOf: j.lineupAsOf, source: 'live', pending: false };
+      state.liveCache[matchId] = merge;
+      Object.assign(m, merge);
+      analyzeCs2Match(matchId, true);
+    } catch (e) {
+      showMsg(`Analysis failed \u2014 ${esc(String((e && e.message) || e))}. Try Refresh.`);
+    }
   };
 
   function cs2RenderLineResult(p, val) {
