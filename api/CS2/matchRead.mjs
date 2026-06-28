@@ -141,6 +141,16 @@ if (args.today) {
   process.exit(0);
 }
 
+// INDEX BUILDER: precompute every team's current roster of player profiles so a
+// serverless endpoint can analyze any matchup on demand (live click-to-analyze)
+// without the cache. Reuses forwardRoster/profile/assignRolesRelative so the math
+// is identical to runToday. Usage:
+//   node matchRead.mjs --index --cache .cache/cs2 --out public/cs2_kpr_index.json
+if (args.index) {
+  buildIndex(args.out ?? "cs2_kpr_index.json");
+  process.exit(0);
+}
+
 
 const MATCH_ID = num(args.match);
 if (MATCH_ID == null) { console.error("Pass --match <id>  (or --list to find one)"); process.exit(1); }
@@ -539,6 +549,47 @@ function expectedMapsFor(pids, beforeTs) {
   const set = new Set(pids), freq = new Map();
   for (const x of pm) { if (x.ts >= beforeTs || !set.has(x.playerId) || !x.map) continue; freq.set(x.map, (freq.get(x.map) || 0) + 1); }
   return [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([m]) => m);
+}
+
+// Build the per-team profile index used by the live analyze endpoint. For every
+// team with a resolvable roster, store its lineup of computed profiles plus the
+// round-volume inputs (rank/points/pistol/discipline). The endpoint loads this and
+// runs computeRead per player — identical math to runToday, no cache needed live.
+function buildIndex(outPath) {
+  const nowTs = Date.now();
+  const leagueOtRate = pm.filter((x) => x.rounds > 24).length / Math.max(1, pm.length);
+  const leagueBlowout = pm.filter((x) => x.rounds <= 17).length / Math.max(1, pm.length);
+  const teamIds = new Set();
+  const teamName = new Map();
+  for (const m of matches) {
+    for (const t of [m.team1, m.team2]) if (t?.id != null) { teamIds.add(t.id); teamName.set(t.id, t.name); }
+  }
+  const teams = {};
+  let resolved = 0;
+  for (const tid of teamIds) {
+    const ro = forwardRoster(tid, nowTs);
+    if (!ro.pids || ro.pids.length < 4) continue;
+    const expMaps = expectedMapsFor(ro.pids, nowTs);
+    const profs = ro.pids.map((pid) => profile(pid, nowTs, expMaps)).filter(Boolean);
+    if (profs.length < 4) continue;
+    assignRolesRelative(profs);
+    const rk = rankingByTeam.get(tid) || {};
+    const rd = roundsByTeam.get(tid) || {};
+    teams[tid] = {
+      name: teamName.get(tid) ?? null,
+      rank: rk.rank ?? null, points: rk.points ?? null,
+      pistolWin: rd.pistolWin ?? null, openingWin: rd.openingWin ?? null,
+      tradePerRound: rd.tradePerRound ?? null, ecoWin: rd.ecoWin ?? null,
+      rosterSource: ro.source,
+      lineupAsOf: ro.asOf ? new Date(ro.asOf).toISOString().slice(0, 10) : null,
+      newPids: ro.newPids ? [...ro.newPids] : [],
+      profiles: profs,
+    };
+    resolved++;
+  }
+  const out = { generatedAt: new Date().toISOString(), leagueOtRate: round2(leagueOtRate), leagueBlowout: round2(leagueBlowout), teamCount: resolved, teams };
+  fs.writeFileSync(outPath, JSON.stringify(out));
+  console.error(`✓ index: ${resolved} teams with resolvable rosters → ${outPath}`);
 }
 
 async function runToday(date) {
