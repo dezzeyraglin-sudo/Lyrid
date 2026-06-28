@@ -4375,17 +4375,23 @@ function applySharpHitsOverride(propRecs, hitterContext) {
     : (hitterContext.adjustedMaxXwoba || 0);
   const hand = hitterContext.hand || '';
   const pitcherHand = hitterContext.pitcherHand || '';
+  const reason = (hitsProp.reason || '').toLowerCase();
 
-  // Rule 1: R hitter vs RHP, xwoba >= 0.60 (backtest 17-7 / 71%)
-  const rule1 = (hand === 'R' && pitcherHand === 'R' && xwoba >= 0.60);
-  // Rule 2: any hitter vs LHP, xwoba >= 0.45 (backtest 26-13 / 67%)
-  const rule2 = (pitcherHand === 'L' && xwoba >= 0.45);
+  // (Drop #42 — #39) ARSENAL-DESTROYER GATE.
+  // The old "any hitter vs LHP, xwOBA >= 0.45" fired on most lefties vs LHP
+  // and FLOODED the board with weak 0.5-hit SHARP tags. SHARP now requires a
+  // genuine elite arsenal mismatch (the same "elite pitch-type edge" signal
+  // that powers the verified elite-PTE cohort) AND a high adjusted xwOBA.
+  const hasArsenalEdge = reason.includes('elite pitch-type edge')
+    || reason.includes('arsenal');
+  const rule1 = (hand === 'R' && pitcherHand === 'R' && hasArsenalEdge && xwoba >= 0.60);
+  const rule2 = (pitcherHand === 'L' && hasArsenalEdge && xwoba >= 0.55);
 
   if (!rule1 && !rule2) return null;
 
   // Mark the HITS prop so it can be visually tagged downstream
   hitsProp._sharpHits = true;
-  hitsProp._sharpHitsRule = rule1 ? 'R-vs-RHP-high-xwoba' : 'vs-LHP-mid-xwoba';
+  hitsProp._sharpHitsRule = rule1 ? 'R-vs-RHP-arsenal' : 'vs-LHP-arsenal';
   hitsProp._sharpHitsBacktestWR = 0.68;
   hitsProp._sharpHitsBacktestN = 63;
 
@@ -5334,19 +5340,41 @@ function saveState() {
   // 2) Main blob — drop state.raw (the live slate, re-fetched on load) to stay under the
   //    ~5MB cap. If it still overflows, the critical stores above already survived.
   try {
-    // (Drop #37) Proactive compaction — if we're approaching the cap, slim
-    // graded box-score detail BEFORE the write so it rarely fails outright.
+    // (Drop #42 — #41) PERMANENT STORAGE BOUND.
+    // hrAudit.entries grew unbounded in localStorage (hit ~1,932 rows / ~1MB)
+    // even though the Supabase backend holds the FULL corpus — /api/audit/load
+    // returns every entry and LyridAuditSync.hydrate({full:true}) repulls it.
+    // So the client only needs a recent working window locally; the server is
+    // the source of truth. Persist at most a rolling window — makes localStorage
+    // permanently bounded no matter how many games are logged.
+    const HR_LOCAL_MAX_DAYS = 14;
+    const HR_LOCAL_MAX_ROWS = 400;
+    const { raw, ...persist } = state;
+    if (persist.hrAudit && Array.isArray(persist.hrAudit.entries) && persist.hrAudit.entries.length > HR_LOCAL_MAX_ROWS) {
+      const cutoff = new Date(Date.now() - HR_LOCAL_MAX_DAYS * 86400000).toISOString().slice(0, 10);
+      let trimmed = persist.hrAudit.entries.filter(e => !e.date || e.date >= cutoff);
+      trimmed = trimmed.map(e => {
+        if (e.graded && (e.line || e.criteria)) { const c = { ...e }; delete c.line; delete c.criteria; return c; }
+        return e;
+      });
+      if (trimmed.length > HR_LOCAL_MAX_ROWS) {
+        trimmed = trimmed.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, HR_LOCAL_MAX_ROWS);
+      }
+      persist.hrAudit = { ...persist.hrAudit, entries: trimmed };
+    }
+    // Proactive compaction if the storage manager is present.
     try {
-      if (LyridStorage.usageBytes() > LyridStorage.QUOTA_SOFT_BYTES) {
+      if (typeof LyridStorage !== 'undefined' && LyridStorage.usageBytes && LyridStorage.usageBytes() > LyridStorage.QUOTA_SOFT_BYTES) {
         LyridStorage.compact({ aggressive: false });
       }
     } catch (_) {}
-    const { raw, ...persist } = state;
     localStorage.setItem(LS_KEY, JSON.stringify(persist));
   } catch (e) {
-    // (Drop #37) Instead of silently losing the newest data, recover:
-    // compact → retry → archive + aggressive prune → retry.
-    LyridStorage.recoverFromQuota(LS_KEY, null);
+    try {
+      if (typeof LyridStorage !== 'undefined' && LyridStorage.recoverFromQuota) {
+        LyridStorage.recoverFromQuota(LS_KEY, null);
+      } else { showToast('Storage full — open Settings → Free Up Space', true); }
+    } catch (_) {}
   }
 }
 
@@ -6572,57 +6600,112 @@ async function loadLiveSlate() {
 // is now actually wired into renderGames() and reads today's logged best
 // bets. Ranked, verdict-leading, plain English, collapsible evidence.
 // ====================================================================
+// ====================================================================
+// (Drop #42 — reconciled #38+#40) CLEANEST EDGES — full slate, no WATCH.
+// Reads analysisCache (every hitter on both sides of every analyzed game),
+// dedupes by hitterId preferring deep, reads tier flags off each hitter's
+// best prop, removes the 8-cap. HARD-HIT "watch" notes are excluded — they
+// aren't bets and were crowding out real plays.
+// ====================================================================
 function gatherCleanestEdges(date) {
-  const day = state.bestBetHistory && state.bestBetHistory[date];
-  if (!day) return [];
-  const picks = Object.values(day).filter(p => p && p.hitterName);
-  const ranked = picks.map(p => {
-    let kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, evidence;
+  const byHitter = new Map();
+  try {
+    Object.entries(analysisCache || {}).forEach(([cacheKey, data]) => {
+      if (!data || !data.gamePk) return;
+      if (data.gameDate && date && data.gameDate !== date) return;
+      const isDeep = cacheKey.endsWith('-deep');
+      const awayTeam = data.awayTeam?.abbreviation || data.awayTeam || 'AWAY';
+      const homeTeam = data.homeTeam?.abbreviation || data.homeTeam || 'HOME';
+      ['awayVsHome', 'homeVsAway'].forEach(sideKey => {
+        const side = data[sideKey];
+        if (!side?.mismatches) return;
+        const hitTeam = sideKey === 'awayVsHome' ? awayTeam : homeTeam;
+        const oppTeam = sideKey === 'awayVsHome' ? homeTeam : awayTeam;
+        side.mismatches.forEach(m => {
+          const id = m.hitterId || m.hitter || m.hitterName;
+          if (!id) return;
+          const existing = byHitter.get(id);
+          if (existing && existing._deep && !isDeep) return;
+          byHitter.set(id, {
+            _deep: isDeep, gamePk: data.gamePk,
+            hitterName: m.hitter || m.hitterName, hand: m.hand,
+            team: hitTeam, opponent: oppTeam,
+            isTopPick: m.isTopPick, _topPickSuppressed: m._topPickSuppressed,
+            _topPickVerdict: m._topPickVerdict,
+            recentFormLabel: m.recentFormLabel || m.recentForm?.label || null,
+            adjustedMaxXwoba: m.adjustedMaxXwoba || m.maxXwoba || null,
+            propRecs: m.propRecs || [],
+          });
+        });
+      });
+    });
+  } catch (e) { console.warn('[cleanest edges] gather:', e && e.message); }
+
+  if (byHitter.size === 0) {
+    const day = state.bestBetHistory && state.bestBetHistory[date];
+    if (day) Object.values(day).filter(p => p && p.hitterName).forEach(p => {
+      byHitter.set(p.hitterId || p.hitterName, { ...p, propRecs: p.propRecs || [], _fromHistory: true });
+    });
+  }
+
+  const ranked = [];
+  for (const p of byHitter.values()) {
+    const best = (p.propRecs || []).find(x => x.isBest) || (p.propRecs || [])[0] || {};
+    const verifiedCohort = best._verifiedCohort || p._verifiedCohort || null;
+    const lyridUnderTier = best._lyridUnderTier || p._lyridUnderTier || null;
+    const sharpHits = best._sharpHits || p._sharpHits || false;
+    const verifiedWR = best._verifiedWR || p._verifiedWR || null;
+    const verifiedN = best._verifiedN || p._verifiedN || null;
+    const rawProbability = (typeof best.probability === 'number') ? best.probability
+      : (typeof p.rawProbability === 'number') ? p.rawProbability : null;
+
+    let kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, lineWarn, evidence;
     const ctxChips = [];
     if (p.adjustedMaxXwoba && p.adjustedMaxXwoba >= 0.40) ctxChips.push(`ELITE ${(+p.adjustedMaxXwoba).toFixed(3)} adj xwOBA`);
-    if (p._sharpHits) ctxChips.push('SHARP contact');
-    if (p._hardHitTier) ctxChips.push('HARD-HIT');
+    if (sharpHits) ctxChips.push('SHARP contact');
     if (p.recentFormLabel && p.recentFormLabel !== 'NEUTRAL') ctxChips.push(p.recentFormLabel + ' form');
-    modelPct = (typeof p.rawProbability === 'number') ? Math.round(p.rawProbability * 100) : null;
+    const modelPct = (typeof rawProbability === 'number') ? Math.round(rawProbability * 100) : null;
 
-    if (p._verifiedCohort) {
-      const isHits = p._verifiedCohort === 'rarely-k-hits';
+    if (verifiedCohort) {
+      const isHits = verifiedCohort === 'rarely-k-hits';
       kind='verified'; dir='more'; verb='Bet More'; tier='VERIFIED';
-      wr=Math.round((p._verifiedWR||0.7)*100); rank=isHits?100:92; tone='go';
+      wr=Math.round((verifiedWR||0.7)*100); rank=isHits?100:92; tone='go';
       prop=isHits?'0.5 Hits':'Over'; edgeType=isHits?'Rarely-K verified cohort':'Elite pitch-type edge';
       plain=isHits?'Rarely strikes out in a soft matchup — our single most reliable bet type. Take the over.':'Elite arsenal matchup for a right-handed bat — a validated profile that beats the line.';
       lineWarn = isHits;
-      evidence=[['Hit rate (verified)', wr+'%'], ['Sample', 'n='+(p._verifiedN||25)], ['Best price', '+EV at standard \u2212110']];
-    } else if (p._lyridUnderTier==='platinum') {
+      evidence=[['Hit rate (verified)', wr+'%'], ['Sample', 'n='+(verifiedN||25)], ['Best price', '+EV at standard \u2212110']];
+    } else if (lyridUnderTier==='platinum') {
       kind='fade'; dir='less'; verb='Bet Less'; tier='PLATINUM'; wr=62; rank=88; tone='fade';
       prop='1.5 Hits + Runs + RBIs'; edgeType='Bullpen-inverse fade';
       plain='Looks great on paper — projected to mash — but this exact profile quietly underperforms in our data. The smart bet is the under.';
       lineWarn = true;
       evidence=[['Edge type', 'Bullpen-inverse fade'], ['Hit rate (live)', '62% \u00b7 58 graded'], ['Best price', '+EV at standard \u2212110']];
-    } else if (p._sharpHits) {
+    } else if (sharpHits) {
       kind='over'; dir='more'; verb='Bet More'; tier='SHARP'; wr=68; rank=84; tone='go';
       prop='0.5 Hits'; edgeType='Sharp-hits contact filter';
       plain='Strong contact profile against this pitcher — our sharp-hits filter, 68% in testing. Take the over.';
       lineWarn = true;
       evidence=[['Hit rate', '68%'], ['Sample', 'n=63'], ['Best price', '+EV at standard \u2212110']];
-    } else if (p._lyridUnderTier==='gold') {
+    } else if (lyridUnderTier==='gold') {
       kind='fade'; dir='less'; verb='Bet Less'; tier='GOLD'; wr=59; rank=72; tone='fade';
       prop='1.5 Hits + Runs + RBIs'; edgeType='Soft bullpen fade';
       plain='A fade — bet the under, but size down. Thinner edge than the platinum plays above.';
       lineWarn = true;
       evidence=[['Edge type', 'Bullpen fade (soft)'], ['Hit rate (live)', '59% \u00b7 22 graded'], ['Best price', '+EV \u2212110, thin PP']];
-    } else if (p._hardHitTier) {
-      kind='watch'; dir='watch'; verb='Watch'; tier='HARD-HIT'; wr=null; rank=40; tone='stop';
-      prop='0.5 Hits'; edgeType='Hard-hit (cooling)';
-      plain='Was strong in backtest but cooling live (50% recently). Watch — don\u2019t hammer.';
-      evidence=[['Backtest', '75% (n=12)'], ['Live', '50% (3-6)'], ['Status', 'Downgraded to watch']];
     } else {
-      return null;
+      // (Drop #40) HARD-HIT "watch" excluded — cooling-off notes, not bets.
+      continue;
     }
-    return { ...p, _ce: { kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, ctxChips, evidence } };
-  }).filter(Boolean);
+    ranked.push({ ...p, _ce: { kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, ctxChips, evidence } });
+  }
   ranked.sort((a,b) => b._ce.rank - a._ce.rank || (b._ce.wr||0) - (a._ce.wr||0));
-  return ranked.slice(0, 8);
+  return ranked.slice(0, 40);
+}
+
+// (Drop #42 — #38) Re-render only the board in place as each game analyzes.
+function refreshCleanestEdges() {
+  const mount = document.getElementById('cleanestEdgesMount');
+  if (mount) mount.innerHTML = renderCleanestEdges(state.currentDate);
 }
 
 function renderCleanestEdges(date) {
@@ -6729,7 +6812,7 @@ function renderGames() {
     }
   }
 
-  list.innerHTML = `${renderCleanestEdges(state.currentDate)}<div class="lyrid-games-list">${slate.games.map((g, i) => {
+  list.innerHTML = `<div id="cleanestEdgesMount">${renderCleanestEdges(state.currentDate)}</div><div class="lyrid-games-list">${slate.games.map((g, i) => {
     const awName = g.awayPitcher?.name || 'TBD';
     const hmName = g.homePitcher?.name || 'TBD';
     const awHand = g.awayPitcher?.hand || '?';
@@ -6833,6 +6916,8 @@ async function analyzeGame(gamePk, forceDeep) {
       analysisCache[cacheKey] = await res.json();
     }
     renderAnalysis(analysisCache[cacheKey]);
+    // (Drop #42 — #38) fill the board in as each game analyzes
+    try { refreshCleanestEdges(); } catch (_) {}
   } catch(err) {
     console.error(err);
     container.innerHTML = `
@@ -7651,7 +7736,7 @@ function renderAnalysis(data) {
                     <div class="prop-pill ${p.isBest ? 'best' : ''} ${p._lyridUnderTier === 'platinum' ? 'lyrid-under-platinum' : ''} ${p._lyridUnderTier === 'gold' ? 'lyrid-under-gold' : ''}">
                       ${p.platform ? `<span class="pp-platform ${p.platform}">${p.platform}</span>` : ''}
                       ${p._verifiedCohort ? `<span style="background:linear-gradient(135deg,#92710a 0%,#d4af37 50%,#b8901f 100%);color:#fff;font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:100px;letter-spacing:0.07em;cursor:help;text-shadow:0 1px 1px rgba(0,0,0,0.25)" title="LYRID VERIFIED COHORT — ${p._verifiedCohort === 'rarely-k-hits' ? 'RARELY-K HITS' : 'ELITE PITCH-TYPE EDGE + R-HITTER'}&#10;&#10;Live record: ${(p._verifiedWR*100).toFixed(0)}% (n=${p._verifiedN}), time-thirds ${p._verifiedThirds}.&#10;&#10;${p._verifiedNote}&#10;&#10;June 12 audit: one of only two OVER cohorts that cleared validation out of 247 graded picks.">✓ VERIFIED ${(p._verifiedWR*100).toFixed(0)}%</span>` : ''}
-                      ${p._sharpHits ? `<span class="pp-sharp-hits" style="background:linear-gradient(135deg,#e8e9eb 0%,#c6c9cd 35%,#f5f6f8 50%,#b5b8bc 65%,#d8dadd 100%);color:#1a1d22;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.1em;margin-right:4px;border:1px solid rgba(155,158,162,0.6);text-shadow:0 0 1px rgba(255,255,255,0.5)" title="Lyrid's Sharp HITS&#10;&#10;Empirical override: backtest 43-20 (68% WR) on n=63 graded bets&#10;Rule: ${p._sharpHitsRule === 'R-vs-RHP-high-xwoba' ? 'R hitter vs RHP, xwOBA ≥ 0.60' : 'any hitter vs LHP, xwOBA ≥ 0.45'}&#10;Wilson 95% CI: [56%, 78%]&#10;Stable across time thirds: 67/71/67">✦ SHARP</span>` : ''}
+                      ${p._sharpHits ? `<span class="pp-sharp-hits" style="background:linear-gradient(135deg,#e8e9eb 0%,#c6c9cd 35%,#f5f6f8 50%,#b5b8bc 65%,#d8dadd 100%);color:#1a1d22;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.1em;margin-right:4px;border:1px solid rgba(155,158,162,0.6);text-shadow:0 0 1px rgba(255,255,255,0.5)" title="Lyrid's Sharp HITS&#10;&#10;Empirical override: backtest 43-20 (68% WR) on n=63 graded bets&#10;Rule: ${p._sharpHitsRule === 'R-vs-RHP-arsenal' ? 'R hitter vs RHP, elite arsenal edge + xwOBA ≥ 0.60' : 'vs LHP, elite arsenal edge + xwOBA ≥ 0.55'}&#10;Wilson 95% CI: [56%, 78%]&#10;Only fires on a confirmed arsenal mismatch — rare by design">✦ SHARP</span>` : ''}
                       ${p._hardHitTier ? `<span class="pp-hard-hit" style="background:linear-gradient(135deg,#fef3c7 0%,#fbbf24 35%,#fde68a 50%,#f59e0b 65%,#fcd34d 100%);color:#451a03;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(180,83,9,0.6);text-shadow:0 0 1px rgba(255,255,255,0.4)" title="LYRID HARD-HIT TIER&#10;&#10;Live audit (Drop #23): ${p._hardHitBacktestW}W-${p._hardHitBacktestL}L = ${(p._hardHitBacktestWR*100).toFixed(0)}% on n=${p._hardHitBacktestN}&#10;Filter: HITS prop where hitter season hard-hit % ≥ 45&#10;Wilson 95% CI: [${(p._hardHitWilsonLow*100).toFixed(0)}%, ${(p._hardHitWilsonHigh*100).toFixed(0)}%]&#10;Time stability: 75/75/75 across thirds&#10;Out-of-sample: 75% train (n=4), 75% test (n=8)&#10;&#10;⚠ Small sample — true WR could be 47-91%. Bet sized accordingly.">◆ HARD-HIT</span>` : ''}
                       ${p._lyridUnderTier === 'platinum' ? `<span class="pp-lyrid-under platinum" style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 35%,#60a5fa 50%,#2563eb 65%,#1d4ed8 100%);color:#fff;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(30,58,138,0.7);text-shadow:0 1px 1px rgba(0,0,0,0.4)" title="LYRID UNDER · PLATINUM&#10;&#10;FADE THE OVER — bet UNDER 1.5 H+R+RBI instead&#10;&#10;Live audit: 20W-10L = 67% on n=30&#10;Filter: HRR pick + recentFormLabel = SCORCHING&#10;Mechanism: hot streak regression — hitter's recent form inflates projection, mean-reversion is the bet&#10;Wilson 95% CI: [49%, 81%]&#10;Time thirds: 70/70/60&#10;OOS: 67% train (n=18), 67% test (n=12)&#10;&#10;PrizePicks EV at 67%:&#10;  2-pick: +33.5%&#10;  3-pick: +48.4%&#10;  4-pick: +97.9%&#10;  5-pick: +164%&#10;&#10;⚠ n=30 is small — Wilson lower bound 49%. Size bets accordingly.">✦ UNDER · PLATINUM</span>` : ''}
                       ${p._lyridUnderTier === 'gold' ? `<span class="pp-lyrid-under gold" style="background:linear-gradient(135deg,#854d0e 0%,#ca8a04 35%,#fbbf24 50%,#a16207 65%,#92400e 100%);color:#fff;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(133,77,14,0.7);text-shadow:0 1px 1px rgba(0,0,0,0.4)" title="LYRID UNDER · GOLD&#10;&#10;FADE THE OVER — bet UNDER 1.5 H+R+RBI instead&#10;&#10;Live audit: 13W-9L = 59% on n=22&#10;Filter: HRR + L-hitter + bullpen edge&#10;Wilson 95% CI: [39%, 77%]&#10;Time thirds: 57/57/63&#10;OOS: 60% train (n=10), 58% test (n=12)&#10;&#10;PrizePicks EV at 59%:&#10;  2-pick: +5.0% (thin)&#10;  3-pick: +3.6% (thin)&#10;  4-pick: +20.7%&#10;&#10;⚠ n=22 is small — Wilson lower bound 39%. Marginal at PP 2/3-pick.">★ UNDER · GOLD</span>` : ''}
