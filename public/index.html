@@ -17686,6 +17686,13 @@ async function autoGradeOnAppOpen() {
   #cs2-panel .cs2-pending{opacity:0.9;cursor:pointer}
   #cs2-panel .cs2-pending:hover{opacity:1}
   #cs2-panel .cs2-pending:disabled{opacity:0.45;cursor:default}
+  #cs2-panel .cs2-uncovered{margin-top:14px}
+  #cs2-panel .cs2-uncovered>summary{cursor:pointer;list-style:none;font-size:12px;color:var(--dim);padding:8px 2px;letter-spacing:0.01em}
+  #cs2-panel .cs2-uncovered>summary::-webkit-details-marker{display:none}
+  #cs2-panel .cs2-uncovered>summary::before{content:'\25b8 ';color:var(--dim)}
+  #cs2-panel .cs2-uncovered[open]>summary::before{content:'\25be '}
+  #cs2-panel .cs2-uncovered>summary:hover{color:var(--ink)}
+  #cs2-panel .cs2-uncovered-list{margin-top:6px;opacity:0.6}
   #cs2-panel .cs2-pcard{background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-2)}
   #cs2-panel .cs2-pcard-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
   #cs2-panel .cs2-nick{font-family:var(--font-sans);font-weight:500;font-size:var(--size-body-sm);color:var(--text-primary)}
@@ -17785,7 +17792,7 @@ async function autoGradeOnAppOpen() {
       // merge: each live fixture keeps its projection if one is deployed, else pending
       matches = sched.games.map(g => projMap[String(g.matchId)] || ({
         matchId: g.matchId, teamA: g.teamA, teamB: g.teamB, startTime: g.startTime,
-        teamAId: g.teamAId, teamBId: g.teamBId, bestOf: g.bestOf,
+        teamAId: g.teamAId, teamBId: g.teamBId, bestOf: g.bestOf, covered: g.covered,
         tier: g.tier, lan: g.lan, stage: g.stage, doOrDie: g.doOrDie,
         format: g.bestOf ? 'Bo' + g.bestOf : null, pending: true,
       }));
@@ -17817,8 +17824,10 @@ async function autoGradeOnAppOpen() {
 
     if (meta) {
       const gen = data.generatedAt ? new Date(data.generatedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
-      const players = (data.matches || []).reduce((a, m) => a + (m.players ? m.players.length : 0), 0);
-      meta.textContent = `${(data.matches || []).length} MATCHES · ${players} PLAYERS${gen ? ' · ' + gen : ''}`;
+      const all = data.matches || [];
+      const coveredN = all.filter(m => !m.pending || m.covered !== false).length;
+      const players = all.reduce((a, m) => a + (m.players ? m.players.length : 0), 0);
+      meta.textContent = `${coveredN} GAME${coveredN === 1 ? '' : 'S'}${players ? ' · ' + players + ' PLAYERS' : ''}${gen ? ' · ' + gen : ''}`;
     }
 
     if (banner) {
@@ -17834,19 +17843,43 @@ async function autoGradeOnAppOpen() {
       list.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">No matches in slate</div><div class="lyrid-empty-text">Add matches with the --json generator.</div></div>`;
       return;
     }
-    list.innerHTML = `<div class="lyrid-games-list">${matches.map(renderCs2MatchRow).join('')}</div>`;
-    // Auto-open the strongest read (most leans), not just the first game — otherwise
-    // the featured "TONIGHT'S SIGNAL" card can be an empty 0-lean match. Don't scroll
-    // on this initial open so the user still lands at the top of the slate.
+    list.innerHTML = cs2GamesListHtml(matches);
+    // Auto-open the strongest read (most leans) among COVERED games only — never
+    // feature a game we can't read. Don't scroll on this initial open.
     const leansOf = (m) => (m.players || []).filter(p => p.band === 'LEAN' || p.band === 'STRONG').length;
-    const featured = (matches || []).slice().sort((a, b) => leansOf(b) - leansOf(a))[0];
+    const coverable = matches.filter(m => !m.pending || m.covered !== false);
+    const featured = coverable.slice().sort((a, b) => leansOf(b) - leansOf(a))[0];
     if (featured) analyzeCs2Match(featured.matchId, false);
+  }
+
+  // Build the games list, splitting fixtures the engine can't read (lower-tier teams
+  // with no history) into a collapsed section, so the main slate only shows games we
+  // can actually give props on.
+  function cs2GamesListHtml(matches) {
+    const coverable = matches.filter(m => !m.pending || m.covered !== false);
+    const uncovered = matches.filter(m => m.pending && m.covered === false);
+    let html = coverable.length
+      ? `<div class="lyrid-games-list">${coverable.map(renderCs2MatchRow).join('')}</div>`
+      : `<div class="lyrid-empty"><div class="lyrid-empty-title">No covered games on this slate</div><div class="lyrid-empty-text">None of these matchups have both teams in Lyrid's model yet — this card is mostly lower-tier events. The reads land on S/A-tier slates.</div></div>`;
+    if (uncovered.length) {
+      html += `
+        <details class="cs2-uncovered">
+          <summary>${uncovered.length} more game${uncovered.length === 1 ? '' : 's'} Lyrid doesn't cover yet — lower-tier teams without enough match history</summary>
+          <div class="lyrid-games-list cs2-uncovered-list">${uncovered.map(renderCs2MatchRow).join('')}</div>
+        </details>`;
+    }
+    return html;
   }
 
   function renderCs2MatchRow(m) {
     if (m.pending) {
       const psub = `${esc(m.format || 'Bo3')}${m.tier ? ' · ' + esc(String(m.tier).toUpperCase()) : ''}${m.lan ? ' · LAN' : ''}${m.doOrDie ? ' · ELIM' : ''}`;
-      const canAnalyze = m.teamAId != null && m.teamBId != null;
+      const noData = m.teamAId == null || m.teamBId == null;
+      const uncovered = m.covered === false;
+      const canAnalyze = !noData && !uncovered;
+      const hint = canAnalyze ? 'tap to analyze' : uncovered ? 'not in Lyrid\u2019s model yet' : 'no team data';
+      const plabel = canAnalyze ? 'analyze' : uncovered ? '\u2014' : 'pending';
+      const pmark = canAnalyze ? '\u2192' : '\u00b7';
       return `
         <button class="lyrid-game-card cs2-pending" type="button"${canAnalyze ? ` onclick="analyzeCs2Live('${esc(m.matchId)}')"` : ' disabled'} aria-label="Analyze ${esc(m.teamA)} vs ${esc(m.teamB)}">
           <div class="lyrid-game-time">
@@ -17855,9 +17888,9 @@ async function autoGradeOnAppOpen() {
           </div>
           <div class="lyrid-game-matchup">
             <div class="lyrid-game-teams"><span>${esc(m.teamA || '?')}</span><span class="at">vs</span><span>${esc(m.teamB || '?')}</span></div>
-            <div class="lyrid-game-pitchers">${psub} · ${canAnalyze ? 'tap to analyze' : 'no team data'}</div>
+            <div class="lyrid-game-pitchers">${psub} · ${hint}</div>
           </div>
-          <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">${canAnalyze ? 'analyze' : 'pending'}</div><div class="lyrid-game-projection-value" aria-hidden="true">${canAnalyze ? '→' : '·'}</div></div>
+          <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">${plabel}</div><div class="lyrid-game-projection-value" aria-hidden="true">${pmark}</div></div>
         </button>`;
     }
     const vol = m.roundVolume || {};
@@ -17890,7 +17923,7 @@ async function autoGradeOnAppOpen() {
     if (!m || !container) return;
 
     const list = document.getElementById('cs2GamesList');
-    if (list) list.innerHTML = `<div class="lyrid-games-list">${(data.matches || []).map(renderCs2MatchRow).join('')}</div>`;
+    if (list) list.innerHTML = cs2GamesListHtml(data.matches || []);
 
     const vol = m.roundVolume || {};
     const pctOf = (x) => x != null ? Math.round(x * 100) + '%' : '?';
