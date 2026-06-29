@@ -6920,7 +6920,12 @@ async function analyzeGame(gamePk, forceDeep) {
     try { refreshCleanestEdges(); } catch (_) {}
   } catch(err) {
     console.error(err);
-    container.innerHTML = `
+    container.innerHTML = err.message.includes('Daily limit') ? `
+      <div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-lg);padding:48px 24px;margin-top:16px;text-align:center">
+        <p class="lyrid-eyebrow" style="margin-bottom:8px;color:var(--data-negative)">Daily limit reached</p>
+        <p style="font-family:var(--font-serif);font-size:18px;font-weight:500;color:var(--text-primary);margin:0 0 16px">You've used your 3 free analyses for today.</p>
+        <a href="https://whop.com/checkout/plan_1RYyy7yMPOyXV/" target="_blank" rel="noopener" style="display:inline-block;background:var(--brand-primary);color:var(--text-on-primary);font-size:13px;font-weight:600;letter-spacing:0.06em;padding:12px 24px;border-radius:var(--radius-sm);text-decoration:none">Upgrade to Pro →</a>
+      </div>` : `
       <div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-lg);padding:48px 24px;margin-top:16px;text-align:center">
         <p class="lyrid-eyebrow" style="margin-bottom:8px;color:var(--data-negative)">Analysis failed</p>
         <p style="font-family:var(--font-serif);font-size:18px;font-weight:500;color:var(--text-primary);margin:0 0 8px">${err.message}</p>
