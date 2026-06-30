@@ -439,6 +439,51 @@
   /* ===========================================================
      LYRID GAME CARD — slate listing
      =========================================================== */
+  /* (Drop #43) Parlay Maker — themed on Lyrid tokens so it matches the dark board */
+  .lyr-pm{margin:0 0 20px;padding:18px 16px 16px;background:var(--panel);border:1px solid var(--line);border-radius:14px;color:var(--ink,var(--text-primary))}
+  .pm-kicker{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  .pm-title{font-family:'Source Serif Pro',Georgia,serif;font-size:24px;font-weight:600;margin:4px 0;color:var(--ink,var(--text-primary))}
+  .pm-sub{color:var(--dim,var(--text-secondary));font-size:13px;margin-bottom:14px;line-height:1.5}
+  .pm-controls{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--line);margin-bottom:12px}
+  .pm-field{font-size:12px;color:var(--dim,var(--text-secondary));display:flex;align-items:center;gap:6px}
+  .pm-field select{font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:7px;background:var(--surface-muted,var(--panel));color:var(--ink,var(--text-primary))}
+  .pm-toggle{font-size:12.5px;color:var(--dim,var(--text-secondary));display:flex;align-items:center;gap:6px;cursor:pointer}
+  .pm-btn{font-weight:700;font-size:13px;background:var(--accent);color:#fff;border:none;border-radius:9px;padding:9px 16px;cursor:pointer}
+  .pm-btn:hover{filter:brightness(1.08)}
+  .pm-empty{background:var(--surface-muted,rgba(255,255,255,.03));border:1px dashed var(--line);border-radius:12px;padding:18px}
+  .pm-empty-h{font-weight:700;color:var(--accent);font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}
+  .pm-empty-b{color:var(--dim,var(--text-secondary));font-size:13.5px;line-height:1.5}
+  .pm-ticket-head{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+  .pm-badge{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:5px 11px;border-radius:20px}
+  .pm-floor-elite{background:var(--accent);color:#fff}
+  .pm-floor-solid{background:rgba(47,107,63,.18);color:var(--cool,#5bbf7a);border:1px solid var(--line)}
+  .pm-floor-lean{background:var(--surface-muted,rgba(255,255,255,.04));color:var(--dim,var(--text-secondary));border:1px solid var(--line)}
+  .pm-combined{margin-left:auto;font-size:13px;font-weight:700;color:var(--ink,var(--text-primary))}
+  .pm-leg{border-top:1px solid var(--line);padding:13px 0}
+  .pm-leg-top{display:flex;align-items:baseline;gap:8px}
+  .pm-leg-name{font-family:'Source Serif Pro',Georgia,serif;font-size:16px;font-weight:600;color:var(--ink,var(--text-primary))}
+  .pm-leg-game{margin-left:auto;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim,var(--text-secondary))}
+  .pm-leg-call{display:flex;align-items:center;gap:10px;background:var(--surface-muted,rgba(255,255,255,.03));border:1px solid var(--line);border-radius:9px;padding:9px 12px;margin:8px 0}
+  .pm-arrow{color:var(--cool,#5bbf7a);font-weight:700}
+  .pm-call{font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--cool,#5bbf7a)}
+  .pm-stat{font-size:14px;font-weight:700;color:var(--ink,var(--text-primary))}
+  .pm-pct{margin-left:auto;font-size:15px;font-weight:700;color:var(--ink,var(--text-primary))}
+  .pm-leg-foot{display:flex;gap:8px;align-items:center;margin:6px 0 5px}
+  .pm-tier{font-size:9.5px;font-weight:700;letter-spacing:.06em;padding:3px 8px;border-radius:14px;text-transform:uppercase}
+  .pm-verified,.pm-platinum,.pm-guaranteed,.pm-sharp{background:var(--accent);color:#fff}
+  .pm-gold{background:rgba(176,130,58,.2);color:#d6a24a}
+  .pm-linechip{cursor:pointer}
+  .pm-chip{font-size:9.5px;font-weight:700;letter-spacing:.06em;padding:3px 8px;border-radius:14px;text-transform:uppercase}
+  .pm-standard{background:rgba(47,107,63,.2);color:var(--cool,#5bbf7a)}
+  .pm-goblin{background:rgba(154,91,26,.22);color:#d68a3a}
+  .pm-demon{background:rgba(162,59,47,.22);color:var(--danger,#e0675a)}
+  .pm-unknown{background:var(--surface-muted,rgba(255,255,255,.06));color:var(--dim,var(--text-secondary))}
+  .pm-why{color:var(--dim,var(--text-secondary));font-size:12.5px;line-height:1.45}
+  .pm-corr{display:block;color:var(--warn,#d6a24a);font-size:11.5px;margin-top:8px}
+  .pm-note{color:var(--dim,var(--text-secondary));font-size:12px;margin:10px 0;font-style:italic}
+  .pm-save{margin-top:6px}
+  .pm-savemsg{font-size:12px;color:var(--dim,var(--text-secondary));margin-top:8px}
+
   /* (Drop #36) Tonight's Cleanest Edges — ranked board (dark theme) */
   .cleanest-edges{margin:0 0 20px;padding:18px 16px 16px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
   .ce-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
@@ -3386,6 +3431,28 @@
 
   <div id="hrPicksView" style="display:none"></div>
   <div id="gamesList"></div>
+
+  <!-- (Drop #43) Parlay Maker — builds from tonight's clean edges (MLB + WNBA). -->
+  <section id="parlay-maker" class="lyr-pm">
+    <div class="pm-kicker">Tonight &middot; Build</div>
+    <h2 class="pm-title">Parlay Maker</h2>
+    <p class="pm-sub">Auto-builds the strongest ticket from tonight's clean edges. It will not pad &mdash; if the slate is thin it says so. WNBA legs appear once you've opened the WNBA tab this session.</p>
+    <div class="pm-controls">
+      <label class="pm-field">Legs
+        <select id="pm-minlegs"><option>2</option><option>3</option><option>4</option></select>
+        <span>to</span>
+        <select id="pm-maxlegs"><option>2</option><option>3</option><option selected>4</option></select>
+      </label>
+      <label class="pm-field">Sport
+        <select id="pm-sport"><option value="all">All</option><option value="mlb">MLB</option><option value="wnba">WNBA</option></select>
+      </label>
+      <label class="pm-toggle"><input type="checkbox" id="pm-distinct-teams"> Different teams</label>
+      <label class="pm-toggle"><input type="checkbox" id="pm-onegame"> One game per leg</label>
+      <label class="pm-toggle"><input type="checkbox" id="pm-standardonly"> Standard lines only</label>
+      <button id="pm-build" class="pm-btn">Build ticket</button>
+    </div>
+    <div id="pm-result"></div>
+  </section>
   <div id="analysisContainer"></div>
 </div>
 
@@ -3769,6 +3836,8 @@
           }
         }
       );
+      // (Drop #43) hand the live client to the Parlay Maker for ticket logging
+      try { window.__lyridSB = supabaseClient; if (window.LyridParlayUI) window.LyridParlayUI.setSupabase(supabaseClient); } catch (_) {}
       return supabaseClient;
     } catch (err) {
       console.warn('[lyrid-auth] Failed to load Supabase SDK:', err.message);
@@ -6699,7 +6768,10 @@ function gatherCleanestEdges(date) {
     ranked.push({ ...p, _ce: { kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, ctxChips, evidence } });
   }
   ranked.sort((a,b) => b._ce.rank - a._ce.rank || (b._ce.wr||0) - (a._ce.wr||0));
-  return ranked.slice(0, 40);
+  const _ceOut = ranked.slice(0, 40);
+  // (Drop #43) feed the Parlay Maker — fires on initial render and every per-game refresh
+  try { if (window.LyridParlayBridge) window.LyridParlayBridge.pushMlb(_ceOut, date); } catch (_) {}
+  return _ceOut;
 }
 
 // (Drop #42 — #38) Re-render only the board in place as each game analyzes.
@@ -16860,6 +16932,8 @@ async function autoGradeOnAppOpen() {
       if (!e || (rk[r.tier] || 0) > (rk[e.tier] || 0) || ((rk[r.tier] || 0) === (rk[e.tier] || 0) && r.gap > e.gap)) byP[r.p.player] = r;
     }
     const ranked = Object.values(byP).sort((a, b) => (rk[b.tier] || 0) - (rk[a.tier] || 0) || b.gap - a.gap).slice(0, 7);
+    // (Drop #43) feed the Parlay Maker with tonight's WNBA unders
+    try { if (window.LyridParlayBridge) window.LyridParlayBridge.pushWnba(ranked, data); } catch (_) {}
 
     const meta = (r) => esc((r.p.position || '') + (r.p.team ? (r.p.position ? ' · ' : '') + teamAbbr(r.p.team) : ''));
     const mktLabel = (r) => r.isPRA ? 'PRA' : (r.m.charAt(0).toUpperCase() + r.m.slice(1));
@@ -18548,6 +18622,295 @@ async function lyridCacheDigest() {
 }
 setTimeout(lyridCacheDigest, 45000);      // after boards have had time to load
 setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
+</script>
+<!-- (Drop #43) Parlay Maker engine + adapters + UI + bridge -->
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+   * LYRID PARLAY MAKER  (Drop #43)
+   * Selection + combination layer over the Cleanest Edges boards.
+   * Engine (window.LyridParlay) + adapters + UI (window.LyridParlayUI)
+   * + bridge (window.LyridParlayBridge). No new model. Honesty cap:
+   * never pads past clean edges.
+   * ============================================================ */
+
+  // ---- Engine ------------------------------------------------
+  // TIER_RANK extended for the LIVE boards: MLB emits VERIFIED/PLATINUM/
+  // SHARP/GOLD; WNBA emits GUARANTEED/PLATINUM/GOLD/LEAN. The spec's
+  // table only had VERIFIED/PLATINUM/GOLD/WATCH/NONE.
+  var TIER_RANK = { VERIFIED: 3, GUARANTEED: 3, PLATINUM: 2, SHARP: 2, GOLD: 1, LEAN: 0, WATCH: 0, NONE: -1 };
+  var SPORT_BAR = { mlb: 0.62, wnba: 0.70, cs2: 0.57 };
+
+  function isBettable(c, o) {
+    o = o || {};
+    var bar = (o.bar != null) ? o.bar : (SPORT_BAR[c.sport] || 0.62);
+    var f = c.flags || {};
+    if (!c.tier || TIER_RANK[c.tier] == null || TIER_RANK[c.tier] < TIER_RANK[o.minTier || 'GOLD']) return false;
+    if (!(c.cashRate >= bar)) return false;
+    if (f.antiCalibrated) return false;
+    if (f.started || f.bookProhibited) return false;
+    if (c.side === 'under' && f.highScoringGame) return false;
+    if (f.lineStatus === 'goblin' || f.lineStatus === 'demon') return false;
+    if (o.standardOnly && f.lineStatus !== 'standard') return false;
+    return true;
+  }
+
+  function score(c) {
+    var s = (c.cashRate || 0) * 100 + (TIER_RANK[c.tier] || 0) * 2;
+    if ((c.flags || {}).lineStatus === 'unknown') s -= 3;
+    if (/cold/i.test(c.form || '')) s -= 1;
+    if ((c.matchupContext || []).some(function (x) { return /ELITE|SHARP/.test(x); })) s += 1;
+    return s;
+  }
+
+  function conflicts(a, b, k) {
+    if (a.player === b.player) return true;
+    if (k.oneGamePerLeg && a.gameId === b.gameId) return true;
+    if (k.distinctTeams && a.team === b.team) return true;
+    return false;
+  }
+
+  function buildParlay(cands, k) {
+    k = Object.assign({ minLegs: 2, maxLegs: 4, distinctTeams: false, oneGamePerLeg: false,
+                        standardOnly: false, minTier: 'GOLD', bar: null }, k || {});
+    var pool = (cands || []).filter(function (c) { return isBettable(c, k); })
+                    .sort(function (a, b) { return score(b) - score(a); });
+
+    if (pool.length < k.minLegs)
+      return { ticket: null, cleanCount: pool.length,
+               reason: 'Only ' + pool.length + ' clean edge(s) tonight, not enough for a ' +
+                       k.minLegs + '-leg. Take fewer or pass. Do not pad.' };
+
+    var target = Math.min(k.maxLegs, pool.length), legs = [];
+    pool.forEach(function (c) {
+      if (legs.length >= target) return;
+      if (legs.every(function (l) { return !conflicts(l, c, k); })) legs.push(c);
+    });
+    if (legs.length < k.minLegs)
+      return { ticket: null, cleanCount: legs.length,
+               reason: 'Constraints left only ' + legs.length + ' eligible leg(s). Loosen one or pass.' };
+
+    return { ticket: assemble(legs), cleanCount: pool.length };
+  }
+
+  function assemble(legs) {
+    var combined = legs.reduce(function (p, l) { return p * (l.cashRate || 0); }, 1);
+    var minRate  = Math.min.apply(null, legs.map(function (l) { return l.cashRate || 0; }));
+    var unknown  = legs.some(function (l) { return (l.flags || {}).lineStatus === 'unknown'; });
+    var floor    = (minRate >= 0.70 && !unknown) ? 'elite' : (minRate >= 0.62 && !unknown) ? 'solid' : 'lean';
+    var recommend = (minRate >= 0.68 && legs.length <= 3) ? 'power' : 'flex';
+    var correlated = new Set(legs.map(function (l) { return l.gameId; })).size < legs.length;
+    return {
+      legCount: legs.length, recommend: recommend, floor: floor, correlated: correlated,
+      combinedHitRate: +combined.toFixed(4),
+      legs: legs.map(function (l) {
+        return { id: l.id, sport: l.sport, player: l.player, team: l.team, gameId: l.gameId,
+                 date: l.date, market: l.market, side: l.side, line: l.line, tier: l.tier, cashRate: l.cashRate,
+                 lineStatus: (l.flags || {}).lineStatus || 'unknown', why: l.why };
+      }),
+      note: recommend === 'power' ? 'Power: every leg must hit.'
+                                  : 'Flex: still pays if one misses, right call once a leg is <68% or a line is unconfirmed.'
+    };
+  }
+
+  window.LyridParlay = { isBettable: isBettable, score: score, buildParlay: buildParlay };
+
+  // ---- Adapters (wired to the LIVE boards, not the spec's idealized shape) ----
+  function todayISO() { return new Date().toISOString().slice(0, 10); }
+
+  function mlbGameLookup(date, gamePk) {
+    try {
+      var sc = (typeof slateCache !== 'undefined') ? slateCache : (window.slateCache || {});
+      var slate = sc && sc[date];
+      if (!slate || !slate.games) return null;
+      for (var i = 0; i < slate.games.length; i++) {
+        var g = slate.games[i];
+        if (g.gamePk === gamePk) {
+          return { status: g.status || '', homeAbbr: (g.homeTeam && g.homeTeam.abbreviation) || '' };
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // The MLB board encodes the prop as a string ("0.5 Hits", "1.5 Hits + Runs + RBIs").
+  // The elite-arsenal cohort emits a bare "Over" with no concrete line -> not a leg, skip.
+  function parseMlbProp(prop) {
+    if (!prop) return null;
+    var m = String(prop).match(/([0-9]+(?:\.[0-9]+)?)/);
+    if (!m) return null;
+    var line = parseFloat(m[1]);
+    var lower = String(prop).toLowerCase();
+    var market = (/hits?\s*\+\s*runs|runs?\s*\+\s*rbi|h\s*\+\s*r\s*\+\s*rbi|hrr/.test(lower)) ? 'hrr'
+               : (/hit/.test(lower)) ? 'hits'
+               : (/home run|\bhr\b/.test(lower)) ? 'hr'
+               : null;
+    if (!market) return null;
+    return { line: line, market: market };
+  }
+
+  function mlbToCandidates(edges, date) {
+    var out = [];
+    (edges || []).forEach(function (e) {
+      var ce = e && e._ce;
+      if (!ce) return;
+      var parsed = parseMlbProp(ce.prop);
+      if (!parsed) return;                                   // no concrete line -> not a parlay leg
+      var side = (ce.dir === 'less') ? 'under' : 'over';
+      var lk = mlbGameLookup(date, e.gamePk) || {};
+      var started = /progress|live|final/i.test(lk.status || '');
+      var bookProhibited = (lk.homeAbbr === 'COL');           // Coors = hard skip
+      var high = (typeof e._projTotal === 'number') && e._projTotal >= 9.5;
+      var sampleN = null;
+      (ce.evidence || []).forEach(function (row) {
+        var mm = String((row && row[1]) || '').match(/n=\s*([0-9]+)/i);
+        if (mm) sampleN = parseInt(mm[1], 10);
+      });
+      out.push({
+        id: ['mlb', date, e.gamePk, (e.hitterName || ''), parsed.market, side].join(':'),
+        sport: 'mlb', date: date, gameId: String(e.gamePk || ''),
+        team: e.team, opponent: e.opponent, player: e.hitterName, playerId: e.hitterId || null,
+        market: parsed.market, side: side, line: parsed.line,
+        tier: ce.tier, cashRate: (ce.wr || 0) / 100, edgeType: ce.edgeType, sampleN: sampleN,
+        form: e.recentFormLabel || 'neutral', matchupContext: ce.ctxChips || [], why: ce.plain,
+        flags: {
+          antiCalibrated: false,             // board already filtered the real anti-cal traps;
+                                             // the modelPct shown on fades is "ignore me", not exclude-the-bet
+          highScoringGame: high, started: started, bookProhibited: bookProhibited, lineStatus: 'unknown'
+        }
+      });
+    });
+    return out;
+  }
+
+  function wnbaToCandidates(ranked, data) {
+    var date = (data && (data.date || data.slateDate || data.gameDate)) || todayISO();
+    var out = [];
+    (ranked || []).forEach(function (r) {
+      if (!r || !r.p) return;
+      var market = r.isPRA ? 'pra' : String(r.m || '').toLowerCase();
+      out.push({
+        id: ['wnba', date, (r.p.gameId || ''), (r.p.player || ''), market, 'under'].join(':'),
+        sport: 'wnba', date: date, gameId: String(r.p.gameId || r.game || ''),
+        team: r.p.team, opponent: r.p.opponent, player: r.p.player, playerId: r.p.playerId || null,
+        market: market, side: 'under', line: r.line,
+        tier: r.tier, cashRate: (r.wr || 0) / 100, edgeType: 'wnba-under', sampleN: null,
+        form: 'neutral', matchupContext: r.oppFlag ? [r.oppFlag] : [], why: r.reason,
+        flags: {
+          antiCalibrated: false, highScoringGame: false, started: false,
+          bookProhibited: false, lineStatus: 'standard'   // BDL 'provided' lines are real book lines
+        }
+      });
+    });
+    return out;
+  }
+
+  // ---- UI glue (per-sport merge; spec's setCandidates clobbered across sports) ----
+  var UI = (function () {
+    var S = { bySport: {}, lineStatus: {}, sb: null, last: null };
+    var NEXT = { unknown: 'standard', standard: 'goblin', goblin: 'demon', demon: 'unknown' };
+    function el(id) { return document.getElementById(id); }
+    function v(id) { var e = el(id); return e ? e.value : null; }
+    function bb(id) { var e = el(id); return !!(e && e.checked); }
+    function applyLine(c) { if (c && c.flags && S.lineStatus[c.id]) c.flags.lineStatus = S.lineStatus[c.id]; return c; }
+    function setSupabase(c) { S.sb = c; }
+    function allCands() { var a = []; Object.keys(S.bySport).forEach(function (k) { a = a.concat(S.bySport[k] || []); }); return a; }
+    function setSportCandidates(sport, list) { S.bySport[sport] = (list || []).map(applyLine); build(); }
+    function setCandidates(list) {
+      S.bySport = {};
+      (list || []).forEach(function (c) { var s = c.sport || 'mlb'; (S.bySport[s] = S.bySport[s] || []).push(applyLine(c)); });
+      build();
+    }
+    function constraints() {
+      var sp = v('pm-sport');
+      return { minLegs: parseInt(v('pm-minlegs') || '2', 10), maxLegs: parseInt(v('pm-maxlegs') || '4', 10),
+        distinctTeams: bb('pm-distinct-teams'), oneGamePerLeg: bb('pm-onegame'), standardOnly: bb('pm-standardonly'),
+        _sport: (sp && sp !== 'all') ? sp : null };
+    }
+    function build() {
+      if (!window.LyridParlay || !el('pm-result')) return;
+      var k = constraints(), pool = allCands();
+      if (k._sport) pool = pool.filter(function (c) { return c.sport === k._sport; });
+      S.last = window.LyridParlay.buildParlay(pool, k);
+      render(S.last);
+    }
+    function cycleLine(id) {
+      S.lineStatus[id] = NEXT[S.lineStatus[id] || 'unknown'];
+      allCands().forEach(function (c) { if (c.id === id) c.flags.lineStatus = S.lineStatus[id]; });
+      build();
+    }
+    function chipHTML(s) {
+      var t = s === 'standard' ? 'STANDARD' : s === 'goblin' ? 'GOBLIN' : s === 'demon' ? 'DEMON' : 'TAP TO SET LINE';
+      return '<span class="pm-chip pm-' + s + '">' + t + '</span>';
+    }
+    function legHTML(l) {
+      var pct = Math.round((l.cashRate || 0) * 100), arrow = l.side === 'over' ? '&#8593;' : '&#8595;', call = l.side === 'over' ? 'MORE' : 'LESS';
+      return '<div class="pm-leg"><div class="pm-leg-top"><span class="pm-leg-name">' + l.player + '</span>' +
+        '<span class="pm-leg-game">' + (l.team || '') + ' &middot; ' + (l.sport || '').toUpperCase() + '</span></div>' +
+        '<div class="pm-leg-call"><span class="pm-arrow">' + arrow + '</span><span class="pm-call">' + call + '</span>' +
+        '<span class="pm-stat">' + l.line + ' ' + l.market + '</span><span class="pm-pct">' + pct + '%</span></div>' +
+        '<div class="pm-leg-foot"><span class="pm-tier pm-' + String(l.tier || '').toLowerCase() + '">' + (l.tier || '') + '</span>' +
+        '<span class="pm-linechip" data-pm-id="' + l.id + '">' + chipHTML(l.lineStatus || 'unknown') + '</span></div>' +
+        '<div class="pm-why">' + (l.why || '') + '</div></div>';
+    }
+    function render(res) {
+      var box = el('pm-result'); if (!box) return;
+      if (!res || !res.ticket) {
+        box.innerHTML = '<div class="pm-empty"><div class="pm-empty-h">No ticket, on purpose</div>' +
+          '<div class="pm-empty-b">' + ((res && res.reason) || 'No clean edges match these settings.') + '</div></div>'; return;
+      }
+      var t = res.ticket;
+      box.innerHTML = '<div class="pm-ticket"><div class="pm-ticket-head">' +
+        '<span class="pm-badge pm-floor-' + t.floor + '">' + t.recommend.toUpperCase() + ' &middot; ' + t.floor + '</span>' +
+        '<span class="pm-combined">' + Math.round(t.combinedHitRate * 100) + '% all-hit</span></div>' +
+        t.legs.map(legHTML).join('') +
+        (t.correlated ? '<span class="pm-corr">&#9888; legs share a game, combined rate is optimistic</span>' : '') +
+        '<div class="pm-note">' + t.note + '</div>' +
+        '<button class="pm-save pm-btn">Save to my log</button><div id="pm-savemsg" class="pm-savemsg"></div></div>';
+    }
+    function save() {
+      var msg = el('pm-savemsg'), t = S.last && S.last.ticket; if (!t) return;
+      var sb = S.sb || window.__lyridSB || null;
+      if (!sb) { if (msg) msg.textContent = 'Sign in to save (auth not ready yet).'; return; }
+      Promise.resolve(sb.auth.getUser()).then(function (u) {
+        var uid = (u && u.data && u.data.user) ? u.data.user.id : null;
+        if (!uid) { if (msg) msg.textContent = 'Sign in to save.'; return; }
+        var first = allCands()[0];
+        var row = { user_id: uid, sport: (t.legs[0] && t.legs[0].sport) || 'mlb',
+          slate_date: (t.legs[0] && t.legs[0].date) || (first && first.date) || todayISO(),
+          ticket_type: t.recommend, leg_count: t.legCount, combined_hit_rate: t.combinedHitRate,
+          floor_label: t.floor, legs: t.legs, constraints: constraints() };
+        return Promise.resolve(sb.from('parlay_log').insert(row)).then(function (r) {
+          if (msg) msg.textContent = r && r.error ? ('Save failed: ' + r.error.message) : 'Saved. Auto-grades after the games.';
+        });
+      }).catch(function (e) { if (msg) msg.textContent = 'Save error: ' + ((e && e.message) || e); });
+    }
+    function wire() {
+      ['pm-minlegs', 'pm-maxlegs', 'pm-sport', 'pm-distinct-teams', 'pm-onegame', 'pm-standardonly'].forEach(function (id) {
+        var e = el(id); if (e) e.addEventListener('change', build);
+      });
+      var btn = el('pm-build'); if (btn) btn.addEventListener('click', build);
+      var box = el('pm-result');
+      if (box) box.addEventListener('click', function (ev) {
+        var chip = ev.target.closest ? ev.target.closest('.pm-linechip') : null;
+        if (chip && chip.getAttribute('data-pm-id')) { cycleLine(chip.getAttribute('data-pm-id')); return; }
+        if (ev.target.closest && ev.target.closest('.pm-save')) save();
+      });
+    }
+    if (document.readyState !== 'loading') wire(); else document.addEventListener('DOMContentLoaded', wire);
+    return { setCandidates: setCandidates, setSportCandidates: setSportCandidates, setSupabase: setSupabase, rebuild: build, save: save };
+  })();
+  window.LyridParlayUI = UI;
+
+  // ---- Bridge: boards push here after they render ----
+  window.LyridParlayBridge = {
+    pushMlb: function (edges, date) { try { UI.setSportCandidates('mlb', mlbToCandidates(edges, date || todayISO())); } catch (_) {} },
+    pushWnba: function (ranked, data) { try { UI.setSportCandidates('wnba', wnbaToCandidates(ranked, data)); } catch (_) {} }
+  };
+})();
+
 </script>
 </body>
 </html>
