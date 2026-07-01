@@ -483,6 +483,9 @@
   .pm-note{color:var(--dim,var(--text-secondary));font-size:12px;margin:10px 0;font-style:italic}
   .pm-save{margin-top:6px}
   .pm-savemsg{font-size:12px;color:var(--dim,var(--text-secondary));margin-top:8px}
+  .pm-banner{border-radius:10px;padding:11px 13px;font-size:13px;line-height:1.45;margin-bottom:12px;font-weight:600}
+  .pm-banner-low{background:rgba(176,130,58,.14);border:1px solid rgba(176,130,58,.4);color:#d6a24a}
+  .pm-banner-confirm{background:var(--surface-muted,rgba(255,255,255,.04));border:1px dashed var(--accent);color:var(--accent)}
 
   /* (Drop #36) Tonight's Cleanest Edges — ranked board (dark theme) */
   .cleanest-edges{margin:0 0 20px;padding:18px 16px 16px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
@@ -3441,14 +3444,14 @@
       <label class="pm-field">Legs
         <select id="pm-minlegs"><option>2</option><option>3</option><option>4</option></select>
         <span>to</span>
-        <select id="pm-maxlegs"><option>2</option><option>3</option><option selected>4</option></select>
+        <select id="pm-maxlegs"><option>2</option><option selected>3</option><option>4</option></select>
       </label>
       <label class="pm-field">Sport
         <select id="pm-sport"><option value="all">All</option><option value="mlb">MLB</option><option value="wnba">WNBA</option></select>
       </label>
       <label class="pm-toggle"><input type="checkbox" id="pm-distinct-teams"> Different teams</label>
-      <label class="pm-toggle"><input type="checkbox" id="pm-onegame"> One game per leg</label>
-      <label class="pm-toggle"><input type="checkbox" id="pm-standardonly"> Standard lines only</label>
+      <label class="pm-toggle"><input type="checkbox" id="pm-onegame" checked> One game per leg</label>
+      <label class="pm-toggle"><input type="checkbox" id="pm-standardonly" checked> Standard lines only</label>
       <button id="pm-build" class="pm-btn">Build ticket</button>
     </div>
     <div id="pm-result"></div>
@@ -18652,6 +18655,10 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (f.antiCalibrated) return false;
     if (f.started || f.bookProhibited) return false;
     if (c.side === 'under' && f.highScoringGame) return false;
+    // v2 (judgment layer) — MLB-only fade-environment + opposing-SP gates
+    if (c.sport === 'mlb' && c.side === 'under' && c.gameLean === 'over') return false;                              // no fades in over-leaning games
+    if (c.sport === 'mlb' && c.side === 'under' && c.gameLean !== 'under' && !c.pitcherFriendlyPark) return false;   // neutral games need a pitcher park
+    if (c.sport === 'mlb' && c.side === 'under' && c.opposingPitcherWildOrShort) return false;                       // wild/short SP = produce spot, not a fade
     if (f.lineStatus === 'goblin' || f.lineStatus === 'demon') return false;
     if (o.standardOnly && f.lineStatus !== 'standard') return false;
     return true;
@@ -18673,8 +18680,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   }
 
   function buildParlay(cands, k) {
-    k = Object.assign({ minLegs: 2, maxLegs: 4, distinctTeams: false, oneGamePerLeg: false,
-                        standardOnly: false, minTier: 'GOLD', bar: null }, k || {});
+    k = Object.assign({ minLegs: 2, maxLegs: 3, distinctTeams: false, oneGamePerLeg: true,
+                        standardOnly: true, minTier: 'GOLD', bar: null }, k || {});
     var pool = (cands || []).filter(function (c) { return isBettable(c, k); })
                     .sort(function (a, b) { return score(b) - score(a); });
 
@@ -18692,6 +18699,11 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       return { ticket: null, cleanCount: legs.length,
                reason: 'Constraints left only ' + legs.length + ' eligible leg(s). Loosen one or pass.' };
 
+    // v2 tweak 4: trim a 3rd leg unless every leg clears the elite bar (fewer legs, higher floor)
+    var _mr = Math.min.apply(null, legs.map(function (l) { return l.cashRate || 0; }));
+    var _unk = legs.some(function (l) { return (l.flags || {}).lineStatus === 'unknown'; });
+    if (legs.length > 2 && !(_mr >= 0.70 && !_unk)) legs = legs.slice(0, 2);
+
     return { ticket: assemble(legs), cleanCount: pool.length };
   }
 
@@ -18700,8 +18712,9 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var minRate  = Math.min.apply(null, legs.map(function (l) { return l.cashRate || 0; }));
     var unknown  = legs.some(function (l) { return (l.flags || {}).lineStatus === 'unknown'; });
     var floor    = (minRate >= 0.70 && !unknown) ? 'elite' : (minRate >= 0.62 && !unknown) ? 'solid' : 'lean';
-    var recommend = (minRate >= 0.68 && legs.length <= 3) ? 'power' : 'flex';
     var correlated = new Set(legs.map(function (l) { return l.gameId; })).size < legs.length;
+    // v2 tweak 4: Power only when it truly earns it
+    var recommend = (minRate >= 0.70 && legs.length <= 2 && !unknown && !correlated) ? 'power' : 'flex';
     return {
       legCount: legs.length, recommend: recommend, floor: floor, correlated: correlated,
       combinedHitRate: +combined.toFixed(4),
@@ -18710,15 +18723,66 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
                  date: l.date, market: l.market, side: l.side, line: l.line, tier: l.tier, cashRate: l.cashRate,
                  lineStatus: (l.flags || {}).lineStatus || 'unknown', why: l.why };
       }),
-      note: recommend === 'power' ? 'Power: every leg must hit.'
-                                  : 'Flex: still pays if one misses, right call once a leg is <68% or a line is unconfirmed.'
+      note: correlated ? 'Single-game correlated (SGP) — NOT diversified. One bad game sinks all legs.'
+                       : (recommend === 'power' ? 'Power: every leg must hit.'
+                                                : 'Flex: still pays if one misses, right call once a leg is <68% or a line is unconfirmed.')
     };
   }
 
-  window.LyridParlay = { isBettable: isBettable, score: score, buildParlay: buildParlay };
+  // v2 tweak 5: slate-level read so the builder can say "pass".
+  // NOTE: gated on isBettable (not just raw cashRate/lineStatus as in the spec) —
+  // otherwise a slate of high-rate-but-ineligible fades reads 'ok' when it's 'low'.
+  function slateConviction(pool) {
+    var elite = (pool || []).some(function (c) { return c.cashRate >= 0.70 && (c.flags || {}).lineStatus === 'standard' && isBettable(c, { standardOnly: true }); });
+    var cleanFade = (pool || []).some(function (c) { return c.side === 'under' && c.gameLean === 'under' && (c.flags || {}).lineStatus === 'standard' && isBettable(c, { standardOnly: true }); });
+    return (elite || cleanFade) ? 'ok' : 'low';
+  }
+
+  window.LyridParlay = { isBettable: isBettable, score: score, buildParlay: buildParlay, slateConviction: slateConviction };
 
   // ---- Adapters (wired to the LIVE boards, not the spec's idealized shape) ----
   function todayISO() { return new Date().toISOString().slice(0, 10); }
+
+  // v2 judgment-layer sources (all read from your live analysisCache / park table)
+  function mlbAnalysis(gamePk) {
+    try {
+      var ac = (typeof analysisCache !== 'undefined') ? analysisCache : (window.analysisCache || {});
+      return ac[gamePk + '-deep'] || ac[gamePk] || null;
+    } catch (_) { return null; }
+  }
+  function parkAdj(homeAbbr) {
+    try {
+      var tbl = (typeof LIVE_PARK_LATE_ADJUSTMENTS !== 'undefined') ? LIVE_PARK_LATE_ADJUSTMENTS : null;
+      if (!tbl || homeAbbr == null) return null;
+      var a = tbl[homeAbbr];
+      return (typeof a === 'number') ? a : null;
+    } catch (_) { return null; }
+  }
+  // gameLean anchors on the market's priced environment; a validated inverse-market
+  // UNDER signal force-upgrades to 'under'. Thresholds tunable (env>=9.5 over, <=8.0 under).
+  function mlbGameLean(A) {
+    if (!A) return 'neutral';
+    var proj = (A.projection && A.projection.projTotal != null) ? parseFloat(A.projection.projTotal) : null;
+    var market = (A.odds && A.odds.hasOdds && typeof A.odds.total === 'number') ? A.odds.total : null;
+    try {
+      if (proj != null && market != null && typeof classifyInverseMarketSignal === 'function' && classifyInverseMarketSignal(proj, market)) return 'under';
+    } catch (_) {}
+    var env = (market != null) ? market : proj;
+    if (env == null) return 'neutral';
+    if (env >= 9.5) return 'over';
+    if (env <= 8.0) return 'under';
+    return 'neutral';
+  }
+  // The hitter's own side object carries the OPPOSING pitcher's tags:
+  // awayVsHome = away hitters vs home SP; homeVsAway = home hitters vs away SP.
+  function mlbOpposingSPWildOrShort(A, hitTeamAbbr) {
+    if (!A) return false;
+    var awayAbbr = (A.awayTeam && A.awayTeam.abbreviation) || A.awayTeam;
+    var side = (hitTeamAbbr === awayAbbr) ? (A.awayVsHome || {}) : (A.homeVsAway || {});
+    var ct = side.inningSplits && side.inningSplits.controlTier;
+    var role = side.pitcherRole && side.pitcherRole.role;
+    return (ct === 'wild') || (role === 'short-starter');
+  }
 
   function mlbGameLookup(date, gamePk) {
     try {
@@ -18763,6 +18827,12 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       var started = /progress|live|final/i.test(lk.status || '');
       var bookProhibited = (lk.homeAbbr === 'COL');           // Coors = hard skip
       var high = (typeof e._projTotal === 'number') && e._projTotal >= 9.5;
+      var A = mlbAnalysis(e.gamePk);
+      var homeAbbr = lk.homeAbbr || (A && A.homeTeam && (A.homeTeam.abbreviation || A.homeTeam)) || '';
+      var padj = parkAdj(homeAbbr);
+      var pitcherFriendlyPark = (padj != null && padj <= -0.30);   // meaningful late-run suppression
+      var gameLean = mlbGameLean(A);
+      var oppWildShort = mlbOpposingSPWildOrShort(A, e.team);
       var sampleN = null;
       (ce.evidence || []).forEach(function (row) {
         var mm = String((row && row[1]) || '').match(/n=\s*([0-9]+)/i);
@@ -18775,6 +18845,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         market: parsed.market, side: side, line: parsed.line,
         tier: ce.tier, cashRate: (ce.wr || 0) / 100, edgeType: ce.edgeType, sampleN: sampleN,
         form: e.recentFormLabel || 'neutral', matchupContext: ce.ctxChips || [], why: ce.plain,
+        gameLean: gameLean, pitcherFriendlyPark: pitcherFriendlyPark, opposingPitcherWildOrShort: oppWildShort,
         flags: {
           antiCalibrated: false,             // board already filtered the real anti-cal traps;
                                              // the modelPct shown on fades is "ignore me", not exclude-the-bet
@@ -18834,7 +18905,13 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       var k = constraints(), pool = allCands();
       if (k._sport) pool = pool.filter(function (c) { return c.sport === k._sport; });
       S.last = window.LyridParlay.buildParlay(pool, k);
-      render(S.last);
+      var conviction = 'ok';
+      try { conviction = window.LyridParlay.slateConviction(pool); } catch (_) {}
+      var waiting = pool.filter(function (c) {
+        if ((c.flags || {}).lineStatus !== 'unknown') return false;
+        try { return window.LyridParlay.isBettable(c, Object.assign({}, k, { standardOnly: false })); } catch (_) { return false; }
+      }).length;
+      render(S.last, { conviction: conviction, waiting: waiting });
     }
     function cycleLine(id) {
       S.lineStatus[id] = NEXT[S.lineStatus[id] || 'unknown'];
@@ -18855,14 +18932,22 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         '<span class="pm-linechip" data-pm-id="' + l.id + '">' + chipHTML(l.lineStatus || 'unknown') + '</span></div>' +
         '<div class="pm-why">' + (l.why || '') + '</div></div>';
     }
-    function render(res) {
+    function render(res, meta) {
       var box = el('pm-result'); if (!box) return;
+      meta = meta || {};
+      var banner = '';
+      if (meta.conviction === 'low') {
+        banner += '<div class="pm-banner pm-banner-low">Low-conviction slate. Take the single best confirmed play, or pass. Don\u2019t force a parlay.</div>';
+      }
+      if ((!res || !res.ticket) && meta.waiting > 0) {
+        banner += '<div class="pm-banner pm-banner-confirm">Confirm your lines (tap each chip) &mdash; ' + meta.waiting + ' candidate' + (meta.waiting === 1 ? '' : 's') + ' waiting.</div>';
+      }
       if (!res || !res.ticket) {
-        box.innerHTML = '<div class="pm-empty"><div class="pm-empty-h">No ticket, on purpose</div>' +
+        box.innerHTML = banner + '<div class="pm-empty"><div class="pm-empty-h">No ticket, on purpose</div>' +
           '<div class="pm-empty-b">' + ((res && res.reason) || 'No clean edges match these settings.') + '</div></div>'; return;
       }
       var t = res.ticket;
-      box.innerHTML = '<div class="pm-ticket"><div class="pm-ticket-head">' +
+      box.innerHTML = banner + '<div class="pm-ticket"><div class="pm-ticket-head">' +
         '<span class="pm-badge pm-floor-' + t.floor + '">' + t.recommend.toUpperCase() + ' &middot; ' + t.floor + '</span>' +
         '<span class="pm-combined">' + Math.round(t.combinedHitRate * 100) + '% all-hit</span></div>' +
         t.legs.map(legHTML).join('') +
