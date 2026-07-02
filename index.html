@@ -7945,6 +7945,13 @@ function renderAnalysis(data) {
           // Dual SP + Bullpen tier indicator
           const bpTierClass = m.bullpenTier || 'none';
           const spTierClass = m.tier || 'none';
+          // (Drop #44 — Gavin Sheets bug) Is this card's verdict a FADE?
+          // If so, the head must not show over-pointing labels (HR-chance
+          // badge, bare ELITE chip) that contradict the BET LESS call.
+          const _bestForDir = (m.propRecs || []).find(p => p.isBest) || (m.propRecs || [])[0] || {};
+          const _isFadeCard = m._topPickVerdict === 'fade'
+            || _bestForDir._lyridUnderTier === 'platinum'
+            || _bestForDir._lyridUnderTier === 'gold';
           let comboBadge = '';
           if (m.tier && m.bullpenTier) {
             comboBadge = `<span class="dt-combo-badge full">FULL GAME</span>`;
@@ -8031,7 +8038,7 @@ function renderAnalysis(data) {
                 <div class="match-hitter">
                   ${m.isTopPick && m._topPickVerdict === 'bet' ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}${m.isTopPick && m._topPickVerdict === 'fade' ? '<span style="background:rgba(59,130,246,0.18);color:#1e3a8a;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em;cursor:help" title="Engine ranked this hitter #1 on matchup quality, but the validated play is the FADE (bet the under), not the over. See the verdict banner above.">★ TOP FADE — bet under</span>' : ''}${m.isTopPick && (m._topPickVerdict === 'pass' || (m._topPickSuppressed && m._topPickVerdict !== 'fade')) ? '<span style="background:rgba(120,113,108,0.15);color:#57534e;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em;cursor:help" title="Engine ranked this hitter #1 on matchup quality, but the cohort is -EV. The over is not a bet. See the verdict banner above.">⚠ PASS — no edge</span>' : ''}${m.isTopPick && m._topPickVerdict === 'lean' ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}
                   <!-- Drop 25: ENGINE REFUSED chip removed -->
-                  ${m.hrChance && data.deepMode ? (function renderHrBadge(hc) {
+                  ${m.hrChance && data.deepMode && !_isFadeCard ? (function renderHrBadge(hc) {
                     // PER-GAME TIER DISPLAY (May 23, 2026 — Item 7)
                     //
                     // Prefer per-game tier/probability when present (server computes
@@ -8106,7 +8113,7 @@ function renderAnalysis(data) {
                     return `<span class="inflated-edge-chip" style="background:${bgColor};color:${textColor};font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.04em;font-weight:700;cursor:help" title="${tooltip}">⚠ INFLATED EDGE</span>`;
                   })()}
                   ${''/* Drop 25: Fade chip removed */}
-                  <div class="tier-badge ${m.isPrime ? 'prime' : m.tier}" ${m.isPrime ? `title="PRIME tier — top ${MAX_PRIME_PER_SLATE} picks of the day.&#10;Validated 70% WR on similar criteria (n=27, May 19-28 audit).&#10;&#10;Regressed xwoba: ${m.regressedMaxXwoba}&#10;Context mult: ${m.contextMultiplier}&#10;Inflation gap: ${(parseFloat(m.adjustedMaxXwoba) - parseFloat(m.regressedMaxXwoba || 0)).toFixed(3)}&#10;PRIME score: ${m.primeScore}&#10;Fragility: ${m.fragility?.level || 'solid'}"` : ''}>${m.isPrime ? `PRIME #${m._primeRank || ''}` : m.tier.toUpperCase()}</div>
+                  <div class="tier-badge ${m.isPrime ? 'prime' : m.tier}" ${m.isPrime ? `title="PRIME tier — top ${MAX_PRIME_PER_SLATE} picks of the day.&#10;Validated 70% WR on similar criteria (n=27, May 19-28 audit).&#10;&#10;Regressed xwoba: ${m.regressedMaxXwoba}&#10;Context mult: ${m.contextMultiplier}&#10;Inflation gap: ${(parseFloat(m.adjustedMaxXwoba) - parseFloat(m.regressedMaxXwoba || 0)).toFixed(3)}&#10;PRIME score: ${m.primeScore}&#10;Fragility: ${m.fragility?.level || 'solid'}"` : ''}>${m.isPrime ? `PRIME #${m._primeRank || ''}` : (_isFadeCard ? m.tier.toUpperCase() + ' ↓ FADE' : m.tier.toUpperCase())}</div>
                 </div>
               </div>
               ${m.hrChance && m.hrChance.drivers && m.hrChance.drivers.length > 0 ? `
