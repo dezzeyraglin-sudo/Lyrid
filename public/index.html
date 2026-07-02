@@ -4590,39 +4590,54 @@ function applyLyridUnderTier(propRecs, hitterContext) {
   const formLabel = hitterContext.recentFormLabel || '';
   const reason = (hrrProp.reason || '').toLowerCase();
   const hasBpEdge = reason.includes('bullpen edge');
+  const hasBpCrush = reason.includes('bullpen crush');
+  const hasBpSolid = reason.includes('bullpen solid');
+  const isMultiPathway = reason.includes('multiple pathways');
 
   // ================================================================
-  // (Drop #29 — June 12, 2026) UNDER TIER REWORK per 247-pick audit.
-  //
-  // PLATINUM (new workhorse): HRR + "bullpen edge" reason → UNDER.
-  //   Live: 36-22 = 62.1% (n=58), thirds 63/63/60 — never below 60%
-  //   in any time window. The most stable cohort in the dataset.
-  //   Mechanism: the engine's "bullpen edge" read is an INVERSE
-  //   indicator — the OVER side of these picks hits only 37.9%.
-  //   Subsumes the old Drop #24 GOLD rule (L-hitter + bp-edge, n=22),
-  //   which was this same signal on a smaller slice.
-  //
-  // RETIRED: SCORCHING-form PLATINUM (Drop #24). All-time 61.8% but
-  //   decaying hard: thirds 64/73/50 — the recent third is a coin
-  //   flip. Likely cause: the May/June model recalibrations reduced
-  //   the form multiplier's distortion, shrinking the regression
-  //   edge. SCORCHING picks now log _scorchingWatch for monitoring
-  //   but get NO tier and NO bet recommendation. Revisit if a fresh
-  //   30-pick window re-clears 58%.
+  // (Drop #44 — ports #43) MULTI-PATHWAY INVERSION FIX.
+  // 296-pick live audit (May 19 – Jun 29): the ENTIRE HRR "Multiple
+  // pathways to over" cohort is an inverse indicator — OVER hits 42%,
+  // UNDER hits 58% (Wilson lo 53%). Previously only "bullpen edge"
+  // (n=91) got an UNDER tier; the other 205 picks logged as OVERS and
+  // dragged the hitter engine to 44%. With this fix the historical
+  // record recomputes to 57%.
+  //   bullpen edge  62% (n=91)  → PLATINUM
+  //   bullpen crush 58% (n=145) → PLATINUM
+  //   solid/bare    55%         → GOLD
+  // EXCLUDED: elite pitch-type / arsenal picks stay OVERS (verified cohort).
   // ================================================================
+  const isArsenalOver = reason.includes('elite pitch-type') || reason.includes('arsenal');
+  if (isMultiPathway && !isArsenalOver) {
+    if (hasBpEdge || hasBpCrush) {
+      hrrProp._lyridUnderTier = 'platinum';
+      hrrProp._lyridUnderRule = hasBpEdge
+        ? 'HRR multi-pathway + bullpen edge — inverse (UNDER 62%, n=91)'
+        : 'HRR multi-pathway + bullpen crush — inverse (UNDER 58%, n=145)';
+      hrrProp._lyridUnderWR = hasBpEdge ? 0.62 : 0.58;
+      hrrProp._lyridUnderN = hasBpEdge ? 91 : 145;
+      hrrProp._lyridUnderWilsonLow = hasBpEdge ? 0.51 : 0.50;
+      return hrrProp;
+    }
+    hrrProp._lyridUnderTier = 'gold';
+    hrrProp._lyridUnderRule = 'HRR multi-pathway (solid/neutral bullpen) — inverse (UNDER 55%)';
+    hrrProp._lyridUnderWR = 0.55;
+    hrrProp._lyridUnderN = hasBpSolid ? 38 : 20;
+    hrrProp._lyridUnderWilsonLow = 0.40;
+    return hrrProp;
+  }
+
+  // Legacy path: standalone "bullpen edge" without the multi-pathway string
   if (hasBpEdge) {
     hrrProp._lyridUnderTier = 'platinum';
-    hrrProp._lyridUnderRule = 'HRR + bullpen-edge reason — inverse indicator (OVER hits 37.9%)';
+    hrrProp._lyridUnderRule = 'HRR + bullpen-edge reason — inverse indicator';
     hrrProp._lyridUnderWR = 0.621;
     hrrProp._lyridUnderN = 58;
     hrrProp._lyridUnderWilsonLow = 0.492;
-    hrrProp._lyridUnderWilsonHigh = 0.73;
-    hrrProp._lyridUnderThirds = '63/63/60';
     return hrrProp;
   }
 
   if (formLabel === 'SCORCHING') {
-    // Watch-only — no tier, no recommendation. Audited 64/73/50 thirds.
     hrrProp._scorchingWatch = true;
     return null;
   }
@@ -5370,27 +5385,58 @@ const LyridStorage = (function() {
     } catch (_) { return false; }
   }
 
-  // Called by saveState on quota overflow: compact (slim only), retry; if still
-  // failing, archive + aggressive prune, retry once more.
+  // (Drop #44 — June 30, 2026) MOBILE-SAFE QUOTA RECOVERY.
+  // The old pass-2 called archive() — a forced file download — on EVERY
+  // failed save. On a full phone that meant an endless download loop that
+  // soft-broke the app. Recovery is now fully silent and self-healing:
+  // NO automatic downloads, ever (archive stays available from the manual
+  // Deep Clean button only). Passes get progressively more aggressive and
+  // the HR local bound is applied here too, so recovery works even when
+  // saveState's own bound didn't run.
   function recoverFromQuota(persistKey, payloadStr) {
+    const write = () => {
+      const { raw, ...persist } = state;
+      // Apply the HR local bound during recovery as well
+      if (persist.hrAudit && Array.isArray(persist.hrAudit.entries) && persist.hrAudit.entries.length > 400) {
+        const cutoff = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
+        let t = persist.hrAudit.entries.filter(e => !e.date || e.date >= cutoff);
+        t = t.map(e => { if (e.line || e.criteria) { const c = { ...e }; delete c.line; delete c.criteria; return c; } return e; });
+        if (t.length > 400) t = t.sort((a,b) => (b.date||'').localeCompare(a.date||'')).slice(0, 400);
+        persist.hrAudit = { ...persist.hrAudit, entries: t };
+      }
+      localStorage.setItem(persistKey, JSON.stringify(persist));
+    };
     // pass 1 — slim graded rows + drop stale ungraded HR
     compact({ aggressive: false });
-    try {
-      const { raw, ...persist } = state;
-      localStorage.setItem(persistKey, JSON.stringify(persist));
-      showToast('Storage compacted — older box-score detail trimmed, all results kept', false);
-      return true;
-    } catch (_) {}
-    // pass 2 — archive then aggressive age-out
-    archive();
+    try { write(); showToast('Storage compacted — results kept', false); return true; } catch (_) {}
+    // pass 2 — aggressive age-out (NO download)
     compact({ aggressive: true });
+    try { write(); showToast('Storage freed — aged out data older than 45 days (server keeps the full history)', false); return true; } catch (_) {}
+    // pass 3 — LAST RESORT: hard-trim the biggest historical stores to a
+    // minimal recent window. Everything trimmed is already on the Supabase
+    // backend (LyridAuditSync) and re-hydratable — losing local copies of
+    // old rows is safe; losing the ABILITY TO SAVE new picks is not.
     try {
-      const { raw, ...persist } = state;
-      localStorage.setItem(persistKey, JSON.stringify(persist));
-      showToast('Storage freed — archived a backup and aged out data older than 45 days', false);
+      const cut7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      if (state.hrAudit && Array.isArray(state.hrAudit.entries)) {
+        state.hrAudit.entries = state.hrAudit.entries.filter(e => !e.date || e.date >= cut7).slice(-150);
+      }
+      if (state.projectionAudit) {
+        for (const k of Object.keys(state.projectionAudit)) {
+          const e = state.projectionAudit[k];
+          if (e && e.date && e.date < cut7 && e.graded) delete state.projectionAudit[k];
+        }
+      }
+      if (state.bestBetHistory) {
+        for (const dk of Object.keys(state.bestBetHistory)) {
+          if (dk < cut7) delete state.bestBetHistory[dk];
+        }
+      }
+      write();
+      showToast('Storage recovered — old local history trimmed (full history stays on the server)', false);
       return true;
     } catch (_) {
-      showToast('Storage still full after cleanup — export a backup and use Free Up Space', true);
+      showToast('Storage still full — open Settings → Free Up Space', true);
       return false;
     }
   }
@@ -6230,7 +6276,8 @@ function computeHitterVerdict(m) {
   const fadeTier = best._lyridUnderTier || m._lyridUnderTier;
   if (fadeTier === 'platinum' || fadeTier === 'gold') {
     const wr = fadeTier === 'platinum' ? 62 : 59;
-    return { kind:'fade', verb:'🔻 BET LESS', prop:'Under 1.5 ' + (best.label || 'H+R+RBI'),
+    const cleanLabel = (best.label || 'H+R+RBI').replace(/\s*[0-9]+\.?[0-9]*\+?\s*$/, '').trim() || 'H+R+RBI';
+    return { kind:'fade', verb:'🔻 BET LESS', prop:'Under 1.5 ' + cleanLabel,
       tier:fadeTier.toUpperCase(), wr, tone:'fade',
       plain:'Looks great on paper — projected to mash — but hitters with this exact profile quietly underperform in our data. The smart bet is the under, not the over.' };
   }
@@ -16474,6 +16521,15 @@ async function autoGradeOnAppOpen() {
 // INIT
 (function init() {
   loadState();
+  // (Drop #44 — June 30, 2026) BOOT-TIME STORAGE SELF-HEAL.
+  // If the persisted blob is at/over the soft quota, recover IMMEDIATELY on
+  // load — silently, no downloads — so the app opens and can save again
+  // even on a phone that hit the cap. Runs once per boot.
+  try {
+    if (typeof LyridStorage !== 'undefined' && LyridStorage.usageBytes() > LyridStorage.QUOTA_SOFT_BYTES) {
+      LyridStorage.recoverFromQuota(LS_KEY, null);
+    }
+  } catch (_) {}
   // If the saved date is older than today, snap forward to today.
   // Lyrid shows "Tonight's slate" — defaulting to a stale date confuses users.
   const today = getTodayStr();
