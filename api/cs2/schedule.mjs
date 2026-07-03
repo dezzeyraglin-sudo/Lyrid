@@ -12,6 +12,23 @@
 
 const BASE = "https://api.balldontlie.io/cs/v1";
 
+// Which teams the projection engine can actually read (those in the deployed index).
+// Cached in module scope so we only fetch the index once per warm lambda. Only the
+// tiny set of team IDs is kept in memory, not the whole index.
+let COVERED = null, COVERED_AT = 0;
+async function loadCoverage(origin) {
+  if (COVERED && Date.now() - COVERED_AT < 10 * 60 * 1000) return COVERED;
+  try {
+    const r = await fetch(`${origin}/cs2_kpr_index.json`, { cache: "no-store" });
+    if (r.ok) {
+      const idx = await r.json();
+      COVERED = new Set(Object.keys(idx.teams || {}));
+      COVERED_AT = Date.now();
+    }
+  } catch { /* keep whatever we had; null means "unknown" -> tab shows all */ }
+  return COVERED;
+}
+
 export default async function handler(req, res) {
   const key = process.env.BDL_API_KEY;
   if (!key) return res.status(500).json({ error: "BDL_API_KEY not configured on the server" });
@@ -67,8 +84,20 @@ export default async function handler(req, res) {
     // sort by start time so the slate reads top-to-bottom chronologically
     games.sort((a, b) => String(a.startTime || "").localeCompare(String(b.startTime || "")));
 
+    // tag each game with whether the engine can read both teams. covered === null
+    // means the index couldn't be loaded, so the tab should show everything.
+    const proto = req.headers["x-forwarded-proto"] || "https";
+    const host = req.headers["x-forwarded-host"] || req.headers.host;
+    const covered = await loadCoverage(`${proto}://${host}`);
+    let coveredCount = 0;
+    for (const g of games) {
+      if (!covered) { g.covered = null; continue; }
+      g.covered = covered.has(String(g.teamAId)) && covered.has(String(g.teamBId));
+      if (g.covered) coveredCount++;
+    }
+
     res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=300");
-    return res.status(200).json({ date, count: games.length, games });
+    return res.status(200).json({ date, count: games.length, coveredCount, games });
   } catch (e) {
     return res.status(500).json({ error: "schedule fetch failed", detail: String(e).slice(0, 200) });
   }
