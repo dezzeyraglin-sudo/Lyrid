@@ -477,6 +477,8 @@
   .pm-standard{background:rgba(47,107,63,.2);color:var(--cool,#5bbf7a)}
   .pm-goblin{background:rgba(154,91,26,.22);color:#d68a3a}
   .pm-demon{background:rgba(162,59,47,.22);color:var(--danger,#e0675a)}
+  .pm-shaded{background:rgba(154,91,26,.22);color:#d68a3a}
+  .pm-wrongline{background:rgba(162,59,47,.28);color:var(--danger,#e0675a)}
   .pm-unknown{background:var(--surface-muted,rgba(255,255,255,.06));color:var(--dim,var(--text-secondary))}
   .pm-why{color:var(--dim,var(--text-secondary));font-size:12.5px;line-height:1.45}
   .pm-corr{display:block;color:var(--warn,#d6a24a);font-size:11.5px;margin-top:8px}
@@ -486,6 +488,33 @@
   .pm-banner{border-radius:10px;padding:11px 13px;font-size:13px;line-height:1.45;margin-bottom:12px;font-weight:600}
   .pm-banner-low{background:rgba(176,130,58,.14);border:1px solid rgba(176,130,58,.4);color:#d6a24a}
   .pm-banner-confirm{background:var(--surface-muted,rgba(255,255,255,.04));border:1px dashed var(--accent);color:var(--accent)}
+
+  /* (Tonight's Card spec — C) answer strip */
+  .lyr-tc{max-width:780px;margin:20px auto 8px;background:#1c2c4c;border-radius:16px;padding:18px 20px;color:#f4f1ea}
+  .tc-kicker{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#b0823a;font-weight:700;margin-bottom:8px}
+  .tc-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid rgba(244,241,234,.12);flex-wrap:wrap}
+  .tc-row:first-of-type{border-top:none}
+  .tc-arrow{font-weight:700;color:#7fb08a;width:14px}
+  .tc-name{font-family:'Source Serif Pro',Georgia,serif;font-size:15.5px;font-weight:600}
+  .tc-mkt{font-size:12px;color:#cfd4de}
+  .tc-tier{font-size:9px;font-weight:700;letter-spacing:.06em;padding:2px 7px;border-radius:12px;background:#f4f1ea;color:#1c2c4c;text-transform:uppercase}
+  .tc-rate{margin-left:auto;font-weight:700;font-size:14px}
+  .tc-why{flex-basis:100%;font-size:11.5px;color:#aab1c0;margin-top:2px}
+  .tc-empty{font-size:13px;color:#cfd4de;line-height:1.5}
+  .tc-empty b{color:#f4f1ea}
+  /* (spec — E) flagged-skip section + form chips */
+  .lyr-flagged{margin:10px 0 0;opacity:.7}
+  .lyr-flagged summary{cursor:pointer;font-size:12px;font-weight:700;color:#e0a050;letter-spacing:.04em;padding:8px 0}
+  .lyr-flagged .fl-row{padding:8px 0;border-top:1px solid var(--line);font-size:13px;color:var(--ink)}
+  .lyr-flagged .fl-reason{color:#e0a050;font-size:11.5px;display:block;margin-top:2px}
+  .ce-form-chip{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding:3px 7px;border-radius:5px}
+  .ce-form-chip.hotf{background:rgba(255,140,60,.14);color:#f0a060;border:1px solid rgba(255,140,60,.35)}
+  .ce-form-chip.coldf{background:rgba(255,255,255,.04);color:var(--dim);border:1px solid var(--line)}
+  /* (spec — F) slate environment badges */
+  .lyr-envbadge{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.05em;padding:2px 7px;border-radius:5px;margin-left:6px}
+  .lyr-envbadge.fade{background:rgba(120,200,120,.12);color:#7fb08a;border:1px solid rgba(120,200,120,.3)}
+  .lyr-envbadge.neutral{background:rgba(255,255,255,.05);color:var(--dim);border:1px solid var(--line)}
+  .lyr-envbadge.over{background:rgba(255,90,90,.1);color:#e08080;border:1px solid rgba(255,90,90,.3)}
 
   /* (Drop #36) Tonight's Cleanest Edges — ranked board (dark theme) */
   .cleanest-edges{margin:0 0 20px;padding:18px 16px 16px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
@@ -6726,6 +6755,47 @@ async function loadLiveSlate() {
 // best prop, removes the 8-cap. HARD-HIT "watch" notes are excluded — they
 // aren't bets and were crowding out real plays.
 // ====================================================================
+// (Tonight's Card spec — F) Slate environment badge per game. Derives from
+// the analyzed projection when available (badge upgrades post-analysis);
+// returns null when inputs are missing (row shows no badge).
+function _slateEnvBadge(gamePk) {
+  try {
+    if (!window.LyridJudgment) return null;
+    var data = analysisCache[gamePk + '-deep'] || analysisCache[String(gamePk) + '-deep']
+            || analysisCache[gamePk] || analysisCache[String(gamePk)];
+    if (!data) return null;
+    var mt = data.projection && parseFloat(data.projection.projTotal);
+    var ml = data.gameLines && data.gameLines.total && data.gameLines.total.marketLine;
+    return window.LyridJudgment.gameBadge({
+      modelTotal: Number.isFinite(mt) ? mt : null,
+      marketLine: (ml != null && isFinite(Number(ml))) ? Number(ml) : null,
+      parkRuns: null, weatherRunsPct: null, homeSPWild: false, awaySPWild: false
+    });
+  } catch (_) { return null; }
+}
+
+// (Tonight's Card spec) Graded STRONG totals per analyzed game — only the
+// empirical-strategy totals (never the anti-cal totals-lean banner).
+function _gatherGradedTotals(date) {
+  var out = [];
+  try {
+    Object.values(analysisCache || {}).forEach(function (data) {
+      if (!data || !data.gamePk || !data.gameLines || !data.gameLines.total) return;
+      var t = data.gameLines.total;
+      if (!t._empStrategyFired || !(t._empBacktestWR >= 0.64)) return;
+      var away = (data.awayTeam && (data.awayTeam.abbreviation || data.awayTeam)) || '';
+      var home = (data.homeTeam && (data.homeTeam.abbreviation || data.homeTeam)) || '';
+      var gid = away + '@' + home;
+      if (out.some(function (x) { return x.gameId === gid; })) return;   // dedupe fast/deep
+      out.push({ gameId: gid, side: String(t.side || '').toLowerCase(),
+                 line: (t.marketLine != null ? t.marketLine : 8.5),
+                 rate: t._empBacktestWR,
+                 why: 'Empirical totals strategy fired (n=' + (t._empBacktestN || '?') + ')' });
+    });
+  } catch (_) {}
+  return out;
+}
+
 function gatherCleanestEdges(date) {
   const byHitter = new Map();
   try {
@@ -6821,6 +6891,14 @@ function gatherCleanestEdges(date) {
   const _ceOut = ranked.slice(0, 40);
   // (Drop #43) feed the Parlay Maker — fires on initial render and every per-game refresh
   try { if (window.LyridParlayBridge) window.LyridParlayBridge.pushMlb(_ceOut, date); } catch (_) {}
+  // (Tonight's Card spec — D wiring) build + render the card from the same
+  // candidates the Parlay Maker uses, plus graded STRONG totals.
+  try {
+    if (window.LyridCard && window.LyridCardUI && window.LyridParlayBridge && window.LyridParlayBridge.toCandidates) {
+      window.LyridCardUI.render(window.LyridCard.build(
+        window.LyridParlayBridge.toCandidates(_ceOut, date), _gatherGradedTotals(date)));
+    }
+  } catch (_) {}
   return _ceOut;
 }
 
@@ -6831,7 +6909,27 @@ function refreshCleanestEdges() {
 }
 
 function renderCleanestEdges(date) {
-  const edges = gatherCleanestEdges(date);
+  let edges = gatherCleanestEdges(date);
+  // (Tonight's Card spec — E) BOARD DEMOTION. Run each edge through the shared
+  // judgment layer; kill-flagged items are pulled from the ranked list into a
+  // collapsed "FLAGGED — SKIP" section instead of ranking top-5.
+  let _flaggedEdges = [];
+  try {
+    if (window.LyridJudgment && window.LyridParlayBridge && window.LyridParlayBridge.toCandidates) {
+      const cands = window.LyridParlayBridge.toCandidates(edges, date);
+      const reasonByKey = {};
+      cands.forEach(c => {
+        const r = window.LyridJudgment.killReason(c);
+        if (r) reasonByKey[String(c.gameId) + '|' + c.player] = r;
+      });
+      const clean = [];
+      edges.forEach(e => {
+        const r = reasonByKey[String(e.gamePk) + '|' + (e.hitterName || '')];
+        if (r) _flaggedEdges.push({ e, reason: r }); else clean.push(e);
+      });
+      edges = clean;
+    }
+  } catch (_) {}
   if (edges.length === 0) {
     return `<div class="cleanest-edges empty">
       <div class="ce-head"><div><div class="ce-eyebrow">Tonight · Live MLB</div><div class="ce-title">Tonight's Cleanest Edges</div></div></div>
@@ -6850,6 +6948,12 @@ function renderCleanestEdges(date) {
     else if (c.tier === 'SHARP') sigChips.push('<span class="ce-sig verified">✦ Sharp</span>');
     else if (c.tier === 'HARD-HIT') sigChips.push('<span class="ce-sig watchflag">◇ Hard-hit</span>');
     if (c.lineWarn) sigChips.push('<span class="ce-sig warnflag">⚠ Check your line</span>');
+    // (spec — E) form chip on every board row
+    const _fm = String(e.recentFormLabel || '').toUpperCase();
+    if (_fm && _fm !== 'NEUTRAL') {
+      const hotCls = (/SCORCHING|HOT/.test(_fm)) ? 'hotf' : 'coldf';
+      sigChips.push('<span class="ce-form-chip ' + hotCls + '">' + _fm + '</span>');
+    }
     const env = (typeof e._projTotal === 'number') ? e._projTotal : null;
     if (isFade && env != null && env >= 9.5) sigChips.push('<span class="ce-sig warnflag">⚠ High-scoring game</span>');
     const evRows = (c.evidence || []).map(([k,v]) => `<div class="ce-drow"><span class="ce-dk">${k}</span><span class="ce-dv">${v}</span></div>`).join('');
@@ -6891,6 +6995,8 @@ function renderCleanestEdges(date) {
       <span class="ce-count">${edges.length}</span>
     </div>
     <div class="ce-cards">${cards}</div>
+    ${_flaggedEdges.length ? `<details class="lyr-flagged"><summary>⚠ FLAGGED — SKIP (${_flaggedEdges.length})</summary>${_flaggedEdges.map(f =>
+      `<div class="fl-row">${f.e.hitterName} · ${(f.e._ce && f.e._ce.verb) || ''} ${(f.e._ce && f.e._ce.prop) || ''} <span class="fl-reason">${f.reason}</span></div>`).join('')}</details>` : ''}
     <div class="ce-legend">
       <div class="ce-legend-h">What the badges mean</div>
       <div class="ce-leg-row"><span class="ce-dot" style="background:var(--accent)"></span><span><b>Bet signals</b> — Platinum / Gold / Verified. These tell you to bet, and how confident.</span></div>
@@ -6934,7 +7040,7 @@ function renderGames() {
     }
   }
 
-  list.innerHTML = `<div id="cleanestEdgesMount">${renderCleanestEdges(state.currentDate)}</div><div class="lyrid-games-list">${slate.games.map((g, i) => {
+  list.innerHTML = `<section id="tonights-card" class="lyr-tc" style="display:none"></section><div id="cleanestEdgesMount">${renderCleanestEdges(state.currentDate)}</div><div class="lyrid-games-list">${slate.games.map((g, i) => {
     const awName = g.awayPitcher?.name || 'TBD';
     const hmName = g.homePitcher?.name || 'TBD';
     const awHand = g.awayPitcher?.hand || '?';
@@ -6975,7 +7081,13 @@ function renderGames() {
             <span>${awTeam}</span><span class="at">at</span><span>${hmTeam}</span>
           </div>
           <div class="lyrid-game-pitchers">
-            ${awName}<span class="hand">${awHand}HP</span> · ${hmName}<span class="hand">${hmHand}HP</span>
+            ${awName}<span class="hand">${awHand}HP</span> · ${hmName}<span class="hand">${hmHand}HP</span>${(() => {
+              const b = _slateEnvBadge(g.gamePk);
+              if (b === 'fade') return '<span class="lyr-envbadge fade">🟢 FADE SPOT</span>';
+              if (b === 'over') return '<span class="lyr-envbadge over">🔴 OVER GAME</span>';
+              if (b === 'neutral') return '<span class="lyr-envbadge neutral">🟡 NEUTRAL</span>';
+              return '';
+            })()}
           </div>
         </div>
         <div class="lyrid-game-projection${isSignal ? ' signal' : ''}">
@@ -18723,6 +18835,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (c.sport === 'mlb' && c.side === 'under' && c.gameLean !== 'under' && !c.pitcherFriendlyPark) return false;   // neutral games need a pitcher park
     if (c.sport === 'mlb' && c.side === 'under' && c.opposingPitcherWildOrShort) return false;                       // wild/short SP = produce spot, not a fade
     if (f.lineStatus === 'goblin' || f.lineStatus === 'demon') return false;
+    if (f.lineStatus === 'shaded' || f.lineStatus === 'wrongline') return false;   // (Card spec G)
     if (o.standardOnly && f.lineStatus !== 'standard') return false;
     return true;
   }
@@ -18909,6 +19022,12 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         tier: ce.tier, cashRate: (ce.wr || 0) / 100, edgeType: ce.edgeType, sampleN: sampleN,
         form: e.recentFormLabel || 'neutral', matchupContext: ce.ctxChips || [], why: ce.plain,
         gameLean: gameLean, pitcherFriendlyPark: pitcherFriendlyPark, opposingPitcherWildOrShort: oppWildShort,
+        // (Tonight's Card spec) judgment inputs
+        verdictPass: e._topPickVerdict === 'pass',
+        projection: (function () {
+          var bp = (e.propRecs || []).filter(function (p) { return p && p.isBest; })[0] || (e.propRecs || [])[0] || {};
+          return (typeof bp.projection === 'number') ? bp.projection : null;
+        })(),
         flags: {
           antiCalibrated: false,             // board already filtered the real anti-cal traps;
                                              // the modelPct shown on fades is "ignore me", not exclude-the-bet
@@ -18977,12 +19096,29 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       render(S.last, { conviction: conviction, waiting: waiting });
     }
     function cycleLine(id) {
-      S.lineStatus[id] = NEXT[S.lineStatus[id] || 'unknown'];
+      // (Tonight's Card spec — G) LINE-SHADE DETECTOR. Tap → enter the book
+      // line you see; the tool compares it to Lyrid's projection. Blank/cancel
+      // falls back to the old manual cycle. Partial by design: markets without
+      // a numeric projection only support the HRR wrong-line check.
+      var cand = null;
+      allCands().forEach(function (c) { if (c.id === id) cand = c; });
+      var raw = (typeof prompt === 'function')
+        ? prompt('Book line for ' + (cand ? cand.player + ' ' + cand.market : 'this play') + '?\n(blank = cycle standard/goblin/demon manually)')
+        : null;
+      var v = raw != null ? parseFloat(raw) : NaN;
+      if (cand && raw != null && raw.trim() !== '' && isFinite(v) && window.LyridJudgment) {
+        var st = window.LyridJudgment.shadeCheck(cand, v);
+        if (st) { S.lineStatus[id] = st; }
+        else { S.lineStatus[id] = 'standard'; }   // no projection — trust entered as standard
+      } else {
+        S.lineStatus[id] = NEXT[S.lineStatus[id] || 'unknown'];
+      }
       allCands().forEach(function (c) { if (c.id === id) c.flags.lineStatus = S.lineStatus[id]; });
       build();
     }
     function chipHTML(s) {
-      var t = s === 'standard' ? 'STANDARD' : s === 'goblin' ? 'GOBLIN' : s === 'demon' ? 'DEMON' : 'TAP TO SET LINE';
+      var t = s === 'standard' ? 'STANDARD' : s === 'goblin' ? 'GOBLIN' : s === 'demon' ? 'DEMON'
+            : s === 'shaded' ? 'SHADED' : s === 'wrongline' ? 'WRONG LINE' : 'TAP TO SET LINE';
       return '<span class="pm-chip pm-' + s + '">' + t + '</span>';
     }
     function legHTML(l) {
@@ -19055,8 +19191,136 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   // ---- Bridge: boards push here after they render ----
   window.LyridParlayBridge = {
     pushMlb: function (edges, date) { try { UI.setSportCandidates('mlb', mlbToCandidates(edges, date || todayISO())); } catch (_) {} },
-    pushWnba: function (ranked, data) { try { UI.setSportCandidates('wnba', wnbaToCandidates(ranked, data)); } catch (_) {} }
+    pushWnba: function (ranked, data) { try { UI.setSportCandidates('wnba', wnbaToCandidates(ranked, data)); } catch (_) {} },
+    toCandidates: function (edges, date) { return mlbToCandidates(edges, date || todayISO()); }
   };
+})();
+
+/* ============================================================
+ * (Tonight's Card spec — A) JUDGMENT MODULE → window.LyridJudgment
+ * One shared judgment layer, four surfaces (card, board demotion,
+ * slate badges, shade detector). Reuses the Parlay candidate shape.
+ * ============================================================ */
+(function () {
+  'use strict';
+  function formKill(c) {
+    var f = String(c.form || '').toUpperCase();
+    if (c.side === 'under' && (f.indexOf('SCORCHING') >= 0 || f.indexOf('HOT') >= 0))
+      return 'Never fade hot form (' + f + ')';
+    if (f.indexOf('INJURY_RISK') >= 0) return 'Injury-risk form — playing time uncertain';
+    return null;
+  }
+  function envKill(c) {
+    if (c.side !== 'under') return null;
+    if (c.gameLean === 'over') return 'Over-leaning game — wrong weather for a fade';
+    if (c.gameLean !== 'under' && !c.pitcherFriendlyPark) return 'Neutral game, no pitcher park';
+    if (c.opposingPitcherWildOrShort) return 'Wild/short opposing SP — produce spot, not a fade';
+    return null;
+  }
+  function verdictKill(c) {
+    if (c.verdictPass) return 'Graded verdict is PASS — board rank is the anti-cal number';
+    // Structural: the HRR OVER is the audited 42% cohort. It is never a bet,
+    // regardless of what tier/rate a mapping bug might hand it.
+    if (c.sport === 'mlb' && String(c.market).toLowerCase() === 'hrr' && c.side === 'over')
+      return 'HRR over — audited 42% cohort, never bet';
+    return null;
+  }
+  function lineKill(c) {
+    var s = (c.flags || {}).lineStatus;
+    if (s === 'goblin' || s === 'demon') return 'Shaded line — edge gone';
+    if (s === 'shaded') return 'Line moved against the edge';
+    if (s === 'wrongline') return 'Not the graded market line';
+    return null;
+  }
+  function killReason(c) { return verdictKill(c) || formKill(c) || envKill(c) || lineKill(c); }
+  function shadeCheck(c, bookLine) {
+    if (c.market === 'hrr' && Math.abs(c.line - 1.5) < 0.01 && Math.abs(bookLine - 1.5) > 0.01) return 'wrongline';
+    var proj = c.projection; if (proj == null) return null;   // (G partial) no projection -> can't judge
+    if (c.side === 'over'  && bookLine >= proj - 0.3) return 'shaded';
+    if (c.side === 'under' && bookLine <= proj + 0.3) return 'shaded';
+    return 'standard';
+  }
+  function gameBadge(g) {
+    if (g == null || g.modelTotal == null || g.marketLine == null) return null;
+    var gap = g.modelTotal - g.marketLine, score = 0;
+    if (gap <= -0.5) score += 2; else if (gap >= 0.4) score -= 2;
+    if ((g.parkRuns || 100) <= 98) score += 1;
+    if ((g.weatherRunsPct || 0) >= 2) score -= 1;
+    if (g.homeSPWild || g.awaySPWild) score -= 1;
+    if (g.modelTotal <= 7.6) score += 1; else if (g.modelTotal >= 9) score -= 1;
+    return score >= 2 ? 'fade' : (score <= -1 ? 'over' : 'neutral');
+  }
+  window.LyridJudgment = { killReason: killReason, shadeCheck: shadeCheck, gameBadge: gameBadge };
+})();
+
+/* ============================================================
+ * (Tonight's Card spec — B) CARD BUILDER → window.LyridCard
+ * ============================================================ */
+(function () {
+  'use strict';
+  function build(cands, totals) {
+    var J = window.LyridJudgment, LP = window.LyridParlay;
+    var clean = [], flagged = [];
+    (cands || []).forEach(function (c) {
+      var r = J.killReason(c);
+      if (r) { flagged.push({ c: c, reason: r }); return; }
+      if (LP && !LP.isBettable(c, {})) { flagged.push({ c: c, reason: 'Below tier/rate bar' }); return; }
+      clean.push(c);
+    });
+    clean.sort(function (a, b) { return (LP ? LP.score(b) - LP.score(a) : 0); });
+    var card = [], perGame = {};
+    (totals || []).forEach(function (t) {           // graded totals first
+      if (t.rate >= 0.64 && card.length < 2)
+        card.push({ kind: 'total', gameId: t.gameId, side: t.side, line: t.line, rate: t.rate, why: t.why });
+    });
+    clean.forEach(function (c) {
+      if (card.length >= 5) return;
+      perGame[c.gameId] = perGame[c.gameId] || 0;
+      if (perGame[c.gameId] >= 2) return;
+      perGame[c.gameId]++;
+      card.push({ kind: 'prop', c: c });
+    });
+    return { card: card, flagged: flagged, cleanCount: clean.length };
+  }
+  window.LyridCard = { build: build };
+})();
+
+/* ============================================================
+ * (Tonight's Card spec — D) CARD RENDERER → window.LyridCardUI
+ * ============================================================ */
+(function () {
+  'use strict';
+  function esc(s){ return String(s==null?'':s).replace(/</g,'&lt;'); }
+  function render(res) {
+    var box = document.getElementById('tonights-card'); if (!box) return;
+    var h = '<div class="tc-kicker">Tonight&#39;s Card &middot; judgment-filtered</div>';
+    if (!res || !res.card.length) {
+      var reasons = (res && res.flagged.slice(0,3).map(function(f){ return esc(f.reason); })) || [];
+      h += '<div class="tc-empty"><b>No card tonight.</b> ' + ((res&&res.flagged.length)||0) +
+           ' candidates didn&#39;t clear the judgment bar' +
+           (reasons.length ? ' &mdash; top reasons: ' + reasons.join(' &middot; ') : '') +
+           '. A pass is a position.</div>';
+      box.innerHTML = h; box.style.display = ''; return;
+    }
+    res.card.forEach(function (e) {
+      if (e.kind === 'total') {
+        h += '<div class="tc-row"><span class="tc-arrow">' + (e.side==='under'?'&#8595;':'&#8593;') + '</span>' +
+             '<span class="tc-name">' + esc(e.gameId) + ' ' + esc(String(e.side).toUpperCase()) + ' ' + e.line + '</span>' +
+             '<span class="tc-tier">TOTAL</span><span class="tc-rate">' + Math.round(e.rate*100) + '%</span>' +
+             '<span class="tc-why">' + esc(e.why) + '</span></div>';
+      } else {
+        var c = e.c;
+        h += '<div class="tc-row"><span class="tc-arrow">' + (c.side==='under'?'&#8595;':'&#8593;') + '</span>' +
+             '<span class="tc-name">' + esc(c.player) + '</span>' +
+             '<span class="tc-mkt">' + esc(String(c.side).toUpperCase()) + ' ' + c.line + ' ' + esc(c.market) + ' &middot; ' + esc(c.gameId) + '</span>' +
+             '<span class="tc-tier">' + esc(c.tier) + '</span>' +
+             '<span class="tc-rate">' + Math.round((c.cashRate||0)*100) + '%</span>' +
+             '<span class="tc-why">' + esc(c.why) + '</span></div>';
+      }
+    });
+    box.innerHTML = h; box.style.display = '';
+  }
+  window.LyridCardUI = { render: render };
 })();
 
 </script>
