@@ -738,6 +738,8 @@ function computeRead(p, vol, opp = {}, nMaps = 2) {
     kprStrong: p.kprStrong == null ? null : round2(p.kprStrong),
     kprWeak: p.kprWeak == null ? null : round2(p.kprWeak),
     mapFitPct: p.mapFitRatio == null ? null : Math.round((p.mapFitRatio - 1) * 100),
+    kprQ: Array.from({ length: 21 }, (_, i) => Math.round(pctl(p.kprSorted, i / 20) * 1000) / 1000),
+    etot: round1(Etot),
     propType: propTypeFor(p.role, p.hs),
     score, band,
     partial: true, // score excludes opponent-style (15%) + line-value (10%)
