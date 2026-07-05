@@ -4630,6 +4630,31 @@ function applyHardHitTier(propRecs) {
 // Anti-ghost: if the OPPOSING pitcher is hittable (opsAgainst ≥ .800), we flag
 // it as explicitly NOT a ghost — bats produce against bad pitching.
 // ============================================================================
+// (Drop #49 — July 5, 2026) PITCHER VULNERABILITY — one score, two sides.
+// NOT A GHOST is pitcher vulnerability: the conditions that kill a fade are the
+// same ones that boost a hits-over. 0-6 score from fields actually on the page.
+// STAMP, DON'T REWEIGHT — vuln drives the fade veto + a display chip and stamps
+// the audit; it never multiplies the model probability (two-factor cap intact).
+// Scored inputs: opsAgainst (≥.80 +2, ≥.90 +1), wild/short-starter (+1),
+// low-K contact arm (+1). NOT YET WIRED (would need server): hr9, meltdown
+// inning, avg IP — omitted rather than faked; score flagged "(partial)".
+// ============================================================================
+function computePitcherVuln(pitcher, sideData) {
+  if (!pitcher && !sideData) return { score: 0, partial: true, factors: [], opsAgainst: null };
+  var v = 0; var factors = [];
+  var ops = pitcher && parseFloat(pitcher.opsAgainst);
+  var kPct = pitcher && parseFloat(pitcher.kPct);
+  if (Number.isFinite(ops)) {
+    if (ops >= 0.80) { v += 2; factors.push('Hittable arm (.' + String(Math.round(ops*1000)).padStart(3,'0') + ' OPS vs side)'); }
+    if (ops >= 0.90) { v += 1; factors.push('Very hittable (≥.900 OPS)'); }
+  }
+  var ct = sideData && sideData.inningSplits && sideData.inningSplits.controlTier;
+  var role = sideData && sideData.pitcherRole && sideData.pitcherRole.role;
+  if (ct === 'wild' || role === 'short-starter') { v += 1; factors.push(ct === 'wild' ? 'Wild (control below avg)' : 'Short starter (early bullpen exposure)'); }
+  if (Number.isFinite(kPct) && kPct <= 15) { v += 1; factors.push('Low-K contact arm (' + Math.round(kPct) + '% K)'); }
+  return { score: v, partial: true, factors: factors, opsAgainst: Number.isFinite(ops) ? ops : null };
+}
+
 function computeGhostScore(m, data) {
   const pm = m && m.platoonMeta;
   const pitcher = pm && pm.pitcher;
@@ -4794,15 +4819,24 @@ function applyLyridUnderTier(propRecs, hitterContext) {
 function applyVerifiedCohortBadges(propRecs, hitterContext) {
   if (!Array.isArray(propRecs) || !hitterContext) return;
   const hand = (hitterContext.hand || '').toUpperCase();
+  // (Drop #49) K-TRAP VETO. If this hitter's matched-arsenal K% runs +8pp over
+  // his season K%, the arsenal-specific whiff risk is exactly what breaks a
+  // contact profile (the Wong flag) — strip VERIFIED for tonight regardless of
+  // the badge. Arsenal K risk is the one thing that beats "rarely strikes out".
+  const _seasonK = parseFloat(hitterContext.seasonKPct || (hitterContext.batterK && hitterContext.batterK.season) || 'NaN');
+  const _matchK = parseFloat(hitterContext.matchedKPct || (hitterContext.batterK && hitterContext.batterK.matched) || 'NaN');
+  const _kTrap = Number.isFinite(_seasonK) && Number.isFinite(_matchK) && (_matchK - _seasonK >= 8);
   for (const p of propRecs) {
     const reason = (p.reason || '').toLowerCase();
     if (p.key === 'H' && reason.includes('rarely strikes out')) {
+      if (_kTrap) { p._kTrapVeto = true; p._kTrapNote = `Arsenal K-trap: matched K% (${Math.round(_matchK)}%) runs +${Math.round(_matchK-_seasonK)}pp over season (${Math.round(_seasonK)}%). VERIFIED stripped tonight — this arsenal specifically threatens the contact profile.`; continue; }
       p._verifiedCohort = 'rarely-k-hits';
       p._verifiedWR = 0.72;
       p._verifiedN = 25;
       p._verifiedThirds = '75/62/78';
       p._verifiedNote = 'Only cohort whose Wilson lower bound (52.4%) clears -110. Clears PrizePicks at point estimate. 4-0 on June 9-10.';
     } else if (reason.includes('elite pitch-type edge') && hand === 'R') {
+      if (_kTrap) { p._kTrapVeto = true; continue; }
       p._verifiedCohort = 'elite-pte-r';
       p._verifiedWR = 0.667;
       p._verifiedN = 24;
@@ -4974,6 +5008,38 @@ function classifyInverseTotalSignal(projTotal) {
 // game, re-audit after 50+ post-recalibration graded games, decide if
 // PLATINUM survives and if any UNDER-direction (market > model) tier emerges.
 // ====================================================================
+// ============================================================================
+// (Drop #50 — July 5, 2026) ALT TOTAL LINE ANALYSIS.
+// Enter any total line; the engine returns its O/U call + run-gap edge for
+// THAT specific line, using the model's own projected total. Calibrated to the
+// validated finding from the projectionAudit: the totals model beats market
+// (MAE 2.98 vs 3.31) and a model-vs-line edge >0.5 predicts O/U at 65%
+// (n=17, Wilson lo 41%), NOT inverted. Same model, any line.
+//
+// Returns { side, edge, projTotal, line, tier, confidence, reasoning } or a
+// PASS object when the gap is inside the no-bet band.
+// ============================================================================
+function analyzeAltTotalLine(projTotal, altLine) {
+  if (typeof projTotal !== 'number' || !isFinite(projTotal)) return null;
+  if (typeof altLine !== 'number' || !isFinite(altLine)) return null;
+  const edge = +(projTotal - altLine).toFixed(2);
+  const absEdge = Math.abs(edge);
+  if (absEdge < 0.5) {
+    return { side: 'PASS', edge, projTotal, line: altLine, tier: 'PASS', confidence: null,
+      reasoning: `Model projects ${projTotal.toFixed(1)} vs the ${altLine} line — a ${edge >= 0 ? '+' : ''}${edge}-run gap, inside the 0.5-run no-bet band. No edge at this line.` };
+  }
+  const side = edge > 0 ? 'OVER' : 'UNDER';
+  // Tiering by gap size, calibrated to the model-vs-line divergence (65%, n=17).
+  let tier, confidence;
+  if (absEdge >= 1.5)      { tier = 'PLATINUM'; confidence = 65; }
+  else if (absEdge >= 1.0) { tier = 'GOLD';     confidence = 62; }
+  else                     { tier = 'LEAN';     confidence = 58; }
+  return {
+    side, edge, projTotal, line: altLine, tier, confidence,
+    reasoning: `Model projects ${projTotal.toFixed(1)} runs vs the ${altLine} line — a ${absEdge.toFixed(1)}-run ${side} edge. The totals model beats market historically (MAE 2.98 vs 3.31); a divergence this size predicts the O/U at ~${confidence}% (n=17, Wilson lo 41%). Bet ${side} ${altLine}.`
+  };
+}
+
 function classifyInverseMarketSignal(projTotal, marketTotal) {
   if (typeof projTotal !== 'number' || !isFinite(projTotal)) return null;
   if (typeof marketTotal !== 'number' || !isFinite(marketTotal)) return null;
@@ -10181,7 +10247,7 @@ function renderAnalysis(data) {
                gameLineBets. The existing grader (evaluateGameLineBet) already
                grades totals at ANY line, so alt totals grade automatically. -->
           <div class="glb-altline" style="border-top:1px solid var(--line);margin-top:8px;padding-top:10px">
-            <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:8px">Log an alt total line ${(gl.total && gl.total.marketLine != null) ? `(market: ${gl.total.marketLine})` : ''}</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:8px">Analyze / log an alt total line ${(gl.total && gl.total.marketLine != null) ? `(market: ${gl.total.marketLine})` : ''}${(data.projection && data.projection.projTotal != null) ? ` · model proj ${parseFloat(data.projection.projTotal).toFixed(1)}` : ''}</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               <select id="altTotalSide_${data.gamePk}" style="padding:6px 8px;border-radius:7px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);font-size:12px">
                 <option value="over">OVER</option>
@@ -10189,8 +10255,10 @@ function renderAnalysis(data) {
               </select>
               <input id="altTotalLine_${data.gamePk}" type="number" step="0.5" placeholder="line (e.g. 7.5)" style="width:110px;padding:6px 8px;border-radius:7px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);font-size:12px">
               <input id="altTotalOdds_${data.gamePk}" type="number" step="1" placeholder="odds (-110)" style="width:100px;padding:6px 8px;border-radius:7px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);font-size:12px">
+              <button class="glb-log-btn" style="background:var(--panel-2);border:1px solid var(--accent,#c6ff3d)" onclick='analyzeAltTotalLineUI(${JSON.stringify({ gamePk: data.gamePk, projTotal: (data.projection && data.projection.projTotal != null) ? parseFloat(data.projection.projTotal) : null, marketLine: (gl.total && gl.total.marketLine != null) ? gl.total.marketLine : null }).replace(/'/g, "&#39;")})'>◎ ANALYZE</button>
               <button class="glb-log-btn" onclick='logAltTotalLine(${JSON.stringify({ gamePk: data.gamePk, date: data.gameDateET, away: data.awayTeam.abbreviation, home: data.homeTeam.abbreviation, marketLine: (gl.total && gl.total.marketLine != null) ? gl.total.marketLine : null }).replace(/'/g, "&#39;")})'>+ LOG ALT LINE</button>
             </div>
+            <div id="altTotalResult_${data.gamePk}" style="margin-top:9px"></div>
           </div>
         </div>
       `;
@@ -12306,6 +12374,30 @@ function logBestBets(data) {
         _verifiedCohort: bestBet._verifiedCohort || null,
         _verifiedWR: bestBet._verifiedWR || null,
         _scorchingWatch: bestBet._scorchingWatch || false,
+        // (Drop #49 — July 5, 2026) PITCHER-VULN STAMP (stamp, don't reweight).
+        // Records the opposing arm's vuln score on every logged pick so the
+        // VERIFIED tier can be split by soft-arm vs elite-arm once n≥25 each —
+        // the prediction being VERIFIED+soft ~75-78% vs VERIFIED+elite ~66-68%.
+        // Never touches the projection; purely an audit tag.
+        ...(function () {
+          try {
+            const _sd = sideData;
+            const _op = m.platoonMeta && m.platoonMeta.pitcher;
+            const _v = computePitcherVuln(_op, _sd);
+            const _ops = _v.opsAgainst;
+            // K-trap: if matched-arsenal K% is +8pp over the hitter's season K%,
+            // the contact profile is at arsenal-specific risk (the Wong flag).
+            const _seasonK = parseFloat(m.seasonKPct || (m.batterK && m.batterK.season) || 'NaN');
+            const _matchK = parseFloat(m.matchedKPct || (m.batterK && m.batterK.matched) || 'NaN');
+            const _kTrap = Number.isFinite(_seasonK) && Number.isFinite(_matchK) && (_matchK - _seasonK >= 8);
+            return {
+              _pitcherVuln: _v.score,
+              _pitcherVulnBucket: _ops == null ? 'unknown' : (_ops >= 0.80 ? 'soft-arm' : (_ops <= 0.650 ? 'elite-arm' : 'mid-arm')),
+              _oppOpsAgainst: _ops,
+              _kTrapFlag: _kTrap
+            };
+          } catch (_) { return { _pitcherVuln: null, _pitcherVulnBucket: 'unknown', _oppOpsAgainst: null, _kTrapFlag: false }; }
+        })(),
         isDeepVerified: true,   // flag so we know this is premium
         // (Drop #25 — June 8, 2026) fadeTier/fadeScore removed — fade engine deleted.
         // (Phase 1 — May 29, 2026) Capped flag — was the multiplier
@@ -12982,6 +13074,38 @@ async function gradeGameLineBets(opts = {}) {
 // Produces a standard "OVER X.X"/"UNDER X.X" pick string so the existing
 // evaluateGameLineBet grader handles it at ANY line, and keys it by the line
 // value so multiple alt lines on one game don't collide.
+// (Drop #50 — July 5, 2026) Analyze an entered alt total line and render the
+// engine's O/U call + edge inline, before the user decides to log it.
+function analyzeAltTotalLineUI(ctx) {
+  if (!ctx || !ctx.gamePk) return;
+  const out = document.getElementById('altTotalResult_' + ctx.gamePk);
+  const lineEl = document.getElementById('altTotalLine_' + ctx.gamePk);
+  const line = lineEl ? parseFloat(lineEl.value) : NaN;
+  if (!out) return;
+  if (!Number.isFinite(line)) { out.innerHTML = '<span style="font-size:11px;color:var(--warn,#e0a050)">Enter a line to analyze (e.g. 7.5)</span>'; return; }
+  if (ctx.projTotal == null || !Number.isFinite(ctx.projTotal)) {
+    out.innerHTML = '<span style="font-size:11px;color:var(--dim)">No model projection for this game yet \u2014 analyze the game first.</span>';
+    return;
+  }
+  const r = analyzeAltTotalLine(ctx.projTotal, line);
+  if (!r) { out.innerHTML = '<span style="font-size:11px;color:var(--dim)">Could not analyze this line.</span>'; return; }
+  const isPass = r.tier === 'PASS';
+  const tierColor = isPass ? 'var(--dim)' : (r.tier === 'PLATINUM' ? '#60a5fa' : r.tier === 'GOLD' ? '#d4af6a' : 'var(--ink)');
+  const arrow = r.side === 'OVER' ? '\u2191' : r.side === 'UNDER' ? '\u2193' : '\u25E6';
+  const edgeStr = (r.edge >= 0 ? '+' : '') + r.edge;
+  const mktStr = (ctx.marketLine != null) ? ' \u00b7 market ' + ctx.marketLine : '';
+  out.innerHTML =
+    '<div style="background:var(--panel-2);border:1px solid ' + (isPass ? 'var(--line)' : tierColor) + ';border-radius:9px;padding:10px 12px">' +
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<span style="font-size:16px;font-weight:800;color:' + tierColor + '">' + arrow + ' ' + (isPass ? 'NO EDGE' : (r.side + ' ' + r.line)) + '</span>' +
+        (isPass ? '' : '<span style="font-size:10px;font-weight:700;letter-spacing:0.06em;padding:2px 7px;border-radius:100px;background:' + tierColor + ';color:#0b0f1a">' + r.tier + '</span>') +
+        (r.confidence != null ? '<span style="font-size:12px;font-weight:700;margin-left:auto;color:' + tierColor + '">~' + r.confidence + '%</span>' : '') +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--dim);margin-top:5px">Model ' + r.projTotal.toFixed(1) + ' vs line ' + r.line + ' &middot; edge ' + edgeStr + mktStr + '</div>' +
+      '<div style="font-size:11.5px;line-height:1.45;color:var(--ink);margin-top:6px">' + r.reasoning + '</div>' +
+    '</div>';
+}
+
 function logAltTotalLine(ctx) {
   if (!ctx || !ctx.gamePk) return;
   const date = ctx.date || getTodayStr();
@@ -19411,6 +19535,19 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       var pitcherFriendlyPark = (padj != null && padj <= -0.30);   // meaningful late-run suppression
       var gameLean = mlbGameLean(A);
       var oppWildShort = mlbOpposingSPWildOrShort(A, e.team);
+      // (Drop #49) PITCHER VULN — stamp on the candidate so the SAME veto that
+      // the player card shows (NOT A GHOST) is read by the Card builder + board
+      // ranking. Resolve this hitter's side + opposing pitcher from the analysis.
+      var _sideData = null, _oppPitcher = null;
+      try {
+        var _awayAbbr = (A && A.awayTeam && (A.awayTeam.abbreviation || A.awayTeam)) || '';
+        _sideData = (A && (e.team === _awayAbbr ? A.awayVsHome : A.homeVsAway)) || null;
+        var _mm = _sideData && _sideData.mismatches && _sideData.mismatches.find(function (x) {
+          return (x.hitter || x.hitterName) === e.hitterName; });
+        _oppPitcher = (_mm && _mm.platoonMeta && _mm.platoonMeta.pitcher) || null;
+      } catch (_) {}
+      var _vuln = computePitcherVuln(_oppPitcher, _sideData);
+      var _antiGhost = (_vuln.opsAgainst != null && _vuln.opsAgainst >= 0.80);
       // (Drop #46) ENVIRONMENT VETO INPUTS. Both fade/under losses this window
       // (Griffin; TB/HOU) traced to the same cause: wind-out + heat + a hitter
       // park overriding the model. Derive that hard composite here so the
@@ -19440,6 +19577,9 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         gameLean: gameLean, pitcherFriendlyPark: pitcherFriendlyPark, opposingPitcherWildOrShort: oppWildShort,
         // (Drop #46) environment-veto inputs
         hostileForUnders: _hostileForUnders, windOut: _windOut, heat: _heat, hitterPark: _hitterPark,
+        // (Drop #49) pitcher-vuln → anti-ghost veto (fades) + soft-arm boost (overs)
+        antiGhost: _antiGhost, pitcherVuln: _vuln.score, pitcherVulnFactors: _vuln.factors,
+        opsAgainstVsSide: _vuln.opsAgainst,
         // (Tonight's Card spec) judgment inputs
         verdictPass: e._topPickVerdict === 'pass',
         projection: (function () {
@@ -19660,7 +19800,19 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (s === 'wrongline') return 'Not the graded market line';
     return null;
   }
-  function killReason(c) { return verdictKill(c) || formKill(c) || envKill(c) || lineKill(c); }
+  function ghostKill(c) {
+    // (Drop #49) The Card + board must consume the SAME anti-ghost veto the
+    // player card renders. A fade against a hittable arm is never a play —
+    // bats produce against bad pitching. This is the bug where the Card ranked
+    // Eaton #1 while his own card said NOT A GHOST.
+    if (c.side === 'under' && c.antiGhost) {
+      var ops = (c.opsAgainstVsSide != null)
+        ? '.' + String(Math.round(c.opsAgainstVsSide * 1000)).padStart(3, '0') : '';
+      return 'NOT A GHOST — opposing pitcher is hittable' + (ops ? ' (' + ops + ' OPS-against)' : '') + '; bats produce against bad pitching, no fade';
+    }
+    return null;
+  }
+  function killReason(c) { return verdictKill(c) || ghostKill(c) || formKill(c) || envKill(c) || lineKill(c); }
   function shadeCheck(c, bookLine) {
     if (c.market === 'hrr' && Math.abs(c.line - 1.5) < 0.01 && Math.abs(bookLine - 1.5) > 0.01) return 'wrongline';
     var proj = c.projection; if (proj == null) return null;   // (G partial) no projection -> can't judge
