@@ -18113,6 +18113,11 @@ async function autoGradeOnAppOpen() {
   #cs2-panel .cs2-banner-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--data-warning);font-weight:var(--weight-medium);margin-bottom:var(--space-1)}
   #cs2-panel .cs2-banner-text{font-size:var(--size-caption);color:var(--text-secondary);line-height:var(--line-caption)}
   #cs2-panel .cs2-analysis-head{margin:var(--space-2) 0 var(--space-4);padding-bottom:var(--space-3);border-bottom:0.5px solid var(--border-hairline)}
+  #cs2-panel .cs2-blowout-banner{display:flex;gap:12px;align-items:flex-start;margin:0 0 18px;padding:14px 16px;border-radius:14px;background:linear-gradient(135deg,#fff3d6 0%,#ffe0b0 100%);border:1.5px solid #e69a2e;box-shadow:0 3px 14px rgba(200,120,20,0.16)}
+  #cs2-panel .cs2-blowout-icon{font-size:24px;line-height:1.1;flex-shrink:0}
+  #cs2-panel .cs2-blowout-title{font-family:var(--font-sans);font-weight:800;letter-spacing:0.07em;font-size:11.5px;color:#a85400;margin-bottom:4px}
+  #cs2-panel .cs2-blowout-text{font-size:13px;line-height:1.5;color:#7a4510}
+  #cs2-panel .cs2-blowout-text b{color:#a85400}
   #cs2-panel .cs2-analysis-title{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-medium);color:var(--text-primary)}
   #cs2-panel .cs2-analysis-sub{font-size:var(--size-caption);color:var(--text-secondary);margin-top:var(--space-1)}
   #cs2-panel .cs2-roundread{background:var(--surface-muted);border-radius:var(--radius-sm);padding:var(--space-3);margin-bottom:var(--space-3)}
@@ -18395,7 +18400,38 @@ async function autoGradeOnAppOpen() {
     const teamsHtml = Object.keys(byTeam).map(t =>
       `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(p => renderCs2PlayerCard(p, m.matchId, m.windowLabel)).join('')}`).join('');
 
-    container.innerHTML = header + roundReadHtml + teamsHtml +
+    // Lopsided-matchup caution. Validated on 826 maps: ranking gap only weakly
+    // predicts blowouts (corr +0.06), but at a big mismatch (points-gap ≥ ~16 or
+    // ≥12 ranks apart) blowout rate rises 26%→38% and — more to the point — kill
+    // totals get high-variance (the FaZe vs 3DMAX case). So this is a CAUTION flag,
+    // not a blowout prediction: it tells the user reads here are low-confidence.
+    const gap = vol.gap ?? 0;
+    const rankGap = (m.rankA != null && m.rankB != null) ? Math.abs(m.rankA - m.rankB) : null;
+    // Second trigger (heuristic, NOT backtested — cache lacks team-tagged rows to
+    // validate it): recent-form spread. One team running hot while the other runs
+    // cold is what actually produced the FaZe 13-5/13-1 stomp — ranking said even.
+    // Advisory-only banner, so a labeled heuristic is acceptable here.
+    const teamNames = Object.keys(byTeam);
+    let formSpread = 0, hotTeam = null;
+    if (teamNames.length === 2) {
+      const formOf = (t) => { const ps = byTeam[t].filter(p => p.recentKpr != null && p.kpr != null); return ps.length >= 3 ? ps.reduce((a, p) => a + (p.recentKpr - p.kpr), 0) / ps.length : null; };
+      const fA = formOf(teamNames[0]), fB = formOf(teamNames[1]);
+      if (fA != null && fB != null) { formSpread = Math.abs(fA - fB); hotTeam = fA > fB ? teamNames[0] : teamNames[1]; }
+    }
+    const mismatch = gap >= 16 || (rankGap != null && rankGap >= 12) || formSpread >= 0.10;
+    const fav = formSpread >= 0.10 ? hotTeam : ((m.rankA != null && m.rankB != null) ? (m.rankA < m.rankB ? m.teamA : m.teamB) : null);
+    const why = formSpread >= 0.10
+      ? `<b>${esc(fav)}</b> is running much hotter than their opponent lately`
+      : (fav ? `<b>${esc(fav)}</b> is heavily favored` : 'These teams are far apart in ranking');
+    const blowoutBanner = !mismatch ? '' : `
+      <div class="cs2-blowout-banner">
+        <span class="cs2-blowout-icon">⚡</span>
+        <div class="cs2-blowout-body">
+          <div class="cs2-blowout-title">LOPSIDED MATCHUP · HIGH-VARIANCE READS</div>
+          <div class="cs2-blowout-text">${why} — in blowout-prone games kill totals swing hard: the favorite can stomp (overs cash) or maps end fast (unders cash). Treat every read below as <b>low-confidence</b> and lean toward passing.</div>
+        </div>
+      </div>`;
+    container.innerHTML = header + blowoutBanner + roundReadHtml + teamsHtml +
       `<div class="cs2-foot">Reads cover Maps 1+2 kills only, and aren't yet weighed against the live Underdog line — use as a watchlist, not locks.</div>`;
     // Bring the read into view. The games list above can be long, so without this
     // the analysis renders far below the fold and a click looks like it did nothing.
