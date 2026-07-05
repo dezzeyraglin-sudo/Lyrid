@@ -4607,6 +4607,104 @@ function applyHardHitTier(propRecs) {
 // (computeEmpiricalUnderProp) which is xwoba-based. They target
 // different signals; both can fire on the same pick.
 // ====================================================================
+// ============================================================================
+// (Drop #47 — July 5, 2026) THE GHOST RECIPE — computeGhostScore.
+//
+// A "ghost" is a hitter whose matchup stats look elite but who quietly goes
+// 0-for-4. It isn't a stat — it's a recipe of five conditions that must
+// co-occur. This scores each condition from REAL data (no invented numbers)
+// and returns a checklist the UI renders in plain English. The score IS the
+// tier: 5/5 → GHOST, 3-4 → regular platinum fade (missing checks shown), ≤2 →
+// not rendered as a play.
+//
+// Honest data mapping (what each check actually reads):
+//   1. Ice cold      ← recentFormLabel COLD, or recent slump line if present
+//   2. Elite arm     ← opposing pitcher opsAgainst vs this bat side ≤ .650
+//   3. Quiet park    ← park late-run adjustment ≤ -0.30 (pitcher park)
+//   4. Calm night    ← NOT (wind out / heat / hitter park) — the Drop #46 veto inputs
+//   5. Strikes only  ← opposing pitcher K% ≥ 24 (high-K arm = few free
+//                       baserunners; we use K% because a reliable per-pitcher
+//                       walk rate isn't threaded to the pick — this is the
+//                       truer "no traffic" signal and is labeled as such)
+//
+// Anti-ghost: if the OPPOSING pitcher is hittable (opsAgainst ≥ .800), we flag
+// it as explicitly NOT a ghost — bats produce against bad pitching.
+// ============================================================================
+function computeGhostScore(m, data) {
+  const pm = m && m.platoonMeta;
+  const pitcher = pm && pm.pitcher;
+  const form = String(m && (m.recentFormLabel || (m.recentForm && m.recentForm.label)) || '').toUpperCase();
+  const homeAbbr = (data && data.homeTeam && (data.homeTeam.abbreviation || data.homeTeam)) || '';
+  const parkLateAdj = (typeof LIVE_PARK_LATE_ADJUSTMENTS !== 'undefined' && LIVE_PARK_LATE_ADJUSTMENTS[homeAbbr]) || 0;
+
+  // opposing pitcher OPS-against (vs this hitter's side) + K%
+  const opsAgainst = pitcher && parseFloat(pitcher.opsAgainst);
+  const kPct = pitcher && parseFloat(pitcher.kPct);
+
+  // Weather composite — derive from the analyzed game's weather (same inputs
+  // as the Drop #46 environment veto), falling back to flags on m if present.
+  let windOut = !!m._windOut, heat = !!m._heat, hitterPark = !!m._hitterPark;
+  try {
+    const _wx = (data && (data.weather || (data.context && data.context.weather))) || {};
+    const _windCat = String((_wx.windRelative && _wx.windRelative.category) || _wx.windCategory || '').toUpperCase();
+    if (/OUT_TO/.test(_windCat)) windOut = true;
+    const _tempF = (typeof _wx.tempF === 'number') ? _wx.tempF : (typeof _wx.temperature === 'number') ? _wx.temperature : null;
+    if (_tempF != null && _tempF >= 85) heat = true;
+    if (parkLateAdj >= 0.30 || homeAbbr === 'COL') hitterPark = true;
+  } catch (_) {}
+  const calmNight = !(windOut || heat || hitterPark);
+
+  const checks = [];
+  // 1. Ice cold
+  const cold = (form === 'COLD' || form === 'ICE_COLD' || form === 'SLUMPING');
+  checks.push({ key: 'cold', ok: cold, label: 'Ice cold',
+    detail: cold ? (m._coldLine || 'Recent form is cold — bat trending down')
+                 : (form && form !== 'NEUTRAL' ? 'Form is ' + form.toLowerCase() + ', not cold' : 'Form is neutral, not cold') });
+  // 2. Elite arm
+  const eliteArm = Number.isFinite(opsAgainst) && opsAgainst <= 0.650;
+  checks.push({ key: 'arm', ok: eliteArm,
+    label: 'Elite arm',
+    detail: Number.isFinite(opsAgainst)
+      ? (eliteArm ? `Opposing SP holds this side to a .${String(Math.round(opsAgainst*1000)).padStart(3,'0')} OPS`
+                  : `Opposing SP allows a .${String(Math.round(opsAgainst*1000)).padStart(3,'0')} OPS — not elite`)
+      : 'No opposing-SP split available' });
+  // 3. Quiet park
+  const quietPark = parkLateAdj <= -0.30;
+  checks.push({ key: 'park', ok: quietPark,
+    label: 'Quiet park',
+    detail: quietPark ? `${homeAbbr} suppresses runs` : `${homeAbbr || 'Park'} is neutral or hitter-friendly` });
+  // 4. Calm night
+  checks.push({ key: 'calm', ok: calmNight,
+    label: 'Calm night',
+    detail: calmNight ? 'No wind or heat helping hitters'
+      : ('Runs hot: ' + [windOut && 'wind blowing out', heat && 'heat', hitterPark && 'hitter park'].filter(Boolean).join(' + ')) });
+  // 5. Strikes only
+  const strikesOnly = Number.isFinite(kPct) && kPct >= 24;
+  checks.push({ key: 'strikes', ok: strikesOnly,
+    label: 'Strikes only',
+    detail: Number.isFinite(kPct)
+      ? (strikesOnly ? `High-K arm (${Math.round(kPct)}% K) — few free baserunners`
+                     : `${Math.round(kPct)}% K — allows more traffic`)
+      : 'No opposing-SP K rate available' });
+
+  const score = checks.filter(c => c.ok).length;
+  // Anti-ghost: opposing pitcher is hittable → explicitly not a fade
+  const antiGhost = Number.isFinite(opsAgainst) && opsAgainst >= 0.800;
+  const antiGhostReason = antiGhost
+    ? `Opposing pitcher is hittable (.${String(Math.round(opsAgainst*1000)).padStart(3,'0')} OPS-against) — bats produce against bad pitching; no fade.`
+    : null;
+
+  // Archetype line from the two strongest met conditions
+  const met = checks.filter(c => c.ok).map(c => c.key);
+  let archetype = 'Quiet-bat fade';
+  if (met.includes('cold') && met.includes('arm')) archetype = 'Cold bat vs an elite arm';
+  else if (met.includes('park') && met.includes('calm')) archetype = 'Quiet night in a pitcher\u2019s park';
+  else if (met.includes('cold') && met.includes('park')) archetype = 'Cold bat in a quiet park';
+  else if (met.includes('arm') && met.includes('calm')) archetype = 'Elite arm on a calm night';
+
+  return { score, checks, antiGhost, antiGhostReason, archetype, isGhost: score >= 5 };
+}
+
 function applyLyridUnderTier(propRecs, hitterContext) {
   if (!Array.isArray(propRecs) || propRecs.length === 0) return null;
   if (!hitterContext) return null;
@@ -4956,6 +5054,49 @@ const LIVE_PARK_LATE_ADJUSTMENTS = {
   'LAA': +0.25,  'KC':  +0.48,  'MIL': +0.46,  'WSH': +0.47,
   'LAD': +1.11,  'TOR': +1.58,  'TB':  +1.86,  'COL': +2.86
 };
+
+// ============================================================================
+// (Drop #46 — July 5, 2026) F5 (FIRST-5-INNINGS) PRE-GAME OVER/UNDER ENGINE.
+//
+// New pre-game market. The totals model has genuine skill: on the graded
+// projectionAudit it beat the market (full-total MAE 2.98 vs 3.31), and a
+// model-vs-market edge >0.5 runs predicted the full-game O/U at 65% (n=17),
+// NOT inverted. F5 is ~54% of a full game, so we project F5 = 0.54 × the
+// model's full-game total and compare it to the F5 line (pulled like the game
+// total from the book, or entered manually). We bet only when the model's F5
+// projection diverges from the F5 line by a meaningful margin — mirroring the
+// full-game divergence signal that validated.
+//
+// Line source: data.odds.f5Total when the server provides it (same path as the
+// full-game total); otherwise the user can enter it. DraftKings is Akamai-
+// blocked from datacenter IPs, so a residential/manual path supplies the line —
+// the engine itself is line-source-agnostic.
+// ============================================================================
+const F5_SHARE_OF_GAME = 0.54;   // empirical: first 5 innings ≈ 54% of final total
+function classifyF5PregameSignal(projFullTotal, f5MarketLine) {
+  if (typeof projFullTotal !== 'number' || !isFinite(projFullTotal)) return null;
+  if (typeof f5MarketLine !== 'number' || !isFinite(f5MarketLine)) return null;
+  const projF5 = +(projFullTotal * F5_SHARE_OF_GAME).toFixed(2);
+  const edge = +(projF5 - f5MarketLine).toFixed(2);
+  const absEdge = Math.abs(edge);
+  // Threshold mirrors the full-game divergence signal (>0.5 run gap = actionable).
+  if (absEdge < 0.5) {
+    return { side: 'PASS', projF5, f5MarketLine, edge,
+      reasoning: `Model projects ${projF5} F5 runs vs a ${f5MarketLine} line — gap ${edge >= 0 ? '+' : ''}${edge} is inside the 0.5-run no-bet band. Pass.` };
+  }
+  const side = edge > 0 ? 'OVER' : 'UNDER';
+  // Tiering by gap size, calibrated to the full-game divergence read (65%, n=17,
+  // Wilson lo 41%). Kept deliberately modest given the sample — this logs its
+  // own record going forward and will sharpen as F5 results grade.
+  let tier, wr, lo, units;
+  if (absEdge >= 1.0) { tier = 'PLATINUM'; wr = 65; lo = 41; units = 2; }
+  else                { tier = 'GOLD';     wr = 60; lo = 38; units = 1; }
+  return {
+    tier, side, projF5, f5MarketLine, edge,
+    backtestWR: wr / 100, wilsonLow: lo / 100, units,
+    reasoning: `Model projects ${projF5} F5 runs vs the ${f5MarketLine} F5 line — a ${absEdge.toFixed(1)}-run ${side} edge. Derived from the full-game total model (MAE 2.98 vs market 3.31; divergence >0.5 predicts O/U 65%, n=17). Pre-game F5 read; logs its own record as F5 results grade.`
+  };
+}
 
 function classifyLiveF5Signal(f5Runs, projTotal, homePark) {
   // Returns null if no actionable signal, otherwise tier object.
@@ -6369,10 +6510,55 @@ function buildVerdictBanner(m, env) {
     </div>`;
 }
 
+function buildGhostCard(m, data, verdictKind) {
+  // Only render on fade cards (platinum/gold under).
+  if (verdictKind !== 'fade') return '';
+  var g;
+  try { g = computeGhostScore(m, data); } catch (e) { return ''; }
+  if (!g) return '';
+
+  // Anti-ghost: teach the negative case where the user would've bet.
+  if (g.antiGhost) {
+    return '<div style="background:rgba(120,113,108,0.14);border:1px solid rgba(160,120,90,0.35);border-radius:9px;padding:10px 12px;margin:0 0 6px">' +
+      '<div style="font-size:12px;font-weight:800;color:#b45309">\u26D4 NOT A GHOST</div>' +
+      '<div style="font-size:11px;line-height:1.45;margin-top:4px;color:var(--ink,#e5e7eb)">' + esc(g.antiGhostReason) + '</div></div>';
+  }
+  // \u22642 conditions: not a play — render nothing (board demotion handles it).
+  if (g.score <= 2) return '';
+
+  var isGhost = g.score >= 5;
+  var rows = g.checks.map(function (ch) {
+    var mark = ch.ok ? '\u2713' : '\u26A0';
+    var color = ch.ok ? '#7fb08a' : '#e0a050';
+    var op = ch.ok ? '1' : '0.72';
+    return '<div style="display:flex;gap:9px;align-items:baseline;padding:3px 0;opacity:' + op + '">' +
+      '<span style="color:' + color + ';font-weight:800;width:12px;flex:none">' + mark + '</span>' +
+      '<span style="font-size:12px;font-weight:700;color:var(--ink,#f4f1ea);width:92px;flex:none">' + esc(ch.label) + '</span>' +
+      '<span style="font-size:11px;color:var(--dim,#aab1c0)">' + esc(ch.detail) + '</span></div>';
+  }).join('');
+
+  var header = isGhost
+    ? '<div style="font-size:13px;font-weight:900;letter-spacing:0.02em;color:#c9b3e0">\uD83D\uDC7B GHOST \u00b7 ' + esc(g.archetype) + '</div>'
+    : '<div style="font-size:12px;font-weight:800;color:#9fb4d4">PLATINUM FADE \u00b7 ' + g.score + '/5 conditions \u00b7 ' + esc(g.archetype) + '</div>';
+
+  var bg = isGhost
+    ? 'linear-gradient(135deg,#2a1c4c 0%,#3a2c5c 100%)'
+    : 'rgba(30,44,76,0.55)';
+  var border = isGhost ? '1px solid rgba(160,130,210,0.5)' : '1px solid rgba(120,140,180,0.3)';
+
+  return '<div style="background:' + bg + ';border:' + border + ';border-radius:11px;padding:12px 14px;margin:0 0 6px">' +
+    header +
+    '<div style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#b0823a;font-weight:700;margin:8px 0 6px">Why he goes quiet tonight \u2014 ' + g.score + '/5 conditions met</div>' +
+    rows +
+    '<div style="font-size:11px;line-height:1.5;margin-top:9px;color:var(--ink,#e5e7eb);border-top:1px solid rgba(255,255,255,0.1);padding-top:8px">' +
+    'The trap: his matchup stats look elite \u2014 that\u2019s exactly the profile that quietly goes 0-for-4. Bet the under, never the over.</div>' +
+    '<div style="font-size:9.5px;opacity:0.75;margin-top:6px">\u26A0 Standard 1.5 line only \u2014 demon\u2019d/goblin\u2019d = no bet</div>' +
+    '</div>';
+}
+
 function buildLyridBestBanner(backtestWR, backtestN, opts = {}) {
   if (backtestWR == null || isNaN(backtestWR)) return '';
   const wrPct = Math.round(backtestWR * 100);
-
   let tier, icon;
   if (wrPct >= 80) {
     tier = 'platinum';
@@ -8145,6 +8331,7 @@ function renderAnalysis(data) {
           return `
             <div class="match ${m.tier}${m.isTopPick?' top-pick':''}${m.hrChance?' has-hr-chance':''}">
               <div style="padding:10px 12px 0">${buildVerdictBanner(m, { projTotal: (data.projection ? parseFloat(data.projection.projTotal) : null) })}</div>
+              ${_isFadeCard ? `<div style="padding:0 12px">${buildGhostCard(m, data, 'fade')}</div>` : ''}
               ${m._empUnderRec ? `<div style="padding:0 12px">${buildLyridBestBanner(m._empUnderRec.backtestWR, m._empUnderRec.backtestN, { kind: 'compact', label: 'LYRID UNDER · ' + m._empUnderRec.propLabel, tooltip: m._empUnderRec.reasoningLines.join(' · ') })}</div>` : ''}
               <div class="match-head">
                 <div class="match-hitter">
@@ -9988,6 +10175,23 @@ function renderAnalysis(data) {
             ${rowFor(gl.moneyline, 'ML')}
             ${rowFor(gl.spread, 'RUN LINE')}
           </div>
+          <!-- (Drop #48 — July 5, 2026) ALT TOTAL LINE ENTRY.
+               Enter an alternate total line (any number, e.g. 7.5 / 9.5)
+               alongside the current market, pick O/U + odds, and log it to
+               gameLineBets. The existing grader (evaluateGameLineBet) already
+               grades totals at ANY line, so alt totals grade automatically. -->
+          <div class="glb-altline" style="border-top:1px solid var(--line);margin-top:8px;padding-top:10px">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:8px">Log an alt total line ${(gl.total && gl.total.marketLine != null) ? `(market: ${gl.total.marketLine})` : ''}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <select id="altTotalSide_${data.gamePk}" style="padding:6px 8px;border-radius:7px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);font-size:12px">
+                <option value="over">OVER</option>
+                <option value="under">UNDER</option>
+              </select>
+              <input id="altTotalLine_${data.gamePk}" type="number" step="0.5" placeholder="line (e.g. 7.5)" style="width:110px;padding:6px 8px;border-radius:7px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);font-size:12px">
+              <input id="altTotalOdds_${data.gamePk}" type="number" step="1" placeholder="odds (-110)" style="width:100px;padding:6px 8px;border-radius:7px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);font-size:12px">
+              <button class="glb-log-btn" onclick='logAltTotalLine(${JSON.stringify({ gamePk: data.gamePk, date: data.gameDateET, away: data.awayTeam.abbreviation, home: data.homeTeam.abbreviation, marketLine: (gl.total && gl.total.marketLine != null) ? gl.total.marketLine : null }).replace(/'/g, "&#39;")})'>+ LOG ALT LINE</button>
+            </div>
+          </div>
         </div>
       `;
     } else if (gl?.hasMarket) {
@@ -10083,8 +10287,6 @@ function renderAnalysis(data) {
         ? data.projection.homeWinProb
         : (parseFloat(data.projection?.homeWinProb) / 100);
       const _park = data.homeTeam?.abbreviation || '';
-      const LOW_YRFI_PARKS = ['NYY', 'PHI', 'SEA', 'DET', 'STL', 'BAL'];
-      const HIGH_YRFI_PARKS = ['TEX', 'COL', 'TB', 'MIN', 'BOS', 'SD', 'KC'];
 
       // ==============================================================
       // (Drop #33 — June 12, 2026) LIVE MATCHUP READERS.
@@ -10140,6 +10342,38 @@ function renderAnalysis(data) {
       const _spFIavg = _spFIvals.length ? _spFIvals.reduce((a,b)=>a+b,0)/_spFIvals.length : null;
 
       let _treeSide, _treeTier, _treeRule, _treeWR, _treeN, _treeLo, _treeUnits, _treeReason;
+      // ==============================================================
+      // (Drop #46 — July 5, 2026) FIRST-INNING REBUILT ON PARK ANCHORS.
+      //
+      // A fresh audit of 169 graded first-inning bets in this backup found
+      // the previous multi-rule tree running at 45% live — the model's
+      // probability is ANTI-predictive (prob≥0.70 → 41%, prob<0.60 → 43%),
+      // and the projection/heat/favorite rules did NOT validate out of
+      // sample. The ONLY signal that held up under a split-half stability
+      // check is the home park's first-inning scoring tendency:
+      //
+      //   HIGH-YRFI parks → YRFI: 25/33 = 76% (Wilson lo 59%)
+      //   LOW-YRFI parks  → NRFI: 19/25 = 76% (Wilson lo 57%)
+      //   everything else → PASS (residual is 54%, a coin flip)
+      //
+      // Park lists were selected by rate ≥0.65 / ≤0.35 AND consistency
+      // across both halves of each park's game log (n≥6). We now bet ONLY
+      // the anchors and PASS the rest — a smaller, honest, +EV engine
+      // instead of a large anti-calibrated one.
+      // ==============================================================
+      const HIGH_YRFI_PARKS = ['COL', 'CWS', 'KC', 'TB', 'WSH'];
+      const LOW_YRFI_PARKS  = ['BAL', 'NYY', 'PHI', 'SEA'];
+      if (HIGH_YRFI_PARKS.includes(_park)) {
+        _treeSide='YRFI'; _treeTier='PLATINUM'; _treeRule='PARK-HIGH'; _treeWR=76; _treeN=33; _treeLo=59; _treeUnits=2;
+        _treeReason=`${_park} is a validated hitter's park for first-inning scoring — YRFI 76% (n=33, Wilson lower 59%), stable across both halves of the data. Bet YRFI.`;
+      } else if (LOW_YRFI_PARKS.includes(_park)) {
+        _treeSide='NRFI'; _treeTier='PLATINUM'; _treeRule='PARK-LOW'; _treeWR=76; _treeN=25; _treeLo=57; _treeUnits=2;
+        _treeReason=`${_park} is a validated pitcher's park for first-inning scoring — NRFI 76% (n=25, Wilson lower 57%), stable across both halves. Bet NRFI.`;
+      } else {
+        _treeSide='PASS'; _treeTier='PASS'; _treeRule='RESIDUAL'; _treeWR=54; _treeN=111; _treeLo=45; _treeUnits=0;
+        _treeReason='Neutral first-inning park — the residual band is a 54% coin flip with no reliable edge. No bet; the park anchors are the only validated first-inning signal.';
+      }
+      const _LEGACY_TREE_DISABLED = function () {
       if (_coldLineup) {
         // HEAT CHECK PLATINUM — highest priority, the validated 74% tier
         _treeSide='YRFI'; _treeTier='PLATINUM'; _treeRule='HC'; _treeWR=74; _treeN=42; _treeLo=59; _treeUnits=2;
@@ -10166,6 +10400,7 @@ function renderAnalysis(data) {
         _treeSide='YRFI'; _treeTier='LEAN'; _treeRule='R7'; _treeWR=55; _treeN=56; _treeLo=42; _treeUnits=1;
         _treeReason='Mid-range projection in a neutral park — the residual band leans slightly YRFI (55%), consistent with the 54% league first-inning scoring base rate.';
       }
+      };
 
       // Pitcher first-inning split — live SHARPENER on LEAN-tier reads only.
       // When the geometry read is a weak LEAN (R6/R7) and both starters'
@@ -11470,7 +11705,55 @@ function renderBreakdown() {
         </div>
       `;
     }).join('')}
+    ${renderGhostBreakdown()}
   `;
+}
+
+// (Drop #48) GHOST-SCORE RECORD. Reads graded fades from bestBetHistory,
+// buckets by the 5-condition ghost score, and shows the record + Wilson floor
+// per bucket — so "5/5 ghosts went X-Y" becomes a proven, self-documenting tier.
+function renderGhostBreakdown() {
+  const wl = (w, n, z = 1.96) => {
+    if (!n) return 0;
+    const p = w / n, den = 1 + z*z/n, c = p + z*z/(2*n),
+          s = z * Math.sqrt(p*(1-p)/n + z*z/(4*n*n));
+    return (c - s) / den;
+  };
+  const buckets = {}; // score -> {w, n}
+  Object.values(state.bestBetHistory || {}).forEach(day => {
+    const items = Array.isArray(day) ? day : Object.values(day || {});
+    items.forEach(p => {
+      if (!p || !p.graded || !p.result) return;
+      if (p._ghostScore == null) return;               // only scored fades
+      if (!(p._lyridUnderTier === 'platinum' || p._lyridUnderTier === 'gold')) return;
+      const k = p._ghostScore;
+      buckets[k] = buckets[k] || { w: 0, n: 0 };
+      // fades win when the UNDER hits = the over result was a loss
+      const overWon = String(p.result).toLowerCase() === 'win' || String(p.result).toLowerCase() === 'w' || String(p.result).toLowerCase() === 'hit';
+      buckets[k].w += overWon ? 0 : 1;
+      buckets[k].n += 1;
+    });
+  });
+  const keys = Object.keys(buckets).map(Number).sort((a, b) => b - a);
+  if (!keys.length) {
+    return `<h2 style="margin-top:20px">GHOST SCORE RECORD</h2>
+      <div class="empty" style="padding:16px"><div>No graded fades scored yet. Once platinum/gold fades grade, their 5-condition ghost score records here — 5/5 ghosts get their own line.</div></div>`;
+  }
+  const rows = keys.map(k => {
+    const { w, n } = buckets[k];
+    const pct = n ? w / n : 0, lo = wl(w, n);
+    const cls = lo >= 0.524 ? 'hot' : pct <= 0.45 ? 'cold' : 'neutral';
+    const label = k >= 5 ? '👻 GHOST (5/5)' : `${k}/5 conditions`;
+    const badge = lo >= 0.524 ? ' ✓ +EV' : '';
+    return `<div class="breakdown-row">
+      <div><div style="font-weight:700">${label}</div>
+        <div style="font-size:11px;color:var(--dim)">${w}-${n-w} · UNDER · Wilson lo ${(lo*100).toFixed(0)}%${badge}</div></div>
+      <div class="bd-stats"><div class="bd-pct ${cls}">${(pct*100).toFixed(0)}%</div></div>
+    </div>`;
+  }).join('');
+  return `<h2 style="margin-top:20px">GHOST SCORE RECORD</h2>
+    <div style="font-size:11px;color:var(--dim);margin-bottom:8px">The 5-condition fade recipe, graded. Higher score = more conditions co-occurred. This is the checklist proving itself.</div>
+    ${rows}`;
 }
 
 // =============== PICKS (bets) ===============
@@ -11936,15 +12219,28 @@ function logBestBets(data) {
     }
 
     for (const m of sideData.mismatches) {
-      // Only log the TOP PICK from each side (one per team per game)
-      if (!m.isTopPick) continue;
+      // (Drop #46 — July 5, 2026) CARD→GRADER LOGGING FIX.
+      // Previously only the single TOP PICK per side was logged, so VERIFIED
+      // rarely-K hits-overs and platinum/gold fades that appear on Tonight's
+      // Card but aren't the game's top pick were NEVER logged or graded — the
+      // validation loop was blind to the exact plays being won manually
+      // (the 8-0 VERIFIED run showed up as 5/7 in the audit for this reason).
+      // Now we log a pick if it is the top pick OR carries a bettable tier.
+      const _bestForLog = (m.propRecs || []).find(p => p.isBest) || (m.propRecs || [])[0];
+      const _hasBettableTier = _bestForLog && (
+        _bestForLog._verifiedCohort ||
+        _bestForLog._lyridUnderTier === 'platinum' ||
+        _bestForLog._lyridUnderTier === 'gold' ||
+        m._verifiedCohort || m._lyridUnderTier === 'platinum' || m._lyridUnderTier === 'gold'
+      );
+      if (!m.isTopPick && !_hasBettableTier) continue;
       // Banned-list enforcement (see comment above on HR audit log).
       // Without this, banned hitters/teams continued getting logged as top
       // picks for analytics purposes even after exclusion. 5 logged picks for
       // banned players found in May 1-9 audit confirmed this gap.
       if (isBanned('hitters', m.hitter)) continue;
       if (isBanned('teams', side.hitTeam)) continue;
-      const bestBet = (m.propRecs || []).find(p => p.isBest);
+      const bestBet = _bestForLog;
       if (!bestBet) continue;
 
       const entryId = `${date}_${data.gamePk}_${m.hitterId || m.hitter.replace(/\s/g,'')}`;
@@ -11965,7 +12261,12 @@ function logBestBets(data) {
         pitcherName: sideData.pitcher?.name,
         pitcherHand: sideData.pitcher?.hand,
         tier: m.tier,
-        isTopPick: true,
+        isTopPick: !!m.isTopPick,
+        // (Drop #46) why this pick was logged — top-pick vs a bettable tier
+        _logReason: m.isTopPick ? 'top-pick'
+          : (bestBet._verifiedCohort || m._verifiedCohort) ? 'verified-cohort'
+          : (bestBet._lyridUnderTier || m._lyridUnderTier) ? 'under-tier'
+          : 'other',
         // (Drop #14 — June 5, 2026) Sharp HITS empirical override audit fields
         _sharpHits: bestBet._sharpHits || false,
         _sharpHitsRule: bestBet._sharpHitsRule || null,
@@ -11983,6 +12284,20 @@ function logBestBets(data) {
         _lyridUnderWR: bestBet._lyridUnderWR || null,
         _lyridUnderN: bestBet._lyridUnderN || null,
         _lyridUnderRule: bestBet._lyridUnderRule || null,
+        // (Drop #48 — July 5, 2026) GHOST-SCORE GRADING TAG.
+        // Stamp the 5-condition fade recipe score on every logged fade so the
+        // grader can build a record PER SCORE BUCKET — turning "5/5 ghosts
+        // went X-Y (Wilson lo Z%)" into a proven tier instead of a story.
+        ...(function () {
+          if (bestBet._lyridUnderTier !== 'platinum' && bestBet._lyridUnderTier !== 'gold') {
+            return { _ghostScore: null, _ghostIsGhost: null };
+          }
+          try {
+            const _g = computeGhostScore(m, data);
+            return _g ? { _ghostScore: _g.score, _ghostIsGhost: _g.isGhost }
+                      : { _ghostScore: null, _ghostIsGhost: null };
+          } catch (_) { return { _ghostScore: null, _ghostIsGhost: null }; }
+        })(),
         // (Drop #28 — June 12, 2026) TOP PICK suppression audit flag.
         // true = star was hidden because cohort is -EV (Collins rule).
         // Lets us grade whether suppressed picks really do lose.
@@ -12661,6 +12976,39 @@ async function gradeGameLineBets(opts = {}) {
     renderHistory();
   }
   return graded;
+}
+
+// (Drop #48 — July 5, 2026) Log an alternate total line entered by the user.
+// Produces a standard "OVER X.X"/"UNDER X.X" pick string so the existing
+// evaluateGameLineBet grader handles it at ANY line, and keys it by the line
+// value so multiple alt lines on one game don't collide.
+function logAltTotalLine(ctx) {
+  if (!ctx || !ctx.gamePk) return;
+  const date = ctx.date || getTodayStr();
+  const sideEl = document.getElementById('altTotalSide_' + ctx.gamePk);
+  const lineEl = document.getElementById('altTotalLine_' + ctx.gamePk);
+  const oddsEl = document.getElementById('altTotalOdds_' + ctx.gamePk);
+  const side = sideEl ? sideEl.value : 'over';
+  const line = lineEl ? parseFloat(lineEl.value) : NaN;
+  const odds = oddsEl && oddsEl.value.trim() !== '' ? parseInt(oddsEl.value, 10) : null;
+  if (!Number.isFinite(line)) { showToast('Enter a valid total line (e.g. 7.5)'); return; }
+
+  const pick = `${side.toUpperCase()} ${line}`;
+  const key = `${date}_${ctx.gamePk}_total_alt_${line}_${side}`;
+  if (state.gameLineBets[key]) { showToast('Already logged that alt line'); return; }
+
+  state.gameLineBets[key] = {
+    date, gamePk: ctx.gamePk, pick, tier: 'ALT', type: 'total',
+    price: odds, units: 1, away: ctx.away, home: ctx.home,
+    loggedAt: Date.now(), result: null, graded: false,
+    finalAwayRuns: null, finalHomeRuns: null,
+    _isAltLine: true,
+    _marketLine: (ctx.marketLine != null ? ctx.marketLine : null),
+    _lineVsMarket: (ctx.marketLine != null && Number.isFinite(line)) ? +(line - ctx.marketLine).toFixed(1) : null
+  };
+  saveState();
+  const vsMkt = (ctx.marketLine != null) ? ` (market ${ctx.marketLine})` : '';
+  showToast(`★ Logged alt line: ${pick}${vsMkt}`);
 }
 
 function evaluateGameLineBet(bet, awayRuns, homeRuns) {
@@ -19063,6 +19411,20 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       var pitcherFriendlyPark = (padj != null && padj <= -0.30);   // meaningful late-run suppression
       var gameLean = mlbGameLean(A);
       var oppWildShort = mlbOpposingSPWildOrShort(A, e.team);
+      // (Drop #46) ENVIRONMENT VETO INPUTS. Both fade/under losses this window
+      // (Griffin; TB/HOU) traced to the same cause: wind-out + heat + a hitter
+      // park overriding the model. Derive that hard composite here so the
+      // judgment layer can veto unders/fades in hostile run environments.
+      var _wx = (A && (A.weather || (A.context && A.context.weather))) || {};
+      var _windCat = String((_wx.windRelative && _wx.windRelative.category) || _wx.windCategory || '').toUpperCase();
+      var _windOut = /OUT_TO/.test(_windCat);
+      var _tempF = (typeof _wx.tempF === 'number') ? _wx.tempF
+                 : (typeof _wx.temperature === 'number') ? _wx.temperature : null;
+      var _heat = (_tempF != null && _tempF >= 85);
+      var _hitterPark = (padj != null && padj >= 0.30) || homeAbbr === 'COL';
+      // Hostile-for-unders composite: at least two of {wind out, heat, hitter park}.
+      var _hostileEnvCount = (_windOut ? 1 : 0) + (_heat ? 1 : 0) + (_hitterPark ? 1 : 0);
+      var _hostileForUnders = _hostileEnvCount >= 2;
       var sampleN = null;
       (ce.evidence || []).forEach(function (row) {
         var mm = String((row && row[1]) || '').match(/n=\s*([0-9]+)/i);
@@ -19076,6 +19438,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         tier: ce.tier, cashRate: (ce.wr || 0) / 100, edgeType: ce.edgeType, sampleN: sampleN,
         form: e.recentFormLabel || 'neutral', matchupContext: ce.ctxChips || [], why: ce.plain,
         gameLean: gameLean, pitcherFriendlyPark: pitcherFriendlyPark, opposingPitcherWildOrShort: oppWildShort,
+        // (Drop #46) environment-veto inputs
+        hostileForUnders: _hostileForUnders, windOut: _windOut, heat: _heat, hitterPark: _hitterPark,
         // (Tonight's Card spec) judgment inputs
         verdictPass: e._topPickVerdict === 'pass',
         projection: (function () {
@@ -19266,6 +19630,16 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   }
   function envKill(c) {
     if (c.side !== 'under') return null;
+    // (Drop #46) HARD ENVIRONMENT VETO. Both fade/under losses this window
+    // (Griffin; TB/HOU) were wind-out + heat + hitter park overriding the
+    // model. Two or more of those → veto the under regardless of projection.
+    if (c.hostileForUnders) {
+      var parts = [];
+      if (c.windOut) parts.push('wind blowing out');
+      if (c.heat) parts.push('heat');
+      if (c.hitterPark) parts.push('hitter park');
+      return 'Hostile run environment (' + parts.join(' + ') + ') — never fade/under into this, regardless of projection';
+    }
     if (c.gameLean === 'over') return 'Over-leaning game — wrong weather for a fade';
     if (c.gameLean !== 'under' && !c.pitcherFriendlyPark) return 'Neutral game, no pitcher park';
     if (c.opposingPitcherWildOrShort) return 'Wild/short opposing SP — produce spot, not a fade';
@@ -19353,7 +19727,9 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       h += '<div class="tc-empty"><b>No card tonight.</b> ' + ((res&&res.flagged.length)||0) +
            ' candidates didn&#39;t clear the judgment bar' +
            (reasons.length ? ' &mdash; top reasons: ' + reasons.join(' &middot; ') : '') +
-           '. A pass is a position.</div>';
+           '. A pass is a position.<br><br>' +
+           '<span style="opacity:0.85">Ghosts need a cold bat + elite arm + quiet park in the same spot. ' +
+           'When the slate has hot bats and wind-out games, the recipe didn&#39;t cook &mdash; and forcing a fade into it is exactly how the model gets beat.</span></div>';
       box.innerHTML = h; box.style.display = ''; return;
     }
     res.card.forEach(function (e) {
