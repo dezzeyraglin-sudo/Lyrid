@@ -5436,6 +5436,70 @@ function udFantasyScore(line) {
   return ppFantasyScore(line);
 }
 
+// ============================================================================
+// (Drop #52 — July 5, 2026) PITCHER FANTASY SCORE — corrected to mirror
+// PrizePicks MLB pitcher scoring EXACTLY (verified against their published
+// worked example: 6 IP / 18 outs, 8 K, 2 ER, quality start = 40 pts →
+// 18 + 24 − 6 + 4 = 40 ✓).
+//
+// Official PrizePicks MLB pitcher weights:
+//   Out recorded    +1   (so IP × 3 = outs × 1)
+//   Strikeout       +3
+//   Earned run      −3
+//   Quality start   +4   (6.0+ IP AND ≤ 3 ER)
+//   Win             +5
+// NOTE: PrizePicks pitcher FS does NOT penalize hits or walks in the core
+// formula (that was the error in the prior build). This function is the single
+// source of truth used by BOTH the projection and the grader, so the graded
+// hit rate is measured against the exact number PrizePicks will settle.
+// ============================================================================
+function ppPitcherFantasyScore(stat) {
+  if (!stat) return null;
+  const outs = (stat.outs != null) ? stat.outs
+             : (stat.ip != null) ? Math.round(stat.ip * 3) : null;
+  const k = stat.k != null ? stat.k : null;
+  if (outs == null || k == null) return null;
+  const er = stat.er != null ? stat.er : 0;
+  const ip = outs / 3;
+  let fs = outs * 1 + k * 3 + er * -3;
+  if (ip >= 6 && er <= 3) fs += 4;            // quality start bonus
+  if (stat.win === true) fs += 5;             // actual win (grading)
+  else if (typeof stat.win === 'number') fs += stat.win * 5;  // expected win (projection)
+  return Math.round(fs * 10) / 10;
+}
+
+function pitcherFantasyScoreFromComponents(comp) {
+  if (!comp) return null;
+  const outs = (comp.outs != null) ? comp.outs : (comp.ip != null ? comp.ip * 3 : null);
+  const k = (comp.k != null) ? comp.k : null;
+  if (outs == null || k == null) return null;   // need at least IP + K to be meaningful
+  return ppPitcherFantasyScore({
+    outs: outs,
+    k: k,
+    er: comp.er != null ? comp.er : 0,
+    win: comp.winProb != null ? comp.winProb : 0   // expected-win contribution (0-1)
+  });
+}
+
+// Pull component projections out of the pitcher recommendations array into the
+// shape pitcherFantasyScoreFromComponents expects.
+function pitcherFSComponents(recommendations, projectionObj) {
+  const comp = {};
+  (recommendations || []).forEach(r => {
+    if (r.type === 'strikeouts') comp.k = r.projection;
+    else if (r.type === 'outs') comp.outs = r.projection;
+    else if (r.type === 'earned_runs') comp.er = r.projection;
+    else if (r.type === 'hits_allowed') comp.hits = r.projection;
+    else if (r.type === 'walks') comp.bb = r.projection;
+    else if (r.type === 'record_win') comp.winProb = r.projection; // boolean prob 0-1
+  });
+  if (projectionObj) {
+    if (comp.k == null && projectionObj.kSharp) comp.k = projectionObj.kSharp.sharpKs;
+    if (comp.outs == null && projectionObj.outs != null) comp.outs = projectionObj.outs;
+  }
+  return comp;
+}
+
 function getTodayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -9037,7 +9101,8 @@ function renderAnalysis(data) {
       // Suppressed rows skip the log button (the bet probably shouldn't be made).
       const PP_TYPE_MAP = {
         strikeouts: 'K', outs: 'OUTS', earned_runs: 'ER',
-        walks: 'BB', hits_allowed: 'HITS_ALLOWED', record_win: 'WIN'
+        walks: 'BB', hits_allowed: 'HITS_ALLOWED', record_win: 'WIN',
+        fantasy_score: 'FANTASY_SCORE'   // (Drop #52)
       };
       const buildLogEntry = (rec, sideKey) => {
         if (rec.suppressed) return '';
@@ -9123,6 +9188,33 @@ function renderAnalysis(data) {
           </div>
         `;
       }).join('');
+
+      // (Drop #51) PITCHER FANTASY SCORE row — derived from the component
+      // projections (arsenal-vs-lineup), with manual line entry + grading like K/outs.
+      let pitcherFsHtml = '';
+      try {
+        const _fsComp = pitcherFSComponents(pp.recommendations, pp.projection);
+        const _fsProj = pitcherFantasyScoreFromComponents(_fsComp);
+        if (_fsProj != null && isFinite(_fsProj)) {
+          const _fsInputId = `pp-manual-${sideKey}-fantasy_score-${data.gamePk}`;
+          const _ipStr = _fsComp.outs != null ? (_fsComp.outs / 3).toFixed(1) : '?';
+          const _kStr = _fsComp.k != null ? (+_fsComp.k).toFixed(1) : '?';
+          pitcherFsHtml = `
+            <div class="pp-row">
+              <span class="pp-label">Fantasy Score</span>
+              <span class="pp-proj">${_fsProj} <span class="pp-unit">proj</span></span>
+              <span class="pp-desc">From arsenal matchup: ${_ipStr} IP, ${_kStr} K projected</span>
+              <div class="pp-manual-line">
+                <span class="pp-manual-label">Enter PP/UD fantasy line:</span>
+                <input type="number" step="0.5" id="${_fsInputId}" class="pp-manual-input" placeholder="line"
+                  onkeydown="if(event.key==='Enter')gradeManualLine('${_fsInputId}', '${sideKey}', 'fantasy_score', ${data.gamePk}, ${_fsProj})" />
+                <button class="pp-manual-btn" onclick="gradeManualLine('${_fsInputId}', '${sideKey}', 'fantasy_score', ${data.gamePk}, ${_fsProj})">grade</button>
+                <span class="pp-manual-result" id="${_fsInputId}-result"></span>
+              </div>
+              ${buildLogEntry({ type: 'fantasy_score', projection: _fsProj, suppressed: false, lineGrade: null }, sideKey)}
+            </div>`;
+        }
+      } catch (_) {}
 
       // Sharp K projection breakdown (DEEP MODE only) — shows lineup-vs-arsenal analysis
       // that produced the K projection. Helps user audit the projection's sharpness.
@@ -9324,7 +9416,7 @@ function renderAnalysis(data) {
           ${hrSplitHtml}
           ${sharpKHtml}
           ${batterKHtml}
-          <div class="pp-rows">${rows}</div>
+          <div class="pp-rows">${rows}${pitcherFsHtml}</div>
           ${bonusMarketsHtml}
           <div class="pp-footnote">Projections vs market line — use OVER / UNDER accordingly. Flag ${pp.suppressed ? 'SUPPRESSED items — books may not have updated role shift' : 'patterns that diverge from listed lines'}.</div>
         </div>
@@ -14463,6 +14555,24 @@ function _gradePitcherPropBet(bet, line) {
     return (side === 'yes' ? nh : !nh) ? 'win' : 'loss';
   }
 
+  // (Drop #52) FANTASY_SCORE — compute the pitcher's ACTUAL fantasy score from
+  // the real box score using the exact same PrizePicks formula as the
+  // projection, then grade over/under vs the entered line. Mirrors how PP
+  // settles: outs +1, K +3, ER −3, quality start +4, win +5.
+  if (propType === 'FANTASY_SCORE') {
+    const actualFs = ppPitcherFantasyScore({
+      outs: line.IPouts,
+      k: line.K,
+      er: line.ER,
+      win: (line.decision === 'W' || (line.decision || '').startsWith('W'))
+    });
+    if (actualFs == null || bet.line == null) return 'loss';
+    if (actualFs === bet.line) return 'push';
+    if (side === 'over') return actualFs > bet.line ? 'win' : 'loss';
+    if (side === 'under') return actualFs < bet.line ? 'win' : 'loss';
+    return 'loss';
+  }
+
   // Numeric props — K, OUTS, ER, BB, HITS_ALLOWED
   // Map prop type to actual stat from box score line
   const actualByProp = {
@@ -16333,7 +16443,9 @@ function gradeManualLine(inputId, sideKey, propType, gamePk, projection) {
     return;
   }
   // Use the same stddevs as server-side
-  const stddev = propType === 'strikeouts' ? 2.2 : 3.5;
+  const stddev = propType === 'strikeouts' ? 2.2
+    : propType === 'fantasy_score' ? 7.5   // (Drop #51) pitcher FS spread is wide
+    : 3.5;
   const proj = parseFloat(projection);
   if (isNaN(proj)) {
     result.innerHTML = '<span class="pp-manual-err">no projection</span>';
