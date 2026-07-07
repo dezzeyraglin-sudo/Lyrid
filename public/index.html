@@ -5483,6 +5483,105 @@ function pitcherFantasyScoreFromComponents(comp) {
 
 // Pull component projections out of the pitcher recommendations array into the
 // shape pitcherFantasyScoreFromComponents expects.
+// ============================================================================
+// (Drop #53 — July 6, 2026) LEASH + PITCH-COUNT + PER-PITCH-TYPE ESTIMATORS.
+//
+// Two FS unders lost because the pitcher was ridden longer than projected
+// (Schlittler proj ~6.2 IP -> threw 8.0/101 pitches; Peralta ridden to the 5th
+// at 103). These helpers use ONLY data the analysis already carries:
+//   - pitcherRole.avgIpRecent  (recent workload -> leash)
+//   - arsenal[].pitcherUsage   (usage % -> per-pitch-type counts)
+//   - walks projection + controlTier (traffic -> jam-risk PROXY)
+// No fabricated manager tendencies or box-score-only stats.
+// ============================================================================
+
+// LEASH: compare the model's projected outs (as IP) to the pitcher's OWN recent
+// average IP. Positive gap = he throws longer than projected = under leash risk.
+function computePitcherLeash(pitcherRole, projectedOuts) {
+  if (!pitcherRole || projectedOuts == null) return null;
+  const avgIp = parseFloat(pitcherRole.avgIpRecent);
+  if (!Number.isFinite(avgIp)) return null;
+  const projIp = projectedOuts / 3;
+  const gapIp = avgIp - projIp;
+  const recentApps = pitcherRole.recentApps || null;
+  if (gapIp >= 0.7) return { risk: 'long', gapIp: +gapIp.toFixed(1), avgIp: +avgIp.toFixed(1), projIp: +projIp.toFixed(1), recentApps,
+    warning: `LONG LEASH: averaged ${avgIp.toFixed(1)} IP recently${recentApps ? ` (last ${recentApps})` : ''} but the model projects only ${projIp.toFixed(1)} IP — being ridden longer than projected. Outs/FS/K UNDERS carry leash risk.` };
+  if (gapIp <= -0.7) return { risk: 'short', gapIp: +gapIp.toFixed(1), avgIp: +avgIp.toFixed(1), projIp: +projIp.toFixed(1), recentApps,
+    warning: `SHORT LEASH: averaging ${avgIp.toFixed(1)} IP recently, below the ${projIp.toFixed(1)} IP projection — supports the outs/FS UNDER.` };
+  return { risk: 'aligned', gapIp: +gapIp.toFixed(1), avgIp: +avgIp.toFixed(1), projIp: +projIp.toFixed(1), recentApps, warning: null };
+}
+
+// PITCH-COUNT ESTIMATE: total pitches from projected outs. MLB starters average
+// ~15.5-16.5 pitches per inning (~5.4/out). A pitcher with a high walk
+// projection or a wild control tier runs a heavier count for the same outs.
+function estimatePitchCount(projectedOuts, walksProj, controlTier) {
+  if (projectedOuts == null) return null;
+  let perOut = 5.4;                                  // league-ish baseline
+  if (Number.isFinite(walksProj)) perOut += Math.max(0, (walksProj - 2)) * 0.25; // extra traffic
+  if (controlTier === 'wild') perOut += 0.4;
+  else if (controlTier === 'elite') perOut -= 0.3;
+  const est = Math.round(projectedOuts * perOut);
+  const lo = Math.round(est * 0.9), hi = Math.round(est * 1.1);
+  return { est, lo, hi, perOut: +perOut.toFixed(1), ip: +(projectedOuts / 3).toFixed(1) };
+}
+
+// PER-PITCH-TYPE COUNTS: split the estimated total pitch count across the
+// arsenal by each pitch's usage %. arsenal entries carry { pitch, pitcherUsage }.
+function estimatePitchTypeCounts(arsenal, totalPitches) {
+  if (!Array.isArray(arsenal) || totalPitches == null) return [];
+  const withUsage = arsenal.filter(p => Number.isFinite(parseFloat(p.pitcherUsage || p.usage)));
+  if (!withUsage.length) return [];
+  const sum = withUsage.reduce((s, p) => s + parseFloat(p.pitcherUsage || p.usage), 0) || 100;
+  return withUsage.map(p => {
+    const usage = parseFloat(p.pitcherUsage || p.usage);
+    return { pitch: p.pitch || p.pitchType || p.name || '?', usagePct: Math.round(usage / sum * 100),
+             count: Math.round(totalPitches * usage / sum) };
+  }).sort((a, b) => b.count - a.count);
+}
+
+// JAM RISK — rebuilt on REAL historical data, not a walk/control proxy.
+// s.inningSplits already computes, from this pitcher's actual prior outings:
+//   meltdownInning / meltdownXw   — the inning range where his xwOBA-against
+//                                    spikes (i.e. where he historically gets
+//                                    into trouble)
+//   groups.{firstTime,secondTime,thirdTime}.bbPct — REAL walk rate by
+//                                    inning-range from real prior starts
+// This tells you not just "is he wild" but "does HE specifically tend to find
+// bad spots, and when" — which is exactly what a jam-risk read should answer.
+function estimateJamRisk(inningSplits, walksProj) {
+  if (!inningSplits) return null;
+  const meltdownInning = inningSplits.meltdownInning || null;
+  const meltdownXw = inningSplits.meltdownXw || null;
+  const g = inningSplits.groups || {};
+  // Real historical BB% for the group covering the meltdown inning (or overall
+  // first-time-through if no meltdown identified)
+  let groupBb = null, groupLabel = null;
+  if (meltdownInning != null) {
+    if (meltdownInning <= 3) { groupBb = g.firstTime?.bbPct; groupLabel = 'innings 1-3'; }
+    else if (meltdownInning <= 6) { groupBb = g.secondTime?.bbPct; groupLabel = 'innings 4-6'; }
+    else { groupBb = g.thirdTime?.bbPct; groupLabel = 'innings 7+'; }
+  }
+  let score = 0; const parts = [];
+  if (meltdownInning != null && meltdownXw != null && meltdownXw >= 0.360) {
+    score += 2; parts.push(`historically melts down in the ${ordinalFrontend(meltdownInning)} (.${String(Math.round(meltdownXw*1000)).padStart(3,'0')} xwOBA-against)`);
+  }
+  if (Number.isFinite(groupBb) && groupBb >= 0.10) {
+    score += 1; parts.push(`${(groupBb*100).toFixed(0)}% BB rate in ${groupLabel} historically`);
+  }
+  if (Number.isFinite(walksProj) && walksProj >= 3.0) {
+    score += 1; parts.push(`${walksProj.toFixed(1)} walks projected tonight`);
+  }
+  if (inningSplits.controlTier === 'wild') { score += 1; parts.push('control graded below average'); }
+  const tier = score >= 3 ? 'high' : score >= 1 ? 'moderate' : 'low';
+  return {
+    tier, score, parts, meltdownInning,
+    note: tier === 'high'
+      ? `Elevated jam risk — this pitcher's own history shows it, not just tonight's projection. Supports early-run overs and threatens deep-outs/FS unders around the ${meltdownInning ? ordinalFrontend(meltdownInning) : 'danger'} inning.`
+      : tier === 'moderate' ? 'Some historical traffic risk.'
+      : 'Clean historical profile — no identified meltdown pattern.'
+  };
+}
+
 function pitcherFSComponents(recommendations, projectionObj) {
   const comp = {};
   (recommendations || []).forEach(r => {
@@ -9199,11 +9298,35 @@ function renderAnalysis(data) {
           const _fsInputId = `pp-manual-${sideKey}-fantasy_score-${data.gamePk}`;
           const _ipStr = _fsComp.outs != null ? (_fsComp.outs / 3).toFixed(1) : '?';
           const _kStr = _fsComp.k != null ? (+_fsComp.k).toFixed(1) : '?';
+          // (Drop #53) leash, pitch-count, per-pitch-type, jam-risk — all from
+          // data already on the page (recent IP, arsenal usage, walks/control).
+          const _walksRec = (pp.recommendations || []).find(r => r.type === 'walks');
+          const _walksProj = _walksRec ? parseFloat(_walksRec.projection) : null;
+          const _hitsRec = (pp.recommendations || []).find(r => r.type === 'hits_allowed');
+          const _hitsProj = _hitsRec ? parseFloat(_hitsRec.projection) : null;
+          const _controlTier = s.inningSplits && s.inningSplits.controlTier;
+          const _leash = computePitcherLeash(s.pitcherRole, _fsComp.outs);
+          const _pc = estimatePitchCount(_fsComp.outs, _walksProj, _controlTier);
+          const _arsenal = s.arsenal || s.pitcherArsenal || (pp.projection && pp.projection.arsenal) || [];
+          const _ptypes = _pc ? estimatePitchTypeCounts(_arsenal, _pc.est) : [];
+          const _jam = estimateJamRisk(s.inningSplits, _walksProj);
+
+          const _leashHtml = (_leash && _leash.warning) ? `
+            <div class="pp-leash ${_leash.risk === 'long' ? 'leash-long' : 'leash-short'}" style="margin-top:6px;padding:7px 9px;border-radius:7px;font-size:11px;line-height:1.4;${_leash.risk === 'long' ? 'background:rgba(224,120,80,0.12);border:1px solid rgba(224,120,80,0.4);color:#e0a050' : 'background:rgba(120,180,138,0.12);border:1px solid rgba(120,180,138,0.4);color:#7fb08a'}">
+              ${_leash.risk === 'long' ? '⚠ ' : '✓ '}${esc(_leash.warning)}</div>` : '';
+          const _pcHtml = _pc ? `
+            <div style="margin-top:6px;font-size:11px;color:var(--dim)">Est. pitch count: <b style="color:var(--ink)">${_pc.est}</b> (${_pc.lo}–${_pc.hi}) · ~${_pc.perOut}/out over ${_pc.ip} IP</div>` : '';
+          const _ptHtml = (_ptypes && _ptypes.length) ? `
+            <div style="margin-top:5px;font-size:11px;color:var(--dim)">By pitch: ${_ptypes.slice(0,5).map(p => `${esc(p.pitch)} <b style="color:var(--ink)">${p.count}</b> (${p.usagePct}%)`).join(' · ')}</div>` : '';
+          const _jamHtml = _jam ? `
+            <div style="margin-top:5px;font-size:11px;${_jam.tier === 'high' ? 'color:#e0a050' : _jam.tier === 'moderate' ? 'color:var(--ink)' : 'color:var(--dim)'}">Jam risk (his history): <b>${_jam.tier.toUpperCase()}</b>${_jam.parts.length ? ' — ' + esc(_jam.parts.join(', ')) : ''}</div>` : '';
+
           pitcherFsHtml = `
             <div class="pp-row">
               <span class="pp-label">Fantasy Score</span>
               <span class="pp-proj">${_fsProj} <span class="pp-unit">proj</span></span>
               <span class="pp-desc">From arsenal matchup: ${_ipStr} IP, ${_kStr} K projected</span>
+              ${_leashHtml}${_pcHtml}${_ptHtml}${_jamHtml}
               <div class="pp-manual-line">
                 <span class="pp-manual-label">Enter PP/UD fantasy line:</span>
                 <input type="number" step="0.5" id="${_fsInputId}" class="pp-manual-input" placeholder="line"
