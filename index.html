@@ -5526,15 +5526,19 @@ function estimatePitchCount(projectedOuts, walksProj, controlTier) {
 }
 
 // PER-PITCH-TYPE COUNTS: split the estimated total pitch count across the
-// arsenal by each pitch's usage %. arsenal entries carry { pitch, pitcherUsage }.
+// arsenal by each pitch's usage %. Arsenal entries from s.pitcherArsenal use
+// { type, usage, velo } — NOT { pitch, pitcherUsage } as originally assumed,
+// which caused every pitch to fall through to '?' (the "????" bug: each of
+// up to 5 pitch types rendered as a bare '?' since neither the name nor the
+// usage lookup matched the real field names).
 function estimatePitchTypeCounts(arsenal, totalPitches) {
   if (!Array.isArray(arsenal) || totalPitches == null) return [];
-  const withUsage = arsenal.filter(p => Number.isFinite(parseFloat(p.pitcherUsage || p.usage)));
+  const withUsage = arsenal.filter(p => Number.isFinite(parseFloat(p.usage ?? p.pitcherUsage)));
   if (!withUsage.length) return [];
-  const sum = withUsage.reduce((s, p) => s + parseFloat(p.pitcherUsage || p.usage), 0) || 100;
+  const sum = withUsage.reduce((s, p) => s + parseFloat(p.usage ?? p.pitcherUsage), 0) || 100;
   return withUsage.map(p => {
-    const usage = parseFloat(p.pitcherUsage || p.usage);
-    return { pitch: p.pitch || p.pitchType || p.name || '?', usagePct: Math.round(usage / sum * 100),
+    const usage = parseFloat(p.usage ?? p.pitcherUsage);
+    return { pitch: p.type || p.pitch || p.pitchType || p.name || '?', usagePct: Math.round(usage / sum * 100),
              count: Math.round(totalPitches * usage / sum) };
   }).sort((a, b) => b.count - a.count);
 }
@@ -9307,7 +9311,7 @@ function renderAnalysis(data) {
           const _controlTier = s.inningSplits && s.inningSplits.controlTier;
           const _leash = computePitcherLeash(s.pitcherRole, _fsComp.outs);
           const _pc = estimatePitchCount(_fsComp.outs, _walksProj, _controlTier);
-          const _arsenal = s.arsenal || s.pitcherArsenal || (pp.projection && pp.projection.arsenal) || [];
+          const _arsenal = s.pitcherArsenal || s.arsenal || (pp.projection && pp.projection.arsenal) || [];
           const _ptypes = _pc ? estimatePitchTypeCounts(_arsenal, _pc.est) : [];
           const _jam = estimateJamRisk(s.inningSplits, _walksProj);
 
