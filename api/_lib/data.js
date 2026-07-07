@@ -417,6 +417,11 @@ export async function getHitterStats(mlbam, season) {
       hard_hit_percent: { value: custRow.hard_hit_percent ? parseFloat(custRow.hard_hit_percent).toFixed(1) : null },
       avg_exit_velocity: { value: custRow.exit_velocity_avg ? parseFloat(custRow.exit_velocity_avg).toFixed(1) : null },
       k_percent: { value: custRow.k_percent ? parseFloat(custRow.k_percent).toFixed(1) : null },
+      // (Fixed — bb_percent was already requested in CUSTOM_URL's selections
+      // list but was never mapped into the returned `overall` object, so
+      // seasonStats.bbPct downstream always resolved to null. Same
+      // empty-string guard pattern as k_percent/hard_hit_percent.)
+      bb_percent: { value: (custRow.bb_percent !== '' && custRow.bb_percent != null) ? parseFloat(custRow.bb_percent).toFixed(1) : null },
       // PHASE 1 DAMAGE QUALITY fields — null when Savant doesn't return data
       gb_percent: { value: gbPct },
       fb_percent: { value: fbPct },

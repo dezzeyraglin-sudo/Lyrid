@@ -734,6 +734,10 @@ export default async function handler(req, res) {
             vsBatSide: effectiveBatSide,
             opsAgainst: pitSplitSide.opsAgainst,
             kPct: pitSplitSide.kPct,
+            // (Added — confirmed real: getPitcherSplits in data.js already
+            // computes bbPct from baseOnBalls/plateAppearances for this exact
+            // vsR/vsL split, same source as kPct/opsAgainst above.)
+            bbPct: pitSplitSide.bbPct,
             pa: pitSplitSide.pa,
             smallSample: pitSplitSide.pa < 40
           };
@@ -955,6 +959,11 @@ export default async function handler(req, res) {
             hardHitPct: overall.hard_hit_percent?.value || null,
             avgEV: overall.avg_exit_velocity?.value || null,
             kPct: overall.k_percent?.value || null,
+            // (Added — walk-rate for PA-outcome modeling.) Confirmed: Savant's
+            // custom leaderboard requests bb_percent (CUSTOM_URL in data.js),
+            // and the mapping into `overall.bb_percent` was fixed there —
+            // it was previously requested but never mapped, always null.
+            bbPct: overall.bb_percent?.value || null,
             // PHASE 1 DAMAGE QUALITY: batted-ball percentages for archetype
             // classification. Null when Savant doesn't return data — Phase 2
             // classifier treats null as BALANCED (no archetype edge).
