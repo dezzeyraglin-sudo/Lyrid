@@ -6711,6 +6711,162 @@ function computeHitterVerdict(m) {
     plain:'Reasonable matchup edge on the over. A lean, not a hammer.' };
 }
 
+// ============================================================================
+// (Drop #54 — July 6, 2026) PITCHER CONTROL-TENDENCY ENGINE.
+//
+// Answers "does this pitcher throw a lot of balls or strikes" from his real
+// BB%/K% vs this hitter's side (platoonMeta.pitcher.bbPct/kPct, now flowing
+// after the data.js/analyze.js fix) compared to league average (BB% 8.5%,
+// K% 22.5% — the same anchors analyze.js already uses as fallback defaults,
+// kept consistent here). This is a MATCH-WIDE signal — every hitter card
+// gets it, not just the pitcher props panel, per the design ask.
+// ============================================================================
+const LEAGUE_AVG_BB_PCT = 8.5;
+const LEAGUE_AVG_K_PCT = 22.5;
+
+function computePitcherControlProfile(pitcherMeta) {
+  if (!pitcherMeta) return null;
+  const bb = parseFloat(pitcherMeta.bbPct);
+  const k = parseFloat(pitcherMeta.kPct);
+  const hasBb = Number.isFinite(bb), hasK = Number.isFinite(k);
+  if (!hasBb && !hasK) return null;
+
+  // Strike-thrower vs ball-thrower: high K% + low BB% = pounds the zone.
+  // Low K% + high BB% = nibbles / falls behind. Scored -2..+2 for tier text.
+  let score = 0;
+  if (hasBb) { if (bb <= LEAGUE_AVG_BB_PCT - 2) score += 1; else if (bb >= LEAGUE_AVG_BB_PCT + 2.5) score -= 1; }
+  if (hasK) { if (k >= LEAGUE_AVG_K_PCT + 4) score += 1; else if (k <= LEAGUE_AVG_K_PCT - 4) score -= 1; }
+
+  let tier, label;
+  if (score >= 2) { tier = 'strike-thrower'; label = 'STRIKE THROWER'; }
+  else if (score <= -2) { tier = 'ball-thrower'; label = 'FALLS BEHIND'; }
+  else { tier = 'neutral'; label = 'AVERAGE CONTROL'; }
+
+  const parts = [];
+  if (hasBb) parts.push(`${bb.toFixed(1)}% BB${bb <= LEAGUE_AVG_BB_PCT - 2 ? ' (elite)' : bb >= LEAGUE_AVG_BB_PCT + 2.5 ? ' (wild)' : ''} vs ${LEAGUE_AVG_BB_PCT}% league avg`);
+  if (hasK) parts.push(`${k.toFixed(1)}% K vs ${LEAGUE_AVG_K_PCT}% league avg`);
+
+  return { tier, label, score, bbPct: hasBb ? bb : null, kPct: hasK ? k : null, detail: parts.join(' · ') };
+}
+
+// Compact chip for the match-wide card (verdict banner area). Renders on
+// EVERY hitter card, fade or over, per the "entire match analysis" ask.
+function buildControlChip(pitcherMeta) {
+  const cp = computePitcherControlProfile(pitcherMeta);
+  if (!cp || cp.tier === 'neutral') return '';
+  const color = cp.tier === 'strike-thrower' ? '#7fb08a' : '#e0a050';
+  const bg = cp.tier === 'strike-thrower' ? 'rgba(120,180,138,0.12)' : 'rgba(224,160,80,0.12)';
+  const border = cp.tier === 'strike-thrower' ? 'rgba(120,180,138,0.35)' : 'rgba(224,160,80,0.35)';
+  return `<div class="control-chip" title="${esc(cp.detail)}" style="display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;letter-spacing:0.05em;padding:3px 8px;border-radius:100px;background:${bg};border:1px solid ${border};color:${color};margin:4px 12px 0">
+    ${cp.tier === 'strike-thrower' ? '✓' : '⚠'} ${cp.label}
+  </div>`;
+}
+
+// ============================================================================
+// (Drop #54) BATTER PA-OUTCOME ENGINE.
+//
+// Estimates P(walk), P(strikeout), P(hit), P(field out) for a plate appearance
+// from REAL rates on both sides — batter seasonStats.bbPct/kPct (now flowing)
+// vs pitcher platoonMeta.pitcher.bbPct/kPct (now flowing), blended with the
+// standard sabermetric log5 method (odds-ratio blend anchored to league
+// average) rather than a naive average of the two rates.
+//
+// Log5: P = (Pa*Pb/Pl) / (Pa*Pb/Pl + (1-Pa)*(1-Pb)/(1-Pl))
+//   Pa = batter's own rate, Pb = pitcher's rate allowed, Pl = league average.
+// This is the same math underlying most public matchup projection tools —
+// not a new statistical claim, just correctly combining two real rates.
+//
+// Hit vs field-out split (of the "ball in play" remainder after BB%+K% are
+// removed): scaled by the batter's contact-quality percentile (xwOBA vs a
+// league-average xwOBA anchor of .320), since no server-side pHit engine
+// reaches the client. This piece is a MODELED estimate, not a fetched rate —
+// labeled as such in the returned object and in the UI.
+// ============================================================================
+const LEAGUE_AVG_XWOBA = 0.320;   // rough MLB-average xwOBA anchor for BIP-quality scaling
+const LEAGUE_AVG_BABIP = 0.290;   // rough MLB-average hit-on-BIP rate
+
+function log5(pa, pb, pl) {
+  if (!Number.isFinite(pa) || !Number.isFinite(pb) || !Number.isFinite(pl)) return null;
+  pa = Math.min(Math.max(pa, 0.005), 0.995);
+  pb = Math.min(Math.max(pb, 0.005), 0.995);
+  pl = Math.min(Math.max(pl, 0.005), 0.995);
+  const num = (pa * pb) / pl;
+  const den = num + ((1 - pa) * (1 - pb)) / (1 - pl);
+  return den > 0 ? num / den : null;
+}
+
+function computePAOutcomeEstimate(batterSeasonStats, pitcherMeta) {
+  if (!batterSeasonStats && !pitcherMeta) return null;
+  const batterBb = parseFloat(batterSeasonStats?.bbPct) / 100;
+  const batterK = parseFloat(batterSeasonStats?.kPct) / 100;
+  const pitcherBb = parseFloat(pitcherMeta?.bbPct) / 100;
+  const pitcherK = parseFloat(pitcherMeta?.kPct) / 100;
+  const leagueBb = LEAGUE_AVG_BB_PCT / 100;
+  const leagueK = LEAGUE_AVG_K_PCT / 100;
+
+  const pWalk = log5(batterBb, pitcherBb, leagueBb);
+  const pK = log5(batterK, pitcherK, leagueK);
+  // Degrade gracefully: if only one side has a rate, blend the side we have
+  // against league average rather than returning nothing. Only bail if we have
+  // no walk AND no strikeout signal from either side.
+  const walkFallback = Number.isFinite(batterBb) ? log5(batterBb, leagueBb, leagueBb)
+                     : Number.isFinite(pitcherBb) ? log5(leagueBb, pitcherBb, leagueBb) : null;
+  const kFallback = Number.isFinite(batterK) ? log5(batterK, leagueK, leagueK)
+                  : Number.isFinite(pitcherK) ? log5(leagueK, pitcherK, leagueK) : null;
+  const resolvedWalk = pWalk != null ? pWalk : walkFallback;
+  const resolvedK = pK != null ? pK : kFallback;
+  if (resolvedWalk == null && resolvedK == null) return null;
+
+  const walkRate = resolvedWalk != null ? resolvedWalk : leagueBb;
+  const kRate = resolvedK != null ? resolvedK : leagueK;
+  const partial = (pWalk == null || pK == null);
+  // Remaining PA ends in a ball in play (walk and K are mutually exclusive
+  // with BIP and with each other in a single PA outcome bucket).
+  const bipRate = Math.max(0, 1 - walkRate - kRate);
+
+  // Hit-vs-out split of the BIP bucket, scaled by contact quality (modeled,
+  // not fetched — no server pHit reaches the client).
+  const xwoba = parseFloat(batterSeasonStats?.xwoba);
+  let hitShareOfBip = LEAGUE_AVG_BABIP;
+  let qualityNote = 'league-average contact quality assumed (no xwOBA available)';
+  if (Number.isFinite(xwoba)) {
+    const qualityGap = xwoba - LEAGUE_AVG_XWOBA;           // + = better than average contact
+    hitShareOfBip = Math.min(0.45, Math.max(0.18, LEAGUE_AVG_BABIP + qualityGap * 0.6));
+    qualityNote = `scaled from ${xwoba.toFixed(3)} xwOBA vs ${LEAGUE_AVG_XWOBA} league avg`;
+  }
+  const hitRate = bipRate * hitShareOfBip;
+  const fieldOutRate = bipRate - hitRate;
+
+  return {
+    walk: +(walkRate * 100).toFixed(1),
+    strikeout: +(kRate * 100).toFixed(1),
+    hit: +(hitRate * 100).toFixed(1),
+    fieldOut: +(fieldOutRate * 100).toFixed(1),
+    inputs: {
+      batterBbPct: Number.isFinite(batterBb) ? +(batterBb*100).toFixed(1) : null,
+      batterKPct: Number.isFinite(batterK) ? +(batterK*100).toFixed(1) : null,
+      pitcherBbPct: Number.isFinite(pitcherBb) ? +(pitcherBb*100).toFixed(1) : null,
+      pitcherKPct: Number.isFinite(pitcherK) ? +(pitcherK*100).toFixed(1) : null
+    },
+    hitOutSplitNote: qualityNote,
+    partial,      // true when only one side (batter or pitcher) had a rate
+    modeled: true   // flags that hit/fieldOut split is a model, not a fetched rate
+  };
+}
+
+// Compact 4-bucket display for the mismatch card.
+function buildPAOutcomeChip(batterSeasonStats, pitcherMeta) {
+  const pa = computePAOutcomeEstimate(batterSeasonStats, pitcherMeta);
+  if (!pa) return '';
+  return `<div class="pa-outcome-row" style="display:flex;gap:10px;flex-wrap:wrap;font-size:10.5px;margin:6px 12px 0;color:var(--dim)" title="Hit/field-out split is modeled from contact quality (${esc(pa.hitOutSplitNote)}); walk/strikeout use real batter-vs-pitcher rates blended log5-style.">
+    <span>BB <b style="color:var(--ink)">${pa.walk}%</b></span>
+    <span>K <b style="color:var(--ink)">${pa.strikeout}%</b></span>
+    <span>Hit <b style="color:var(--ink)">${pa.hit}%</b><span style="opacity:0.6">*</span></span>
+    <span>Out <b style="color:var(--ink)">${pa.fieldOut}%</b><span style="opacity:0.6">*</span></span>
+    <span style="opacity:0.55">· per-PA est.${pa.partial ? ' (1-sided)' : ''}</span>
+  </div>`;
+}
+
 function buildVerdictBanner(m, env) {
   const v = computeHitterVerdict(m);
   if (!v) return '';
@@ -8564,6 +8720,8 @@ function renderAnalysis(data) {
           return `
             <div class="match ${m.tier}${m.isTopPick?' top-pick':''}${m.hrChance?' has-hr-chance':''}">
               <div style="padding:10px 12px 0">${buildVerdictBanner(m, { projTotal: (data.projection ? parseFloat(data.projection.projTotal) : null) })}</div>
+              ${buildControlChip(m.platoonMeta && m.platoonMeta.pitcher)}
+              ${buildPAOutcomeChip(m.seasonStats, m.platoonMeta && m.platoonMeta.pitcher)}
               ${_isFadeCard ? `<div style="padding:0 12px">${buildGhostCard(m, data, 'fade')}</div>` : ''}
               ${m._empUnderRec ? `<div style="padding:0 12px">${buildLyridBestBanner(m._empUnderRec.backtestWR, m._empUnderRec.backtestN, { kind: 'compact', label: 'LYRID UNDER · ' + m._empUnderRec.propLabel, tooltip: m._empUnderRec.reasoningLines.join(' · ') })}</div>` : ''}
               <div class="match-head">
