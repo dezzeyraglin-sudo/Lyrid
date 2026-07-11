@@ -361,8 +361,8 @@ async function generateSlate(opts = {}) {
       let v2AwayRoster = null;
       if (WNBA_V2_PROJECTIONS) {
         try {
-          v2HomeRoster = buildV2Roster(homePlayers, homeAbbr, injuryReport, { spread: spread, is_b2b: false });
-          v2AwayRoster = buildV2Roster(awayPlayers, awayAbbr, injuryReport, { spread: -spread, is_b2b: false });
+          v2HomeRoster = buildV2Roster(homePlayers, homeAbbr, injuryReport, { spread: spread, is_b2b: false, teamPace: Number(allTeamStats[homeAbbr]?.pace) || Number(allTeamStats[homeAbbr]?.PACE) || null });
+          v2AwayRoster = buildV2Roster(awayPlayers, awayAbbr, injuryReport, { spread: -spread, is_b2b: false, teamPace: Number(allTeamStats[awayAbbr]?.pace) || Number(allTeamStats[awayAbbr]?.PACE) || null });
         } catch (err) {
           warnings.push(`v2 roster build failed for ${homeAbbr}@${awayAbbr}: ${err.message}`);
         }
@@ -803,7 +803,15 @@ async function buildAndRunAnalysis({
     let injuryStatus = 'AVAILABLE', injuryDetail = null;
     if (Array.isArray(v2Roster)) {
       const re = v2Roster.find(r => _normName(r.playerName) === _normName(player.name));
-      if (re) { injuryStatus = re.status || 'AVAILABLE'; injuryDetail = re._injury?.detail || null; }
+      if (re) {
+        injuryStatus = re.status || 'AVAILABLE'; injuryDetail = re._injury?.detail || null;
+        // Backfill a real usage rate for the card when the player object didn't carry
+        // one (BDL season averages often omit USG_PCT). buildV2Roster computed a
+        // possession-share usage from team pace; surface it as a percentage.
+        if ((player.usageRate == null || !Number.isFinite(Number(player.usageRate))) && re.usagePct != null) {
+          player.usageRate = re.usagePct;
+        }
+      }
     }
     const isOut = injuryStatus === 'OUT';
     const isDoubtful = injuryStatus === 'DOUBTFUL';
@@ -1002,17 +1010,32 @@ function buildV2Roster(players, teamAbbrev, injuryReport, gameContext) {
       ts_pct = denom > 0 ? ppg / denom : 0.535; // league avg fallback
     }
 
-    // Usage rate: prefer the REAL resolved value on the player object (usageRate,
-    // e.g. 28.6), then raw fields, then a proxy. Normalize to a decimal fraction.
+    // Usage rate: prefer a REAL usage figure (BDL USG_PCT or a resolved value),
+    // then a real possession-based estimate, then a crude proxy as last resort.
+    //
+    // Real usage = the share of the team's possessions a player ends while on court:
+    //   USG% = (FGA + 0.44·FTA + TOV) ÷ (teamPace × MP/40)
+    // teamPace is the team's possessions per 40-minute game; MP/40 is the fraction
+    // of the game the player is on the floor. This is the standard possession-share
+    // definition and replaces the old `possessionsUsed / 16` guess, which had no
+    // team or minutes normalization and drifted badly for high- and low-minute roles.
     let usage = Number(p.usageRate) || Number(raw.USG_PCT) || Number(raw.usage);
     if (Number.isFinite(usage) && usage > 1) usage = usage / 100;
     if (!Number.isFinite(usage)) {
       const fga = Number(raw.FGA) || Number(raw.fga) || 0;
       const fta = Number(raw.FTA) || Number(raw.fta) || 0;
       const tov = Number(raw.TOV) || Number(raw.TO) || Number(raw.tov) || 0;
-      const possessionsUsed = fga + tov + 0.44 * fta;
-      usage = possessionsUsed > 0 ? Math.min(0.40, possessionsUsed / 16) : 0.20;
+      const possUsed = fga + 0.44 * fta + tov;
+      const pace = Number(gameContext?.teamPace) || 81; // WNBA league-avg pace fallback
+      const teamPossOnCourt = pace * (mpg > 0 ? mpg / 40 : 1);
+      if (possUsed > 0 && teamPossOnCourt > 0) {
+        usage = Math.max(0.05, Math.min(0.40, possUsed / teamPossOnCourt));
+      } else {
+        usage = possUsed > 0 ? Math.min(0.40, possUsed / 16) : 0.20; // last-resort proxy
+      }
     }
+    // Percentage form for display (playerContext.usageRate / card / drivers).
+    const usagePct = Number.isFinite(usage) ? Number((usage * 100).toFixed(1)) : null;
 
     // Look up injury status — by NAME first (reliable), ID as a fallback.
     const injury = injuryByName[normName(p.name)]
@@ -1032,6 +1055,7 @@ function buildV2Roster(players, teamAbbrev, injuryReport, gameContext) {
       // Stats for points engine
       season_ppg: ppg,
       usage,
+      usagePct,   // percentage form for the card / playerContext
       ts_pct,
       // Stats for rebounds engine
       season_reb_per_min: reb_per_min,
