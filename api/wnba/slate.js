@@ -385,13 +385,18 @@ async function generateSlate(opts = {}) {
         const recentFormPromise = Promise.resolve(
           _bdlGames.length ? aggregateFromGames(_bdlGames, 10, 'points') : null
         );
+        // Shots-to-clear scoring profile (per-player, market-independent). Built
+        // from the same leakage-filtered logs; carried onto every analysis so the
+        // points path can read P(over) off a distribution instead of a mean.
+        const _shotProfile = _bdlGames.length ? buildShotProfile(_bdlGames, 10) : null;
 
         for (const market of markets) {
           tasks.push(
             buildAndRunAnalysis({
               player, isHome, opponent, team, market, season, game, spread, total,
               recentFormPromise, allTeamStats, gameLines,
-              v2Roster, v2OpponentRoster, injuryReport, defenseTable
+              v2Roster, v2OpponentRoster, injuryReport, defenseTable,
+              shotProfile: _shotProfile
             })
           );
         }
@@ -622,10 +627,131 @@ function buildHardFlagsFromUnified(u, player, reboundExtras) {
   return flags;
 }
 
+// ── SHOTS-TO-CLEAR: shot profile + distributional points estimate ────────────
+// Builds a per-player scoring mechanism from raw BDL game logs and reads
+// P(points > line) off the resulting distribution instead of a single mean.
+// All inputs come straight from the game logs — no team totals needed.
+//
+// There is no shot-location data in BDL for the WNBA, so "hot spots" aren't
+// available; the 2PA/3PA/FTA mix is the closest proxy for HOW a player scores
+// (rim-pressure vs jump-shooter vs whistle-drawer). Foul/whistle factors ride in
+// through the FTA rate and FT%.
+
+function _parseMin(v) {
+  if (v == null) return 0;
+  if (typeof v === 'number') return v;
+  const s = String(v);
+  if (s.includes(':')) { const [m, sec] = s.split(':'); return (Number(m) || 0) + (Number(sec) || 0) / 60; }
+  return Number(s) || 0;
+}
+function _numf(...vals) { for (const v of vals) { const n = Number(v); if (Number.isFinite(n)) return n; } return 0; }
+
+/**
+ * Build a scoring profile from a player's raw game logs.
+ * @param {Array} games  raw BDL game rows (any order; sorted by date if present)
+ * @param {number} N     use the most-recent N games (default 10)
+ * @returns {Object|null} { gamesUsed, minAvg, minStd, minCv,
+ *   f2aPerMin, f3aPerMin, ftaPerMin, pct2, pct3, pctFt, hasShotData }
+ */
+function buildShotProfile(games, N = 10) {
+  if (!Array.isArray(games) || games.length === 0) return null;
+  // Sort oldest→newest when dates exist, then take the last N.
+  const withDate = games.every(g => g && (g.date || g.game_date));
+  const sorted = withDate
+    ? [...games].sort((a, b) => String(a.date || a.game_date).localeCompare(String(b.date || b.game_date)))
+    : [...games];
+  const recent = sorted.slice(-N);
+
+  const mins = [];
+  let f2a = 0, f2m = 0, f3a = 0, f3m = 0, fta = 0, ftm = 0, totMin = 0, sawSplit = false;
+  for (const g of recent) {
+    const min = _parseMin(g.minutes ?? g.min ?? g.mp);
+    if (min <= 0) continue;
+    const gFga = _numf(g.fga, g.FGA, g.field_goals_attempted);
+    const gFgm = _numf(g.fgm, g.FGM, g.field_goals_made);
+    const gF3a = _numf(g.fg3a, g.FG3A, g.fga3, g.three_pointers_attempted, g.three_point_field_goals_attempted);
+    const gF3m = _numf(g.fg3m, g.FG3M, g.three_pointers_made, g.three_point_field_goals_made);
+    const gFta = _numf(g.fta, g.FTA, g.free_throws_attempted);
+    const gFtm = _numf(g.ftm, g.FTM, g.free_throws_made);
+    if (gF3a > 0 || gFta > 0) sawSplit = true;
+    mins.push(min); totMin += min;
+    f2a += Math.max(0, gFga - gF3a); f2m += Math.max(0, gFgm - gF3m);
+    f3a += gF3a; f3m += gF3m; fta += gFta; ftm += gFtm;
+  }
+  if (mins.length === 0 || totMin <= 0) return null;
+
+  const minAvg = totMin / mins.length;
+  const minStd = mins.length > 1
+    ? Math.sqrt(mins.reduce((s, m) => s + (m - minAvg) ** 2, 0) / (mins.length - 1)) : 4;
+
+  // League-average fallbacks when a rate/percentage is undefined at this sample.
+  return {
+    gamesUsed: mins.length,
+    minAvg: Number(minAvg.toFixed(1)),
+    minStd: Number(minStd.toFixed(1)),
+    minCv: Number((minStd / minAvg).toFixed(3)),
+    f2aPerMin: f2a / totMin,
+    f3aPerMin: f3a / totMin,
+    ftaPerMin: fta / totMin,
+    pct2: f2a > 0 ? Number((f2m / f2a).toFixed(3)) : 0.47,
+    pct3: f3a > 0 ? Number((f3m / f3a).toFixed(3)) : 0.33,
+    pctFt: fta > 0 ? Number((ftm / fta).toFixed(3)) : 0.80,
+    hasShotData: sawSplit,
+  };
+}
+
+// Standard normal CDF (Abramowitz & Stegun 7.1.26).
+function _normCdf(z) {
+  const s = z < 0 ? -1 : 1; const x = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * x);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t) * Math.exp(-x * x);
+  return 0.5 * (1 + s * y);
+}
+
+/**
+ * Distributional points estimate: P(points > line) from the shot profile.
+ * Analytic (sum-of-binomials → normal approx with a minutes-uncertainty term),
+ * so it's O(1) per pick — serverless-safe at slate scale.
+ *
+ * @param {Object} prof  buildShotProfile() output
+ * @param {number} line  points line
+ * @returns {Object|null} { mean, sd, pOver, side, conviction, attempts:{a2,a3,aft}, hasShotData }
+ */
+function shotsToClearPoints(prof, line) {
+  if (!prof || !Number.isFinite(Number(line))) return null;
+  const m = prof.minAvg;
+  const a2 = prof.f2aPerMin * m, a3 = prof.f3aPerMin * m, aft = prof.ftaPerMin * m;
+  const { pct2, pct3, pctFt } = prof;
+  const mean = 2 * a2 * pct2 + 3 * a3 * pct3 + aft * pctFt;
+  // Variance from the scoring binomials...
+  let variance =
+    4 * a2 * pct2 * (1 - pct2) +
+    9 * a3 * pct3 * (1 - pct3) +
+    1 * aft * pctFt * (1 - pctFt);
+  // ...plus minutes uncertainty: attempts scale with minutes, so a swingy role
+  // widens the whole point distribution. Fold in (mean × minutesCV)².
+  variance += (mean * (prof.minCv || 0)) ** 2;
+  const sd = Math.max(1e-6, Math.sqrt(variance));
+  // P(points > line). Half-point lines need no continuity correction; integer
+  // lines get a +0.5 push so "over 20" means ≥21.
+  const thresh = Number.isInteger(line) ? line + 0.5 : line;
+  const pOver = 1 - _normCdf((thresh - mean) / sd);
+  const side = pOver >= 0.5 ? 'OVER' : 'UNDER';
+  return {
+    mean: Number(mean.toFixed(1)),
+    sd: Number(sd.toFixed(1)),
+    pOver: Number(pOver.toFixed(3)),
+    side,
+    conviction: Number(Math.max(pOver, 1 - pOver).toFixed(3)),
+    attempts: { a2: Number(a2.toFixed(1)), a3: Number(a3.toFixed(1)), aft: Number(aft.toFixed(1)) },
+    hasShotData: prof.hasShotData,
+  };
+}
+
 async function buildAndRunAnalysis({
   player, isHome, opponent, team, market, season, game,
   spread, total, recentFormPromise, allTeamStats, gameLines,
-  v2Roster, v2OpponentRoster, injuryReport, defenseTable
+  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile
 }) {
   try {
     // Get opponent team stats from the pre-fetched map
@@ -709,6 +835,22 @@ async function buildAndRunAnalysis({
         expectedMinutes: recentForm.minutesAvg
       } : {})
     };
+
+    // Shots-to-clear: distributional P(over) for the POINTS market, computed from
+    // the per-player shot profile + the resolved line. Market-independent profile
+    // is attached to every analysis; the clear-probability only applies to points.
+    // If the shot logs lacked the 2PA/3PA/FTA split, hasShotData is false and the
+    // UI should treat this as informational until the feed carries shot splits.
+    let shotsToClear = null;
+    if (shotProfile && market.toLowerCase() === 'points') {
+      // Prefer the projected minutes the minutes engine resolved (injury bumps),
+      // falling back to the profile's own average.
+      const projMin = Number(playerWithRecent.expectedMinutes);
+      const prof = Number.isFinite(projMin) && projMin > 0
+        ? { ...shotProfile, minAvg: projMin } : shotProfile;
+      // line is resolved just below in `unified`; compute after we have it.
+      shotsToClear = { _prof: prof }; // placeholder resolved post-line
+    }
 
     // Look up line: caller can provide per-prop lines via gameLines.propLines[playerName_market].
     // Exact match first; if that misses, retry on a NORMALIZED name. BDL's player names and
@@ -794,6 +936,13 @@ async function buildAndRunAnalysis({
       };
     }
 
+    // Resolve the shots-to-clear estimate now that the points line is known.
+    if (shotsToClear && shotsToClear._prof && Number.isFinite(Number(unified.line))) {
+      shotsToClear = shotsToClearPoints(shotsToClear._prof, Number(unified.line));
+    } else {
+      shotsToClear = null;
+    }
+
     // Pull this player's injury status off the v2 roster (buildV2Roster computed
     // it but it never reached the card). Name-normalized match. If OUT, the card
     // shows an OUT badge and the pick is forced to PASS — an out player is not a play.
@@ -855,6 +1004,33 @@ async function buildAndRunAnalysis({
         praSignal = evaluatePropSignal(praVals, 'pra');
       }
     } catch (_) { propSignal = null; praSignal = null; }
+
+    // ── SHOTS-TO-CLEAR: points engine (FULL LAUNCH) ──────────────────────────
+    // For the points market the distributional shots-to-clear estimate REPLACES
+    // the legacy mean projection (which graded ~47% directional and +2.84 biased).
+    // Guardrail for launching before a backtest: only calls at/above CONV_BAR
+    // surface as plays; everything softer is PASS, so we don't push low-confidence
+    // points picks. Tune CONV_BAR from the backtest once it's run.
+    if (market.toLowerCase() === 'points' && shotsToClear && Number.isFinite(shotsToClear.mean)) {
+      const CONV_BAR = 0.60;   // minimum conviction to surface a points play
+      const STRONG_BAR = 0.68; // conviction for the STRONG label
+      const conv = shotsToClear.conviction;
+      unified.projection = shotsToClear.mean;
+      unified.edge = Number((shotsToClear.mean - Number(unified.line)).toFixed(1));
+      unified.probOver = shotsToClear.pOver;
+      unified.probUnder = Number((1 - shotsToClear.pOver).toFixed(3));
+      unified.pointsEngine = 'shots-to-clear';
+      if (conv >= CONV_BAR && !isOut) {
+        unified.recommendation = shotsToClear.side;            // 'OVER' | 'UNDER'
+        unified.confidence = Math.round(conv * 100);
+        unified.tier = conv >= STRONG_BAR ? 'STRONG' : 'LEAN';
+        unified.hitRate = shotsToClear.conviction;
+      } else {
+        unified.recommendation = 'PASS';
+        unified.confidence = Math.round(conv * 100);
+        unified.tier = 'PASS';
+      }
+    }
 
     return {
       gameId: game.gameId,
@@ -926,6 +1102,13 @@ async function buildAndRunAnalysis({
       reboundEquity: reboundExtras?.equity || null,
       reboundTrap: reboundExtras?.trap || null,
       reboundVariance: reboundExtras?.variance || null,
+      // Shots-to-clear: per-player scoring mechanism + distributional points read.
+      //   shotProfile — 2PA/3PA/FTA rates + shooting %s (market-independent)
+      //   shotsToClear — P(over) for the points line (null on non-points markets)
+      // shotProfile.hasShotData=false means the logs lacked the shot split; treat
+      // shotsToClear as informational (shadow) until the feed carries fg3a/fta.
+      shotProfile: shotProfile || null,
+      shotsToClear: shotsToClear || null,
       // Team-level opposing defense (ALL-STAR): { allowedPerGame, leagueAvg,
       // multiplier, rating SOFT|AVERAGE|TOUGH, games }. null until enough games.
       teamDefense: teamDef || null
