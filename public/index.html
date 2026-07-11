@@ -3366,6 +3366,7 @@
     <button class="lyrid-nav-btn active" data-tab="slate" onclick="switchTab('slate')">Slate</button>
     <button class="lyrid-nav-btn" data-tab="wnba" onclick="switchTab('wnba')">WNBA</button>
     <button class="lyrid-nav-btn" data-tab="cs2" onclick="switchToCs2()">CS2</button>
+    <button class="lyrid-nav-btn" data-tab="tennis" onclick="switchTab('tennis')">Tennis</button>
     <button class="lyrid-nav-btn" data-tab="track" onclick="switchTab('track')">Track</button>
     <button class="lyrid-nav-btn" data-tab="history" onclick="switchTab('history')">History</button>
     <button class="lyrid-nav-btn" data-tab="settings" onclick="switchTab('settings')">Settings</button>
@@ -3529,6 +3530,25 @@
   <div id="cs2Banner"></div>
   <div id="cs2GamesList"></div>
   <div id="cs2AnalysisContainer"></div>
+</div>
+
+
+<!-- ===== TENNIS PANEL (addon sport) ===== -->
+<div class="panel-content" id="tennis-panel">
+  <div class="lyrid-page-header">
+    <div class="lyrid-page-eyebrow" id="tennisPageEyebrow">Tennis · ATP/WTA · priors only</div>
+    <div class="lyrid-date-nav">
+      <button class="lyrid-date-btn" type="button" onclick="tennisChangeDate(-1)" aria-label="Previous day">‹</button>
+      <span class="lyrid-date-current" id="tennisDateDisplay">Today</span>
+      <button class="lyrid-date-btn" type="button" onclick="tennisChangeDate(1)" aria-label="Next day">›</button>
+      <button class="lyrid-date-btn" type="button" onclick="tennisChangeDate('today')" style="margin-left:4px">Today</button>
+    </div>
+    <button class="lyrid-btn primary" id="loadTennisBtn" onclick="loadTennisSlate()">Refresh</button>
+    <span id="tennisMeta" class="lyrid-eyebrow" style="margin-left:auto"></span>
+  </div>
+  <div id="tennisBanner"></div>
+  <div id="tennisGamesList"></div>
+  <div id="tennisAnalysisContainer"></div>
 </div>
 
 <!-- TRACK -->
@@ -20303,5 +20323,195 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 })();
 
 </script>
+
+<!-- ===== TENNIS MODULE ===== -->
+<style>
+  #tennis-panel .lyrid-tennis-read{display:block;padding:var(--space-4)}
+  #tennis-panel .lyrid-tennis-matchup{font-weight:var(--weight-medium);font-size:var(--size-body)}
+  #tennis-panel .lyrid-tennis-sub{font-size:var(--size-caption);color:var(--text-secondary);margin-top:2px}
+  #tennis-panel .lyrid-tennis-winprob{display:flex;gap:16px;flex-wrap:wrap;margin:var(--space-3) 0;font-size:var(--size-caption);color:var(--text-secondary)}
+  #tennis-panel .lyrid-tennis-prop{border-top:0.5px solid var(--border-hairline);padding:var(--space-3) 0}
+  #tennis-panel .lyrid-tennis-prop-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  #tennis-panel .lyrid-tennis-prop-label{font-weight:var(--weight-medium)}
+  #tennis-panel .lyrid-tennis-prop-line{font-size:var(--size-caption);color:var(--text-secondary);margin-top:2px}
+  #tennis-panel .lyrid-tennis-prop-reason{font-size:var(--size-caption);color:var(--text-secondary);margin-top:4px;line-height:var(--line-caption)}
+  #tennis-panel .lyrid-badge.prior{opacity:0.75;font-style:italic}
+  #tennis-panel .lyrid-tennis-gates{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--space-2)}
+  #tennis-panel .lyrid-chip.warn{background:var(--data-warning-surface);color:var(--data-warning);font-size:var(--size-eyebrow);padding:2px 8px;border-radius:999px}
+  #tennis-panel .lyrid-tennis-footer{margin-top:var(--space-3);font-size:var(--size-eyebrow);color:var(--text-tertiary,var(--text-secondary))}
+  #tennis-panel .lyrid-tennis-proj{font-size:var(--size-caption);color:var(--text-secondary);margin:var(--space-2) 0}
+  #tennis-panel .lyrid-tennis-lines{margin:var(--space-2) 0 var(--space-3)}
+  #tennis-panel .lyrid-tennis-lines-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--space-2)}
+  #tennis-panel .lyrid-tennis-lineinput{width:96px;padding:6px 8px;font-size:var(--size-caption);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);background:var(--surface,transparent);color:inherit}
+</style>
+<script>
+(function () {
+  'use strict';
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const pct = (x) => (x == null ? '—' : Math.round(x * 100) + '%');
+  const fmtTime = (iso) => { try { return new Date(iso).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); } catch { return 'TBD'; } };
+
+  const tennisState = { date: null, loaded: false, slate: [], selectedMatchId: null };
+
+  function badgeClass(t) {
+    t = String(t || '');
+    if (t.includes('GUARANTEED')) return 'lyrid-badge tier-guaranteed prior';
+    if (t.includes('PLATINUM')) return 'lyrid-badge tier-platinum prior';
+    if (t.includes('GOLD')) return 'lyrid-badge tier-gold prior';
+    if (t === 'BANNED') return 'lyrid-badge tier-banned';
+    return 'lyrid-badge tier-ungraded';
+  }
+  function propRow(label, prop) {
+    if (!prop) return '';
+    const v = prop.verdict || {};
+    return `<div class="lyrid-tennis-prop"><div class="lyrid-tennis-prop-head">
+      <span class="lyrid-tennis-prop-label">${esc(label)}</span>
+      <span class="${badgeClass(v.tier)}">${esc(v.tier || 'UNGRADED')}</span></div>
+      <div class="lyrid-tennis-prop-line">${esc(prop.lean)} ${esc(prop.line)} · model ${pct(prop.prob)} · proj ${prop.mean == null ? '—' : prop.mean.toFixed(1)}</div>
+      <div class="lyrid-tennis-prop-reason">${esc(v.reason || '')}</div></div>`;
+  }
+  const one = (x) => (x == null ? '—' : Number(x).toFixed(1));
+
+  // Optional lines form — type the PrizePicks numbers, tap Apply, get inline over/under.
+  function linesForm(matchId, names, cur) {
+    const f = (id, ph, v) => `<input class="lyrid-tennis-lineinput" id="tl_${id}" type="number" step="0.5" placeholder="${esc(ph)}" value="${v == null ? '' : v}">`;
+    return `<div class="lyrid-tennis-lines">
+      <div class="lyrid-tennis-lines-row">
+        ${f('acesA', 'aces ' + names[0], cur.acesA)}
+        ${f('acesB', 'aces ' + names[1], cur.acesB)}
+        ${f('dfA', 'DF ' + names[0], cur.dfA)}
+        ${f('totalGames', 'total games', cur.totalGames)}
+        ${f('fantasyA', 'fantasy ' + names[0], cur.fantasyA)}
+        ${f('fantasyB', 'fantasy ' + names[1], cur.fantasyB)}
+      </div>
+      <button class="lyrid-btn" type="button" onclick="applyTennisLines('${esc(matchId)}')">Apply lines</button>
+    </div>`;
+  }
+
+  function renderRead(read, matchId, cur) {
+    if (!read) return '<div class="lyrid-empty"><div class="lyrid-empty-title">No read</div></div>';
+    const w = read.winProb || {}, holds = read.holds || {};
+    const names = Object.keys(w).filter((k) => k !== 'favored' && k !== 'edge');
+    const pj = read.projected || {};
+    const drivers = ((read.drivers && read.drivers.aces) || []).concat((read.drivers && read.drivers.totalGames) || []);
+    const g = read.gates || {};
+    const chips = [ (g.thinSampleA || g.thinSampleB) ? 'thin surface sample' : '',
+      (g.retirementA || g.retirementB) ? 'retirement risk' : '', g.blowout ? 'rout risk' : '' ].filter(Boolean);
+    const fA = pj[names[0]] ? pj[names[0]].fantasy : null, fB = pj[names[1]] ? pj[names[1]].fantasy : null;
+    return `<div class="lyrid-tennis-read">
+      <div class="lyrid-tennis-matchup">${esc(read.matchup)}</div>
+      <div class="lyrid-tennis-sub">${esc(read.surface)} · ${esc(read.bestOf === 5 ? 'Bo5' : 'Bo3')} · favored ${esc(w.favored || '—')}</div>
+      <div class="lyrid-tennis-winprob">${names.map((n) => `<span>${esc(n)} ${pct(w[n])} · hold ${pct(holds[n])}</span>`).join('')}</div>
+      <div class="lyrid-tennis-proj">Projected — fantasy ${esc(names[0])} <b>${one(fA)}</b> · ${esc(names[1])} <b>${one(fB)}</b>
+        · total games <b>${one(pj.totalGames)}</b></div>
+      ${linesForm(matchId, names, cur || {})}
+      ${propRow('Aces — ' + names[0], read.props && read.props.acesA)}
+      ${propRow('Aces — ' + names[1], read.props && read.props.acesB)}
+      ${propRow('Double Faults — ' + names[0], read.props && read.props.dfA)}
+      ${propRow('Total Games', read.props && read.props.totalGames)}
+      ${propRow('Fantasy — ' + names[0], read.props && read.props.fantasyA)}
+      ${propRow('Fantasy — ' + names[1], read.props && read.props.fantasyB)}
+      ${drivers.length ? `<details class="lyrid-tennis-drivers"><summary>why</summary><ul>${drivers.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></details>` : ''}
+      ${chips.length ? `<div class="lyrid-tennis-gates">${chips.map((c) => `<span class="lyrid-chip warn">${esc(c)}</span>`).join('')}</div>` : ''}
+      <div class="lyrid-tennis-footer">Priors only — not bets, until a slate is graded. ${esc((read.note || ''))}</div></div>`;
+  }
+
+  function matchRow(m) {
+    const sel = String(m.matchId) === String(tennisState.selectedMatchId);
+    const sub = `${esc(m.surface)} · ${esc(m.tour)}${m.tournament ? ' · ' + esc(m.tournament) : ''} · ${esc(m.bestOf === 5 ? 'Bo5' : 'Bo3')}`;
+    return `<button class="lyrid-game-card${sel ? ' signal' : ''}" type="button" onclick="analyzeTennisMatch('${esc(m.matchId)}')" aria-label="Read ${esc(m.playerA)} vs ${esc(m.playerB)}">
+      <div class="lyrid-game-time"><div class="lyrid-game-time-value">${esc(fmtTime(m.startTime))}</div>
+        <div class="lyrid-game-time-zone">${esc(m.tour)}</div></div>
+      <div class="lyrid-game-matchup"><div class="lyrid-game-teams"><span>${esc(m.playerA)}</span><span class="at">vs</span><span>${esc(m.playerB)}</span></div>
+        <div class="lyrid-game-pitchers">${sub} · tap to analyze</div></div>
+      <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">read</div>
+        <div class="lyrid-game-projection-value" aria-hidden="true">→</div></div></button>`;
+  }
+  function boardHtml(matches) {
+    if (!matches || !matches.length)
+      return '<div class="lyrid-empty"><div class="lyrid-empty-title">No matches in window</div><div class="lyrid-empty-text">Off-week or between tournaments — the schedule feed found no ATP/WTA fixtures for this day.</div></div>';
+    return `<div class="lyrid-games-list">${matches.map(matchRow).join('')}</div>`;
+  }
+
+  async function loadTennisSlate() {
+    const list = document.getElementById('tennisGamesList');
+    const meta = document.getElementById('tennisMeta');
+    if (list) list.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-title">Loading…</div></div>';
+    try {
+      const qs = tennisState.date ? ('?date=' + encodeURIComponent(tennisState.date)) : '';
+      const r = await fetch('/api/tennis/schedule' + qs, { cache: 'no-store' });
+      const j = await r.json();
+      if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status));
+      tennisState.slate = j.matches || [];
+      tennisState.loaded = true;
+      if (list) list.innerHTML = boardHtml(tennisState.slate);
+      if (meta) meta.textContent = `${tennisState.slate.length} match${tennisState.slate.length === 1 ? '' : 'es'}`;
+    } catch (e) {
+      if (list) list.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">Schedule unavailable</div><div class="lyrid-empty-text">${esc(String(e.message || e))}</div></div>`;
+    }
+  }
+
+  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB'];
+
+  async function analyzeTennisMatch(matchId, lines) {
+    tennisState.selectedMatchId = matchId;
+    const container = document.getElementById('tennisAnalysisContainer');
+    const list = document.getElementById('tennisGamesList');
+    if (list) list.innerHTML = boardHtml(tennisState.slate); // re-mark selection
+    const m = tennisState.slate.find((x) => String(x.matchId) === String(matchId));
+    if (!m) return;
+    const cur = lines || {};
+    if (container) container.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-title">Analyzing…</div></div>';
+    try {
+      const qs = new URLSearchParams({ a: m.playerA, b: m.playerB, surface: m.surface, bestOf: m.bestOf });
+      // Lines optional — none gives projections + drivers to eyeball vs the PrizePicks board.
+      for (const k of LINE_KEYS) if (cur[k] != null && cur[k] !== '') qs.set(k, cur[k]);
+      const r = await fetch('/api/tennis/analyze?' + qs.toString(), { cache: 'no-store' });
+      const j = await r.json();
+      if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status));
+      if (container) container.innerHTML = renderRead(j.read, matchId, cur);
+    } catch (e) {
+      if (container) container.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">Analysis unavailable</div><div class="lyrid-empty-text">${esc(String(e.message || e))}</div></div>`;
+    }
+  }
+
+  function applyTennisLines(matchId) {
+    const lines = {};
+    for (const k of LINE_KEYS) {
+      const el = document.getElementById('tl_' + k);
+      if (el && el.value !== '') lines[k] = el.value;
+    }
+    analyzeTennisMatch(matchId, lines);
+  }
+
+  function tennisChangeDate(delta) {
+    if (delta === 'today') tennisState.date = null;
+    else {
+      const base = tennisState.date ? new Date(tennisState.date + 'T00:00:00') : new Date();
+      base.setDate(base.getDate() + Number(delta));
+      tennisState.date = base.toISOString().slice(0, 10);
+    }
+    const d = document.getElementById('tennisDateDisplay');
+    if (d) d.textContent = tennisState.date || 'Today';
+    loadTennisSlate();
+  }
+
+  window.loadTennisSlate = loadTennisSlate;
+  window.analyzeTennisMatch = analyzeTennisMatch;
+  window.applyTennisLines = applyTennisLines;
+  window.tennisChangeDate = tennisChangeDate;
+
+  // Lazy-load on first Tennis tab open (mirrors the WNBA/CS2 switchTab hook).
+  const _origSwitchTab = window.switchTab;
+  if (typeof _origSwitchTab === 'function') {
+    window.switchTab = function (tabName) {
+      _origSwitchTab(tabName);
+      if (tabName === 'tennis' && !tennisState.loaded) loadTennisSlate();
+    };
+  }
+})();
+</script>
+
 </body>
 </html>
