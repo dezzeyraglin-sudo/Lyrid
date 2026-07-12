@@ -627,6 +627,77 @@ export async function getPitcherRecentStarts(mlbam, season, n = 3) {
 }
 
 // =============================================================
+// Hitter vs specific pitcher — "does he rake against this arm" (BvP)
+// =============================================================
+// (Added July 2026) The mirror of getPitcherVsTeam: some hitters genuinely own
+// specific pitchers. Uses MLB's dedicated vsPlayer stats endpoint, which
+// returns a batter's exact career line against one pitcher (the authoritative
+// BvP source — not a gameLog approximation).
+//
+// IMPORTANT HONESTY NOTE: BvP samples are tiny and notoriously noisy — a 6-for-12
+// line is 12 at-bats, which regresses hard to a hitter's true talent. This
+// function returns the real numbers but flags the sample size prominently and
+// only sets `owns` on a threshold that requires BOTH a strong line AND enough
+// AB to be more than pure noise. We never badge a 3-for-5 as "owns."
+export async function getHitterVsPitcher(batterId, pitcherId) {
+  if (!batterId || !pitcherId) return null;
+  try {
+    const url = `https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=vsPlayer&opposingPlayerId=${pitcherId}&group=hitting`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return null;
+    const data = await r.json();
+
+    // The vsPlayerTotal group carries the career aggregate line.
+    let total = null;
+    for (const block of (data.stats || [])) {
+      const groupName = block.type?.displayName || block.group?.displayName || '';
+      if (groupName === 'vsPlayerTotal' || groupName === 'vsPlayer') {
+        // last split in the total group is the career aggregate
+        const splits = block.splits || [];
+        if (splits.length) {
+          const s = splits[splits.length - 1].stat || {};
+          if (s.atBats != null) total = s;
+        }
+      }
+    }
+    if (!total || total.atBats == null) return null;
+
+    const ab = parseInt(total.atBats) || 0;
+    const pa = parseInt(total.plateAppearances) || ab;
+    if (ab < 5) return null;   // under 5 AB is not even worth showing
+
+    const h = parseInt(total.hits) || 0;
+    const hr = parseInt(total.homeRuns) || 0;
+    const k = parseInt(total.strikeOuts) || 0;
+    const bb = parseInt(total.baseOnBalls) || 0;
+    const avg = parseFloat(total.avg) || (ab > 0 ? h / ab : 0);
+    const ops = parseFloat(total.ops) || null;
+
+    // "Owns" requires a genuinely strong line AND a sample past pure-noise
+    // territory. 10+ AB with .900+ OPS (or multiple HR) is the bar. Below that
+    // it's shown as history, not a domination badge.
+    let owns = false, reason = null;
+    if (ab >= 10 && ((ops != null && ops >= 0.900) || hr >= 2)) {
+      owns = true;
+      reason = `${h}-for-${ab} (.${String(Math.round(avg*1000)).padStart(3,'0')})${hr ? `, ${hr} HR` : ''}${ops != null ? `, ${ops.toFixed(3)} OPS` : ''} career vs this pitcher`;
+    }
+
+    return {
+      ab, pa, hits: h, hr, k, bb,
+      avg: +avg.toFixed(3),
+      ops,
+      owns,
+      reason,
+      // Sample-quality flag so the UI never presents tiny samples as firm.
+      sampleTier: ab >= 20 ? 'solid' : ab >= 10 ? 'moderate' : 'thin',
+      noisy: ab < 15
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
+// =============================================================
 // Pitcher vs specific team — "does he own this lineup" history
 // =============================================================
 // (Added July 2026) A pitcher's history against a SPECIFIC opponent is a real,
