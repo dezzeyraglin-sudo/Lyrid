@@ -4,7 +4,7 @@
 
 import { PARK_FACTORS_BY_TEAM, PARK_GEO, getParkGeo } from './_data/parkFactors.js';
 import { UMPIRE_FACTORS, classifyUmp, getAbsAdjustedFactors } from './_data/umpireFactors.js';
-import { getProbables, getPitcherArsenal, getBullpenProfile, getLineup, getHitterStats, getHitterSplits, getPitcherSplits, getHitterPitchTypeByHand, getGameOdds, getPitcherHomeRoadSplits, getPitcherRecentStarts, getPitcherCareerStats } from './_lib/data.js';
+import { getProbables, getPitcherArsenal, getBullpenProfile, getLineup, getHitterStats, getHitterSplits, getPitcherSplits, getHitterPitchTypeByHand, getGameOdds, getPitcherHomeRoadSplits, getPitcherRecentStarts, getPitcherCareerStats, getPitcherVsTeam, getHitterVsPitcher } from './_lib/data.js';
 import { getBlendedInningSplits } from './_lib/pitcherInnings.js';
 import { getWeatherForecast, computeWeatherImpact } from './_lib/weather.js';
 import { computeEnvironmentImpact } from './_lib/environmentImpact.js';
@@ -360,8 +360,8 @@ export default async function handler(req, res) {
     }
 
     const sides = [
-      { hitTeamId: game.awayTeam.id, pitcher: game.homePitcher, pitTeamAbbr: game.homeTeam.abbreviation, key: 'awayVsHome', side: 'away' },
-      { hitTeamId: game.homeTeam.id, pitcher: game.awayPitcher, pitTeamAbbr: game.awayTeam.abbreviation, key: 'homeVsAway', side: 'home' }
+      { hitTeamId: game.awayTeam.id, hitTeamAbbr: game.awayTeam.abbreviation, pitcher: game.homePitcher, pitTeamAbbr: game.homeTeam.abbreviation, key: 'awayVsHome', side: 'away' },
+      { hitTeamId: game.homeTeam.id, hitTeamAbbr: game.homeTeam.abbreviation, pitcher: game.awayPitcher, pitTeamAbbr: game.awayTeam.abbreviation, key: 'homeVsAway', side: 'home' }
     ];
 
     // Kick off pitcher prop lines fetch (DraftKings via The Odds API) in parallel with
@@ -395,7 +395,7 @@ export default async function handler(req, res) {
     const sideResults = await Promise.all(sides.map(async s => {
       if (!s.pitcher || !s.hitTeamId) return null;
 
-      const [arsenal, lineup, bullpen, pitcherSplits, inningSplits, pitcherRole, homeRoadSplits, recentStarts, careerStats] = await Promise.all([
+      const [arsenal, lineup, bullpen, pitcherSplits, inningSplits, pitcherRole, homeRoadSplits, recentStarts, careerStats, vsTeamHistory] = await Promise.all([
         getPitcherArsenal(s.pitcher.id, season).catch(() => []),
         getLineup(s.hitTeamId, gamePk, s.side).catch(() => []),
         getBullpenProfile(s.pitTeamAbbr, season, s.pitcher.id).catch(() => ({ pitches: [], pitcherCount: 0 })),
@@ -414,7 +414,11 @@ export default async function handler(req, res) {
         // Lineups facing rookies/recent-callups have no MLB tape on the arsenal,
         // get dominated first time through. The Yesavage failure mode.
         // Cheap MLB Stats API call; fails gracefully to null.
-        getPitcherCareerStats(s.pitcher.id).catch(() => null)
+        getPitcherCareerStats(s.pitcher.id).catch(() => null),
+        // PITCHER-VS-TEAM HISTORY (July 2026): does this arm own this specific
+        // lineup? Real head-to-head starts across current + 2 prior seasons.
+        // The Matthew Liberatore vs ATL case. Null unless >= 2 prior starts.
+        getPitcherVsTeam(s.pitcher.id, s.hitTeamAbbr, season).catch(() => null)
       ]);
 
       const keyPitches = arsenal.slice(0, 3);
@@ -447,13 +451,17 @@ export default async function handler(req, res) {
               })
             : Promise.resolve(null);
 
-          const [stats, splits, deepPitchTypes, recentForm] = await Promise.all([
+          const [stats, splits, deepPitchTypes, recentForm, vsPitcher] = await Promise.all([
             getHitterStats(h.id, season),
             getHitterSplits(h.id, season).catch(() => ({ vsR: null, vsL: null })),
             deepPromise,
-            recentFormPromise
+            recentFormPromise,
+            // HITTER-VS-PITCHER (July 2026): career BvP line vs tonight's
+            // starter. Real MLB vsPlayer endpoint. Mirror of pitcher-vs-team.
+            // Null under 5 AB; flagged noisy under 15.
+            getHitterVsPitcher(h.id, s.pitcher.id).catch(() => null)
           ]);
-          return { ...h, stats, splits, deepPitchTypes, recentForm };
+          return { ...h, stats, splits, deepPitchTypes, recentForm, vsPitcher };
         } catch {
           return { ...h, stats: { overall: {}, pitchTypes: [] }, splits: { vsR: null, vsL: null }, deepPitchTypes: [], recentForm: null };
         }
@@ -864,6 +872,7 @@ export default async function handler(req, res) {
           hand: h.hand,
           position: h.position,
           battingOrder: h.battingOrder || null,
+          vsPitcher: h.vsPitcher || null,  // HITTER-VS-PITCHER: BvP "owns this arm" (July 2026)
           matchedPitches,
           maxXwoba: maxXwoba.toFixed(3),
           adjustedMaxXwoba: adjustedMaxXwoba.toFixed(3),
@@ -1585,6 +1594,7 @@ export default async function handler(req, res) {
           pitcherHomeRoadSplits: homeRoadSplits,
           pitcherRecentStarts: recentStarts,
           pitcherCareerStats: careerStats,  // PITCHER NOVELTY: surfaces rookie/callup status
+          pitcherVsTeam: vsTeamHistory,  // PITCHER-VS-TEAM: "owns this lineup" history (July 2026)
           inningSplits,
           pitcherNarrative,
           pitcherRole,

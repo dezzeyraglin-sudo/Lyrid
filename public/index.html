@@ -6875,15 +6875,148 @@ function computePAOutcomeEstimate(batterSeasonStats, pitcherMeta) {
 }
 
 // Compact 4-bucket display for the mismatch card.
-function buildPAOutcomeChip(batterSeasonStats, pitcherMeta) {
+function buildPAOutcomeChip(batterSeasonStats, pitcherMeta, batterPa) {
   const pa = computePAOutcomeEstimate(batterSeasonStats, pitcherMeta);
   if (!pa) return '';
-  return `<div class="pa-outcome-row" style="display:flex;gap:10px;flex-wrap:wrap;font-size:10.5px;margin:6px 12px 0;color:var(--dim)" title="Hit/field-out split is modeled from contact quality (${esc(pa.hitOutSplitNote)}); walk/strikeout use real batter-vs-pitcher rates blended log5-style.">
+  // Thin-sample guard: on small batter samples, season BB%/K% are noise —
+  // mark the line LOW CONF rather than presenting floored/extreme rates as firm.
+  const _pa = Number.isFinite(parseFloat(batterPa)) ? parseFloat(batterPa) : null;
+  const thin = _pa != null && _pa < 50;
+  const kExtreme = pa.strikeout >= 38 || pa.walk <= 1.5;
+  const lowConf = thin || kExtreme;
+  const confNote = lowConf ? `<span style="opacity:0.75;color:#e0a050"> · ⚠ LOW CONF${_pa != null ? ` (${_pa} PA)` : ''}</span>` : '';
+  return `<div class="pa-outcome-row" style="display:flex;gap:10px;flex-wrap:wrap;font-size:10.5px;margin:6px 12px 0;color:var(--dim);${lowConf ? 'opacity:0.75' : ''}" title="Hit/field-out split is modeled from contact quality (${esc(pa.hitOutSplitNote)}); walk/strikeout use real batter-vs-pitcher rates blended log5-style.${lowConf ? ' LOW CONFIDENCE: thin sample or implausible rate — treat as noise.' : ''}">
     <span>BB <b style="color:var(--ink)">${pa.walk}%</b></span>
     <span>K <b style="color:var(--ink)">${pa.strikeout}%</b></span>
     <span>Hit <b style="color:var(--ink)">${pa.hit}%</b><span style="opacity:0.6">*</span></span>
     <span>Out <b style="color:var(--ink)">${pa.fieldOut}%</b><span style="opacity:0.6">*</span></span>
-    <span style="opacity:0.55">· per-PA est.${pa.partial ? ' (1-sided)' : ''}</span>
+    <span style="opacity:0.55">· per-PA est.${pa.partial ? ' (1-sided)' : ''}</span>${confNote}
+  </div>`;
+}
+
+// (Drop #55) HITTER-VS-PITCHER (BvP) chip. Mirror of the pitcher OWNS badge:
+// surfaces a hitter's real career line against tonight's starter. BvP samples
+// are small and noisy, so this is deliberately honest about sample size —
+// "OWNS" only on a strong line with 10+ AB, otherwise a muted reference chip,
+// and always shows the AB count so the number is read in context.
+// ============================================================================
+// (Drop #55 — CONVERGENCE ENGINE) Wire every independent signal into one read.
+//
+// Each of Lyrid's signals is a separate edge. The highest-conviction spot — the
+// one a soft line or the casual bettor won't have priced — is when SEVERAL
+// INDEPENDENT signals stack in the same direction on the same bet. This tallies
+// directional agreement across all real signals already computed and flags
+// convergence.
+//
+// DISCIPLINE (stamp, don't reweight): convergence is a CONVICTION flag built
+// from the correlation of existing signals. It does NOT multiply any model
+// probability or invent a hit rate — it counts how many real, independent
+// reads agree, and says so plainly. A convergence of 4 signals is not "96%";
+// it's "four independent edges point the same way, and here they are."
+//
+// Direction convention: +1 = favors the HITTER (over / produce), -1 = favors
+// the UNDER / fade (pitcher suppresses this hitter).
+// ============================================================================
+function computeConvergence(m, s, data) {
+  const signals = [];
+  const pitcherMeta = m.platoonMeta && m.platoonMeta.pitcher;
+
+  // 1. Hitter owns this pitcher (BvP) → favors HITTER
+  if (m.vsPitcher && m.vsPitcher.owns) {
+    signals.push({ dir: +1, weight: m.vsPitcher.noisy ? 1 : 2, key: 'bvp',
+      label: `Owns this arm (${m.vsPitcher.hits}-${m.vsPitcher.ab}${m.vsPitcher.hr ? ', ' + m.vsPitcher.hr + ' HR' : ''})` });
+  }
+  // 2. Pitcher owns this team → favors UNDER (whole lineup suppressed)
+  if (s && s.pitcherVsTeam && s.pitcherVsTeam.owns) {
+    signals.push({ dir: -1, weight: 2, key: 'ownsTeam',
+      label: `Pitcher owns ${s.pitcherVsTeam.oppAbbr} (${s.pitcherVsTeam.era} ERA, ${s.pitcherVsTeam.starts} starts)` });
+  }
+  // 3. Pitcher control tendency → strike-thrower favors UNDER, falls-behind favors HITTER
+  const cp = computePitcherControlProfile(pitcherMeta);
+  if (cp && cp.tier === 'strike-thrower') signals.push({ dir: -1, weight: 1, key: 'control', label: 'Strike-thrower (pounds zone)' });
+  else if (cp && cp.tier === 'ball-thrower') signals.push({ dir: +1, weight: 1, key: 'control', label: 'Pitcher falls behind (traffic)' });
+  // 4. Jam risk (historical meltdown) → favors HITTER / early runs
+  const jam = (s && s.inningSplits) ? estimateJamRisk(s.inningSplits, (function () {
+    const w = (s.pitcherProps && s.pitcherProps.recommendations || []).find(r => r.type === 'walks');
+    return w ? parseFloat(w.projection) : null;
+  })()) : null;
+  if (jam && jam.tier === 'high') signals.push({ dir: +1, weight: 1, key: 'jam', label: 'Pitcher jam-prone (own history)' });
+  // 5. Ghost score (5-condition fade recipe) → favors UNDER
+  let ghost = null;
+  try { ghost = computeGhostScore(m, data); } catch (_) {}
+  if (ghost && ghost.isGhost) signals.push({ dir: -1, weight: 2, key: 'ghost', label: `Ghost ${ghost.score}/5 (${ghost.archetype})` });
+  else if (ghost && ghost.antiGhost) signals.push({ dir: +1, weight: 2, key: 'antiGhost', label: 'Anti-ghost (hittable arm)' });
+  // 6. Verified cohort (rarely-K hits over) → favors HITTER
+  const bestRec = (m.propRecs || []).find(p => p.isBest) || (m.propRecs || [])[0];
+  if (bestRec && bestRec._verifiedCohort && !bestRec._kTrapVeto) signals.push({ dir: +1, weight: 2, key: 'verified', label: 'VERIFIED cohort (72% hits-over)' });
+  // 7. Pitcher vuln / K-trap → vuln favors HITTER, K-trap favors UNDER
+  if (pitcherMeta) {
+    const vuln = computePitcherVuln(pitcherMeta, s);
+    if (vuln && vuln.score >= 3) signals.push({ dir: +1, weight: 1, key: 'vuln', label: `Soft arm (vuln ${vuln.score})` });
+  }
+  if (bestRec && bestRec._kTrapVeto) signals.push({ dir: -1, weight: 2, key: 'ktrap', label: 'Arsenal K-trap (contact profile at risk)' });
+  // 8. Form → cold favors UNDER, hot favors HITTER
+  const form = String(m.recentFormLabel || '').toUpperCase();
+  if (/SCORCHING|HOT/.test(form)) signals.push({ dir: +1, weight: 1, key: 'form', label: form + ' form' });
+  else if (form === 'COLD' || form === 'ICE_COLD') signals.push({ dir: -1, weight: 1, key: 'form', label: 'Cold form' });
+
+  if (!signals.length) return null;
+
+  const over = signals.filter(x => x.dir > 0);
+  const under = signals.filter(x => x.dir < 0);
+  const overWeight = over.reduce((a, b) => a + b.weight, 0);
+  const underWeight = under.reduce((a, b) => a + b.weight, 0);
+  const netDir = overWeight > underWeight ? 'over' : underWeight > overWeight ? 'under' : 'split';
+  const aligned = netDir === 'over' ? over : netDir === 'under' ? under : [];
+  const opposed = netDir === 'over' ? under : netDir === 'under' ? over : signals;
+
+  // Convergence tier: how many INDEPENDENT signals agree on the winning side.
+  const alignCount = aligned.length;
+  let tier = null;
+  if (alignCount >= 4 && opposed.length === 0) tier = 'MAX';       // total agreement, 4+ reads
+  else if (alignCount >= 3 && opposed.length <= 1) tier = 'STRONG';
+  else if (alignCount >= 2 && opposed.length === 0) tier = 'CLEAN';
+
+  return {
+    tier, netDir, alignCount, opposedCount: opposed.length,
+    aligned: aligned.map(x => x.label),
+    opposed: opposed.map(x => x.label),
+    allSignals: signals.length
+  };
+}
+
+// Convergence badge — the blindside flag. Only renders on real convergence
+// (2+ aligned signals, minimal opposition). Shows exactly which signals stack.
+function buildConvergenceChip(m, s, data) {
+  let conv;
+  try { conv = computeConvergence(m, s, data); } catch (_) { return ''; }
+  if (!conv || !conv.tier) return '';
+  const dirLabel = conv.netDir === 'over' ? 'OVER / PRODUCE' : conv.netDir === 'under' ? 'UNDER / FADE' : '';
+  const color = conv.tier === 'MAX' ? '#c9b3e0' : conv.netDir === 'over' ? '#7fb08a' : '#9fb4d4';
+  const bg = conv.tier === 'MAX' ? 'linear-gradient(135deg,#2a1c4c 0%,#3a2c5c 100%)' : 'rgba(30,44,76,0.5)';
+  const icon = conv.tier === 'MAX' ? '⚡' : '◉';
+  const tierLabel = conv.tier === 'MAX' ? 'MAX CONVERGENCE' : conv.tier === 'STRONG' ? 'STRONG CONVERGENCE' : 'CONVERGENCE';
+  const oppNote = conv.opposedCount ? `<div style="font-size:9.5px;color:var(--dim);margin-top:3px">Against: ${conv.opposed.map(esc).join(' · ')}</div>` : '';
+  return `<div class="convergence-chip" style="margin:6px 12px 0;padding:9px 11px;border-radius:9px;background:${bg};border:1px solid ${color}">
+    <div style="font-size:10px;font-weight:800;letter-spacing:0.06em;color:${color}">${icon} ${tierLabel} · ${dirLabel} · ${conv.alignCount} signals stack</div>
+    <div style="font-size:10px;color:var(--ink,#e5e7eb);margin-top:4px;line-height:1.5">${conv.aligned.map(esc).join(' · ')}</div>
+    ${oppNote}
+    <div style="font-size:8.5px;color:var(--dim);margin-top:4px;opacity:0.7">Convergence = independent reads agreeing. Conviction signal, not a hit rate.</div>
+  </div>`;
+}
+
+function buildBvPChip(vsPitcher, pitcherName) {
+  if (!vsPitcher || vsPitcher.ab == null || vsPitcher.ab < 5) return '';
+  const pn = pitcherName ? esc(pitcherName.split(' ').slice(-1)[0]) : 'this arm';
+  const line = `${vsPitcher.hits}-${vsPitcher.ab}${vsPitcher.hr ? `, ${vsPitcher.hr} HR` : ''}${vsPitcher.ops != null ? ` · ${vsPitcher.ops.toFixed(3)} OPS` : ''}`;
+  if (vsPitcher.owns) {
+    return `<div class="bvp-owns" title="${esc(vsPitcher.reason || '')} — real career BvP. ${vsPitcher.noisy ? 'Still a smallish sample; weigh accordingly.' : ''} Supports hitter OVERS vs this pitcher." style="display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;letter-spacing:0.04em;padding:3px 8px;border-radius:100px;background:rgba(224,120,80,0.14);border:1px solid rgba(224,120,80,0.5);color:#e0703c;margin:4px 12px 0">
+      🔥 OWNS ${pn} · ${line}${vsPitcher.noisy ? ' <span style="opacity:0.7;font-weight:600">(sm sample)</span>' : ''}
+    </div>`;
+  }
+  // Muted reference chip — real history but not a domination pattern.
+  return `<div class="bvp-ref" title="Career vs ${esc(pitcherName || 'this pitcher')}: ${line}. ${vsPitcher.ab} AB — ${vsPitcher.sampleTier} sample. Shown for context, not a signal." style="display:inline-flex;font-size:9px;font-weight:600;padding:2px 7px;border-radius:100px;background:rgba(150,150,160,0.1);border:1px solid var(--line);color:var(--dim);margin:4px 12px 0">
+    vs ${pn}: ${line} (${vsPitcher.ab} AB)
   </div>`;
 }
 
@@ -7419,6 +7552,12 @@ function gatherCleanestEdges(date) {
             recentFormLabel: m.recentFormLabel || m.recentForm?.label || null,
             adjustedMaxXwoba: m.adjustedMaxXwoba || m.maxXwoba || null,
             propRecs: m.propRecs || [],
+            // (Drop #56) Stamp convergence once here — where the mismatch AND
+            // its side object are both in scope — so the board, Tonight's Card,
+            // and pick logging can all read the same computed value.
+            _convergence: (function () {
+              try { return computeConvergence(m, side, data); } catch (_) { return null; }
+            })(),
           });
         });
       });
@@ -7448,6 +7587,10 @@ function gatherCleanestEdges(date) {
     if (p.adjustedMaxXwoba && p.adjustedMaxXwoba >= 0.40) ctxChips.push(`ELITE ${(+p.adjustedMaxXwoba).toFixed(3)} adj xwOBA`);
     if (sharpHits) ctxChips.push('SHARP contact');
     if (p.recentFormLabel && p.recentFormLabel !== 'NEUTRAL') ctxChips.push(p.recentFormLabel + ' form');
+    // (Drop #56) surface convergence on the board row so the boost is visible
+    if (p._convergence && p._convergence.tier) {
+      ctxChips.push(`${p._convergence.tier === 'MAX' ? '⚡' : '◉'} ${p._convergence.tier} CONVERGENCE (${p._convergence.alignCount})`);
+    }
     const modelPct = (typeof rawProbability === 'number') ? Math.round(rawProbability * 100) : null;
 
     if (verifiedCohort) {
@@ -7480,7 +7623,24 @@ function gatherCleanestEdges(date) {
       // (Drop #40) HARD-HIT "watch" excluded — cooling-off notes, not bets.
       continue;
     }
-    ranked.push({ ...p, _ce: { kind, dir, verb, prop, tier, wr, rank, plain, tone, edgeType, modelPct, lineWarn, ctxChips, evidence } });
+    // (Drop #56) CONVERGENCE RANK BOOST — bounded. Convergence lifts a play
+    // when multiple independent signals AGREE with its direction, but is capped
+    // so it breaks ties and surfaces genuine multi-signal spots WITHOUT
+    // overriding the validated tier hierarchy (a MAX-convergence fade can't leap
+    // a VERIFIED-hits play; it just rises within/near its band). Only boosts
+    // when convergence direction matches the bet direction. Unvalidated signal
+    // → deliberately small influence until it's graded.
+    let _convBoost = 0;
+    const _conv = p._convergence;
+    if (_conv && _conv.tier) {
+      const betIsOver = (dir === 'more');
+      const convAgrees = (_conv.netDir === 'over' && betIsOver) || (_conv.netDir === 'under' && !betIsOver);
+      if (convAgrees) {
+        _convBoost = _conv.tier === 'MAX' ? 6 : _conv.tier === 'STRONG' ? 4 : 2;
+      }
+    }
+    const _rankFinal = rank + _convBoost;
+    ranked.push({ ...p, _ce: { kind, dir, verb, prop, tier, wr, rank: _rankFinal, baseRank: rank, convBoost: _convBoost, convergence: _conv || null, plain, tone, edgeType, modelPct, lineWarn, ctxChips, evidence } });
   }
   ranked.sort((a,b) => b._ce.rank - a._ce.rank || (b._ce.wr||0) - (a._ce.wr||0));
   const _ceOut = ranked.slice(0, 40);
@@ -8740,8 +8900,10 @@ function renderAnalysis(data) {
           return `
             <div class="match ${m.tier}${m.isTopPick?' top-pick':''}${m.hrChance?' has-hr-chance':''}">
               <div style="padding:10px 12px 0">${buildVerdictBanner(m, { projTotal: (data.projection ? parseFloat(data.projection.projTotal) : null) })}</div>
+              ${buildConvergenceChip(m, s, data)}
               ${buildControlChip(m.platoonMeta && m.platoonMeta.pitcher)}
-              ${buildPAOutcomeChip(m.seasonStats, m.platoonMeta && m.platoonMeta.pitcher)}
+              ${buildPAOutcomeChip(m.seasonStats, m.platoonMeta && m.platoonMeta.pitcher, (m.seasonStats && m.seasonStats.pa) || (m.platoonMeta && m.platoonMeta.pa) || m.hitterPa)}
+              ${buildBvPChip(m.vsPitcher, s.pitcher && s.pitcher.name)}
               ${_isFadeCard ? `<div style="padding:0 12px">${buildGhostCard(m, data, 'fade')}</div>` : ''}
               ${m._empUnderRec ? `<div style="padding:0 12px">${buildLyridBestBanner(m._empUnderRec.backtestWR, m._empUnderRec.backtestN, { kind: 'compact', label: 'LYRID UNDER · ' + m._empUnderRec.propLabel, tooltip: m._empUnderRec.reasoningLines.join(' · ') })}</div>` : ''}
               <div class="match-head">
@@ -9767,7 +9929,7 @@ function renderAnalysis(data) {
           })()}
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
             <div>
-              <div class="ph-name">${s.pitcher.name} (${s.pitcher.hand}HP)${oppPitcherBanned ? '<span class="scratch-badge" style="margin-left:6px">BANNED</span>' : ''}${s.pitcherCareerStats?.noviceTier === 'HIGH' ? `<span class="novelty-badge high" title="Limited MLB sample (${s.pitcherCareerStats.careerPa} career PA, ${s.pitcherCareerStats.careerStarts} starts) — lineup unlikely to have tape on his arsenal. YRFI suppressed, K projection boosted.">ROOKIE/CALLUP</span>` : s.pitcherCareerStats?.noviceTier === 'MODERATE' ? `<span class="novelty-badge moderate" title="Limited MLB sample (${s.pitcherCareerStats.careerPa} career PA) — modest novelty effect applied.">LIMITED MLB SAMPLE</span>` : ''}</div>
+              <div class="ph-name">${s.pitcher.name} (${s.pitcher.hand}HP)${oppPitcherBanned ? '<span class="scratch-badge" style="margin-left:6px">BANNED</span>' : ''}${s.pitcherCareerStats?.noviceTier === 'HIGH' ? `<span class="novelty-badge high" title="Limited MLB sample (${s.pitcherCareerStats.careerPa} career PA, ${s.pitcherCareerStats.careerStarts} starts) — lineup unlikely to have tape on his arsenal. YRFI suppressed, K projection boosted.">ROOKIE/CALLUP</span>` : s.pitcherCareerStats?.noviceTier === 'MODERATE' ? `<span class="novelty-badge moderate" title="Limited MLB sample (${s.pitcherCareerStats.careerPa} career PA) — modest novelty effect applied.">LIMITED MLB SAMPLE</span>` : ''}${s.pitcherVsTeam && s.pitcherVsTeam.owns ? `<span class="owns-badge" title="${esc(s.pitcherVsTeam.reason)} — real head-to-head history, ${s.pitcherVsTeam.starts} starts across recent seasons. Supports UNDER on this lineup's run production / hitter overs." style="margin-left:6px;display:inline-block;font-size:9px;font-weight:800;letter-spacing:0.04em;padding:2px 7px;border-radius:100px;background:rgba(120,180,138,0.16);border:1px solid rgba(120,180,138,0.45);color:#5a9a70">👑 OWNS ${esc(s.pitcherVsTeam.oppAbbr)} · ${s.pitcherVsTeam.era} ERA</span>` : (s.pitcherVsTeam && s.pitcherVsTeam.starts >= 2 ? `<span class="vsteam-badge" title="${s.pitcherVsTeam.starts} career starts vs ${esc(s.pitcherVsTeam.oppAbbr)}: ${s.pitcherVsTeam.era} ERA, ${s.pitcherVsTeam.avgIp} IP/start. History available but not a domination pattern." style="margin-left:6px;font-size:9px;font-weight:600;letter-spacing:0.03em;padding:2px 6px;border-radius:100px;background:rgba(150,150,160,0.1);border:1px solid var(--line);color:var(--dim)">vs ${esc(s.pitcherVsTeam.oppAbbr)}: ${s.pitcherVsTeam.era} ERA (${s.pitcherVsTeam.starts})</span>` : '')}</div>
               <div class="ph-meta">Arsenal (by usage):</div>
             </div>
             <div style="display:flex;gap:6px">
@@ -12732,6 +12894,16 @@ function logBestBets(data) {
           : (bestBet._verifiedCohort || m._verifiedCohort) ? 'verified-cohort'
           : (bestBet._lyridUnderTier || m._lyridUnderTier) ? 'under-tier'
           : 'other',
+        // (Drop #56) stamp convergence so we can later grade whether MAX/STRONG
+        // convergence actually outperforms — the step that turns it from a
+        // conviction flag into a validated (or rejected) tier.
+        ...(function () {
+          try {
+            const _cv = computeConvergence(m, sideData, data);
+            return _cv ? { _convergenceTier: _cv.tier, _convergenceDir: _cv.netDir, _convergenceCount: _cv.alignCount, _convergenceOpposed: _cv.opposedCount }
+                       : { _convergenceTier: null };
+          } catch (_) { return { _convergenceTier: null }; }
+        })(),
         // (Drop #14 — June 5, 2026) Sharp HITS empirical override audit fields
         _sharpHits: bestBet._sharpHits || false,
         _sharpHitsRule: bestBet._sharpHitsRule || null,
@@ -19999,6 +20171,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         opsAgainstVsSide: _vuln.opsAgainst,
         // (Tonight's Card spec) judgment inputs
         verdictPass: e._topPickVerdict === 'pass',
+        // (Drop #56) convergence tier for Card prioritization + display
+        convergence: (e._ce && e._ce.convergence) || e._convergence || null,
         projection: (function () {
           var bp = (e.propRecs || []).filter(function (p) { return p && p.isBest; })[0] || (e.propRecs || [])[0] || {};
           return (typeof bp.projection === 'number') ? bp.projection : null;
@@ -20264,7 +20438,18 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       if (LP && !LP.isBettable(c, {})) { flagged.push({ c: c, reason: 'Below tier/rate bar' }); return; }
       clean.push(c);
     });
-    clean.sort(function (a, b) { return (LP ? LP.score(b) - LP.score(a) : 0); });
+    clean.sort(function (a, b) {
+      // (Drop #56) convergence-aware ordering: primary sort stays the validated
+      // parlay score; convergence acts as a bounded tiebreaker/lift so genuine
+      // multi-signal spots surface, without overriding the score hierarchy.
+      var cw = function (c) {
+        var t = c && c.convergence && c.convergence.tier;
+        return t === 'MAX' ? 0.06 : t === 'STRONG' ? 0.04 : t === 'CLEAN' ? 0.02 : 0;
+      };
+      var sa = (LP ? LP.score(a) : 0) + cw(a);
+      var sb = (LP ? LP.score(b) : 0) + cw(b);
+      return sb - sa;
+    });
     var card = [], perGame = {};
     (totals || []).forEach(function (t) {           // graded totals first
       if (t.rate >= 0.64 && card.length < 2)
