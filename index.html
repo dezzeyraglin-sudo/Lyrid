@@ -20820,7 +20820,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     const w = read.winProb || {}, holds = read.holds || {};
     const names = Object.keys(w).filter((k) => k !== 'favored' && k !== 'edge');
     const pj = read.projected || {};
-    const drivers = ((read.drivers && read.drivers.aces) || []).concat((read.drivers && read.drivers.totalGames) || []);
+    const drivers = ((read.drivers && read.drivers.circumstances) || []).concat((read.drivers && read.drivers.aces) || []).concat((read.drivers && read.drivers.totalGames) || []);
     const g = read.gates || {};
     const chips = [ (g.thinSampleA || g.thinSampleB) ? 'thin surface sample' : '',
       (g.retirementA || g.retirementB) ? 'retirement risk' : '', g.blowout ? 'rout risk' : '' ].filter(Boolean);
