@@ -6981,12 +6981,204 @@ function computeConvergence(m, s, data) {
     tier, netDir, alignCount, opposedCount: opposed.length,
     aligned: aligned.map(x => x.label),
     opposed: opposed.map(x => x.label),
-    allSignals: signals.length
+    allSignals: signals.length,
+    _rawSignals: signals   // (Drop #57) exposed so computeUnifiedSignal reuses the same directional reads
   };
+}
+
+// ============================================================================
+// (Drop #58) TEAM-TOTAL LEAN — player reads roll up to the team prop.
+// ============================================================================
+function computeTeamLean(sideData, data) {
+  if (!sideData || !Array.isArray(sideData.mismatches)) return null;
+  let overW = 0, underW = 0, overN = 0, underN = 0, graded = 0;
+  for (const m of sideData.mismatches) {
+    let u; try { u = computeUnifiedSignal(m, sideData, data); } catch (_) { u = null; }
+    if (!u || u.call === 'PASS') continue;
+    graded++;
+    const w = Math.abs(u.net);
+    if (u.call === 'OVER') { overW += w; overN++; }
+    else { underW += w; underN++; }
+  }
+  if (graded < 3) return null;
+  const net = overW - underW;
+  const lean = net > 0 ? 'OVER' : net < 0 ? 'UNDER' : 'SPLIT';
+  const total = overW + underW;
+  return {
+    lean, overN, underN, graded,
+    strength: total > 0 && Math.abs(net) / total >= 0.5 ? 'STRONG' : 'LEAN',
+    detail: overN + ' hitters lean over, ' + underN + ' lean under (of ' + graded + ' with a call)'
+  };
+}
+
+function buildTeamLeanChip(sideData, data) {
+  const t = computeTeamLean(sideData, data);
+  if (!t || t.lean === 'SPLIT') return '';
+  const isOver = t.lean === 'OVER';
+  const color = isOver ? '#5a9a70' : '#5a7aa8';
+  const bg = isOver ? 'rgba(90,154,112,0.12)' : 'rgba(90,122,168,0.12)';
+  return '<div class="team-lean" title="' + esc(t.detail) + ' \u2014 team total is driven by how these hitters produce. Directional lean, not a graded pick." style="display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;letter-spacing:0.04em;padding:3px 9px;border-radius:100px;background:' + bg + ';border:1px solid ' + color + ';color:' + color + ';margin-top:6px">' +
+    (isOver ? '\u2191' : '\u2193') + ' TEAM TOTAL ' + t.strength + ' ' + t.lean + ' \u00b7 ' + t.overN + '\u2013' + t.underN + ' hitters</div>';
 }
 
 // Convergence badge — the blindside flag. Only renders on real convergence
 // (2+ aligned signals, minimal opposition). Shows exactly which signals stack.
+// ============================================================================
+// (Drop #57 — UNIFIED SIGNAL) One engine, one call.
+//
+// Combines EVERY MLB read Lyrid produces into a single directional verdict:
+// OVER, UNDER, or PASS. Where computeConvergence only speaks up when signals
+// happen to stack, this always renders a call by tallying weighted votes from
+// all reads — including the model's own projection lean — and resolving to a
+// direction.
+//
+// DISCIPLINE (unchanged): this is a weighted VOTE TALLY of real reads, not a
+// validated probability. It outputs a direction and a strength (STRONG / LEAN /
+// PASS) from how lopsided and how deep the vote is — never a fabricated %. It
+// PASSes when the vote is close or too thin to trust, because "no call" is a
+// legitimate output. Signals aren't fully independent (ghost + control both
+// read the pitcher), so the tally is a guide, not a probability — and it's
+// stamped on logged picks so it can be graded into one.
+// ============================================================================
+function computeUnifiedSignal(m, s, data) {
+  // ==========================================================================
+  // (Drop #58) THE unified engine — every MLB read collapses into ONE call.
+  //
+  // Confirmed by live results (Swanson + Machado both cashed the OVER while the
+  // model's anti-cal "fade" was wrong): CONCRETE matchup reads outweigh the
+  // soft projection-fade lean. Weights reflect that — real head-to-head
+  // dominance (OWNS) and hittable-arm reads are heaviest; the projection fade
+  // is one voice among many, not an override.
+  //
+  // Tally over-votes vs under-votes, promote the winner. Banner tier is set by
+  // how many convergent signals stack on the WINNING side: 4+ PLATINUM, 3 GOLD,
+  // 2 SILVER, 1 LEAN. PASS only on a true tie. Still a weighted tally of real
+  // reads, not a validated %.
+  // ==========================================================================
+  const pitcherMeta = m.platoonMeta && m.platoonMeta.pitcher;
+  const votes = [];
+  const add = (dir, weight, label) => votes.push({ dir, weight, label });
+
+  // --- Concrete matchup reads (heaviest — confirmed to beat the fade) ---
+  if (m.vsPitcher && m.vsPitcher.owns) add(+1, 3, `Owns this pitcher (${m.vsPitcher.hits}-${m.vsPitcher.ab}${m.vsPitcher.hr ? ', ' + m.vsPitcher.hr + ' HR' : ''})`);
+  if (s && s.pitcherVsTeam && s.pitcherVsTeam.owns) add(-1, 3, `Pitcher owns this lineup (${s.pitcherVsTeam.era} ERA, ${s.pitcherVsTeam.starts} starts)`);
+
+  let ghost = null; try { ghost = computeGhostScore(m, data); } catch (_) {}
+  if (ghost && ghost.antiGhost) add(+1, 2, 'Hittable arm (anti-ghost — bats produce)');
+  else if (ghost && ghost.isGhost) add(-1, 2, `Ghost ${ghost.score}/5 (${ghost.archetype})`);
+
+  const bestRec = (m.propRecs || []).find(p => p.isBest) || (m.propRecs || [])[0];
+  if (bestRec && bestRec._verifiedCohort && !bestRec._kTrapVeto) add(+1, 2, 'VERIFIED cohort (72% hits-over)');
+  if (bestRec && bestRec._kTrapVeto) add(-1, 2, 'Arsenal K-trap (contact profile at risk)');
+
+  // --- Pitcher tendency reads (medium) ---
+  const cp = computePitcherControlProfile(pitcherMeta);
+  if (cp && cp.tier === 'ball-thrower') add(+1, 1, 'Pitcher falls behind (traffic)');
+  else if (cp && cp.tier === 'strike-thrower') add(-1, 1, 'Strike-thrower (pounds zone)');
+
+  const jam = (s && s.inningSplits) ? estimateJamRisk(s.inningSplits, (function () {
+    const w = (s.pitcherProps && s.pitcherProps.recommendations || []).find(r => r.type === 'walks');
+    return w ? parseFloat(w.projection) : null;
+  })()) : null;
+  if (jam && jam.tier === 'high') add(+1, 1, 'Pitcher jam-prone (own history)');
+
+  if (pitcherMeta) {
+    const vuln = computePitcherVuln(pitcherMeta, s);
+    if (vuln && vuln.score >= 3) add(+1, 1, `Soft arm (vuln ${vuln.score})`);
+  }
+
+  // --- Form (light) ---
+  const form = String(m.recentFormLabel || '').toUpperCase();
+  if (/SCORCHING|HOT/.test(form)) add(+1, 1, form + ' form');
+  else if (form === 'COLD' || form === 'ICE_COLD') add(-1, 1, 'Cold form');
+
+  // --- Model's own projection lean (one voice, NOT an override) ---
+  if (bestRec) {
+    const underTier = bestRec._lyridUnderTier || m._lyridUnderTier;
+    const isVerifiedOver = bestRec._verifiedCohort && !bestRec._kTrapVeto;
+    if (underTier === 'platinum' && !isVerifiedOver) add(-1, 2, 'Model projection: fade lean');
+    else if (underTier === 'gold' && !isVerifiedOver) add(-1, 1, 'Model projection: mild fade');
+    else if (bestRec.dir === 'more' || bestRec.side === 'over') add(+1, 1, 'Model projection: over lean');
+    else if (bestRec.dir === 'less' || bestRec.side === 'under') add(-1, 1, 'Model projection: under lean');
+  }
+
+  if (!votes.length) return null;
+
+  const overVotes = votes.filter(v => v.dir > 0);
+  const underVotes = votes.filter(v => v.dir < 0);
+  const overW = overVotes.reduce((a, b) => a + b.weight, 0);
+  const underW = underVotes.reduce((a, b) => a + b.weight, 0);
+  const net = overW - underW;
+  const total = overW + underW;
+
+  let call, lean;
+  if (net > 0) { call = 'OVER'; lean = 'over'; }
+  else if (net < 0) { call = 'UNDER'; lean = 'under'; }
+  else { call = 'PASS'; lean = 'split'; }
+
+  const winning = lean === 'over' ? overVotes : lean === 'under' ? underVotes : [];
+  const losing = lean === 'over' ? underVotes : lean === 'under' ? overVotes : votes;
+
+  // Banner tier by how many convergent signals stack on the winning side.
+  let tier;
+  if (call === 'PASS') tier = 'PASS';
+  else if (winning.length >= 4) tier = 'PLATINUM';
+  else if (winning.length === 3) tier = 'GOLD';
+  else if (winning.length === 2) tier = 'SILVER';
+  else tier = 'LEAN';
+
+  return {
+    call, tier, lean,
+    overWeight: overW, underWeight: underW, net,
+    dominancePct: total > 0 ? Math.round(Math.abs(net) / total * 100) : 0,
+    winCount: winning.length, loseCount: losing.length, voteCount: votes.length,
+    for: winning.sort((a, b) => b.weight - a.weight).map(v => v.label),
+    against: losing.sort((a, b) => b.weight - a.weight).map(v => v.label)
+  };
+}
+
+function buildUnifiedSignalBanner(m, s, data) {
+  let u; try { u = computeUnifiedSignal(m, s, data); } catch (_) { return ''; }
+  if (!u) return '';
+  const isPass = u.call === 'PASS';
+  const isOver = u.call === 'OVER';
+  // Tier drives the banner color (PLATINUM/GOLD/SILVER), direction drives arrow.
+  const tierColor = u.tier === 'PLATINUM' ? '#7c6fd6' : u.tier === 'GOLD' ? '#c9a227' : u.tier === 'SILVER' ? '#8a94a6' : isPass ? '#9a8c7a' : (isOver ? '#5a9a70' : '#5a7aa8');
+  const dirColor = isPass ? '#9a8c7a' : isOver ? '#5a9a70' : '#5a7aa8';
+  const bg = isPass ? 'rgba(150,140,120,0.10)'
+    : u.tier === 'PLATINUM' ? 'linear-gradient(135deg,#2a1c4c 0%,#3a2c5c 100%)'
+    : `linear-gradient(135deg,${isOver ? 'rgba(90,154,112,0.18)' : 'rgba(90,122,168,0.18)'},${isOver ? 'rgba(90,154,112,0.06)' : 'rgba(90,122,168,0.06)'})`;
+  const textOnDark = u.tier === 'PLATINUM';
+  const arrow = isPass ? '—' : isOver ? '\u2191' : '\u2193';
+  const headline = isPass ? 'NO CALL' : `${u.tier} \u00b7 ${u.call}`;
+  const forList = u.for.map(l => `<li style="margin:1px 0">\u2713 ${esc(l)}</li>`).join('');
+  const againstList = u.against.length ? u.against.map(l => `<li style="margin:1px 0;opacity:0.7">\u2715 ${esc(l)}</li>`).join('') : '<li style="opacity:0.6">none</li>';
+  const ink = textOnDark ? '#e5e7eb' : 'var(--ink,#1a1a1a)';
+  const dim = textOnDark ? 'rgba(229,231,235,0.7)' : 'var(--dim)';
+  return `<div class="unified-signal" style="margin:8px 12px 4px;padding:11px 13px;border-radius:12px;background:${bg};border:1.5px solid ${tierColor}">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:19px;font-weight:900;color:${dirColor}">${arrow}</span>
+      <span style="font-size:15px;font-weight:800;letter-spacing:0.02em;color:${tierColor}">${headline}</span>
+      ${!isPass ? `<span style="font-size:9.5px;font-weight:700;color:${dim};margin-left:auto">${u.winCount} for \u00b7 ${u.loseCount} against</span>` : ''}
+    </div>
+    ${isPass ? `<div style="font-size:11px;color:${dim};margin-top:4px">Over and under reads are tied (${u.overWeight}\u2013${u.underWeight}). No clean edge \u2014 pass.</div>` : ''}
+    <details style="margin-top:6px">
+      <summary style="cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.05em;color:${dim};list-style:none">\u25BE WHY \u00b7 ${u.for.length} for, ${u.against.length} against \u00b7 tally ${u.overWeight}\u2013${u.underWeight}</summary>
+      <div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap">
+        <div style="flex:1;min-width:130px">
+          <div style="font-size:9px;font-weight:800;letter-spacing:0.08em;color:${isOver||!isPass&&isOver?'#5a9a70':'#5a9a70'};margin-bottom:3px">FOR ${isPass?'':u.call}</div>
+          <ul style="list-style:none;padding:0;margin:0;font-size:10.5px;color:${ink};line-height:1.5">${forList}</ul>
+        </div>
+        <div style="flex:1;min-width:130px">
+          <div style="font-size:9px;font-weight:800;letter-spacing:0.08em;color:#c07a5a;margin-bottom:3px">AGAINST</div>
+          <ul style="list-style:none;padding:0;margin:0;font-size:10.5px;color:${ink};line-height:1.5">${againstList}</ul>
+        </div>
+      </div>
+    </details>
+    <div style="font-size:8.5px;color:${dim};margin-top:5px;opacity:0.7">One engine \u00b7 all reads tallied \u00b7 winner promoted. Directional read, not a hit rate.</div>
+  </div>`;
+}
+
 function buildConvergenceChip(m, s, data) {
   let conv;
   try { conv = computeConvergence(m, s, data); } catch (_) { return ''; }
@@ -8899,16 +9091,32 @@ function renderAnalysis(data) {
 
           return `
             <div class="match ${m.tier}${m.isTopPick?' top-pick':''}${m.hrChance?' has-hr-chance':''}">
-              <div style="padding:10px 12px 0">${buildVerdictBanner(m, { projTotal: (data.projection ? parseFloat(data.projection.projTotal) : null) })}</div>
-              ${buildConvergenceChip(m, s, data)}
-              ${buildControlChip(m.platoonMeta && m.platoonMeta.pitcher)}
-              ${buildPAOutcomeChip(m.seasonStats, m.platoonMeta && m.platoonMeta.pitcher, (m.seasonStats && m.seasonStats.pa) || (m.platoonMeta && m.platoonMeta.pa) || m.hitterPa)}
-              ${buildBvPChip(m.vsPitcher, s.pitcher && s.pitcher.name)}
-              ${_isFadeCard ? `<div style="padding:0 12px">${buildGhostCard(m, data, 'fade')}</div>` : ''}
-              ${m._empUnderRec ? `<div style="padding:0 12px">${buildLyridBestBanner(m._empUnderRec.backtestWR, m._empUnderRec.backtestN, { kind: 'compact', label: 'LYRID UNDER · ' + m._empUnderRec.propLabel, tooltip: m._empUnderRec.reasoningLines.join(' · ') })}</div>` : ''}
+              ${buildUnifiedSignalBanner(m, s, data)}
+              <details class="card-detail-reads" style="margin:0 12px">
+                <summary style="cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--dim);padding:6px 0;list-style:none">▾ ENGINE DETAIL — every read</summary>
+                <div style="padding-top:4px">
+                  <div style="padding:2px 0 0">${buildVerdictBanner(m, { projTotal: (data.projection ? parseFloat(data.projection.projTotal) : null) })}</div>
+                  ${buildConvergenceChip(m, s, data)}
+                  ${buildControlChip(m.platoonMeta && m.platoonMeta.pitcher)}
+                  ${buildPAOutcomeChip(m.seasonStats, m.platoonMeta && m.platoonMeta.pitcher, (m.seasonStats && m.seasonStats.pa) || (m.platoonMeta && m.platoonMeta.pa) || m.hitterPa)}
+                  ${buildBvPChip(m.vsPitcher, s.pitcher && s.pitcher.name)}
+                  ${_isFadeCard ? `<div style="padding:0">${buildGhostCard(m, data, 'fade')}</div>` : ''}
+                  ${m._empUnderRec ? `<div style="padding:0">${buildLyridBestBanner(m._empUnderRec.backtestWR, m._empUnderRec.backtestN, { kind: 'compact', label: 'LYRID UNDER · ' + m._empUnderRec.propLabel, tooltip: m._empUnderRec.reasoningLines.join(' · ') })}</div>` : ''}
+                </div>
+              </details>
               <div class="match-head">
                 <div class="match-hitter">
-                  ${m.isTopPick && m._topPickVerdict === 'bet' ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}${m.isTopPick && m._topPickVerdict === 'fade' ? '<span style="background:rgba(59,130,246,0.18);color:#1e3a8a;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em;cursor:help" title="Engine ranked this hitter #1 on matchup quality, but the validated play is the FADE (bet the under), not the over. See the verdict banner above.">★ TOP FADE — bet under</span>' : ''}${m.isTopPick && (m._topPickVerdict === 'pass' || (m._topPickSuppressed && m._topPickVerdict !== 'fade')) ? '<span style="background:rgba(120,113,108,0.15);color:#57534e;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em;cursor:help" title="Engine ranked this hitter #1 on matchup quality, but the cohort is -EV. The over is not a bet. See the verdict banner above.">⚠ PASS — no edge</span>' : ''}${m.isTopPick && m._topPickVerdict === 'lean' ? '<span class="top-pick-star">★ TOP PICK</span>' : ''}
+                  ${(function () {
+                    // (Drop #58) The tier-chip star now OBEYS the unified call —
+                    // no more "SOLID FADE" while every read below says over. If
+                    // the unified signal contradicts the old _topPickVerdict,
+                    // the unified call wins (it's the synthesis of all engines).
+                    let u = null; try { u = computeUnifiedSignal(m, s, data); } catch (_) {}
+                    if (u && u.call === 'OVER') return '<span class="top-pick-star">★ ' + u.strength + ' OVER</span>';
+                    if (u && u.call === 'UNDER') return '<span style="background:rgba(59,130,246,0.18);color:#1e3a8a;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em">↓ ' + u.strength + ' UNDER</span>';
+                    if (u && u.call === 'PASS') return '<span style="background:rgba(120,113,108,0.15);color:#57534e;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em">— NO CALL</span>';
+                    return '';
+                  })()}
                   <!-- Drop 25: ENGINE REFUSED chip removed -->
                   ${m.hrChance && data.deepMode && !_isFadeCard ? (function renderHrBadge(hc) {
                     // PER-GAME TIER DISPLAY (May 23, 2026 — Item 7)
@@ -8985,7 +9193,12 @@ function renderAnalysis(data) {
                     return `<span class="inflated-edge-chip" style="background:${bgColor};color:${textColor};font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.04em;font-weight:700;cursor:help" title="${tooltip}">⚠ INFLATED EDGE</span>`;
                   })()}
                   ${''/* Drop 25: Fade chip removed */}
-                  <div class="tier-badge ${m.isPrime ? 'prime' : m.tier}" ${m.isPrime ? `title="PRIME tier — top ${MAX_PRIME_PER_SLATE} picks of the day.&#10;Validated 70% WR on similar criteria (n=27, May 19-28 audit).&#10;&#10;Regressed xwoba: ${m.regressedMaxXwoba}&#10;Context mult: ${m.contextMultiplier}&#10;Inflation gap: ${(parseFloat(m.adjustedMaxXwoba) - parseFloat(m.regressedMaxXwoba || 0)).toFixed(3)}&#10;PRIME score: ${m.primeScore}&#10;Fragility: ${m.fragility?.level || 'solid'}"` : ''}>${m.isPrime ? `PRIME #${m._primeRank || ''}` : (_isFadeCard ? m.tier.toUpperCase() + ' ↓ FADE' : m.tier.toUpperCase())}</div>
+                  <div class="tier-badge ${m.isPrime ? 'prime' : m.tier}" ${m.isPrime ? `title="PRIME tier — top ${MAX_PRIME_PER_SLATE} picks of the day.&#10;Validated 70% WR on similar criteria (n=27, May 19-28 audit).&#10;&#10;Regressed xwoba: ${m.regressedMaxXwoba}&#10;Context mult: ${m.contextMultiplier}&#10;Inflation gap: ${(parseFloat(m.adjustedMaxXwoba) - parseFloat(m.regressedMaxXwoba || 0)).toFixed(3)}&#10;PRIME score: ${m.primeScore}&#10;Fragility: ${m.fragility?.level || 'solid'}"` : ''}>${m.isPrime ? `PRIME #${m._primeRank || ''}` : (function () {
+                    // (Drop #58) tier badge shows matchup grade WITHOUT a
+                    // contradicting direction — direction is owned solely by the
+                    // unified header. Just the quality tier, no "↓ FADE".
+                    return m.tier.toUpperCase();
+                  })()}</div>
                 </div>
               </div>
               ${m.hrChance && m.hrChance.drivers && m.hrChance.drivers.length > 0 ? `
@@ -9931,6 +10144,7 @@ function renderAnalysis(data) {
             <div>
               <div class="ph-name">${s.pitcher.name} (${s.pitcher.hand}HP)${oppPitcherBanned ? '<span class="scratch-badge" style="margin-left:6px">BANNED</span>' : ''}${s.pitcherCareerStats?.noviceTier === 'HIGH' ? `<span class="novelty-badge high" title="Limited MLB sample (${s.pitcherCareerStats.careerPa} career PA, ${s.pitcherCareerStats.careerStarts} starts) — lineup unlikely to have tape on his arsenal. YRFI suppressed, K projection boosted.">ROOKIE/CALLUP</span>` : s.pitcherCareerStats?.noviceTier === 'MODERATE' ? `<span class="novelty-badge moderate" title="Limited MLB sample (${s.pitcherCareerStats.careerPa} career PA) — modest novelty effect applied.">LIMITED MLB SAMPLE</span>` : ''}${s.pitcherVsTeam && s.pitcherVsTeam.owns ? `<span class="owns-badge" title="${esc(s.pitcherVsTeam.reason)} — real head-to-head history, ${s.pitcherVsTeam.starts} starts across recent seasons. Supports UNDER on this lineup's run production / hitter overs." style="margin-left:6px;display:inline-block;font-size:9px;font-weight:800;letter-spacing:0.04em;padding:2px 7px;border-radius:100px;background:rgba(120,180,138,0.16);border:1px solid rgba(120,180,138,0.45);color:#5a9a70">👑 OWNS ${esc(s.pitcherVsTeam.oppAbbr)} · ${s.pitcherVsTeam.era} ERA</span>` : (s.pitcherVsTeam && s.pitcherVsTeam.starts >= 2 ? `<span class="vsteam-badge" title="${s.pitcherVsTeam.starts} career starts vs ${esc(s.pitcherVsTeam.oppAbbr)}: ${s.pitcherVsTeam.era} ERA, ${s.pitcherVsTeam.avgIp} IP/start. History available but not a domination pattern." style="margin-left:6px;font-size:9px;font-weight:600;letter-spacing:0.03em;padding:2px 6px;border-radius:100px;background:rgba(150,150,160,0.1);border:1px solid var(--line);color:var(--dim)">vs ${esc(s.pitcherVsTeam.oppAbbr)}: ${s.pitcherVsTeam.era} ERA (${s.pitcherVsTeam.starts})</span>` : '')}</div>
               <div class="ph-meta">Arsenal (by usage):</div>
+              ${buildTeamLeanChip(s, data)}
             </div>
             <div style="display:flex;gap:6px">
               <button class="ban-quick-btn sm" onclick="event.stopPropagation();quickBan('pitchers','${s.pitcher.name.replace(/'/g,'&#39;')}')" title="${oppPitcherBanned?'Unban':'Ban'} this pitcher">
@@ -12900,9 +13114,12 @@ function logBestBets(data) {
         ...(function () {
           try {
             const _cv = computeConvergence(m, sideData, data);
-            return _cv ? { _convergenceTier: _cv.tier, _convergenceDir: _cv.netDir, _convergenceCount: _cv.alignCount, _convergenceOpposed: _cv.opposedCount }
-                       : { _convergenceTier: null };
-          } catch (_) { return { _convergenceTier: null }; }
+            const _us = computeUnifiedSignal(m, sideData, data);
+            return {
+              ...(_cv ? { _convergenceTier: _cv.tier, _convergenceDir: _cv.netDir, _convergenceCount: _cv.alignCount, _convergenceOpposed: _cv.opposedCount } : { _convergenceTier: null }),
+              ...(_us ? { _unifiedCall: _us.call, _unifiedStrength: _us.strength, _unifiedDominance: _us.dominancePct, _unifiedVotes: _us.voteCount } : { _unifiedCall: null })
+            };
+          } catch (_) { return { _convergenceTier: null, _unifiedCall: null }; }
         })(),
         // (Drop #14 — June 5, 2026) Sharp HITS empirical override audit fields
         _sharpHits: bestBet._sharpHits || false,
