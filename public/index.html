@@ -4809,11 +4809,8 @@ function applyLyridUnderTier(propRecs, hitterContext) {
     return hrrProp;
   }
 
-  if (formLabel === 'SCORCHING') {
-    hrrProp._scorchingWatch = true;
-    return null;
-  }
-
+  // (Drop #58) SCORCHING-under rule REMOVED — hasn't held up live. It only ever
+  // set a watch flag (already retired), now fully deleted.
   return null;
 }
 
@@ -5373,25 +5370,46 @@ function applyMlbEngineRanking(propRecs, activeEngine) {
   // Note: HARD-HIT and Lyrid UNDER act on DIFFERENT props (HITS vs HRR),
   // so they don't conflict on the same row. The tier order resolves
   // multi-prop ties.
-  if (hardHitPick) {
+  // (Drop #58) The unified engine is the single authority on direction, BOTH
+  // ways. On an OVER card, under tiers can't be promoted to BEST; on an UNDER
+  // card, over tiers (HARD-HIT, sharp HITS, verified-over) can't be promoted.
+  // This keeps the prop grid's BEST pick pointing the same direction as the
+  // unified header — uniform, no over-on-an-under or under-on-an-over.
+  const _unifiedCall = (propRecs[0] && propRecs[0]._ctxUnifiedCall) || null;
+  const _suppressUnders = (_unifiedCall === 'OVER');   // OVER card → hide under-bests
+  const _suppressOvers  = (_unifiedCall === 'UNDER');  // UNDER card → hide over-bests
+
+  const _effectiveUnderPick = _suppressUnders ? null : lyridUnderPick;
+  const _effectiveHardHit   = _suppressOvers ? null : hardHitPick;
+  const _effectiveSharpHits = _suppressOvers ? null : sharpHitsPick;
+
+  if (_effectiveHardHit) {
     propRecs.forEach(p => {
-      p.isBest = (p === hardHitPick);
+      p.isBest = (p === _effectiveHardHit);
     });
-  } else if (lyridUnderPick && lyridUnderPick._lyridUnderTier === 'platinum') {
+  } else if (_effectiveUnderPick && _effectiveUnderPick._lyridUnderTier === 'platinum') {
     propRecs.forEach(p => {
-      p.isBest = (p === lyridUnderPick);
+      p.isBest = (p === _effectiveUnderPick);
     });
-  } else if (sharpHitsPick) {
+  } else if (_effectiveSharpHits) {
     propRecs.forEach(p => {
-      p.isBest = (p === sharpHitsPick);
+      p.isBest = (p === _effectiveSharpHits);
     });
-  } else if (lyridUnderPick && lyridUnderPick._lyridUnderTier === 'gold') {
+  } else if (_effectiveUnderPick && _effectiveUnderPick._lyridUnderTier === 'gold') {
     propRecs.forEach(p => {
-      p.isBest = (p === lyridUnderPick);
+      p.isBest = (p === _effectiveUnderPick);
     });
   } else {
+    // Fall-through to the engine's top prop — but if the unified call has a
+    // direction, prefer a prop that agrees with it over one that contradicts.
+    let _fallback = topPropForEngine;
+    if (_unifiedCall === 'OVER' || _unifiedCall === 'UNDER') {
+      const wantDir = _unifiedCall === 'OVER' ? 'more' : 'less';
+      const agreeing = propRecs.find(p => !isEliminated(p) && (p.dir === wantDir || p.side === (_unifiedCall === 'OVER' ? 'over' : 'under')));
+      if (_fallback && (_fallback.dir && _fallback.dir !== wantDir) && agreeing) _fallback = agreeing;
+    }
     propRecs.forEach(p => {
-      p.isBest = (topPropForEngine != null && p === topPropForEngine);
+      p.isBest = (_fallback != null && p === _fallback);
     });
   }
 
@@ -8823,12 +8841,18 @@ function renderAnalysis(data) {
             // so the Sharp HITS override can read it inside applyMlbEngineRanking
             // without restructuring the function signature.
             const _ctxPitcherHand = s.pitcher?.hand || '';
+            // (Drop #58) compute the unified call ONCE and stamp its direction
+            // so the prop ranking can defer to it — an HRR-under must not be
+            // promoted to BEST on a card the unified engine reads as OVER.
+            let _unifiedDir = null;
+            try { const _u = computeUnifiedSignal(m, s, data); _unifiedDir = _u ? _u.call : null; } catch (_) {}
             m.propRecs.forEach(p => {
               p._ctxHand = m.hand || '';
               p._ctxPitcherHand = _ctxPitcherHand;
               p._ctxAdjustedMaxXwoba = p.adjustedMaxXwoba || m.adjustedMaxXwoba || 0;
               // (Drop #24 — June 8, 2026) Recent form needed by Lyrid UNDER tier
               p._ctxRecentFormLabel = m.recentFormLabel || m.recentForm?.label || '';
+              p._ctxUnifiedCall = _unifiedDir;
             });
             applyMlbEngineRanking(m.propRecs, state.mlbEngine);
 
@@ -9112,8 +9136,8 @@ function renderAnalysis(data) {
                     // the unified signal contradicts the old _topPickVerdict,
                     // the unified call wins (it's the synthesis of all engines).
                     let u = null; try { u = computeUnifiedSignal(m, s, data); } catch (_) {}
-                    if (u && u.call === 'OVER') return '<span class="top-pick-star">★ ' + u.strength + ' OVER</span>';
-                    if (u && u.call === 'UNDER') return '<span style="background:rgba(59,130,246,0.18);color:#1e3a8a;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em">↓ ' + u.strength + ' UNDER</span>';
+                    if (u && u.call === 'OVER') return '<span class="top-pick-star">★ ' + u.tier + ' OVER</span>';
+                    if (u && u.call === 'UNDER') return '<span style="background:rgba(59,130,246,0.18);color:#1e3a8a;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em">↓ ' + u.tier + ' UNDER</span>';
                     if (u && u.call === 'PASS') return '<span style="background:rgba(120,113,108,0.15);color:#57534e;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:0.05em">— NO CALL</span>';
                     return '';
                   })()}
