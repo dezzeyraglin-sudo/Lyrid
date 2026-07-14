@@ -1,97 +1,79 @@
-// api/tennis/schedule.mjs — upcoming ATP/WTA slate from The Odds API.
-// Uses the /sports and /events endpoints, which are FREE (they don't spend your odds quota),
-// so this fits the free-first plan and never touches BDL.
-//   GET /api/tennis/schedule?date=YYYY-MM-DD   (omit date = next ~48h)
-// Returns { ok, date, matches:[{ matchId, playerA, playerB, startTime, surface, tour, tournament, bestOf }] }
-//
-// Requires env ODDS_API_KEY. Surface + best-of are inferred from the tournament key/title
-// (Sackmann has the authoritative surface per completed match, but for UPCOMING fixtures we
-// infer). Adjust SURFACE_MAP as the tour calendar rolls over.
+// api/tennis/schedule.mjs — upcoming tennis slate from OddsPapi (the source we validated).
+// Fixture-first: /tournaments?sportId=12 -> active tournaments -> /fixtures?tournamentId=X.
+// The board only needs fixtures (players + time); projections come from the index and you type the
+// lines. Odds are NOT pulled here, so this stays cheap on the 250/month free tier.
+//   GET /api/tennis/schedule            -> today + next ~36h
+//   GET /api/tennis/schedule?date=YYYY-MM-DD
+// Requires env ODDSPAPI_KEY. Returns { ok, date, matches:[{matchId, playerA, playerB, startTime,
+// surface, tour, tournament, bestOf}] } — the exact shape the SPA controller expects.
 
-const ODDS_BASE = 'https://api.the-odds-api.com/v4';
+const BASE = 'https://api.oddspapi.io/v4';
+const SPORT_ID_TENNIS = 12;          // confirmed via probe
+const MAX_TOURNAMENTS = 20;          // quota guard: 1 + up to 20 fixture calls per cold fetch
+const CACHE_MS = 30 * 60 * 1000;     // 30 min — board loads hit cache, not OddsPapi
 
-// tournament-key/title fragments → surface. Order matters (first hit wins).
 const SURFACE_MAP = [
-  [/roland[_ ]?garros|french[_ ]?open/i, 'Clay'],
-  [/wimbledon/i, 'Grass'],
-  [/us[_ ]?open|australian[_ ]?open|indian[_ ]?wells|miami|cincinnati|shanghai|paris[_ ]?master|canadian|us[_ ]?hardcourt/i, 'Hard'],
-  [/monte[_ ]?carlo|madrid|rome|barcelona|hamburg|estoril|munich|clay/i, 'Clay'],
-  [/halle|queen|s[_ ]?hertogenbosch|stuttgart|newport|grass/i, 'Grass'],
+  [/roland[_ ]?garros|french|monte|madrid|rome|barcelona|hamburg|estoril|munich|bastad|gstaad|umag|kitzbuhel|clay/i, 'Clay'],
+  [/wimbledon|halle|queen|hertogenbosch|newport|eastbourne|mallorca|grass/i, 'Grass'],
 ];
-function inferSurface(key, title) {
-  const hay = `${key} ${title || ''}`;
-  for (const [re, surf] of SURFACE_MAP) if (re.test(hay)) return surf;
-  return 'Hard'; // tour default
-}
-// Men's Grand Slams are Bo5; everything else (and all WTA) Bo3.
-function inferBestOf(key, title, tour) {
-  const isSlam = /roland[_ ]?garros|french[_ ]?open|wimbledon|us[_ ]?open|australian[_ ]?open/i.test(`${key} ${title || ''}`);
-  return (tour === 'ATP' && isSlam) ? 5 : 3;
-}
-function tourOf(key) {
-  if (/wta/i.test(key)) return 'WTA';
-  if (/atp/i.test(key)) return 'ATP';
-  return 'ATP';
-}
+const inferSurface = (name) => { for (const [re, s] of SURFACE_MAP) if (re.test(name || '')) return s; return 'Hard'; };
+const inferTour = (name) => /wta|women|ladies/i.test(name || '') ? 'WTA' : /atp|challenger|men/i.test(name || '') ? 'ATP' : 'Tennis';
+const isSlam = (name) => /roland[_ ]?garros|french open|wimbledon|us open|australian open/i.test(name || '');
 
-async function getJson(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`Odds API ${r.status} for ${url.split('?')[0]}`);
+async function getJson(path) {
+  const r = await fetch(`${BASE}/${path}${path.includes('?') ? '&' : '?'}apiKey=${process.env.ODDSPAPI_KEY}`);
+  if (!r.ok) throw new Error(`OddsPapi ${path.split('?')[0]} -> HTTP ${r.status}`);
   return r.json();
 }
+const asList = (x) => (Array.isArray(x) ? x : x?.data || []);
 
-// Same UTC calendar day as `dateStr` (YYYY-MM-DD); if no dateStr, within the next 48h.
-function inWindow(commenceIso, dateStr) {
-  const t = new Date(commenceIso);
-  if (dateStr) return commenceIso.slice(0, 10) === dateStr;
-  const now = Date.now();
-  return t.getTime() >= now - 3 * 3600e3 && t.getTime() <= now + 48 * 3600e3;
+function inWindow(iso, dateStr) {
+  if (!iso) return false;
+  if (dateStr) return iso.slice(0, 10) === dateStr;
+  const t = Date.parse(iso), now = Date.now();
+  return t >= now - 6 * 3600e3 && t <= now + 36 * 3600e3;
 }
 
 let CACHE = { key: null, at: 0, data: null };
 
 export default async function handler(req, res) {
   try {
-    const apiKey = process.env.ODDS_API_KEY;
-    if (!apiKey) { res.status(500).json({ error: 'ODDS_API_KEY not set' }); return; }
+    if (!process.env.ODDSPAPI_KEY) { res.status(500).json({ error: 'ODDSPAPI_KEY not set' }); return; }
     const date = (req.query && req.query.date) || null;
-
-    const cacheKey = date || 'upcoming';
-    if (CACHE.key === cacheKey && Date.now() - CACHE.at < 5 * 60e3) {
+    const key = date || 'upcoming';
+    if (CACHE.key === key && Date.now() - CACHE.at < CACHE_MS) {
       res.setHeader('Cache-Control', 'no-store');
       res.status(200).json({ ok: true, cached: true, ...CACHE.data });
       return;
     }
-
-    // 1) active tennis sport keys
-    const sports = await getJson(`${ODDS_BASE}/sports/?apiKey=${apiKey}`);
-    const tennisKeys = sports.filter((s) => s.active &&
-      (s.group === 'Tennis' || /^tennis_/i.test(s.key)));
-
-    // 2) events per key (free endpoint)
+    const tournaments = asList(await getJson(`tournaments?sportId=${SPORT_ID_TENNIS}`))
+      .filter((t) => (t.upcomingFixtures || 0) + (t.liveFixtures || 0) > 0)
+      .sort((a, b) => ((b.upcomingFixtures || 0) + (b.liveFixtures || 0)) - ((a.upcomingFixtures || 0) + (a.liveFixtures || 0)))
+      .slice(0, MAX_TOURNAMENTS);
     const matches = [];
-    for (const s of tennisKeys) {
-      let events;
-      try { events = await getJson(`${ODDS_BASE}/sports/${s.key}/events?apiKey=${apiKey}`); }
-      catch { continue; }
-      const tour = tourOf(s.key);
-      const surface = inferSurface(s.key, s.title);
-      const bestOf = inferBestOf(s.key, s.title, tour);
-      for (const e of events) {
-        if (!inWindow(e.commence_time, date)) continue;
+    for (const t of tournaments) {
+      const tid = t.tournamentId ?? t.id;
+      const tname = t.tournamentName || t.name || '';
+      let fx;
+      try { fx = asList(await getJson(`fixtures?tournamentId=${tid}`)); } catch { continue; }
+      for (const f of fx) {
+        if (!inWindow(f.startTime, date)) continue;
         matches.push({
-          matchId: e.id,
-          playerA: e.home_team, playerB: e.away_team,
-          startTime: e.commence_time,
-          surface, tour, tournament: s.title || s.key, bestOf,
+          matchId: String(f.fixtureId ?? f.id),
+          playerA: f.participant1Name || f.participant1Id,
+          playerB: f.participant2Name || f.participant2Id,
+          startTime: f.startTime,
+          surface: inferSurface(tname),
+          tour: inferTour(tname),
+          tournament: tname,
+          bestOf: (inferTour(tname) === 'ATP' && isSlam(tname)) ? 5 : 3,
         });
       }
     }
-    matches.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
-
+    matches.sort((a, b) => Date.parse(a.startTime) - Date.parse(b.startTime));
     const data = { date: date || 'upcoming', count: matches.length, matches,
-      note: matches.length ? null : 'No tennis events in window — off-week or between tournaments.' };
-    CACHE = { key: cacheKey, at: Date.now(), data };
+      note: matches.length ? null : 'No tennis fixtures in window.' };
+    CACHE = { key, at: Date.now(), data };
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json({ ok: true, ...data });
   } catch (e) {

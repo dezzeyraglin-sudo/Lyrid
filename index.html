@@ -20810,6 +20810,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         ${f('totalGames', 'total games', cur.totalGames)}
         ${f('fantasyA', 'fantasy ' + names[0], cur.fantasyA)}
         ${f('fantasyB', 'fantasy ' + names[1], cur.fantasyB)}
+        ${f('gamesWonA', 'games won ' + names[0], cur.gamesWonA)}
+        ${f('gamesWonB', 'games won ' + names[1], cur.gamesWonB)}
       </div>
       <button class="lyrid-btn" type="button" onclick="applyTennisLines('${esc(matchId)}')">Apply lines</button>
     </div>`;
@@ -20820,7 +20822,9 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     const w = read.winProb || {}, holds = read.holds || {};
     const names = Object.keys(w).filter((k) => k !== 'favored' && k !== 'edge');
     const pj = read.projected || {};
-    const drivers = ((read.drivers && read.drivers.circumstances) || []).concat((read.drivers && read.drivers.aces) || []).concat((read.drivers && read.drivers.totalGames) || []);
+    const drivers = ((read.drivers && read.drivers.circumstances) || [])
+      .concat((read.drivers && read.drivers.aces) || [])
+      .concat((read.drivers && read.drivers.totalGames) || []);
     const g = read.gates || {};
     const chips = [ (g.thinSampleA || g.thinSampleB) ? 'thin surface sample' : '',
       (g.retirementA || g.retirementB) ? 'retirement risk' : '', g.blowout ? 'rout risk' : '' ].filter(Boolean);
@@ -20838,6 +20842,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       ${propRow('Total Games', read.props && read.props.totalGames)}
       ${propRow('Fantasy — ' + names[0], read.props && read.props.fantasyA)}
       ${propRow('Fantasy — ' + names[1], read.props && read.props.fantasyB)}
+      ${propRow('Games Won — ' + names[0], read.props && read.props.gamesWonA)}
+      ${propRow('Games Won — ' + names[1], read.props && read.props.gamesWonB)}
       ${drivers.length ? `<details class="lyrid-tennis-drivers"><summary>why</summary><ul>${drivers.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></details>` : ''}
       ${chips.length ? `<div class="lyrid-tennis-gates">${chips.map((c) => `<span class="lyrid-chip warn">${esc(c)}</span>`).join('')}</div>` : ''}
       <div class="lyrid-tennis-footer">Priors only — not bets, until a slate is graded. ${esc((read.note || ''))}</div></div>`;
@@ -20878,7 +20884,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }
   }
 
-  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB'];
+  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB', 'gamesWonA', 'gamesWonB'];
 
   async function analyzeTennisMatch(matchId, lines) {
     tennisState.selectedMatchId = matchId;

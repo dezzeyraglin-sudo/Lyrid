@@ -6,6 +6,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildMatchRead } from '../../tennis/tennisMatchRead.js';
+import { augmentMatchup } from '../../tennis/tennisLiveAugment.mjs';
+import { makeMatchstatSource } from '../../tennis/tennisMatchstat.mjs';
+
+// Live source is created once per warm lambda (only if a key is present).
+const LIVE = process.env.MATCHSTAT_KEY ? makeMatchstatSource({ apiKey: process.env.MATCHSTAT_KEY }) : null;
 
 // Load + cache the index once per warm lambda. Adjust the path to wherever you commit/store it.
 let INDEX = null;
@@ -42,16 +47,22 @@ function resolve(index, key) {
 
 const num = (v) => (v == null || v === '' ? null : Number(v));
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   try {
     const q = req.query || {};
     const index = loadIndex();
-    const playerA = resolve(index, q.a);
-    const playerB = resolve(index, q.b);
+    let playerA = resolve(index, q.a);
+    let playerB = resolve(index, q.b);
     if (!playerA || !playerB) {
       res.status(404).json({ error: 'player not found', a: !!playerA, b: !!playerB,
         hint: 'pass ATP/WTA id or exact name as in the index' });
       return;
+    }
+    // Refresh recent form/fatigue from the live source (index stays the deep baseline). Never fatal.
+    let live = false;
+    if (LIVE && q.live !== '0') {
+      try { const aug = await augmentMatchup(LIVE, playerA, playerB); playerA = aug.playerA; playerB = aug.playerB; live = true; }
+      catch { /* fall back to index-only */ }
     }
     const read = buildMatchRead({
       playerA, playerB,
@@ -67,11 +78,12 @@ export default function handler(req, res) {
         acesA: num(q.acesA), acesB: num(q.acesB),
         dfA: num(q.dfA), totalGames: num(q.totalGames),
         fantasyA: num(q.fantasyA), fantasyB: num(q.fantasyB),
+        gamesWonA: num(q.gamesWonA), gamesWonB: num(q.gamesWonB),
       },
       sims: 4000,
     });
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json({ ok: true, builtFrom: index.meta?.built || null, read });
+    res.status(200).json({ ok: true, live, builtFrom: index.meta?.built || null, read });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }

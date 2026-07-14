@@ -66,6 +66,8 @@ export function buildMatchRead({
       Math.min(A.p._n, B.p._n), recentRetirementA || recentRetirementB),
     fantasyA: doProp('fantasy', proj.fantasyA.prob, lines.fantasyA, null, A.p._n, recentRetirementA),
     fantasyB: doProp('fantasy', proj.fantasyB.prob, lines.fantasyB, null, B.p._n, recentRetirementB),
+    gamesWonA: doProp('gamesWon', proj.gamesWonA.prob, lines.gamesWonA, null, A.p._n, recentRetirementA),
+    gamesWonB: doProp('gamesWon', proj.gamesWonB.prob, lines.gamesWonB, null, B.p._n, recentRetirementB),
   };
 
   // Projected means — always present, so the fantasy score (and the rest) shows even with no line.

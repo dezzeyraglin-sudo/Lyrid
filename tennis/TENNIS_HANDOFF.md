@@ -1,0 +1,68 @@
+# Lyrid Tennis — Handoff & Maintenance
+
+Everything needed to deploy, run, and maintain the Tennis addition **without the original chat session**. If you (or another dev, or a fresh AI session) need to finish or fix it, start here.
+
+## What it does
+Tennis tab in the SPA. Pulls the upcoming slate, and for any matchup projects both players' performance — win prob, holds, aces, double faults, total games, **total games won (per player)**, and **fantasy score** — congregating surface, recent form, fatigue, surface transition, and head-to-head. You type the PrizePicks line for any market and it returns the over/under likelihood.
+
+Everything is **priors** (`bet:false`) until validated against real logged lines. That's by design — no fake tiers.
+
+## Architecture (three data sources, on purpose)
+- **Index** (`tennis/tennis_serve_index.json`) — deep serve/return baselines per player by surface, built from historical match data (Sackmann schema). Slow-moving; rebuild periodically.
+- **Live augment** (`tennisLiveAugment.mjs`) — refreshes only the recency-sensitive bits (form/fatigue) at read time so reads stay current between index rebuilds. Adapter not yet wired to a source (see TODO).
+- **OddsPapi** — the upcoming **schedule** (`api/tennis/schedule.mjs`). Fixture-first: tournaments → fixtures. Board needs only fixtures (players+time); you type lines, so no odds pull needed for the board.
+
+## File map (all under repo root)
+- `index.html` — SPA with the Tennis tab already integrated (nav button, `#tennis-panel`, controller).
+- `api/tennis/analyze.mjs` — serves a match read from the index. Query: `a`, `b`, `surface`, `bestOf`, `rankA/B`, `h2hEdge`, and line params `acesA/B, dfA, totalGames, fantasyA/B, gamesWonA/B`.
+- `api/tennis/schedule.mjs` — upcoming slate from OddsPapi (needs `ODDSPAPI_KEY`).
+- `tennis/tennisFeed.js` — parse Sackmann CSVs + melt to player rows.
+- `tennis/tennisFeatureBuilder.js` — build the index (per-player surface profiles + recent form). CLI: `node tennis/tennisFeatureBuilder.js ./data/tennis ./tennis/tennis_serve_index.json`.
+- `tennis/tennisProjector.js` — Monte-Carlo match model → all projections + fantasy (confirmed PrizePicks scoring: match +10, game ±1, set ±3, ace +0.5, DF −0.5).
+- `tennis/tennisMatchRead.js` — assembles the read (congregates circumstances, grades lines).
+- `tennis/tennisClassify.js` — tier/gate logic (mirrors wnbaClassify; UNGRADED until real lines).
+- `tennis/tennisLiveAugment.mjs` — live form/fatigue refresh.
+- `tennis/tennisMatchstat.mjs` — live-stats source (Matchstat RapidAPI); resolves names->ids, pulls recent matches with serve stats. Wired into analyze.mjs.
+- `tennis/oddspapiClient.mjs` — OddsPapi client (fixture-first; see note below).
+- `tennis/tennisTotalGamesScan.js` + `tennis/oddspapiRunner.mjs` — real-line total-games edge scan (you run with your key).
+- `tennis/tennisBacktest.js` — naive-baseline edge exploration on history.
+- `build_tennis_index.sh` — rebuild the index (multi-mirror, self-healing).
+
+## Deploy (what's on `main` vs what to push)
+Already on `main`: the `tennis/` folder, `api/tennis/*`, and an `index.html` with the tab.
+Push these updated files (drag into GitHub `upload/main`, or `git add`):
+- `index.html` (adds games-won + fantasy line inputs)
+- `api/tennis/schedule.mjs` (rewritten for OddsPapi)
+- `api/tennis/analyze.mjs`, `tennis/tennisMatchRead.js` (games-won grading)
+- `tennis/tennis_serve_index.json` (the built index — required for reads)
+
+Then in **Vercel → project → Settings → Environment Variables** add:
+- `ODDSPAPI_KEY` = your OddsPapi key (for the schedule board)
+- `MATCHSTAT_KEY` = your RapidAPI key for "Tennis API - ATP WTA ITF" (for live current-form reads; optional — reads fall back to the index if unset)
+
+Vercel redeploys on push. Tab works once the index is committed and the key is set.
+
+## How to use
+Open Tennis tab → board lists upcoming matches → tap one → it shows projections. Type the PrizePicks line(s) in the inputs (total games, games won per player, fantasy per player, aces, DF) → tap **Apply lines** → each shows over/under % vs the projection.
+
+## Maintenance
+**Rebuild the index** (do this weekly-ish so form stays current):
+```
+bash build_tennis_index.sh
+```
+It tries multiple data mirrors, rebuilds, commits, pushes. If it prints "ALL MIRRORS FAILED", find any `tennis_atp` fork on GitHub with `atp_matches_YYYY.csv` files (search github for `atp_matches_2024.csv`), add `owner/repo/branch` to `ATP_MIRRORS` at the top of the script, rerun.
+
+**Auto-refresh (future-proof, optional):** add a `vercel.json` cron that hits a rebuild endpoint on a schedule, OR run `build_tennis_index.sh` from a local cron / GitHub Action weekly. The multi-mirror fallback means it keeps working when a single source dies.
+
+## Troubleshooting (the exact things that bit us)
+- **Board empty / "schedule unavailable"** → `ODDSPAPI_KEY` not set in Vercel, or off-hours (no fixtures in the 36h window). Set the key; check during active tournament hours.
+- **Reads say "index not found"** → `tennis/tennis_serve_index.json` isn't committed. Run the build script, push.
+- **Downloads get 0 files** → the data mirror died. Add a new one to `ATP_MIRRORS` (Sackmann's own `JeffSackmann/tennis_atp` was removed from GitHub — do not use it).
+- **"thin sample" on a player** → they're not in the index (WTA is only 2024; ITF/Challenger players often absent). Widen the index data or accept ATP-strong coverage.
+- **Terminal pastes mangle** (zsh eats multi-line/`#`) → put commands in a script file and `bash file.sh`, or paste single-line commands only.
+- **OddsPapi total-games SCAN** (`oddspapiRunner.mjs`) → OddsPapi is fixture-first and odds only populate on live/imminent fixtures; the odds-parsing in `oddspapiClient.mjs` (`normalizeTotals`) still needs the real market shape confirmed on a fixture that has `hasOdds:true` during play. The schedule board does NOT depend on this.
+- **API keys** → never commit or paste them; keep in the shell (`export ODDSPAPI_KEY=…`) or Vercel env. Rotate if exposed.
+
+## What's done vs TODO
+Done: index build, projections + fantasy (confirmed scoring), congregation (form/fatigue/surface/H2H), games-won + fantasy line grading, OddsPapi schedule board, live-augment logic, multi-mirror self-healing builder.
+TODO: (1) DONE — live form is wired via Matchstat (`tennisMatchstat.mjs` + `augmentMatchup` in `analyze.mjs`); set `MATCHSTAT_KEY`. If reads don't refresh (aces come back null), the per-match `stat` field names differ from the docs — run `node -e` importing `makeMatchstatSource(...).probe("Jannik Sinner")`, paste the sample, and adjust `mapStat()`. (2) confirm OddsPapi's total-games market shape for the edge scan; (3) widen WTA data (only 2024 now); (4) once you've logged real lines for a few weeks, promote graded tiers in `tennisClassify.js`.
