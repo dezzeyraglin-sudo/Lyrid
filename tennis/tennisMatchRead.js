@@ -109,8 +109,22 @@ export function buildMatchRead({
   // What the read INTENTIONALLY ignores (documented so it's a choice, not an omission).
   const ignored = ['prize money', 'career titles', 'weight', 'turned-pro year', 'doubles record'];
 
+  // Tier disclosure — what the read is actually built on, so a Futures read isn't mistaken for a
+  // tour read. Baselines are measured from real completed Bo3 matches (2023-24), not assumed:
+  //   ITF Futures  mean 21.35 games, 29.0% 3-set, 23.5% w/ tiebreak
+  //   Challenger   mean 22.57 games, 34.3% 3-set, 30.5% w/ tiebreak
+  //   ATP Tour     mean 23.49 games, 36.0% 3-set, 38.5% w/ tiebreak
+  // Note ITF runs SHORTER than tour (big early-round skill gaps → blowouts), the opposite of the
+  // common assumption that lower-tier matches grind long.
+  const coldA = playerA?._coldStart, coldB = playerB?._coldStart;
+  const disclaimer = (coldA || coldB)
+    ? `Off-index player${coldA && coldB ? 's' : ''} (${[coldA ? A.name : null, coldB ? B.name : null].filter(Boolean).join(', ')}) — profile built from ~${playerA?._sampleMatches || playerB?._sampleMatches || 10} recent matches via live feed, not deep history. Lower-tier fields (ITF/Challenger) are less predictable and this read carries a wider error bar. For reference, real ITF Bo3 averages 21.4 games (29% go 3 sets) vs 23.5 on tour — lower tiers run SHORTER, not longer.`
+    : null;
+
   return {
     matchup: `${A.name} vs ${B.name}`, surface, bestOf,
+    tier: (coldA || coldB) ? 'off-index (ITF/Challenger/new)' : 'indexed',
+    disclaimer,
     winProb: { [A.name]: proj.winProbA, [B.name]: proj.winProbB, favored, edge: winEdge },
     holds: { [A.name]: proj.holdA, [B.name]: proj.holdB },
     circumstances: { [A.name]: contextA, [B.name]: contextB, h2hEdge },

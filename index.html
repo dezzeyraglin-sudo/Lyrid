@@ -20765,6 +20765,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   #tennis-panel .lyrid-tennis-gates{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--space-2)}
   #tennis-panel .lyrid-chip.warn{background:var(--data-warning-surface);color:var(--data-warning);font-size:var(--size-eyebrow);padding:2px 8px;border-radius:999px}
   #tennis-panel .lyrid-tennis-footer{margin-top:var(--space-3);font-size:var(--size-eyebrow);color:var(--text-tertiary,var(--text-secondary))}
+  #tennis-panel .lyrid-tennis-disclaimer{margin:var(--space-2) 0;padding:8px 10px;border-radius:var(--radius-md);border:0.5px solid var(--border-hairline);font-size:var(--size-eyebrow);line-height:1.45;color:var(--text-secondary)}
   #tennis-panel .lyrid-tennis-proj{font-size:var(--size-caption);color:var(--text-secondary);margin:var(--space-2) 0}
   #tennis-panel .lyrid-tennis-lines{margin:var(--space-2) 0 var(--space-3)}
   #tennis-panel .lyrid-tennis-lines-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--space-2)}
@@ -20835,6 +20836,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       <div class="lyrid-tennis-winprob">${names.map((n) => `<span>${esc(n)} ${pct(w[n])} · hold ${pct(holds[n])}</span>`).join('')}</div>
       <div class="lyrid-tennis-proj">Projected — fantasy ${esc(names[0])} <b>${one(fA)}</b> · ${esc(names[1])} <b>${one(fB)}</b>
         · total games <b>${one(pj.totalGames)}</b></div>
+      ${read.disclaimer ? `<div class="lyrid-tennis-disclaimer">${esc(read.disclaimer)}</div>` : ''}
       ${linesForm(matchId, names, cur || {})}
       ${propRow('Aces — ' + names[0], read.props && read.props.acesA)}
       ${propRow('Aces — ' + names[1], read.props && read.props.acesB)}
@@ -20851,14 +20853,16 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 
   function matchRow(m) {
     const sel = String(m.matchId) === String(tennisState.selectedMatchId);
+    const noRead = m.readable === false;
+    const cold = m.readable && m.indexed === false;   // readable via live cold-start, not deep history
     const sub = `${esc(m.surface)} · ${esc(m.tour)}${m.tournament ? ' · ' + esc(m.tournament) : ''} · ${esc(m.bestOf === 5 ? 'Bo5' : 'Bo3')}`;
     return `<button class="lyrid-game-card${sel ? ' signal' : ''}" type="button" onclick="analyzeTennisMatch('${esc(m.matchId)}')" aria-label="Read ${esc(m.playerA)} vs ${esc(m.playerB)}">
       <div class="lyrid-game-time"><div class="lyrid-game-time-value">${esc(fmtTime(m.startTime))}</div>
         <div class="lyrid-game-time-zone">${esc(m.tour)}</div></div>
       <div class="lyrid-game-matchup"><div class="lyrid-game-teams"><span>${esc(m.playerA)}</span><span class="at">vs</span><span>${esc(m.playerB)}</span></div>
-        <div class="lyrid-game-pitchers">${sub} · tap to analyze</div></div>
-      <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">read</div>
-        <div class="lyrid-game-projection-value" aria-hidden="true">→</div></div></button>`;
+        <div class="lyrid-game-pitchers">${sub} · ${noRead ? 'no data — no read' : (cold ? 'live profile · tap to analyze' : 'tap to analyze')}</div></div>
+      <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">${noRead ? '—' : 'read'}</div>
+        <div class="lyrid-game-projection-value" aria-hidden="true">${noRead ? '·' : '→'}</div></div></button>`;
   }
   function boardHtml(matches) {
     if (!matches || !matches.length)
@@ -20901,6 +20905,12 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       for (const k of LINE_KEYS) if (cur[k] != null && cur[k] !== '') qs.set(k, cur[k]);
       const r = await fetch('/api/tennis/analyze?' + qs.toString(), { cache: 'no-store' });
       const j = await r.json();
+      if (r.status === 404 && j && j.error === 'player not found') {
+        const miss = [j.a === false ? m.playerA : null, j.b === false ? m.playerB : null].filter(Boolean).join(' and ');
+        if (container) container.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">No read for this match</div>
+          <div class="lyrid-empty-text">${esc(miss || 'These players')} aren't in the serve index — usually a lower-tier (ITF/Challenger) or new player. Reads need match history. Try a tour-level match, or rebuild the index with wider data.</div></div>`;
+        return;
+      }
       if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status));
       if (container) container.innerHTML = renderRead(j.read, matchId, cur);
     } catch (e) {

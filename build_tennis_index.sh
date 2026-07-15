@@ -22,6 +22,13 @@ pull () {  # $1=mirror path(owner/repo/branch)  $2=prefix(atp|wta)
     if curl -sf -o "data/tennis/${pfx}_matches_$y.csv" "https://raw.githubusercontent.com/$m/${pfx}_matches_$y.csv"; then
       got=$((got+1)); else rm -f "data/tennis/${pfx}_matches_$y.csv"; fi
   done
+  # Challengers: same schema, 100% serve-stat coverage — doubles player coverage. (Futures files
+  # exist too but have NO serve stats, so they are deliberately NOT downloaded.)
+  if [ "$pfx" = "atp" ]; then
+    for y in $(seq 2020 2025); do
+      curl -sf -o "data/tennis/atp_matches_qual_chall_$y.csv" "https://raw.githubusercontent.com/$m/atp_matches_qual_chall_$y.csv" && got=$((got+1)) || rm -f "data/tennis/atp_matches_qual_chall_$y.csv"
+    done
+  fi
   echo "$got"
 }
 

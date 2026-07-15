@@ -145,8 +145,13 @@ export function projectMatch({ playerA, playerB, surface = 'Hard', bestOf = 3, s
   // Point-win probs: additive blend of server's serve-pts-won and (1 - returner's ret-pts-won),
   // then a small head-to-head nudge (h2hEdge in −1..1, + favours A). All additive, all capped.
   const h2hN = clamp(h2hEdge, -1, 1) * CONTEXT_WEIGHTS.h2hCap;
-  const pA = clamp(0.5 * A.servePtsWonPct + 0.5 * (1 - B.retPtsWonPct) + h2hN, 0.5, 0.86);
-  const pB = clamp(0.5 * B.servePtsWonPct + 0.5 * (1 - A.retPtsWonPct) - h2hN, 0.5, 0.86);
+  // Barnett-Clarke form: server's own serve-pts-won, adjusted by how far from tour-average the
+  // RETURNER is. The old 50/50 blend halved each player's deviation from average, compressing
+  // mismatches (a top-20 read 62% over a Challenger instead of ~85%) and inflating total games by
+  // ~2/match. This keeps the full differential. Still additive — two terms, capped, no chaining.
+  const TOUR_RET_AVG = 0.365;
+  const pA = clamp(A.servePtsWonPct + (TOUR_RET_AVG - B.retPtsWonPct) + h2hN, 0.45, 0.88);
+  const pB = clamp(B.servePtsWonPct + (TOUR_RET_AVG - A.retPtsWonPct) - h2hN, 0.45, 0.88);
   const holdA = holdProb(pA), holdB = holdProb(pB);
 
   // Ace rate adjusted for opponent's aces-faced tendency: additive deviation from baseline, capped.

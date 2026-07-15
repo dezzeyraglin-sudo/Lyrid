@@ -8,9 +8,15 @@ import { join } from 'node:path';
 import { buildMatchRead } from '../../tennis/tennisMatchRead.js';
 import { augmentMatchup } from '../../tennis/tennisLiveAugment.mjs';
 import { makeMatchstatSource } from '../../tennis/tennisMatchstat.mjs';
+import { makeApiTennisSource } from '../../tennis/tennisApiTennis.mjs';
+import { resolveWithColdStart } from '../../tennis/tennisColdStart.mjs';
 
-// Live source is created once per warm lambda (only if a key is present).
-const LIVE = process.env.MATCHSTAT_KEY ? makeMatchstatSource({ apiKey: process.env.MATCHSTAT_KEY }) : null;
+// Live source: prefer api-tennis.com if its key is set, else Matchstat. Either is optional —
+// with neither, reads still work off the index (just with build-time form instead of live).
+const LIVE = process.env.APITENNIS_KEY
+  ? makeApiTennisSource({ apiKey: process.env.APITENNIS_KEY })
+  : (process.env.MATCHSTAT_KEY ? makeMatchstatSource({ apiKey: process.env.MATCHSTAT_KEY }) : null);
+const LIVE_NAME = process.env.APITENNIS_KEY ? 'api-tennis' : (process.env.MATCHSTAT_KEY ? 'matchstat' : null);
 
 // Load + cache the index once per warm lambda. Adjust the path to wherever you commit/store it.
 let INDEX = null;
@@ -53,16 +59,34 @@ export default async function handler(req, res) {
     const index = loadIndex();
     let playerA = resolve(index, q.a);
     let playerB = resolve(index, q.b);
+
+    // Index miss → build the player from the live source's recent matches (ITF, Challenger, new
+    // pros). Only possible with a live key; without one we still have to 404.
+    let coldA = false, coldB = false;
+    if ((!playerA || !playerB) && LIVE && q.live !== '0') {
+      const [ra, rb] = await Promise.all([
+        resolveWithColdStart(LIVE, playerA, q.a).catch(() => ({ player: playerA, coldStart: false })),
+        resolveWithColdStart(LIVE, playerB, q.b).catch(() => ({ player: playerB, coldStart: false })),
+      ]);
+      playerA = ra.player; coldA = ra.coldStart;
+      playerB = rb.player; coldB = rb.coldStart;
+    }
     if (!playerA || !playerB) {
       res.status(404).json({ error: 'player not found', a: !!playerA, b: !!playerB,
-        hint: 'pass ATP/WTA id or exact name as in the index' });
+        hint: LIVE ? 'not in the index and the live source has no recent matches for them'
+                   : 'not in the index; set APITENNIS_KEY or MATCHSTAT_KEY to read off-index players' });
       return;
     }
     // Refresh recent form/fatigue from the live source (index stays the deep baseline). Never fatal.
+    // Cold-start players are already built from live data — no need to re-fetch them.
     let live = false;
-    if (LIVE && q.live !== '0') {
-      try { const aug = await augmentMatchup(LIVE, playerA, playerB); playerA = aug.playerA; playerB = aug.playerB; live = true; }
-      catch { /* fall back to index-only */ }
+    if (LIVE && q.live !== '0' && !(coldA && coldB)) {
+      try {
+        const aug = await augmentMatchup(LIVE, playerA, playerB);
+        if (!coldA) playerA = aug.playerA;
+        if (!coldB) playerB = aug.playerB;
+        live = true;
+      } catch { /* fall back to index-only */ }
     }
     const read = buildMatchRead({
       playerA, playerB,
@@ -83,7 +107,9 @@ export default async function handler(req, res) {
       sims: 4000,
     });
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json({ ok: true, live, builtFrom: index.meta?.built || null, read });
+    res.status(200).json({ ok: true, live, liveSource: (live || coldA || coldB) ? LIVE_NAME : null,
+      coldStart: (coldA || coldB) ? { [q.a]: coldA, [q.b]: coldB } : null,
+      builtFrom: index.meta?.built || null, read });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }

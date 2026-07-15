@@ -8,9 +8,46 @@
 // surface, tour, tournament, bestOf}] } — the exact shape the SPA controller expects.
 
 const BASE = 'https://api.oddspapi.io/v4';
-const SPORT_ID_TENNIS = 12;          // confirmed via probe
-const MAX_TOURNAMENTS = 20;          // quota guard: 1 + up to 20 fixture calls per cold fetch
-const CACHE_MS = 30 * 60 * 1000;     // 30 min — board loads hit cache, not OddsPapi
+const SPORT_ID_TENNIS = 12;
+const MAX_TOURNAMENTS = 20;
+const CACHE_MS = 30 * 60 * 1000;
+
+// --- index lookup so the board only lists matches we can actually READ -------------------------
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+let IDX = null;
+function indexNames() {
+  if (IDX) return IDX;
+  const paths = [process.env.TENNIS_INDEX_PATH, join(process.cwd(), 'tennis', 'tennis_serve_index.json'),
+    join(process.cwd(), 'tennis_serve_index.json')].filter(Boolean);
+  for (const p of paths) {
+    try {
+      const j = JSON.parse(readFileSync(p, 'utf8'));
+      const set = new Set(), last = new Map();
+      for (const pl of Object.values(j.players || {})) {
+        const n = String(pl.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        if (!n) continue;
+        set.add(n);
+        const t = n.split(/\s+/); const key = `${t[t.length - 1]}|${(t[0] || ' ')[0]}`;
+        last.set(key, true);
+      }
+      IDX = { set, last }; return IDX;
+    } catch { /* try next */ }
+  }
+  IDX = { set: new Set(), last: new Map() }; return IDX;
+}
+function inIndex(name) {
+  const { set, last } = indexNames();
+  const n = String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  if (!n || /^\d+$/.test(n)) return false;           // raw participant ids aren't players
+  if (!set.size) return true;                        // no index available → don't filter anything out
+  if (set.has(n)) return true;
+  const t = n.split(/\s+/);
+  return last.has(`${t[t.length - 1]}|${(t[0] || ' ')[0]}`);
+}
+// With a live source, off-index players (ITF/Challenger/new) get a cold-start profile — so they're
+// still readable. Without one, only indexed players can be read.
+const HAS_LIVE = !!(process.env.APITENNIS_KEY || process.env.MATCHSTAT_KEY);
 
 const SURFACE_MAP = [
   [/roland[_ ]?garros|french|monte|madrid|rome|barcelona|hamburg|estoril|munich|bastad|gstaad|umag|kitzbuhel|clay/i, 'Clay'],
@@ -46,8 +83,13 @@ export default async function handler(req, res) {
       res.status(200).json({ ok: true, cached: true, ...CACHE.data });
       return;
     }
-    const tournaments = asList(await getJson(`tournaments?sportId=${SPORT_ID_TENNIS}`))
-      .filter((t) => (t.upcomingFixtures || 0) + (t.liveFixtures || 0) > 0)
+    // Prefer real tour events; ITF/UTR/exhibition players aren't in the index so reads fail there.
+    const isLowTier = (t) => /itf|utr|futures|m15|m25|w15|w25|w35|w50|exhibition/i.test(
+      `${t.tournamentName || ''} ${t.categoryName || ''} ${t.categorySlug || ''}`);
+    const all = asList(await getJson(`tournaments?sportId=${SPORT_ID_TENNIS}`))
+      .filter((t) => (t.upcomingFixtures || 0) + (t.liveFixtures || 0) > 0);
+    const tourLevel = all.filter((t) => !isLowTier(t));
+    const tournaments = (tourLevel.length ? tourLevel : all)
       .sort((a, b) => ((b.upcomingFixtures || 0) + (b.liveFixtures || 0)) - ((a.upcomingFixtures || 0) + (a.liveFixtures || 0)))
       .slice(0, MAX_TOURNAMENTS);
     const matches = [];
@@ -58,21 +100,32 @@ export default async function handler(req, res) {
       try { fx = asList(await getJson(`fixtures?tournamentId=${tid}`)); } catch { continue; }
       for (const f of fx) {
         if (!inWindow(f.startTime, date)) continue;
+        const playerA = f.participant1Name || String(f.participant1Id);
+        const playerB = f.participant2Name || String(f.participant2Id);
+        const idxA = inIndex(playerA), idxB = inIndex(playerB);
+        const named = !/^\d+$/.test(String(playerA)) && !/^\d+$/.test(String(playerB));
         matches.push({
           matchId: String(f.fixtureId ?? f.id),
-          playerA: f.participant1Name || f.participant1Id,
-          playerB: f.participant2Name || f.participant2Id,
+          playerA, playerB,
           startTime: f.startTime,
           surface: inferSurface(tname),
           tour: inferTour(tname),
           tournament: tname,
           bestOf: (inferTour(tname) === 'ATP' && isSlam(tname)) ? 5 : 3,
+          indexed: idxA && idxB,                                  // deep history for both
+          readable: (idxA && idxB) || (HAS_LIVE && named),        // deep, or cold-start from live
         });
       }
     }
-    matches.sort((a, b) => Date.parse(a.startTime) - Date.parse(b.startTime));
-    const data = { date: date || 'upcoming', count: matches.length, matches,
-      note: matches.length ? null : 'No tennis fixtures in window.' };
+    // deepest reads first (indexed), then cold-start-readable, then by start time
+    matches.sort((a, b) => (b.indexed - a.indexed) || (b.readable - a.readable) || (Date.parse(a.startTime) - Date.parse(b.startTime)));
+    const readableCount = matches.filter((m) => m.readable).length;
+    const indexedCount = matches.filter((m) => m.indexed).length;
+    const data = { date: date || 'upcoming', count: matches.length, readableCount, indexedCount, matches,
+      note: !matches.length ? 'No tennis fixtures in window.'
+        : !readableCount ? (HAS_LIVE ? 'Fixtures found but no readable players.'
+            : 'Fixtures are off-index (lower-tier). Set APITENNIS_KEY or MATCHSTAT_KEY to read them.')
+        : null };
     CACHE = { key, at: Date.now(), data };
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json({ ok: true, ...data });

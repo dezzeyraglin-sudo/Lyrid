@@ -22,6 +22,8 @@ Everything is **priors** (`bet:false`) until validated against real logged lines
 - `tennis/tennisMatchRead.js` — assembles the read (congregates circumstances, grades lines).
 - `tennis/tennisClassify.js` — tier/gate logic (mirrors wnbaClassify; UNGRADED until real lines).
 - `tennis/tennisLiveAugment.mjs` — live form/fatigue refresh.
+- `tennis/tennisColdStart.mjs` — builds a player profile on demand from the live source when they're NOT in the index (ITF, Challenger, new pros). This is how off-index players get reads.
+- `tennis/tennisApiTennis.mjs` — api-tennis.com live source (drop-in alt to Matchstat).
 - `tennis/tennisMatchstat.mjs` — live-stats source (Matchstat RapidAPI); resolves names->ids, pulls recent matches with serve stats. Wired into analyze.mjs.
 - `tennis/oddspapiClient.mjs` — OddsPapi client (fixture-first; see note below).
 - `tennis/tennisTotalGamesScan.js` + `tennis/oddspapiRunner.mjs` — real-line total-games edge scan (you run with your key).
@@ -53,6 +55,34 @@ bash build_tennis_index.sh
 It tries multiple data mirrors, rebuilds, commits, pushes. If it prints "ALL MIRRORS FAILED", find any `tennis_atp` fork on GitHub with `atp_matches_YYYY.csv` files (search github for `atp_matches_2024.csv`), add `owner/repo/branch` to `ATP_MIRRORS` at the top of the script, rerun.
 
 **Auto-refresh (future-proof, optional):** add a `vercel.json` cron that hits a rebuild endpoint on a schedule, OR run `build_tennis_index.sh` from a local cron / GitHub Action weekly. The multi-mirror fallback means it keeps working when a single source dies.
+
+## Measured tier baselines (real completed Bo3, 2023-24) — use these, not intuition
+| Tier | mean games | 3-set % | tiebreak % |
+|---|---|---|---|
+| ITF Futures | 21.35 | 29.0% | 23.5% |
+| Challenger | 22.57 | 34.3% | 30.5% |
+| ATP Tour | 23.49 | 36.0% | 38.5% |
+
+**ITF runs SHORTER than tour** — fewest 3-setters, fewest tiebreaks. Big early-round skill gaps produce blowouts; tightly-matched tour fields are what create long matches. The common assumption that lower-tier matches grind to 3 sets/tiebreaks is backwards, and betting ITF OVERs on that theory fades a real UNDER lean. Note this makes the calibration bug WORSE at ITF (model ~25 vs ITF reality 21.35).
+
+## ITF Futures — why they're NOT in the index
+Sackmann's `atp_matches_futures_YYYY.csv` files exist (18,423 rows in 2024) but contain **zero serve statistics** — the stat columns are empty, because ITF Futures events don't record match stats. They cannot feed the index (no aces/svpt/SvGms to build a profile from). Challengers ARE in (`atp_matches_qual_chall_YYYY.csv`, 100% stat coverage, 2020-2025) — that's what took the index from 1,605 to 3,408 players. True ITF players are handled by cold start (below).
+
+## ITF / new players (cold start)
+Players outside the historical index (ITF, Challenger, first-year pros) are read via `tennisColdStart.mjs`: analyze.mjs misses the index, then builds their profile from the live source's recent matches. Requires a live key. Board marks these "live profile"; deep-history (indexed) matches sort first. Cold-start reads carry a smaller sample, so the thin-sample gate fires — that's intended.
+
+## ⚠️ KNOWN CALIBRATION BUG — total games biased HIGH (fix before betting)
+**Symptom:** model projects ~25.0-25.4 total games; ATP reality is 23.49. ITF reality is 21.35.
+**Root cause (measured):** the model produces **~52-55% three-setters vs ATP's real 36%**. Games-per-set is correct (~10); SETS-per-match is wrong. Real 36% implies the typical favorite wins each set ~77% of the time; our model makes real matchups look closer to coin flips.
+
+**Ruled out:** hold rate for average players is correct (0.804 vs tour ~80%). Set/game sim logic is correct (win-by-2, 7-6 tiebreak). The model DOES go lopsided when the gap is genuinely large (Sinner v Svrcina → 94%, 20.9 games), so the sim isn't broken — the rate *inputs* are too compressed.
+
+**Why the rates compress — the real blocker.** Mixing Challenger data exposed that raw serve/return rates are level-biased (a Challenger player returns vs weak servers → his return% reads elite). The adjustment for this is **mathematically under-determined**: `p(point) = spw_server + (TOUR_RET − ret_returner)` is invariant under adding the same constant to every spw AND every ret. Within a closed pool you cannot distinguish "all weak servers + strong returners" from "all average". Only cross-level players (who play both Challenger and tour) carry the true gap. Attempts that did NOT work: single-pass opponent adjustment; 4-pass iteration (diverges — an inflated returner inflates his opponents' serve ratings, shrinking his own correction); + damping (0.5) and sample-size shrinkage (K=600 pts) — still leaves Svrcina at ret=0.446, i.e. best-returner-in-history territory; + re-centering the scale on tour-level players — pushed everything to impossible values (Sinner ret 0.472). Current shipped state = damped + shrunk, no gauge fix.
+
+**THE MOST PROMISING UNTRIED FIX — use empirical hold%, don't derive it.** The sim currently derives hold probability from point-win prob assuming i.i.d. points. But the data already contains **actual observed holds**: `breaks_suffered ≈ bpFaced − bpSaved`, so `holdPct = 1 − (bpFaced − bpSaved) / svGms`. `newAcc()` already accumulates bpSaved/bpFaced/svGms — the numbers are sitting there unused. Feeding observed hold rates straight into `simSet()` bypasses the entire point-model calibration problem AND captures clutch/break-point performance (a player who saves break points holds more than his raw point% implies). This is the single highest-value next change.
+
+## Opponent adjustment (why lower-tier stats needed fixing)
+Raw rates are level-biased: a Challenger player returns against weak servers, so his return% reads elite (Svrcina 0.447 vs Dimitrov 0.373 — nonsense). `tennisFeatureBuilder.js` now runs an iterated (4-pass) opponent adjustment: each player's serve/return rates are re-estimated with the opponent's own strength stripped out, converging against already-adjusted peers. This is what makes Challenger + tour data mixable in one index.
 
 ## Troubleshooting (the exact things that bit us)
 - **Board empty / "schedule unavailable"** → `ODDSPAPI_KEY` not set in Vercel, or off-hours (no fixtures in the 36h window). Set the key; check during active tournament hours.
