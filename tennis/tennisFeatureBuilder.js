@@ -13,6 +13,7 @@
 // ESM. Import buildIndex(rows[, opts]) or run as a CLI over ./data/tennis/*.csv.
 
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { buildElo, eloToJSON } from './tennisElo.js';
 import { join } from 'node:path';
 import { buildRowsFromCsv } from './tennisFeed.js';
 
@@ -235,9 +236,13 @@ export function buildIndex(rows, opts = {}) {
     };
   }
 
+  // Elo from match results — the identification anchor (see tennisElo.js). Built from the match
+  // graph, so it bridges Challenger/tour tiers and escapes the serve/return gauge freedom.
+  const elo = buildElo(rows);
+
   const out = { meta: { built: new Date().toISOString(), players: players.size,
     kToAll: K_TO_ALL, kToCohort: K_TO_COHORT, note: opts.note || 'v1 — thresholds unvalidated' },
-    cohorts, players: {} };
+    cohorts, elo: eloToJSON(elo), players: {} };
 
   for (const [id, P] of players) {
     const allRaw = P.byKey.has('ALL') ? rawRates(P.byKey.get('ALL')) : null;
@@ -248,7 +253,9 @@ export function buildIndex(rows, opts = {}) {
       if (!P.byKey.has(s)) continue;
       surfaces[s] = shrinkProfile(rawRates(P.byKey.get(s)), allRaw, cohorts[`${bucket}|${s}`]);
     }
+    const eo = elo.overall.get(id);
     out.players[id] = { name: P.name, rank: P.latestRank, lastDate: P.latestDate, bucket,
+      elo: eo ? Math.round(eo.r * 10) / 10 : null, eloN: eo ? eo.n : 0,
       surfaces, recent: computeRecent(P, allRaw) };
   }
   return out;

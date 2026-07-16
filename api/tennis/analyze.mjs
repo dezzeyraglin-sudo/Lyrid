@@ -10,6 +10,7 @@ import { augmentMatchup } from '../../tennis/tennisLiveAugment.mjs';
 import { makeMatchstatSource } from '../../tennis/tennisMatchstat.mjs';
 import { makeApiTennisSource } from '../../tennis/tennisApiTennis.mjs';
 import { resolveWithColdStart } from '../../tennis/tennisColdStart.mjs';
+import { eloFromJSON, eloWinProb } from '../../tennis/tennisElo.js';
 
 // Live source: prefer api-tennis.com if its key is set, else Matchstat. Either is optional —
 // with neither, reads still work off the index (just with build-time form instead of live).
@@ -88,8 +89,19 @@ export default async function handler(req, res) {
         live = true;
       } catch { /* fall back to index-only */ }
     }
+    // Elo anchor: surface Elo from the index supplies the win probability the point rates can't
+    // (level-biased + gauge-degenerate). Cold-start players have no Elo → falls back to rates.
+    let ewp = null;
+    try {
+      if (index.elo && !coldA && !coldB) {
+        const E = eloFromJSON(index.elo);
+        const idA = Object.keys(index.players).find((k) => index.players[k] === playerA);
+        const idB = Object.keys(index.players).find((k) => index.players[k] === playerB);
+        if (idA && idB) ewp = eloWinProb(E, idA, idB, q.surface || 'Hard');
+      }
+    } catch { /* rates-only fallback */ }
     const read = buildMatchRead({
-      playerA, playerB,
+      playerA, playerB, eloWinProb: ewp,
       surface: q.surface || 'Hard',
       bestOf: num(q.bestOf) || 3,
       rankA: num(q.rankA) ?? playerA.rank ?? null,
@@ -107,7 +119,7 @@ export default async function handler(req, res) {
       sims: 4000,
     });
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json({ ok: true, live, liveSource: (live || coldA || coldB) ? LIVE_NAME : null,
+    res.status(200).json({ ok: true, live, eloAnchored: ewp != null, liveSource: (live || coldA || coldB) ? LIVE_NAME : null,
       coldStart: (coldA || coldB) ? { [q.a]: coldA, [q.b]: coldB } : null,
       builtFrom: index.meta?.built || null, read });
   } catch (e) {

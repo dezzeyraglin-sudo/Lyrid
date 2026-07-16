@@ -26,7 +26,7 @@ function aceDrivers(A, B, surface, proj) {
 }
 
 export function buildMatchRead({
-  playerA, playerB, surface = 'Hard', bestOf = 3,
+  playerA, playerB, surface = 'Hard', bestOf = 3, eloWinProb = null,
   rankA = null, rankB = null, h2h = null, h2hEdge = 0, recentFormA = null, recentFormB = null,
   recentRetirementA = false, recentRetirementB = false,
   lines = {}, sims = 4000,
@@ -42,7 +42,7 @@ export function buildMatchRead({
     };
   };
   const contextA = ctxOf(playerA), contextB = ctxOf(playerB);
-  const proj = projectMatch({ playerA, playerB, surface, bestOf, sims, contextA, contextB, h2hEdge });
+  const proj = projectMatch({ playerA, playerB, surface, bestOf, sims, contextA, contextB, h2hEdge, eloWinProb });
   const A = { name: playerA?.name || 'A', p: surfProf(playerA, surface) };
   const B = { name: playerB?.name || 'B', p: surfProf(playerB, surface) };
   const rankGap = (rankA != null && rankB != null) ? Math.abs(rankA - rankB) : null;
