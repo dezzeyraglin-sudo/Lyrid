@@ -37,19 +37,37 @@ function loadIndex() {
 }
 
 // Resolve a player by exact id, then case-insensitive name match.
+// Resolve a player. Feeds hand us abbreviated names ("D. Jade", "A. Sasnovich") while the index
+// holds full names ("Damir Jade"), so exact matching alone fails and the board's readable flag
+// disagrees with what analyze can actually find. Match on last name + first initial — the SAME rule
+// schedule.mjs uses — so the two stay in sync.
+// NEVER fall back to a loose substring match: `includes("d.")` happily matches half the tour and
+// silently returns a read for the WRONG player, which is worse than no read at all.
+function normName(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[.]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function nameKey(s) {
+  const t = normName(s).split(' ').filter(Boolean);
+  if (!t.length) return null;
+  return `${t[t.length - 1]}|${(t[0] || ' ')[0]}`;   // lastname|firstInitial
+}
 function resolve(index, key) {
   if (key == null) return null;
   const k = String(key).trim();
-  if (index.players[k]) return { id: k, ...index.players[k] };
-  const kl = k.toLowerCase();
-  for (const [id, p] of Object.entries(index.players)) {
-    if ((p.name || '').toLowerCase() === kl) return { id, ...p };
-  }
-  // loose contains-match as a last resort
-  for (const [id, p] of Object.entries(index.players)) {
-    if ((p.name || '').toLowerCase().includes(kl)) return { id, ...p };
-  }
-  return null;
+  if (!k) return null;
+  if (index.players[k]) return { id: k, ...index.players[k] };          // exact id
+  const target = normName(k);
+  const entries = Object.entries(index.players);
+  for (const [id, p] of entries) if (normName(p.name) === target) return { id, ...p };  // exact name
+  // last name + first initial; if it's ambiguous prefer the player with the most matches
+  const want = nameKey(k);
+  if (!want) return null;
+  const hits = entries.filter(([, p]) => nameKey(p.name) === want);
+  if (!hits.length) return null;
+  hits.sort((a, b) => ((b[1].surfaces?.ALL?.n || 0) - (a[1].surfaces?.ALL?.n || 0)));
+  const [id, p] = hits[0];
+  return { id, ...p, _matchedBy: hits.length > 1 ? 'lastname+initial (ambiguous)' : 'lastname+initial' };
 }
 
 const num = (v) => (v == null || v === '' ? null : Number(v));

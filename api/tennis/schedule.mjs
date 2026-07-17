@@ -23,6 +23,11 @@ const inferTour = (n) => /wta|women|ladies/i.test(n || '') ? 'WTA' : /atp|challe
 const isSlam = (n) => /roland[_ ]?garros|french open|wimbledon|us open|australian open/i.test(n || '');
 
 // ---- index lookup (mark which matches have deep history) ----
+// MUST match analyze.mjs exactly. Feeds send abbreviated names ("D. Jade"); if the two files
+// normalize differently the board marks a match readable that analyze then 404s on — which is
+// exactly the bug where clicking a game showed nothing.
+const normName = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/[.]/g, ' ').replace(/\s+/g, ' ').trim();
 let IDX = null;
 function indexNames() {
   if (IDX) return IDX;
@@ -33,10 +38,11 @@ function indexNames() {
       const j = JSON.parse(readFileSync(p, 'utf8'));
       const set = new Set(), last = new Map();
       for (const pl of Object.values(j.players || {})) {
-        const n = String(pl.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const n = normName(pl.name);
         if (!n) continue;
         set.add(n);
-        const t = n.split(/\s+/); last.set(`${t[t.length - 1]}|${(t[0] || ' ')[0]}`, true);
+        const t = n.split(' ').filter(Boolean);
+        last.set(`${t[t.length - 1]}|${(t[0] || ' ')[0]}`, true);
       }
       IDX = { set, last }; return IDX;
     } catch { /* next */ }
@@ -45,11 +51,12 @@ function indexNames() {
 }
 function inIndex(name) {
   const { set, last } = indexNames();
-  const n = String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const n = normName(name);
   if (!n || /^\d+$/.test(n)) return false;
+  const t = n.split(' ').filter(Boolean);
+  if (t.length < 2) return false;          // a bare fragment must never count as a player
   if (!set.size) return true;
   if (set.has(n)) return true;
-  const t = n.split(/\s+/);
   return last.has(`${t[t.length - 1]}|${(t[0] || ' ')[0]}`);
 }
 const HAS_LIVE = () => !!(process.env.APITENNIS_KEY || process.env.MATCHSTAT_KEY);
