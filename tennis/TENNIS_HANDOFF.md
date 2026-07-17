@@ -100,6 +100,13 @@ Working sources actually in use:
 ## Schedule sources (dual, auto-failover)
 `api/tennis/schedule.mjs` tries in order: **api-tennis.com** (`APITENNIS_KEY`, date-range get_fixtures, generous quota — preferred) then **OddsPapi** (`ODDSPAPI_KEY`, 250 req/month free tier). If both fail it returns a note naming each source's error. Lower-tier (ITF/UTR) events are RANKED below tour events but no longer dropped — dropping them emptied the board entirely during off-weeks, since ITF is often the only tennis running.
 
+## PrizePicks lines (auto-fill) + the forward line log
+**`api/tennis/prizepicks.mjs`** pulls live tennis props from `partner-api.prizepicks.com/projections` (JSON:API — join `data` to `included` by id). Verified live: 241 tennis projections, stat types Total Games / Total Games Won / Fantasy Score / Aces / Double Faults / Break Points Won / Total Sets / Total Tie Breaks. **Critical detail:** PrizePicks serves alternates alongside the real line — `odds_type` is `standard` | `demon` | `goblin`. Only `standard` auto-fills; alternates are stashed under `alternates` for line shopping. The board auto-fills lines on first open and shows "Lines auto-filled from PrizePicks"; edit any field and re-apply to override. Fails soft — if PrizePicks changes shape you type lines as before. NOTE: this API is undocumented; it can change without notice, and check their ToS before commercial reliance.
+
+**`tennis/tennisLineLog.mjs`** is the thing that ends `bet:false`. History can't grade us (Sackmann has outcomes, no historical PP lines), so we log forward: `snapshot()` records each slate's standard lines + our model prob/projection; `grade()` fills in results and reports hit rate + Wilson lower bound per market. A market earns a graded tier only when n>=30 AND Wilson LB > 52.4%. Storage is pluggable: `makeFileStore()` (JSONL, for local/cron) or `makeSupabaseStore({url,key})` for serverless — table DDL is in the file header. Run `node tennis/tennisLineLog.mjs snapshot` daily (cron) and `... grade` once results land.
+
+**The path to graded tiers:** snapshot daily for a few weeks -> grade -> any market clearing Wilson LB 52.4% on n>=30 gets promoted in `tennisClassify.js`. Until then everything stays a prior. Calibration (which we fixed) is NOT edge; only the log can prove edge.
+
 ## Troubleshooting (the exact things that bit us)
 - **Board empty / "schedule unavailable"** → `ODDSPAPI_KEY` not set in Vercel, or off-hours (no fixtures in the 36h window). Set the key; check during active tournament hours.
 - **Reads say "index not found"** → `tennis/tennis_serve_index.json` isn't committed. Run the build script, push.
