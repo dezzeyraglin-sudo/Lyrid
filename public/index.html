@@ -20810,6 +20810,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   #tennis-panel .lyrid-tennis-gates{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--space-2)}
   #tennis-panel .lyrid-chip.warn{background:var(--data-warning-surface);color:var(--data-warning);font-size:var(--size-eyebrow);padding:2px 8px;border-radius:999px}
   #tennis-panel .lyrid-tennis-footer{margin-top:var(--space-3);font-size:var(--size-eyebrow);color:var(--text-tertiary,var(--text-secondary))}
+  #tennis-panel .lyrid-tennis-autofill{margin:var(--space-2) 0;font-size:var(--size-eyebrow);color:var(--text-secondary)}
+  #tennis-panel .lyrid-tennis-disclaimer{margin:var(--space-2) 0;padding:8px 10px;border-radius:var(--radius-md);border:0.5px solid var(--border-hairline);font-size:var(--size-eyebrow);line-height:1.45;color:var(--text-secondary)}
   #tennis-panel .lyrid-tennis-proj{font-size:var(--size-caption);color:var(--text-secondary);margin:var(--space-2) 0}
   #tennis-panel .lyrid-tennis-lines{margin:var(--space-2) 0 var(--space-3)}
   #tennis-panel .lyrid-tennis-lines-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--space-2)}
@@ -20855,17 +20857,21 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         ${f('totalGames', 'total games', cur.totalGames)}
         ${f('fantasyA', 'fantasy ' + names[0], cur.fantasyA)}
         ${f('fantasyB', 'fantasy ' + names[1], cur.fantasyB)}
+        ${f('gamesWonA', 'games won ' + names[0], cur.gamesWonA)}
+        ${f('gamesWonB', 'games won ' + names[1], cur.gamesWonB)}
       </div>
       <button class="lyrid-btn" type="button" onclick="applyTennisLines('${esc(matchId)}')">Apply lines</button>
     </div>`;
   }
 
-  function renderRead(read, matchId, cur) {
+  function renderRead(read, matchId, cur, autoFilled) {
     if (!read) return '<div class="lyrid-empty"><div class="lyrid-empty-title">No read</div></div>';
     const w = read.winProb || {}, holds = read.holds || {};
     const names = Object.keys(w).filter((k) => k !== 'favored' && k !== 'edge');
     const pj = read.projected || {};
-    const drivers = ((read.drivers && read.drivers.aces) || []).concat((read.drivers && read.drivers.totalGames) || []);
+    const drivers = ((read.drivers && read.drivers.circumstances) || [])
+      .concat((read.drivers && read.drivers.aces) || [])
+      .concat((read.drivers && read.drivers.totalGames) || []);
     const g = read.gates || {};
     const chips = [ (g.thinSampleA || g.thinSampleB) ? 'thin surface sample' : '',
       (g.retirementA || g.retirementB) ? 'retirement risk' : '', g.blowout ? 'rout risk' : '' ].filter(Boolean);
@@ -20876,6 +20882,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       <div class="lyrid-tennis-winprob">${names.map((n) => `<span>${esc(n)} ${pct(w[n])} · hold ${pct(holds[n])}</span>`).join('')}</div>
       <div class="lyrid-tennis-proj">Projected — fantasy ${esc(names[0])} <b>${one(fA)}</b> · ${esc(names[1])} <b>${one(fB)}</b>
         · total games <b>${one(pj.totalGames)}</b></div>
+      ${read.disclaimer ? `<div class="lyrid-tennis-disclaimer">${esc(read.disclaimer)}</div>` : ''}
+      ${autoFilled ? '<div class="lyrid-tennis-autofill">Lines auto-filled from PrizePicks (standard lines). Edit any field and re-apply.</div>' : ''}
       ${linesForm(matchId, names, cur || {})}
       ${propRow('Aces — ' + names[0], read.props && read.props.acesA)}
       ${propRow('Aces — ' + names[1], read.props && read.props.acesB)}
@@ -20883,6 +20891,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       ${propRow('Total Games', read.props && read.props.totalGames)}
       ${propRow('Fantasy — ' + names[0], read.props && read.props.fantasyA)}
       ${propRow('Fantasy — ' + names[1], read.props && read.props.fantasyB)}
+      ${propRow('Games Won — ' + names[0], read.props && read.props.gamesWonA)}
+      ${propRow('Games Won — ' + names[1], read.props && read.props.gamesWonB)}
       ${drivers.length ? `<details class="lyrid-tennis-drivers"><summary>why</summary><ul>${drivers.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></details>` : ''}
       ${chips.length ? `<div class="lyrid-tennis-gates">${chips.map((c) => `<span class="lyrid-chip warn">${esc(c)}</span>`).join('')}</div>` : ''}
       <div class="lyrid-tennis-footer">Priors only — not bets, until a slate is graded. ${esc((read.note || ''))}</div></div>`;
@@ -20890,14 +20900,16 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 
   function matchRow(m) {
     const sel = String(m.matchId) === String(tennisState.selectedMatchId);
+    const noRead = m.readable === false;
+    const cold = m.readable && m.indexed === false;   // readable via live cold-start, not deep history
     const sub = `${esc(m.surface)} · ${esc(m.tour)}${m.tournament ? ' · ' + esc(m.tournament) : ''} · ${esc(m.bestOf === 5 ? 'Bo5' : 'Bo3')}`;
     return `<button class="lyrid-game-card${sel ? ' signal' : ''}" type="button" onclick="analyzeTennisMatch('${esc(m.matchId)}')" aria-label="Read ${esc(m.playerA)} vs ${esc(m.playerB)}">
       <div class="lyrid-game-time"><div class="lyrid-game-time-value">${esc(fmtTime(m.startTime))}</div>
         <div class="lyrid-game-time-zone">${esc(m.tour)}</div></div>
       <div class="lyrid-game-matchup"><div class="lyrid-game-teams"><span>${esc(m.playerA)}</span><span class="at">vs</span><span>${esc(m.playerB)}</span></div>
-        <div class="lyrid-game-pitchers">${sub} · tap to analyze</div></div>
-      <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">read</div>
-        <div class="lyrid-game-projection-value" aria-hidden="true">→</div></div></button>`;
+        <div class="lyrid-game-pitchers">${sub} · ${noRead ? 'no data — no read' : (cold ? 'live profile · tap to analyze' : 'tap to analyze')}</div></div>
+      <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">${noRead ? '—' : 'read'}</div>
+        <div class="lyrid-game-projection-value" aria-hidden="true">${noRead ? '·' : '→'}</div></div></button>`;
   }
   function boardHtml(matches) {
     if (!matches || !matches.length)
@@ -20923,7 +20935,17 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }
   }
 
-  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB'];
+  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB', 'gamesWonA', 'gamesWonB'];
+
+  // Pull the standard PrizePicks lines for this matchup so the inputs prefill. Fails soft — if
+  // PrizePicks is unreachable or the shape changed, you just type them as before.
+  async function fetchPPLines(m) {
+    try {
+      const r = await fetch(`/api/tennis/prizepicks?a=${encodeURIComponent(m.playerA)}&b=${encodeURIComponent(m.playerB)}`, { cache: 'no-store' });
+      const j = await r.json();
+      return (j && j.ok && j.lines && Object.keys(j.lines).length) ? j.lines : null;
+    } catch { return null; }
+  }
 
   async function analyzeTennisMatch(matchId, lines) {
     tennisState.selectedMatchId = matchId;
@@ -20932,16 +20954,33 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (list) list.innerHTML = boardHtml(tennisState.slate); // re-mark selection
     const m = tennisState.slate.find((x) => String(x.matchId) === String(matchId));
     if (!m) return;
-    const cur = lines || {};
-    if (container) container.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-title">Analyzing…</div></div>';
+    if (container) {
+      container.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-title">Analyzing…</div></div>';
+      try { container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { container.scrollIntoView(); }
+    }
+    // first open → try PrizePicks; after that respect whatever the user typed
+    let cur = lines || null;
+    let autoFilled = false;
+    if (!cur) { const pp = await fetchPPLines(m); if (pp) { cur = pp; autoFilled = true; } }
+    cur = cur || {};
     try {
       const qs = new URLSearchParams({ a: m.playerA, b: m.playerB, surface: m.surface, bestOf: m.bestOf });
       // Lines optional — none gives projections + drivers to eyeball vs the PrizePicks board.
       for (const k of LINE_KEYS) if (cur[k] != null && cur[k] !== '') qs.set(k, cur[k]);
       const r = await fetch('/api/tennis/analyze?' + qs.toString(), { cache: 'no-store' });
       const j = await r.json();
+      if (r.status === 404 && j && j.error === 'player not found') {
+        const miss = [j.a === false ? m.playerA : null, j.b === false ? m.playerB : null].filter(Boolean).join(' and ');
+        if (container) container.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">No read for this match</div>
+          <div class="lyrid-empty-text">${esc(miss || 'These players')} aren't in the serve index — usually a lower-tier (ITF/Challenger) or new player. Reads need match history. Try a tour-level match, or rebuild the index with wider data.</div></div>`;
+        return;
+      }
       if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status));
-      if (container) container.innerHTML = renderRead(j.read, matchId, cur);
+      if (container) {
+        container.innerHTML = renderRead(j.read, matchId, cur, autoFilled);
+        // bring the read into view — on mobile the board pushes it well below the fold
+        try { container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { container.scrollIntoView(); }
+      }
     } catch (e) {
       if (container) container.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">Analysis unavailable</div><div class="lyrid-empty-text">${esc(String(e.message || e))}</div></div>`;
     }

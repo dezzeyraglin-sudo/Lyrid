@@ -20954,7 +20954,10 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (list) list.innerHTML = boardHtml(tennisState.slate); // re-mark selection
     const m = tennisState.slate.find((x) => String(x.matchId) === String(matchId));
     if (!m) return;
-    if (container) container.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-title">Analyzing…</div></div>';
+    if (container) {
+      container.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-title">Analyzing…</div></div>';
+      try { container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { container.scrollIntoView(); }
+    }
     // first open → try PrizePicks; after that respect whatever the user typed
     let cur = lines || null;
     let autoFilled = false;
@@ -20973,7 +20976,11 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         return;
       }
       if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status));
-      if (container) container.innerHTML = renderRead(j.read, matchId, cur, autoFilled);
+      if (container) {
+        container.innerHTML = renderRead(j.read, matchId, cur, autoFilled);
+        // bring the read into view — on mobile the board pushes it well below the fold
+        try { container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { container.scrollIntoView(); }
+      }
     } catch (e) {
       if (container) container.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">Analysis unavailable</div><div class="lyrid-empty-text">${esc(String(e.message || e))}</div></div>`;
     }
