@@ -87,6 +87,19 @@ The iterated opponent adjustment in `tennisFeatureBuilder.js` (damped 0.5, shrun
 ## Opponent adjustment (why lower-tier stats needed fixing)
 Raw rates are level-biased: a Challenger player returns against weak servers, so his return% reads elite (Svrcina 0.447 vs Dimitrov 0.373 — nonsense). `tennisFeatureBuilder.js` now runs an iterated (4-pass) opponent adjustment: each player's serve/return rates are re-estimated with the opponent's own strength stripped out, converging against already-adjusted peers. This is what makes Challenger + tour data mixable in one index.
 
+## Data source status (verified 2026-07)
+**JeffSackmann/tennis_atp and tennis_wta are REMOVED from GitHub.** Verified: the live profile github.com/jeffsackmann states "JeffSackmann has one repository available" and lists only tennis_MatchChartingProject. Raw + HTML URLs 404 from multiple independent networks. Search engines still surface cached snapshots of the old repos (all dated "Updated Dec 30, 2024") — those are stale; do not trust them. Only tennis_MatchChartingProject survives (issues filed as recently as Apr 2026).
+
+Working sources actually in use:
+- ATP tour + Challenger: `AlexandraMoldovan03/ATP-Tennis-Match-Outcome-Prediction-Using-PySpark-and-Machine-Learning/main` (2010-2025 tour, 2020-2025 qual_chall) — Sackmann schema, verified.
+- ATP fallback: `michaelbruen/ATP_Tennis_Project/main` (2023-2025).
+- WTA: `EdwardM1276/Tennis-Performance-Indicator/main` (2024 only — WTA is THIN).
+- Worth evaluating: `Tennismylife/TML-Database` — live-updated ATP DB, explicitly extends Sackmann's schema with missing data filled in. Best candidate to replace the mirrors.
+`build_tennis_index.sh` tries mirrors in order; when one dies, add a new `owner/repo/branch` to ATP_MIRRORS.
+
+## Schedule sources (dual, auto-failover)
+`api/tennis/schedule.mjs` tries in order: **api-tennis.com** (`APITENNIS_KEY`, date-range get_fixtures, generous quota — preferred) then **OddsPapi** (`ODDSPAPI_KEY`, 250 req/month free tier). If both fail it returns a note naming each source's error. Lower-tier (ITF/UTR) events are RANKED below tour events but no longer dropped — dropping them emptied the board entirely during off-weeks, since ITF is often the only tennis running.
+
 ## Troubleshooting (the exact things that bit us)
 - **Board empty / "schedule unavailable"** → `ODDSPAPI_KEY` not set in Vercel, or off-hours (no fixtures in the 36h window). Set the key; check during active tournament hours.
 - **Reads say "index not found"** → `tennis/tennis_serve_index.json` isn't committed. Run the build script, push.

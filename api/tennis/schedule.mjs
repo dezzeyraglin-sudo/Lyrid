@@ -1,20 +1,28 @@
-// api/tennis/schedule.mjs — upcoming tennis slate from OddsPapi (the source we validated).
-// Fixture-first: /tournaments?sportId=12 -> active tournaments -> /fixtures?tournamentId=X.
+// api/tennis/schedule.mjs — upcoming tennis slate. TWO SOURCES, tried in order:
+//   1. api-tennis.com  (APITENNIS_KEY)  — preferred: date-range fixtures, generous quota
+//   2. OddsPapi        (ODDSPAPI_KEY)   — fallback: fixture-first, 250 req/month free tier
 // The board only needs fixtures (players + time); projections come from the index and you type the
-// lines. Odds are NOT pulled here, so this stays cheap on the 250/month free tier.
-//   GET /api/tennis/schedule            -> today + next ~36h
+// lines, so no odds are pulled here.
+//   GET /api/tennis/schedule                 -> today + next ~36h
 //   GET /api/tennis/schedule?date=YYYY-MM-DD
-// Requires env ODDSPAPI_KEY. Returns { ok, date, matches:[{matchId, playerA, playerB, startTime,
-// surface, tour, tournament, bestOf}] } — the exact shape the SPA controller expects.
+// Returns { ok, source, date, count, readableCount, matches:[...] }
 
-const BASE = 'https://api.oddspapi.io/v4';
-const SPORT_ID_TENNIS = 12;
-const MAX_TOURNAMENTS = 20;
-const CACHE_MS = 30 * 60 * 1000;
-
-// --- index lookup so the board only lists matches we can actually READ -------------------------
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+const CACHE_MS = 30 * 60 * 1000;
+const MAX_TOURNAMENTS = 20;
+const asList = (x) => (Array.isArray(x) ? x : x?.data || []);
+
+const SURFACE_MAP = [
+  [/roland[_ ]?garros|french|monte|madrid|rome|barcelona|hamburg|estoril|munich|bastad|gstaad|umag|kitzbuhel|clay/i, 'Clay'],
+  [/wimbledon|halle|queen|hertogenbosch|newport|eastbourne|mallorca|grass/i, 'Grass'],
+];
+const inferSurface = (n) => { for (const [re, s] of SURFACE_MAP) if (re.test(n || '')) return s; return 'Hard'; };
+const inferTour = (n) => /wta|women|ladies/i.test(n || '') ? 'WTA' : /atp|challenger|men/i.test(n || '') ? 'ATP' : 'Tennis';
+const isSlam = (n) => /roland[_ ]?garros|french open|wimbledon|us open|australian open/i.test(n || '');
+
+// ---- index lookup (mark which matches have deep history) ----
 let IDX = null;
 function indexNames() {
   if (IDX) return IDX;
@@ -28,41 +36,23 @@ function indexNames() {
         const n = String(pl.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
         if (!n) continue;
         set.add(n);
-        const t = n.split(/\s+/); const key = `${t[t.length - 1]}|${(t[0] || ' ')[0]}`;
-        last.set(key, true);
+        const t = n.split(/\s+/); last.set(`${t[t.length - 1]}|${(t[0] || ' ')[0]}`, true);
       }
       IDX = { set, last }; return IDX;
-    } catch { /* try next */ }
+    } catch { /* next */ }
   }
   IDX = { set: new Set(), last: new Map() }; return IDX;
 }
 function inIndex(name) {
   const { set, last } = indexNames();
   const n = String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-  if (!n || /^\d+$/.test(n)) return false;           // raw participant ids aren't players
-  if (!set.size) return true;                        // no index available → don't filter anything out
+  if (!n || /^\d+$/.test(n)) return false;
+  if (!set.size) return true;
   if (set.has(n)) return true;
   const t = n.split(/\s+/);
   return last.has(`${t[t.length - 1]}|${(t[0] || ' ')[0]}`);
 }
-// With a live source, off-index players (ITF/Challenger/new) get a cold-start profile — so they're
-// still readable. Without one, only indexed players can be read.
-const HAS_LIVE = !!(process.env.APITENNIS_KEY || process.env.MATCHSTAT_KEY);
-
-const SURFACE_MAP = [
-  [/roland[_ ]?garros|french|monte|madrid|rome|barcelona|hamburg|estoril|munich|bastad|gstaad|umag|kitzbuhel|clay/i, 'Clay'],
-  [/wimbledon|halle|queen|hertogenbosch|newport|eastbourne|mallorca|grass/i, 'Grass'],
-];
-const inferSurface = (name) => { for (const [re, s] of SURFACE_MAP) if (re.test(name || '')) return s; return 'Hard'; };
-const inferTour = (name) => /wta|women|ladies/i.test(name || '') ? 'WTA' : /atp|challenger|men/i.test(name || '') ? 'ATP' : 'Tennis';
-const isSlam = (name) => /roland[_ ]?garros|french open|wimbledon|us open|australian open/i.test(name || '');
-
-async function getJson(path) {
-  const r = await fetch(`${BASE}/${path}${path.includes('?') ? '&' : '?'}apiKey=${process.env.ODDSPAPI_KEY}`);
-  if (!r.ok) throw new Error(`OddsPapi ${path.split('?')[0]} -> HTTP ${r.status}`);
-  return r.json();
-}
-const asList = (x) => (Array.isArray(x) ? x : x?.data || []);
+const HAS_LIVE = () => !!(process.env.APITENNIS_KEY || process.env.MATCHSTAT_KEY);
 
 function inWindow(iso, dateStr) {
   if (!iso) return false;
@@ -70,66 +60,116 @@ function inWindow(iso, dateStr) {
   const t = Date.parse(iso), now = Date.now();
   return t >= now - 6 * 3600e3 && t <= now + 36 * 3600e3;
 }
+function finish(matches) {
+  for (const m of matches) {
+    const idxA = inIndex(m.playerA), idxB = inIndex(m.playerB);
+    const named = !/^\d+$/.test(String(m.playerA)) && !/^\d+$/.test(String(m.playerB));
+    m.indexed = idxA && idxB;
+    m.readable = (idxA && idxB) || (HAS_LIVE() && named);
+  }
+  matches.sort((a, b) => (b.indexed - a.indexed) || (b.readable - a.readable)
+    || (Date.parse(a.startTime) - Date.parse(b.startTime)));
+  return matches;
+}
+
+// ---------- SOURCE 1: api-tennis.com ----------
+async function fromApiTennis(date) {
+  const key = process.env.APITENNIS_KEY;
+  if (!key) return null;
+  const iso = (d) => new Date(d).toISOString().slice(0, 10);
+  const start = date || iso(Date.now());
+  const stop = date || iso(Date.now() + 36 * 3600e3);
+  const qs = new URLSearchParams({ method: 'get_fixtures', APIkey: key, date_start: start, date_stop: stop });
+  const r = await fetch(`https://api.api-tennis.com/tennis/?${qs}`);
+  if (!r.ok) throw new Error(`api-tennis HTTP ${r.status}`);
+  const j = await r.json();
+  if (j.success !== 1) throw new Error(`api-tennis: ${JSON.stringify(j.result || j).slice(0, 120)}`);
+  const rows = asList(j.result);
+  const matches = [];
+  for (const f of rows) {
+    const tname = f.tournament_name || '';
+    const d = f.event_date, tm = f.event_time || '00:00';
+    const startTime = d ? new Date(`${d}T${tm.length === 5 ? tm : '00:00'}:00Z`).toISOString() : null;
+    if (!inWindow(startTime, date)) continue;
+    const a = f.event_first_player || f.first_player, b = f.event_second_player || f.second_player;
+    if (!a || !b) continue;
+    const tour = /wta/i.test(f.event_type_type || '') ? 'WTA'
+      : /atp/i.test(f.event_type_type || '') ? 'ATP' : inferTour(`${f.event_type_type || ''} ${tname}`);
+    matches.push({
+      matchId: String(f.event_key ?? `${a}-${b}-${d}`),
+      playerA: a, playerB: b, startTime,
+      surface: inferSurface(tname), tour, tournament: tname,
+      bestOf: (tour === 'ATP' && isSlam(tname)) ? 5 : 3,
+    });
+  }
+  return matches;
+}
+
+// ---------- SOURCE 2: OddsPapi ----------
+async function fromOddsPapi(date) {
+  const key = process.env.ODDSPAPI_KEY;
+  if (!key) return null;
+  const BASE = 'https://api.oddspapi.io/v4';
+  const get = async (p) => {
+    const r = await fetch(`${BASE}/${p}${p.includes('?') ? '&' : '?'}apiKey=${key}`);
+    if (!r.ok) throw new Error(`OddsPapi ${p.split('?')[0]} -> HTTP ${r.status}`);
+    return r.json();
+  };
+  const isLowTier = (t) => /itf|utr|futures|m15|m25|w15|w25|w35|w50|exhibition/i.test(
+    `${t.tournamentName || ''} ${t.categoryName || ''} ${t.categorySlug || ''}`);
+  // Rank tour-level first but DON'T drop lower tiers — in off-weeks ITF is the only tennis running,
+  // and cold-start makes those players readable. Dropping them emptied the board.
+  const tournaments = asList(await get('tournaments?sportId=12'))
+    .filter((t) => (t.upcomingFixtures || 0) + (t.liveFixtures || 0) > 0)
+    .sort((a, b) => (isLowTier(a) - isLowTier(b))
+      || (((b.upcomingFixtures || 0) + (b.liveFixtures || 0)) - ((a.upcomingFixtures || 0) + (a.liveFixtures || 0))))
+    .slice(0, MAX_TOURNAMENTS);
+  const matches = [];
+  for (const t of tournaments) {
+    const tname = t.tournamentName || '';
+    let fx; try { fx = asList(await get(`fixtures?tournamentId=${t.tournamentId ?? t.id}`)); } catch { continue; }
+    for (const f of fx) {
+      if (!inWindow(f.startTime, date)) continue;
+      const tour = inferTour(tname);
+      matches.push({
+        matchId: String(f.fixtureId ?? f.id),
+        playerA: f.participant1Name || String(f.participant1Id),
+        playerB: f.participant2Name || String(f.participant2Id),
+        startTime: f.startTime,
+        surface: inferSurface(tname), tour, tournament: tname,
+        bestOf: (tour === 'ATP' && isSlam(tname)) ? 5 : 3,
+      });
+    }
+  }
+  return matches;
+}
 
 let CACHE = { key: null, at: 0, data: null };
 
 export default async function handler(req, res) {
-  try {
-    if (!process.env.ODDSPAPI_KEY) { res.status(500).json({ error: 'ODDSPAPI_KEY not set' }); return; }
-    const date = (req.query && req.query.date) || null;
-    const key = date || 'upcoming';
-    if (CACHE.key === key && Date.now() - CACHE.at < CACHE_MS) {
-      res.setHeader('Cache-Control', 'no-store');
-      res.status(200).json({ ok: true, cached: true, ...CACHE.data });
-      return;
-    }
-    // Prefer real tour events; ITF/UTR/exhibition players aren't in the index so reads fail there.
-    const isLowTier = (t) => /itf|utr|futures|m15|m25|w15|w25|w35|w50|exhibition/i.test(
-      `${t.tournamentName || ''} ${t.categoryName || ''} ${t.categorySlug || ''}`);
-    const all = asList(await getJson(`tournaments?sportId=${SPORT_ID_TENNIS}`))
-      .filter((t) => (t.upcomingFixtures || 0) + (t.liveFixtures || 0) > 0);
-    const tourLevel = all.filter((t) => !isLowTier(t));
-    const tournaments = (tourLevel.length ? tourLevel : all)
-      .sort((a, b) => ((b.upcomingFixtures || 0) + (b.liveFixtures || 0)) - ((a.upcomingFixtures || 0) + (a.liveFixtures || 0)))
-      .slice(0, MAX_TOURNAMENTS);
-    const matches = [];
-    for (const t of tournaments) {
-      const tid = t.tournamentId ?? t.id;
-      const tname = t.tournamentName || t.name || '';
-      let fx;
-      try { fx = asList(await getJson(`fixtures?tournamentId=${tid}`)); } catch { continue; }
-      for (const f of fx) {
-        if (!inWindow(f.startTime, date)) continue;
-        const playerA = f.participant1Name || String(f.participant1Id);
-        const playerB = f.participant2Name || String(f.participant2Id);
-        const idxA = inIndex(playerA), idxB = inIndex(playerB);
-        const named = !/^\d+$/.test(String(playerA)) && !/^\d+$/.test(String(playerB));
-        matches.push({
-          matchId: String(f.fixtureId ?? f.id),
-          playerA, playerB,
-          startTime: f.startTime,
-          surface: inferSurface(tname),
-          tour: inferTour(tname),
-          tournament: tname,
-          bestOf: (inferTour(tname) === 'ATP' && isSlam(tname)) ? 5 : 3,
-          indexed: idxA && idxB,                                  // deep history for both
-          readable: (idxA && idxB) || (HAS_LIVE && named),        // deep, or cold-start from live
-        });
-      }
-    }
-    // deepest reads first (indexed), then cold-start-readable, then by start time
-    matches.sort((a, b) => (b.indexed - a.indexed) || (b.readable - a.readable) || (Date.parse(a.startTime) - Date.parse(b.startTime)));
-    const readableCount = matches.filter((m) => m.readable).length;
-    const indexedCount = matches.filter((m) => m.indexed).length;
-    const data = { date: date || 'upcoming', count: matches.length, readableCount, indexedCount, matches,
-      note: !matches.length ? 'No tennis fixtures in window.'
-        : !readableCount ? (HAS_LIVE ? 'Fixtures found but no readable players.'
-            : 'Fixtures are off-index (lower-tier). Set APITENNIS_KEY or MATCHSTAT_KEY to read them.')
-        : null };
-    CACHE = { key, at: Date.now(), data };
+  const date = (req.query && req.query.date) || null;
+  const key = date || 'upcoming';
+  if (CACHE.key === key && Date.now() - CACHE.at < CACHE_MS) {
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json({ ok: true, ...data });
-  } catch (e) {
-    res.status(500).json({ error: String(e.message || e) });
+    res.status(200).json({ ok: true, cached: true, ...CACHE.data });
+    return;
   }
+  const errors = [];
+  for (const [name, fn] of [['api-tennis', fromApiTennis], ['oddspapi', fromOddsPapi]]) {
+    try {
+      const m = await fn(date);
+      if (m == null) { errors.push(`${name}: no key`); continue; }
+      if (!m.length) { errors.push(`${name}: 0 fixtures in window`); continue; }
+      const matches = finish(m);
+      const data = { source: name, date: date || 'upcoming', count: matches.length,
+        readableCount: matches.filter((x) => x.readable).length,
+        indexedCount: matches.filter((x) => x.indexed).length, matches, note: null };
+      CACHE = { key, at: Date.now(), data };
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(200).json({ ok: true, ...data });
+      return;
+    } catch (e) { errors.push(`${name}: ${e.message}`); }
+  }
+  res.status(200).json({ ok: true, source: null, date: date || 'upcoming', count: 0, matches: [],
+    note: `No fixtures. Sources tried — ${errors.join(' | ')}. Set APITENNIS_KEY (preferred) or ODDSPAPI_KEY.` });
 }
