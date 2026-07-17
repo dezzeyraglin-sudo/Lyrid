@@ -7197,6 +7197,50 @@ function buildUnifiedSignalBanner(m, s, data) {
   </div>`;
 }
 
+// ============================================================================
+// (Drop #59) MAX CONVERGENCE — the elite 5-signal flag, surfaced on the card.
+//
+// Derived from computeUnifiedSignal (NOT the older computeConvergence), so it
+// can never contradict the unified header above it — same engine, same tally,
+// same direction. Fires ONLY at the strictest bar: 5+ reads stacked on the
+// winning side with ZERO reads against. Notated OVER-PRODUCING vs
+// UNDER-PRODUCING so the direction is unmistakable.
+//
+// Rare by design. If it fires on every card the bar is wrong, not the slate.
+// ============================================================================
+const MAX_CONVERGENCE_MIN_SIGNALS = 5;
+
+function computeMaxConvergence(m, s, data) {
+  let u; try { u = computeUnifiedSignal(m, s, data); } catch (_) { return null; }
+  if (!u || u.call === 'PASS') return null;
+  if (u.winCount < MAX_CONVERGENCE_MIN_SIGNALS) return null;   // must hit level 5
+  if (u.loseCount > 0) return null;                            // zero opposition
+  return {
+    call: u.call,
+    producing: u.call === 'OVER' ? 'OVER-PRODUCING' : 'UNDER-PRODUCING',
+    signalCount: u.winCount,
+    signals: u.for,
+    weight: u.call === 'OVER' ? u.overWeight : u.underWeight
+  };
+}
+
+function buildMaxConvergenceChip(m, s, data) {
+  const mx = computeMaxConvergence(m, s, data);
+  if (!mx) return '';
+  const isOver = mx.call === 'OVER';
+  const accent = isOver ? '#8fd6a6' : '#9fc0e8';
+  return `<div class="max-convergence" style="margin:6px 12px 2px;padding:10px 12px;border-radius:11px;background:linear-gradient(135deg,#2a1c4c 0%,#3a2c5c 100%);border:1.5px solid #7c6fd6">
+    <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+      <span style="font-size:13px">\u26A1</span>
+      <span style="font-size:11.5px;font-weight:900;letter-spacing:0.06em;color:#c9b3e0">MAX CONVERGENCE</span>
+      <span style="font-size:11px;font-weight:800;letter-spacing:0.04em;color:${accent}">${isOver ? '\u2191' : '\u2193'} ${mx.producing}</span>
+      <span style="font-size:9.5px;font-weight:700;color:rgba(201,179,224,0.75);margin-left:auto">${mx.signalCount} signals \u00b7 0 against</span>
+    </div>
+    <div style="font-size:10px;color:#e5e7eb;margin-top:5px;line-height:1.55">${mx.signals.map(esc).join(' \u00b7 ')}</div>
+    <div style="font-size:8.5px;color:rgba(201,179,224,0.7);margin-top:5px">Every read agrees, none dissent. Conviction flag \u2014 not a hit rate.</div>
+  </div>`;
+}
+
 function buildConvergenceChip(m, s, data) {
   let conv;
   try { conv = computeConvergence(m, s, data); } catch (_) { return ''; }
@@ -9116,6 +9160,7 @@ function renderAnalysis(data) {
           return `
             <div class="match ${m.tier}${m.isTopPick?' top-pick':''}${m.hrChance?' has-hr-chance':''}">
               ${buildUnifiedSignalBanner(m, s, data)}
+              ${buildMaxConvergenceChip(m, s, data)}
               <details class="card-detail-reads" style="margin:0 12px">
                 <summary style="cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--dim);padding:6px 0;list-style:none">▾ ENGINE DETAIL — every read</summary>
                 <div style="padding-top:4px">

@@ -7197,6 +7197,50 @@ function buildUnifiedSignalBanner(m, s, data) {
   </div>`;
 }
 
+// ============================================================================
+// (Drop #59) MAX CONVERGENCE — the elite 5-signal flag, surfaced on the card.
+//
+// Derived from computeUnifiedSignal (NOT the older computeConvergence), so it
+// can never contradict the unified header above it — same engine, same tally,
+// same direction. Fires ONLY at the strictest bar: 5+ reads stacked on the
+// winning side with ZERO reads against. Notated OVER-PRODUCING vs
+// UNDER-PRODUCING so the direction is unmistakable.
+//
+// Rare by design. If it fires on every card the bar is wrong, not the slate.
+// ============================================================================
+const MAX_CONVERGENCE_MIN_SIGNALS = 5;
+
+function computeMaxConvergence(m, s, data) {
+  let u; try { u = computeUnifiedSignal(m, s, data); } catch (_) { return null; }
+  if (!u || u.call === 'PASS') return null;
+  if (u.winCount < MAX_CONVERGENCE_MIN_SIGNALS) return null;   // must hit level 5
+  if (u.loseCount > 0) return null;                            // zero opposition
+  return {
+    call: u.call,
+    producing: u.call === 'OVER' ? 'OVER-PRODUCING' : 'UNDER-PRODUCING',
+    signalCount: u.winCount,
+    signals: u.for,
+    weight: u.call === 'OVER' ? u.overWeight : u.underWeight
+  };
+}
+
+function buildMaxConvergenceChip(m, s, data) {
+  const mx = computeMaxConvergence(m, s, data);
+  if (!mx) return '';
+  const isOver = mx.call === 'OVER';
+  const accent = isOver ? '#8fd6a6' : '#9fc0e8';
+  return `<div class="max-convergence" style="margin:6px 12px 2px;padding:10px 12px;border-radius:11px;background:linear-gradient(135deg,#2a1c4c 0%,#3a2c5c 100%);border:1.5px solid #7c6fd6">
+    <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+      <span style="font-size:13px">\u26A1</span>
+      <span style="font-size:11.5px;font-weight:900;letter-spacing:0.06em;color:#c9b3e0">MAX CONVERGENCE</span>
+      <span style="font-size:11px;font-weight:800;letter-spacing:0.04em;color:${accent}">${isOver ? '\u2191' : '\u2193'} ${mx.producing}</span>
+      <span style="font-size:9.5px;font-weight:700;color:rgba(201,179,224,0.75);margin-left:auto">${mx.signalCount} signals \u00b7 0 against</span>
+    </div>
+    <div style="font-size:10px;color:#e5e7eb;margin-top:5px;line-height:1.55">${mx.signals.map(esc).join(' \u00b7 ')}</div>
+    <div style="font-size:8.5px;color:rgba(201,179,224,0.7);margin-top:5px">Every read agrees, none dissent. Conviction flag \u2014 not a hit rate.</div>
+  </div>`;
+}
+
 function buildConvergenceChip(m, s, data) {
   let conv;
   try { conv = computeConvergence(m, s, data); } catch (_) { return ''; }
@@ -9116,6 +9160,7 @@ function renderAnalysis(data) {
           return `
             <div class="match ${m.tier}${m.isTopPick?' top-pick':''}${m.hrChance?' has-hr-chance':''}">
               ${buildUnifiedSignalBanner(m, s, data)}
+              ${buildMaxConvergenceChip(m, s, data)}
               <details class="card-detail-reads" style="margin:0 12px">
                 <summary style="cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--dim);padding:6px 0;list-style:none">▾ ENGINE DETAIL — every read</summary>
                 <div style="padding-top:4px">
@@ -20765,7 +20810,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   #tennis-panel .lyrid-tennis-gates{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--space-2)}
   #tennis-panel .lyrid-chip.warn{background:var(--data-warning-surface);color:var(--data-warning);font-size:var(--size-eyebrow);padding:2px 8px;border-radius:999px}
   #tennis-panel .lyrid-tennis-footer{margin-top:var(--space-3);font-size:var(--size-eyebrow);color:var(--text-tertiary,var(--text-secondary))}
-  #tennis-panel .lyrid-tennis-disclaimer{margin:var(--space-2) 0;padding:8px 10px;border-radius:var(--radius-md);border:0.5px solid var(--border-hairline);font-size:var(--size-eyebrow);line-height:1.45;color:var(--text-secondary)}
   #tennis-panel .lyrid-tennis-proj{font-size:var(--size-caption);color:var(--text-secondary);margin:var(--space-2) 0}
   #tennis-panel .lyrid-tennis-lines{margin:var(--space-2) 0 var(--space-3)}
   #tennis-panel .lyrid-tennis-lines-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--space-2)}
@@ -20811,8 +20855,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         ${f('totalGames', 'total games', cur.totalGames)}
         ${f('fantasyA', 'fantasy ' + names[0], cur.fantasyA)}
         ${f('fantasyB', 'fantasy ' + names[1], cur.fantasyB)}
-        ${f('gamesWonA', 'games won ' + names[0], cur.gamesWonA)}
-        ${f('gamesWonB', 'games won ' + names[1], cur.gamesWonB)}
       </div>
       <button class="lyrid-btn" type="button" onclick="applyTennisLines('${esc(matchId)}')">Apply lines</button>
     </div>`;
@@ -20823,9 +20865,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     const w = read.winProb || {}, holds = read.holds || {};
     const names = Object.keys(w).filter((k) => k !== 'favored' && k !== 'edge');
     const pj = read.projected || {};
-    const drivers = ((read.drivers && read.drivers.circumstances) || [])
-      .concat((read.drivers && read.drivers.aces) || [])
-      .concat((read.drivers && read.drivers.totalGames) || []);
+    const drivers = ((read.drivers && read.drivers.aces) || []).concat((read.drivers && read.drivers.totalGames) || []);
     const g = read.gates || {};
     const chips = [ (g.thinSampleA || g.thinSampleB) ? 'thin surface sample' : '',
       (g.retirementA || g.retirementB) ? 'retirement risk' : '', g.blowout ? 'rout risk' : '' ].filter(Boolean);
@@ -20836,7 +20876,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       <div class="lyrid-tennis-winprob">${names.map((n) => `<span>${esc(n)} ${pct(w[n])} · hold ${pct(holds[n])}</span>`).join('')}</div>
       <div class="lyrid-tennis-proj">Projected — fantasy ${esc(names[0])} <b>${one(fA)}</b> · ${esc(names[1])} <b>${one(fB)}</b>
         · total games <b>${one(pj.totalGames)}</b></div>
-      ${read.disclaimer ? `<div class="lyrid-tennis-disclaimer">${esc(read.disclaimer)}</div>` : ''}
       ${linesForm(matchId, names, cur || {})}
       ${propRow('Aces — ' + names[0], read.props && read.props.acesA)}
       ${propRow('Aces — ' + names[1], read.props && read.props.acesB)}
@@ -20844,8 +20883,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       ${propRow('Total Games', read.props && read.props.totalGames)}
       ${propRow('Fantasy — ' + names[0], read.props && read.props.fantasyA)}
       ${propRow('Fantasy — ' + names[1], read.props && read.props.fantasyB)}
-      ${propRow('Games Won — ' + names[0], read.props && read.props.gamesWonA)}
-      ${propRow('Games Won — ' + names[1], read.props && read.props.gamesWonB)}
       ${drivers.length ? `<details class="lyrid-tennis-drivers"><summary>why</summary><ul>${drivers.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></details>` : ''}
       ${chips.length ? `<div class="lyrid-tennis-gates">${chips.map((c) => `<span class="lyrid-chip warn">${esc(c)}</span>`).join('')}</div>` : ''}
       <div class="lyrid-tennis-footer">Priors only — not bets, until a slate is graded. ${esc((read.note || ''))}</div></div>`;
@@ -20853,16 +20890,14 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 
   function matchRow(m) {
     const sel = String(m.matchId) === String(tennisState.selectedMatchId);
-    const noRead = m.readable === false;
-    const cold = m.readable && m.indexed === false;   // readable via live cold-start, not deep history
     const sub = `${esc(m.surface)} · ${esc(m.tour)}${m.tournament ? ' · ' + esc(m.tournament) : ''} · ${esc(m.bestOf === 5 ? 'Bo5' : 'Bo3')}`;
     return `<button class="lyrid-game-card${sel ? ' signal' : ''}" type="button" onclick="analyzeTennisMatch('${esc(m.matchId)}')" aria-label="Read ${esc(m.playerA)} vs ${esc(m.playerB)}">
       <div class="lyrid-game-time"><div class="lyrid-game-time-value">${esc(fmtTime(m.startTime))}</div>
         <div class="lyrid-game-time-zone">${esc(m.tour)}</div></div>
       <div class="lyrid-game-matchup"><div class="lyrid-game-teams"><span>${esc(m.playerA)}</span><span class="at">vs</span><span>${esc(m.playerB)}</span></div>
-        <div class="lyrid-game-pitchers">${sub} · ${noRead ? 'no data — no read' : (cold ? 'live profile · tap to analyze' : 'tap to analyze')}</div></div>
-      <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">${noRead ? '—' : 'read'}</div>
-        <div class="lyrid-game-projection-value" aria-hidden="true">${noRead ? '·' : '→'}</div></div></button>`;
+        <div class="lyrid-game-pitchers">${sub} · tap to analyze</div></div>
+      <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">read</div>
+        <div class="lyrid-game-projection-value" aria-hidden="true">→</div></div></button>`;
   }
   function boardHtml(matches) {
     if (!matches || !matches.length)
@@ -20888,7 +20923,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }
   }
 
-  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB', 'gamesWonA', 'gamesWonB'];
+  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB'];
 
   async function analyzeTennisMatch(matchId, lines) {
     tennisState.selectedMatchId = matchId;
@@ -20905,12 +20940,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       for (const k of LINE_KEYS) if (cur[k] != null && cur[k] !== '') qs.set(k, cur[k]);
       const r = await fetch('/api/tennis/analyze?' + qs.toString(), { cache: 'no-store' });
       const j = await r.json();
-      if (r.status === 404 && j && j.error === 'player not found') {
-        const miss = [j.a === false ? m.playerA : null, j.b === false ? m.playerB : null].filter(Boolean).join(' and ');
-        if (container) container.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">No read for this match</div>
-          <div class="lyrid-empty-text">${esc(miss || 'These players')} aren't in the serve index — usually a lower-tier (ITF/Challenger) or new player. Reads need match history. Try a tour-level match, or rebuild the index with wider data.</div></div>`;
-        return;
-      }
       if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status));
       if (container) container.innerHTML = renderRead(j.read, matchId, cur);
     } catch (e) {
