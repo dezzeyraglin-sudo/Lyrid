@@ -113,8 +113,9 @@ export default async function handler(req, res) {
     try {
       if (index.elo && !coldA && !coldB) {
         const E = eloFromJSON(index.elo);
-        const idA = Object.keys(index.players).find((k) => index.players[k] === playerA);
-        const idB = Object.keys(index.players).find((k) => index.players[k] === playerB);
+        // resolve() returns { id, ...player } — a COPY — so identity lookup against index.players
+        // never matched and the anchor silently never fired. Use the id resolve() already gives us.
+        const idA = playerA.id, idB = playerB.id;
         if (idA && idB) ewp = eloWinProb(E, idA, idB, q.surface || 'Hard');
       }
     } catch { /* rates-only fallback */ }
