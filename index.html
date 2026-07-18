@@ -18311,8 +18311,23 @@ async function autoGradeOnAppOpen() {
     // (Drop #60) Warm the PrizePicks line feed so lines auto-fill. Fire-and-
     // forget: every manual path still works if this fails or is IP-blocked.
     PP_LINES.load().then(s => {
-      if (s.ok) console.log(`[pp-lines] ${s.standardCount} standard, ${s.altCount} alt-priced`);
-      else console.warn('[pp-lines] unavailable:', s.reason, '— manual entry unaffected');
+      if (s.ok) {
+        console.log(`[pp-lines] ${s.standardCount} standard, ${s.altCount} alt-priced`);
+        // (Drop #63) RACE FIX. load() is async but cards render synchronously,
+        // and nothing re-rendered when the feed landed — so any game analyzed
+        // before the fetch resolved showed empty "enter manually" fields and
+        // never updated. Re-render whatever's already on screen now that the
+        // lines exist. Cheap: renderAnalysis reads from analysisCache, no refetch.
+        try {
+          const _cached = Object.keys(analysisCache || {});
+          if (_cached.length) {
+            _cached.forEach(k => { const c = analysisCache[k]; if (c) renderAnalysis(c); });
+            console.log(`[pp-lines] re-rendered ${_cached.length} cached analysis view(s) with lines`);
+          }
+        } catch (e) { console.warn('[pp-lines] re-render skipped:', e); }
+      } else {
+        console.warn('[pp-lines] unavailable:', s.reason, '— manual entry unaffected');
+      }
     }).catch(() => {});
   }, 1500);
 })();

@@ -5434,6 +5434,120 @@ const PITCHER_TAGS = [
 
 // PrizePicks / Underdog prop types for track grading
 // Each has a specific line (the "More/Higher" threshold) and the platform(s) it's on
+// ============================================================================
+// (Drop #60) PRIZEPICKS LINE FEED — client store.
+//
+// Pulls /api/pp-lines (partner endpoint, filtered server-side) so lines auto-
+// fill instead of being hand-typed, and so the standing "standard line only"
+// rule can be ENFORCED rather than just warned about.
+//
+// Three facts this makes visible that the app previously could not see:
+//   1. Whether a line is standard / goblin / demon (odds_type). ~93% of PP's
+//      MLB board is alt-priced — those are no-bets under the rule.
+//   2. PP's REAL line, vs the line Lyrid hardcodes in OUTCOME_TYPES. They do
+//      not always agree (Total Bases standard is ~50/50 between 1.5 and 0.5).
+//   3. Props PP never offers standard at all (HR and RBIs, on the pull this
+//      was built against) — structurally un-bettable, not just unpriced.
+//
+// FAIL-OPEN BY DESIGN: if the fetch fails, is blocked, or the name doesn't
+// join, every manual-entry path keeps working exactly as before. A fuzzy-match
+// miss must degrade to "type it yourself", never to a wrong auto-filled line.
+// ============================================================================
+const PP_LINES = {
+  ok: false, loaded: false, loading: null,
+  lines: [], altIndex: {}, byKey: {},
+  standardCount: 0, altCount: 0, fetchedAt: null, reason: null,
+
+  // Lyrid prop key -> PP stat key. Anything unmapped simply won't auto-fill.
+  PROP_MAP: {
+    H: 'HITS', HRR: 'HRR', TB: 'TB', HR: 'HR', R: 'RUNS', RBI: 'RBI',
+    SINGLES: 'SINGLES', SB: 'SB', WALKS: 'BB',
+    PP_FS_6: 'HITTER_FS', PP_FS_8: 'HITTER_FS',
+    strikeouts: 'K', outs: 'OUTS', earned_runs: 'ER',
+    hits_allowed: 'HITS_ALLOWED', walks: 'BB_ALLOWED',
+    fantasy_score: 'PITCHER_FS'
+  },
+
+  norm(n) {
+    if (!n) return '';
+    return String(n)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\b(jr|sr|ii|iii|iv)\b\.?/g, '')
+      .replace(/[^a-z\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  },
+
+  async load(force) {
+    if (this.loaded && !force) return this;
+    if (this.loading) return this.loading;
+    this.loading = (async () => {
+      try {
+        const r = await fetch('/api/pp-lines?standard=1', { cache: 'no-store' });
+        const j = await r.json();
+        if (!j || !j.ok) {
+          this.ok = false;
+          this.reason = (j && j.reason) || 'unavailable';
+          this.loaded = true;
+          return this;
+        }
+        this.ok = true;
+        this.lines = j.lines || [];
+        this.altIndex = j.altIndex || {};
+        this.standardCount = j.standardCount || 0;
+        this.altCount = j.altCount || 0;
+        this.fetchedAt = j.fetchedAt || null;
+        // Index standard lines by "normname|PROP". PP ships two name spellings
+        // that disagree on a handful of players ("Vladimir" vs "Vlad"), so key
+        // BOTH — a lookup on either spelling then resolves.
+        this.byKey = {};
+        for (const l of this.lines) {
+          if (l.norm) this.byKey[`${l.norm}|${l.prop}`] = l;
+          if (l.normDisplay && l.normDisplay !== l.norm) this.byKey[`${l.normDisplay}|${l.prop}`] = l;
+        }
+        this.loaded = true;
+        return this;
+      } catch (e) {
+        this.ok = false; this.reason = String(e && e.message || e); this.loaded = true;
+        return this;
+      } finally { this.loading = null; }
+    })();
+    return this.loading;
+  },
+
+  // Returns one of:
+  //   { status:'standard', line, oddsType, team }  -> bettable, auto-fill it
+  //   { status:'alt', oddsType }                   -> on the board but demon/
+  //                                                   goblin = NO BET per rule
+  //   { status:'none' }                            -> not on PP's board
+  //   { status:'offline' }                         -> feed unavailable; manual
+  find(playerName, lyridPropKey) {
+    if (!this.loaded || !this.ok) return { status: 'offline' };
+    const prop = this.PROP_MAP[lyridPropKey];
+    if (!prop) return { status: 'none' };
+    const k = `${this.norm(playerName)}|${prop}`;
+    const hit = this.byKey[k];
+    if (hit) return { status: 'standard', line: hit.line, oddsType: hit.oddsType, team: hit.team, statLabel: hit.statLabel };
+    if (this.altIndex[k]) return { status: 'alt', oddsType: this.altIndex[k] };
+    return { status: 'none' };
+  }
+};
+
+// Small chip describing PP's real line for a prop — the ground truth Lyrid's
+// hardcoded OUTCOME_TYPES line is only an assumption about.
+function buildPPLineChip(playerName, lyridPropKey, assumedLine) {
+  const r = PP_LINES.find(playerName, lyridPropKey);
+  if (!r || r.status === 'offline' || r.status === 'none') return '';
+  if (r.status === 'alt') {
+    return `<span class="pp-alt-chip" title="PrizePicks has this prop but only at a ${esc(r.oddsType)} (alt) price. Standing rule: standard line only \u2014 demon'd/goblin'd = no bet." style="display:inline-flex;align-items:center;gap:4px;font-size:8.5px;font-weight:800;letter-spacing:0.04em;padding:2px 6px;border-radius:4px;background:rgba(200,80,80,0.14);border:1px solid rgba(200,80,80,0.45);color:#c05a5a;margin-left:5px">\u26D4 ${esc(String(r.oddsType).toUpperCase())} ONLY \u00b7 NO BET</span>`;
+  }
+  // Standard line available. Flag when PP's actual line differs from the line
+  // Lyrid assumed — that gap silently invalidates the grade.
+  const mismatch = (assumedLine != null && Number(assumedLine) !== Number(r.line));
+  return `<span class="pp-line-chip" title="PrizePicks standard line${mismatch ? ` \u2014 NOTE: Lyrid assumed ${assumedLine}, PP has ${r.line}. The grade uses the assumed line.` : ''}" style="display:inline-flex;align-items:center;gap:4px;font-size:8.5px;font-weight:800;letter-spacing:0.04em;padding:2px 6px;border-radius:4px;background:${mismatch ? 'rgba(224,160,80,0.14)' : 'rgba(90,154,112,0.14)'};border:1px solid ${mismatch ? 'rgba(224,160,80,0.5)' : 'rgba(90,154,112,0.45)'};color:${mismatch ? '#e0a050' : '#5a9a70'};margin-left:5px">PP ${r.line}${mismatch ? ` \u26A0 (assumed ${assumedLine})` : ''}</span>`;
+}
+
 const OUTCOME_TYPES = [
   // Combined line props (most common on PP/UD)
   { key: 'H',         label: 'HITS 0.5',        desc: '1+ hit (More)',          platform: 'BOTH',  line: 0.5 },
@@ -8995,6 +9109,7 @@ function renderAnalysis(data) {
                       ${p._lyridUnderTier === 'platinum' ? `<span class="pp-lyrid-under platinum" style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 35%,#60a5fa 50%,#2563eb 65%,#1d4ed8 100%);color:#fff;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(30,58,138,0.7);text-shadow:0 1px 1px rgba(0,0,0,0.4)" title="LYRID UNDER · PLATINUM&#10;&#10;FADE THE OVER — bet UNDER 1.5 H+R+RBI instead&#10;&#10;Live audit: 20W-10L = 67% on n=30&#10;Filter: HRR pick + recentFormLabel = SCORCHING&#10;Mechanism: hot streak regression — hitter's recent form inflates projection, mean-reversion is the bet&#10;Wilson 95% CI: [49%, 81%]&#10;Time thirds: 70/70/60&#10;OOS: 67% train (n=18), 67% test (n=12)&#10;&#10;PrizePicks EV at 67%:&#10;  2-pick: +33.5%&#10;  3-pick: +48.4%&#10;  4-pick: +97.9%&#10;  5-pick: +164%&#10;&#10;⚠ n=30 is small — Wilson lower bound 49%. Size bets accordingly.">✦ UNDER · PLATINUM</span>` : ''}
                       ${p._lyridUnderTier === 'gold' ? `<span class="pp-lyrid-under gold" style="background:linear-gradient(135deg,#854d0e 0%,#ca8a04 35%,#fbbf24 50%,#a16207 65%,#92400e 100%);color:#fff;font-size:8.5px;font-weight:900;padding:2px 6px;border-radius:100px;letter-spacing:0.08em;margin-right:4px;border:1px solid rgba(133,77,14,0.7);text-shadow:0 1px 1px rgba(0,0,0,0.4)" title="LYRID UNDER · GOLD&#10;&#10;FADE THE OVER — bet UNDER 1.5 H+R+RBI instead&#10;&#10;Live audit: 13W-9L = 59% on n=22&#10;Filter: HRR + L-hitter + bullpen edge&#10;Wilson 95% CI: [39%, 77%]&#10;Time thirds: 57/57/63&#10;OOS: 60% train (n=10), 58% test (n=12)&#10;&#10;PrizePicks EV at 59%:&#10;  2-pick: +5.0% (thin)&#10;  3-pick: +3.6% (thin)&#10;  4-pick: +20.7%&#10;&#10;⚠ n=22 is small — Wilson lower bound 39%. Marginal at PP 2/3-pick.">★ UNDER · GOLD</span>` : ''}
                       <span class="pp-key">${p.label}</span>
+                      ${buildPPLineChip(m.hitter || m.hitterName, p.key, p.line)}
                       ${(() => {
                         // (Drop #36) MODEL-% TRAP FIX. The raw over-% is anti-calibrated.
                         // On a fade, show the empirical UNDER rate with the correct verb;
@@ -9799,15 +9914,27 @@ function renderAnalysis(data) {
         if (rec.suppressed) return '';   // role suppressed, hide entry to avoid noise
         if (rec.type !== 'strikeouts' && rec.type !== 'outs') return '';
         const inputId = `pp-manual-${sideKey}-${rec.type}-${data.gamePk}`;
+        // (Drop #60) Auto-fill from the PrizePicks feed when a STANDARD line
+        // exists. Alt-only (demon/goblin) never auto-fills — under the standing
+        // rule that's a no-bet, so pre-filling it would invite the exact bet the
+        // rule forbids. Feed offline / name miss -> unchanged manual entry.
+        const _pp = PP_LINES.find(s.pitcher && s.pitcher.name, rec.type);
+        const _auto = (_pp.status === 'standard');
+        const _label = _auto
+          ? `<span class="pp-manual-label" style="color:#5a9a70;font-weight:700">\u2713 PP line ${_pp.line} \u00b7 auto-filled:</span>`
+          : _pp.status === 'alt'
+            ? `<span class="pp-manual-label" style="color:#c05a5a;font-weight:700">\u26D4 ${String(_pp.oddsType).toUpperCase()} only \u2014 no standard line. Enter anyway:</span>`
+            : `<span class="pp-manual-label">No line \u00b7 enter manually:</span>`;
         return `
           <div class="pp-manual-line">
-            <span class="pp-manual-label">No DK line · enter manually:</span>
+            ${_label}
             <input
               type="number"
               step="0.5"
               id="${inputId}"
               class="pp-manual-input"
               placeholder="line"
+              ${_auto ? `value="${_pp.line}"` : ''}
               onkeydown="if(event.key==='Enter')gradeManualLine('${inputId}', '${sideKey}', '${rec.type}', ${data.gamePk}, ${rec.projection})"
             />
             <button class="pp-manual-btn" onclick="gradeManualLine('${inputId}', '${sideKey}', '${rec.type}', ${data.gamePk}, ${rec.projection})">grade</button>
@@ -9954,8 +10081,15 @@ function renderAnalysis(data) {
               <span class="pp-desc">From arsenal matchup: ${_ipStr} IP, ${_kStr} K projected</span>
               ${_leashHtml}${_pcHtml}${_ptHtml}${_jamHtml}
               <div class="pp-manual-line">
-                <span class="pp-manual-label">Enter PP/UD fantasy line:</span>
+                ${(function () {
+                  // (Drop #60) auto-fill the pitcher FS line from the PP feed.
+                  const _p = PP_LINES.find(s.pitcher && s.pitcher.name, 'fantasy_score');
+                  if (_p.status === 'standard') return `<span class="pp-manual-label" style="color:#5a9a70;font-weight:700">\u2713 PP FS ${_p.line} \u00b7 auto-filled:</span>`;
+                  if (_p.status === 'alt') return `<span class="pp-manual-label" style="color:#c05a5a;font-weight:700">\u26D4 FS is ${String(_p.oddsType).toUpperCase()}-only \u2014 no bet. Enter anyway:</span>`;
+                  return `<span class="pp-manual-label">Enter PP/UD fantasy line:</span>`;
+                })()}
                 <input type="number" step="0.5" id="${_fsInputId}" class="pp-manual-input" placeholder="line"
+                  ${(function () { const _p = PP_LINES.find(s.pitcher && s.pitcher.name, 'fantasy_score'); return _p.status === 'standard' ? `value="${_p.line}"` : ''; })()}
                   onkeydown="if(event.key==='Enter')gradeManualLine('${_fsInputId}', '${sideKey}', 'fantasy_score', ${data.gamePk}, ${_fsProj})" />
                 <button class="pp-manual-btn" onclick="gradeManualLine('${_fsInputId}', '${sideKey}', 'fantasy_score', ${data.gamePk}, ${_fsProj})">grade</button>
                 <span class="pp-manual-result" id="${_fsInputId}-result"></span>
@@ -12384,30 +12518,71 @@ function removeTracked(date, pid) {
   renderTrack();
 }
 
-function gradeLine(line, outcomeType) {
+// Extract the raw stat value a prop is settled on, from a box-score line.
+// Separated out so grading can compare it to ANY line (PP's real one) instead
+// of only the hardcoded threshold baked into OUTCOME_TYPES.
+function statValueForOutcome(line, outcomeType) {
+  if (!line) return null;
+  switch (outcomeType) {
+    case 'H':       return line.H;
+    case 'HRR':     return (line.H || 0) + (line.R || 0) + (line.RBI || 0);
+    case 'TB':      return line.TB;
+    case 'HR':      return line.HR;
+    case 'R':       return line.R;
+    case 'RBI':     return line.RBI;
+    case 'SINGLES': return (line.H || 0) - (line.doubles || 0) - (line.triples || 0) - (line.HR || 0);
+    case 'SB':      return line.SB || 0;
+    case 'WALKS':   return (line.BB || 0) + (line.HBP || 0);
+    case 'PP_FS_6':
+    case 'PP_FS_8': return ppFantasyScore(line);
+    case 'UD_FS_5':
+    case 'UD_FS_7': return udFantasyScore(line);
+    default:        return null;
+  }
+}
+
+// ============================================================================
+// (Drop #62) Grade against the REAL PrizePicks line when we have it.
+//
+// The hardcoded fallbacks below are ASSUMPTIONS baked into OUTCOME_TYPES ("TB
+// is 1.5, so win on 2+"). Against the live board that assumption is wrong about
+// half the time for Total Bases — PP's standard TB line is ~50/50 between 1.5
+// and 0.5, and on a 0.5 line a single total base WINS while this function would
+// score it a loss. A win rate computed against a line that wasn't on the board
+// measures nothing.
+//
+// ppLine is the line captured at PICK TIME by the Drop #61 forward log. When
+// it's present it wins. When it's absent (feed offline, name didn't join, or
+// any pick logged before Drop #61) we fall back to the old hardcoded behavior —
+// unchanged, so nothing regresses — and the CALLER records that the grade was
+// against an assumption. An honest "graded vs assumed line" is analyzable; a
+// silent mix of the two is not.
+//
+// Whole-number lines push. PP's board carries them (Pitcher K at 4 and 5, for
+// instance), and landing exactly on one is a refund, not a win.
+// ============================================================================
+const ASSUMED_LINE = {
+  H: 0.5, HRR: 1.5, TB: 1.5, HR: 0.5, R: 0.5, RBI: 0.5,
+  SINGLES: 0.5, SB: 0.5, WALKS: 0.5,
+  PP_FS_6: 6, PP_FS_8: 8, UD_FS_5: 5, UD_FS_7: 7
+};
+
+function gradeLine(line, outcomeType, ppLine) {
   if (!line) return null;
   // DNP check — no plate appearances means void on PP/UD, we treat as didnotplay
   if ((line.PA || 0) === 0 && (line.AB || 0) === 0) return 'didnotplay';
 
-  switch(outcomeType) {
-    case 'H':        return line.H >= 1 ? 'win' : 'loss';
-    case 'HRR':      return (line.H + line.R + line.RBI) >= 2 ? 'win' : 'loss';
-    case 'TB':       return line.TB >= 2 ? 'win' : 'loss';
-    case 'HR':       return line.HR >= 1 ? 'win' : 'loss';
-    case 'R':        return line.R >= 1 ? 'win' : 'loss';
-    case 'RBI':      return line.RBI >= 1 ? 'win' : 'loss';
-    case 'SINGLES':  {
-      const singles = line.H - (line.doubles || 0) - (line.triples || 0) - line.HR;
-      return singles >= 1 ? 'win' : 'loss';
-    }
-    case 'SB':       return (line.SB || 0) >= 1 ? 'win' : 'loss';
-    case 'WALKS':    return ((line.BB || 0) + (line.HBP || 0)) >= 1 ? 'win' : 'loss';
-    case 'PP_FS_6':  return ppFantasyScore(line) >= 6 ? 'win' : 'loss';
-    case 'PP_FS_8':  return ppFantasyScore(line) >= 8 ? 'win' : 'loss';
-    case 'UD_FS_5':  return udFantasyScore(line) >= 5 ? 'win' : 'loss';
-    case 'UD_FS_7':  return udFantasyScore(line) >= 7 ? 'win' : 'loss';
-    default:         return null;
-  }
+  const statVal = statValueForOutcome(line, outcomeType);
+  if (statVal == null || !Number.isFinite(Number(statVal))) return null;
+
+  const threshold = (ppLine != null && Number.isFinite(Number(ppLine)))
+    ? Number(ppLine)
+    : ASSUMED_LINE[outcomeType];
+  if (threshold == null) return null;
+
+  // Exact landing on a whole-number line is a push (PP refunds the leg).
+  if (Number(statVal) === threshold) return 'push';
+  return Number(statVal) > threshold ? 'win' : 'loss';
 }
 
 async function autoGradeOne(date, pid) {
@@ -13186,9 +13361,72 @@ function logBestBets(data) {
             const _us = computeUnifiedSignal(m, sideData, data);
             return {
               ...(_cv ? { _convergenceTier: _cv.tier, _convergenceDir: _cv.netDir, _convergenceCount: _cv.alignCount, _convergenceOpposed: _cv.opposedCount } : { _convergenceTier: null }),
-              ...(_us ? { _unifiedCall: _us.call, _unifiedStrength: _us.strength, _unifiedDominance: _us.dominancePct, _unifiedVotes: _us.voteCount } : { _unifiedCall: null })
+              // (Drop #61) BUGFIX: this stamped `_us.strength`, which the Drop
+              // #58 rewrite renamed to `tier`. Every pick logged since then
+              // recorded _unifiedStrength: undefined — so the PLATINUM/GOLD/
+              // SILVER cohort could never have been graded. Stamping .tier now,
+              // plus the raw win/lose counts so MAX-5 (5 for, 0 against) is
+              // reconstructable from the log rather than inferred.
+              ...(_us ? {
+                _unifiedCall: _us.call,
+                _unifiedTier: _us.tier,
+                _unifiedDominance: _us.dominancePct,
+                _unifiedVotes: _us.voteCount,
+                _unifiedWinCount: _us.winCount,
+                _unifiedLoseCount: _us.loseCount,
+                _maxConvergence: (_us.call !== 'PASS' && _us.winCount >= MAX_CONVERGENCE_MIN_SIGNALS && _us.loseCount === 0)
+              } : { _unifiedCall: null, _unifiedTier: null })
             };
-          } catch (_) { return { _convergenceTier: null, _unifiedCall: null }; }
+          } catch (_) { return { _convergenceTier: null, _unifiedCall: null, _unifiedTier: null }; }
+        })(),
+        // ====================================================================
+        // (Drop #61) FORWARD LINE-LOG — the market as it stood at PICK TIME.
+        //
+        // This is the piece that lets a tier graduate out of PRIOR. Until now
+        // every grade was scored against a HARDCODED line (OUTCOME_TYPES says
+        // HRR is always 1.5), which is only an assumption — PP's real standard
+        // TB line, for instance, is ~50/50 between 1.5 and 0.5. Grading against
+        // a line that wasn't on the board produces a number that means nothing.
+        //
+        // Captured FORWARD (now, at pick time) because PP lines move. A line
+        // read at grade time is a different bet than the one that was available
+        // when the read fired, and back-filling it would quietly launder line
+        // movement into the win rate.
+        //
+        // Null when the feed is offline or the name doesn't join — an honest
+        // null is gradeable-as-unknown; a guessed line is not.
+        // ====================================================================
+        ...(function () {
+          try {
+            const _look = PP_LINES.find(m.hitter || m.hitterName, bestBet.key);
+            const _base = {
+              _ppProp: bestBet.key || null,
+              _ppAssumedLine: (bestBet.line != null ? bestBet.line : null),
+              _ppCapturedAt: new Date().toISOString()
+            };
+            if (_look.status === 'standard') return {
+              ..._base,
+              _ppLineStatus: 'standard',
+              _ppLine: _look.line,
+              _ppOddsType: _look.oddsType,
+              _ppBettable: true,
+              // Flags when the grade's assumed line and the real board disagree.
+              _ppLineMismatch: (bestBet.line != null && Number(bestBet.line) !== Number(_look.line))
+            };
+            if (_look.status === 'alt') return {
+              ..._base,
+              _ppLineStatus: 'alt',
+              _ppLine: null,
+              _ppOddsType: _look.oddsType,
+              // Alt-priced = no bet under the standing rule. Logged so the
+              // "we passed and it would have hit" cohort is measurable too.
+              _ppBettable: false,
+              _ppLineMismatch: false
+            };
+            return { ..._base, _ppLineStatus: _look.status, _ppLine: null, _ppOddsType: null, _ppBettable: null, _ppLineMismatch: false };
+          } catch (_) {
+            return { _ppLineStatus: 'error', _ppLine: null, _ppBettable: null };
+          }
         })(),
         // (Drop #14 — June 5, 2026) Sharp HITS empirical override audit fields
         _sharpHits: bestBet._sharpHits || false,
@@ -13797,7 +14035,12 @@ async function gradeAllBestBets(opts = {}) {
         if (data.outcomes && entry.propKey in data.outcomes) {
           entry.result = data.outcomes[entry.propKey] ? 'win' : 'loss';
         } else {
-          entry.result = gradeLine(data.line, entry.propKey);
+          // (Drop #62) Grade against the PP line captured at pick time when we
+          // have it; otherwise the hardcoded assumption. Record which, so the
+          // audit can separate real-market grades from assumed-line ones.
+          entry.result = gradeLine(data.line, entry.propKey, entry._ppLine);
+          entry._gradedVsLine = (entry._ppLine != null) ? entry._ppLine : (ASSUMED_LINE[entry.propKey] ?? null);
+          entry._gradedVsSource = (entry._ppLine != null) ? 'prizepicks' : 'assumed';
         }
         entry.graded = true;
         gradedCount++;
@@ -15200,6 +15443,30 @@ function logPitcherPropBet(ctx) {
     projection: ctx.projection || null,
     lineGradeTier: ctx.lineGradeTier || null,
     modelEdge: ctx.modelEdge == null ? null : parseFloat(ctx.modelEdge),
+    // (Drop #61) FORWARD LINE-LOG — PP's board at pick time, captured now
+    // because lines move. Records whether the line the user is betting was
+    // actually STANDARD (bettable under the standing rule) or demon/goblin, so
+    // "did this tier beat the real market" becomes answerable instead of being
+    // scored against a hardcoded assumption. Null when the feed can't join.
+    ...(function () {
+      try {
+        const _map = { K: 'strikeouts', OUTS: 'outs', ER: 'earned_runs', BB: 'walks', FANTASY_SCORE: 'fantasy_score', HITS_ALLOWED: 'hits_allowed' };
+        const _lyridKey = _map[ctx.propType];
+        if (!_lyridKey) return { _ppLineStatus: 'unmapped', _ppLine: null, _ppBettable: null };
+        const _look = PP_LINES.find(ctx.pitcherName, _lyridKey);
+        if (_look.status === 'standard') return {
+          _ppLineStatus: 'standard', _ppLine: _look.line, _ppOddsType: _look.oddsType, _ppBettable: true,
+          // Did the user's entered line match PP's actual standard line?
+          _ppLineMatchesEntered: (ctx.line != null && Number(ctx.line) === Number(_look.line)),
+          _ppCapturedAt: new Date().toISOString()
+        };
+        if (_look.status === 'alt') return {
+          _ppLineStatus: 'alt', _ppLine: null, _ppOddsType: _look.oddsType, _ppBettable: false,
+          _ppCapturedAt: new Date().toISOString()
+        };
+        return { _ppLineStatus: _look.status, _ppLine: null, _ppBettable: null, _ppCapturedAt: new Date().toISOString() };
+      } catch (_) { return { _ppLineStatus: 'error', _ppLine: null, _ppBettable: null }; }
+    })(),
     loggedAt: Date.now(),
     // Result fields populated by gradePitcherPropBets
     result: null,                       // 'win' | 'loss' | 'push' | 'didnotplay' | null
@@ -17006,10 +17273,23 @@ async function gradeBestBet(date, id) {
     if (!data.didPlay) { e.result = 'didnotplay'; e.line = data.line; e.graded = true; saveState(); renderHistory(); return; }
     e.line = data.line;
     e.fantasyScore = data.fantasyScore;
-    if (data.outcomes && e.propKey in data.outcomes) {
+    // (Drop #62) A stamped PP line is authoritative — it's the line the bet
+    // actually existed at. data.outcomes is precomputed server-side against the
+    // same hardcoded assumptions gradeLine used to make, so when the real line
+    // differs (TB 0.5 vs the assumed 1.5) that shortcut returns the wrong
+    // result. Only fall back to it when we have no real line.
+    if (e._ppLine != null) {
+      e.result = gradeLine(data.line, e.propKey, e._ppLine);
+      e._gradedVsLine = e._ppLine;
+      e._gradedVsSource = 'prizepicks';
+    } else if (data.outcomes && e.propKey in data.outcomes) {
       e.result = data.outcomes[e.propKey] ? 'win' : 'loss';
+      e._gradedVsLine = ASSUMED_LINE[e.propKey] ?? null;
+      e._gradedVsSource = 'assumed';
     } else {
       e.result = gradeLine(data.line, e.propKey);
+      e._gradedVsLine = ASSUMED_LINE[e.propKey] ?? null;
+      e._gradedVsSource = 'assumed';
     }
     // (Drop #24 — June 8, 2026) UNDER tier picks need result INVERTED.
     // The pick was logged with _lyridUnderTier='platinum'|'gold' meaning
@@ -18028,6 +18308,27 @@ async function autoGradeOnAppOpen() {
   // Throttled to once per 5 min via sessionStorage. Updates a History tab badge.
   setTimeout(() => {
     autoGradeOnAppOpen().catch(err => console.warn('[init] autoGrade failed:', err));
+    // (Drop #60) Warm the PrizePicks line feed so lines auto-fill. Fire-and-
+    // forget: every manual path still works if this fails or is IP-blocked.
+    PP_LINES.load().then(s => {
+      if (s.ok) {
+        console.log(`[pp-lines] ${s.standardCount} standard, ${s.altCount} alt-priced`);
+        // (Drop #63) RACE FIX. load() is async but cards render synchronously,
+        // and nothing re-rendered when the feed landed — so any game analyzed
+        // before the fetch resolved showed empty "enter manually" fields and
+        // never updated. Re-render whatever's already on screen now that the
+        // lines exist. Cheap: renderAnalysis reads from analysisCache, no refetch.
+        try {
+          const _cached = Object.keys(analysisCache || {});
+          if (_cached.length) {
+            _cached.forEach(k => { const c = analysisCache[k]; if (c) renderAnalysis(c); });
+            console.log(`[pp-lines] re-rendered ${_cached.length} cached analysis view(s) with lines`);
+          }
+        } catch (e) { console.warn('[pp-lines] re-render skipped:', e); }
+      } else {
+        console.warn('[pp-lines] unavailable:', s.reason, '— manual entry unaffected');
+      }
+    }).catch(() => {});
   }, 1500);
 })();
 
@@ -20810,8 +21111,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   #tennis-panel .lyrid-tennis-gates{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--space-2)}
   #tennis-panel .lyrid-chip.warn{background:var(--data-warning-surface);color:var(--data-warning);font-size:var(--size-eyebrow);padding:2px 8px;border-radius:999px}
   #tennis-panel .lyrid-tennis-footer{margin-top:var(--space-3);font-size:var(--size-eyebrow);color:var(--text-tertiary,var(--text-secondary))}
-  #tennis-panel .lyrid-tennis-autofill{margin:var(--space-2) 0;font-size:var(--size-eyebrow);color:var(--text-secondary)}
-  #tennis-panel .lyrid-tennis-disclaimer{margin:var(--space-2) 0;padding:8px 10px;border-radius:var(--radius-md);border:0.5px solid var(--border-hairline);font-size:var(--size-eyebrow);line-height:1.45;color:var(--text-secondary)}
   #tennis-panel .lyrid-tennis-proj{font-size:var(--size-caption);color:var(--text-secondary);margin:var(--space-2) 0}
   #tennis-panel .lyrid-tennis-lines{margin:var(--space-2) 0 var(--space-3)}
   #tennis-panel .lyrid-tennis-lines-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--space-2)}
@@ -20857,21 +21156,17 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         ${f('totalGames', 'total games', cur.totalGames)}
         ${f('fantasyA', 'fantasy ' + names[0], cur.fantasyA)}
         ${f('fantasyB', 'fantasy ' + names[1], cur.fantasyB)}
-        ${f('gamesWonA', 'games won ' + names[0], cur.gamesWonA)}
-        ${f('gamesWonB', 'games won ' + names[1], cur.gamesWonB)}
       </div>
       <button class="lyrid-btn" type="button" onclick="applyTennisLines('${esc(matchId)}')">Apply lines</button>
     </div>`;
   }
 
-  function renderRead(read, matchId, cur, autoFilled) {
+  function renderRead(read, matchId, cur) {
     if (!read) return '<div class="lyrid-empty"><div class="lyrid-empty-title">No read</div></div>';
     const w = read.winProb || {}, holds = read.holds || {};
     const names = Object.keys(w).filter((k) => k !== 'favored' && k !== 'edge');
     const pj = read.projected || {};
-    const drivers = ((read.drivers && read.drivers.circumstances) || [])
-      .concat((read.drivers && read.drivers.aces) || [])
-      .concat((read.drivers && read.drivers.totalGames) || []);
+    const drivers = ((read.drivers && read.drivers.aces) || []).concat((read.drivers && read.drivers.totalGames) || []);
     const g = read.gates || {};
     const chips = [ (g.thinSampleA || g.thinSampleB) ? 'thin surface sample' : '',
       (g.retirementA || g.retirementB) ? 'retirement risk' : '', g.blowout ? 'rout risk' : '' ].filter(Boolean);
@@ -20882,8 +21177,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       <div class="lyrid-tennis-winprob">${names.map((n) => `<span>${esc(n)} ${pct(w[n])} · hold ${pct(holds[n])}</span>`).join('')}</div>
       <div class="lyrid-tennis-proj">Projected — fantasy ${esc(names[0])} <b>${one(fA)}</b> · ${esc(names[1])} <b>${one(fB)}</b>
         · total games <b>${one(pj.totalGames)}</b></div>
-      ${read.disclaimer ? `<div class="lyrid-tennis-disclaimer">${esc(read.disclaimer)}</div>` : ''}
-      ${autoFilled ? '<div class="lyrid-tennis-autofill">Lines auto-filled from PrizePicks (standard lines). Edit any field and re-apply.</div>' : ''}
       ${linesForm(matchId, names, cur || {})}
       ${propRow('Aces — ' + names[0], read.props && read.props.acesA)}
       ${propRow('Aces — ' + names[1], read.props && read.props.acesB)}
@@ -20891,8 +21184,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       ${propRow('Total Games', read.props && read.props.totalGames)}
       ${propRow('Fantasy — ' + names[0], read.props && read.props.fantasyA)}
       ${propRow('Fantasy — ' + names[1], read.props && read.props.fantasyB)}
-      ${propRow('Games Won — ' + names[0], read.props && read.props.gamesWonA)}
-      ${propRow('Games Won — ' + names[1], read.props && read.props.gamesWonB)}
       ${drivers.length ? `<details class="lyrid-tennis-drivers"><summary>why</summary><ul>${drivers.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></details>` : ''}
       ${chips.length ? `<div class="lyrid-tennis-gates">${chips.map((c) => `<span class="lyrid-chip warn">${esc(c)}</span>`).join('')}</div>` : ''}
       <div class="lyrid-tennis-footer">Priors only — not bets, until a slate is graded. ${esc((read.note || ''))}</div></div>`;
@@ -20900,16 +21191,14 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 
   function matchRow(m) {
     const sel = String(m.matchId) === String(tennisState.selectedMatchId);
-    const noRead = m.readable === false;
-    const cold = m.readable && m.indexed === false;   // readable via live cold-start, not deep history
     const sub = `${esc(m.surface)} · ${esc(m.tour)}${m.tournament ? ' · ' + esc(m.tournament) : ''} · ${esc(m.bestOf === 5 ? 'Bo5' : 'Bo3')}`;
     return `<button class="lyrid-game-card${sel ? ' signal' : ''}" type="button" onclick="analyzeTennisMatch('${esc(m.matchId)}')" aria-label="Read ${esc(m.playerA)} vs ${esc(m.playerB)}">
       <div class="lyrid-game-time"><div class="lyrid-game-time-value">${esc(fmtTime(m.startTime))}</div>
         <div class="lyrid-game-time-zone">${esc(m.tour)}</div></div>
       <div class="lyrid-game-matchup"><div class="lyrid-game-teams"><span>${esc(m.playerA)}</span><span class="at">vs</span><span>${esc(m.playerB)}</span></div>
-        <div class="lyrid-game-pitchers">${sub} · ${noRead ? 'no data — no read' : (cold ? 'live profile · tap to analyze' : 'tap to analyze')}</div></div>
-      <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">${noRead ? '—' : 'read'}</div>
-        <div class="lyrid-game-projection-value" aria-hidden="true">${noRead ? '·' : '→'}</div></div></button>`;
+        <div class="lyrid-game-pitchers">${sub} · tap to analyze</div></div>
+      <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">read</div>
+        <div class="lyrid-game-projection-value" aria-hidden="true">→</div></div></button>`;
   }
   function boardHtml(matches) {
     if (!matches || !matches.length)
@@ -20935,17 +21224,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }
   }
 
-  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB', 'gamesWonA', 'gamesWonB'];
-
-  // Pull the standard PrizePicks lines for this matchup so the inputs prefill. Fails soft — if
-  // PrizePicks is unreachable or the shape changed, you just type them as before.
-  async function fetchPPLines(m) {
-    try {
-      const r = await fetch(`/api/tennis/prizepicks?a=${encodeURIComponent(m.playerA)}&b=${encodeURIComponent(m.playerB)}`, { cache: 'no-store' });
-      const j = await r.json();
-      return (j && j.ok && j.lines && Object.keys(j.lines).length) ? j.lines : null;
-    } catch { return null; }
-  }
+  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB'];
 
   async function analyzeTennisMatch(matchId, lines) {
     tennisState.selectedMatchId = matchId;
@@ -20954,33 +21233,16 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (list) list.innerHTML = boardHtml(tennisState.slate); // re-mark selection
     const m = tennisState.slate.find((x) => String(x.matchId) === String(matchId));
     if (!m) return;
-    if (container) {
-      container.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-title">Analyzing…</div></div>';
-      try { container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { container.scrollIntoView(); }
-    }
-    // first open → try PrizePicks; after that respect whatever the user typed
-    let cur = lines || null;
-    let autoFilled = false;
-    if (!cur) { const pp = await fetchPPLines(m); if (pp) { cur = pp; autoFilled = true; } }
-    cur = cur || {};
+    const cur = lines || {};
+    if (container) container.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-title">Analyzing…</div></div>';
     try {
       const qs = new URLSearchParams({ a: m.playerA, b: m.playerB, surface: m.surface, bestOf: m.bestOf });
       // Lines optional — none gives projections + drivers to eyeball vs the PrizePicks board.
       for (const k of LINE_KEYS) if (cur[k] != null && cur[k] !== '') qs.set(k, cur[k]);
       const r = await fetch('/api/tennis/analyze?' + qs.toString(), { cache: 'no-store' });
       const j = await r.json();
-      if (r.status === 404 && j && j.error === 'player not found') {
-        const miss = [j.a === false ? m.playerA : null, j.b === false ? m.playerB : null].filter(Boolean).join(' and ');
-        if (container) container.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">No read for this match</div>
-          <div class="lyrid-empty-text">${esc(miss || 'These players')} aren't in the serve index — usually a lower-tier (ITF/Challenger) or new player. Reads need match history. Try a tour-level match, or rebuild the index with wider data.</div></div>`;
-        return;
-      }
       if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status));
-      if (container) {
-        container.innerHTML = renderRead(j.read, matchId, cur, autoFilled);
-        // bring the read into view — on mobile the board pushes it well below the fold
-        try { container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { container.scrollIntoView(); }
-      }
+      if (container) container.innerHTML = renderRead(j.read, matchId, cur);
     } catch (e) {
       if (container) container.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">Analysis unavailable</div><div class="lyrid-empty-text">${esc(String(e.message || e))}</div></div>`;
     }
