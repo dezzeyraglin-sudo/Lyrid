@@ -168,13 +168,22 @@ export function projectMatch({ playerA, playerB, surface = 'Hard', bestOf = 3, s
   const TOUR_RET_AVG = 0.365;
   const pA = clamp(A.servePtsWonPct + (TOUR_RET_AVG - B.retPtsWonPct) + h2hN, 0.45, 0.88);
   const pB = clamp(B.servePtsWonPct + (TOUR_RET_AVG - A.retPtsWonPct) - h2hN, 0.45, 0.88);
+  // SERVE SUM drives match LENGTH and must reflect how well these two ACTUALLY hold combined —
+  // two big servers → many holds → long sets/tiebreaks/25+ games; two grinders → many breaks →
+  // short sets. The opponent-adjusted pA/pB above near-cancel serve against return (they're
+  // complements), collapsing every sum to ~1.27 and flattening totals. So build the sum from RAW
+  // serve-points-won vs each opponent's RAW return, centred on the tour baseline. The anchor then
+  // splits this real sum by the Elo difference — length from serve skill, winner from Elo.
+  const rawSum = clamp(
+    (A.servePtsWonPct + (TOUR_RET_AVG - B.retPtsWonPct)) +
+    (B.servePtsWonPct + (TOUR_RET_AVG - A.retPtsWonPct)), 1.05, 1.55);
   // ELO ANCHOR (Stage 1). Raw serve/return rates are level-biased and gauge-degenerate, so they
   // compress real mismatches into coin flips → too many 3rd sets → total games biased high. Keep
   // the serve SUM (drives match length, robust) and solve the DIFFERENCE so implied match win prob
   // matches surface Elo, which comes from the match graph and does bridge tiers.
   let PA = pA, PB = pB, anchored = false;
   if (eloWinProb != null && Number.isFinite(eloWinProb)) {
-    const a = anchorToWinProb(pA + pB, clamp(eloWinProb, 0.02, 0.98), bestOf);
+    const a = anchorToWinProb(rawSum, clamp(eloWinProb, 0.02, 0.98), bestOf);
     PA = a.pA; PB = a.pB; anchored = true;
   }
   const holdA = holdProb(PA), holdB = holdProb(PB);

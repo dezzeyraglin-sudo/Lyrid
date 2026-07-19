@@ -121,8 +121,15 @@ export function buildMatchRead({
     ? `Off-index player${coldA && coldB ? 's' : ''} (${[coldA ? A.name : null, coldB ? B.name : null].filter(Boolean).join(', ')}) — profile built from ~${playerA?._sampleMatches || playerB?._sampleMatches || 10} recent matches via live feed, not deep history. Lower-tier fields (ITF/Challenger) are less predictable and this read carries a wider error bar. For reference, real ITF Bo3 averages 21.4 games (29% go 3 sets) vs 23.5 on tour — lower tiers run SHORTER, not longer.`
     : null;
 
+  // Total games & games-won lean on BOTH players' serve profiles. If either is thin (few matches),
+  // the profile defaults toward average and totals cluster at ~22.5 with false precision — exactly
+  // the Hibino/Costoulas blowups (2 and 23 matches → projected 22 → actual 35). Flag it so the UI
+  // can fade the totals read instead of trusting it.
+  const nA = (playerA.surfaces?.ALL?.n) || 0, nB = (playerB.surfaces?.ALL?.n) || 0;
+  const thinTotals = Math.min(nA, nB) < 50;
   return {
     matchup: `${A.name} vs ${B.name}`, surface, bestOf,
+    thinTotals, sampleA: nA, sampleB: nB,
     tier: (coldA || coldB) ? 'off-index (ITF/Challenger/new)' : 'indexed',
     disclaimer,
     winProb: { [A.name]: proj.winProbA, [B.name]: proj.winProbB, favored, edge: winEdge },

@@ -61,20 +61,54 @@ function inIndex(name) {
 }
 const HAS_LIVE = () => !!(process.env.APITENNIS_KEY || process.env.MATCHSTAT_KEY);
 
+// Pull the set of players PrizePicks currently posts lines for, so the board can show which matches
+// are actually playable on PP (vs. index-readable but no PP line). Cached, fails soft.
+let PP = { at: 0, set: null };
+async function prizePicksNames() {
+  if (PP.set && Date.now() - PP.at < 5 * 60 * 1000) return PP.set;
+  try {
+    const r = await fetch('https://partner-api.prizepicks.com/projections?per_page=1000', { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw 0;
+    const j = await r.json();
+    const players = new Map(), leagues = new Map();
+    for (const inc of j.included || []) {
+      if (inc.type === 'new_player') players.set(String(inc.id), inc.attributes?.name || '');
+      if (inc.type === 'league') leagues.set(String(inc.id), inc.attributes?.name || '');
+    }
+    const set = new Set();
+    for (const d of j.data || []) {
+      const lg = leagues.get(String(d.relationships?.league?.data?.id ?? '')) || '';
+      if (!/tennis/i.test(lg)) continue;
+      const nm = players.get(String(d.relationships?.new_player?.data?.id ?? '')) || '';
+      if (nm) { set.add(normName(nm)); const t = normName(nm).split(' ').filter(Boolean);
+        if (t.length >= 2) set.add(`${t[t.length-1]}|${t[0][0]}`); }
+    }
+    PP = { at: Date.now(), set };
+    return set;
+  } catch { return PP.set || new Set(); }
+}
+function ppHas(ppSet, name) {
+  if (!ppSet || !ppSet.size) return false;
+  const n = normName(name); if (ppSet.has(n)) return true;
+  const t = n.split(' ').filter(Boolean);
+  return t.length >= 2 && ppSet.has(`${t[t.length-1]}|${t[0][0]}`);
+}
+
 function inWindow(iso, dateStr) {
   if (!iso) return false;
   if (dateStr) return iso.slice(0, 10) === dateStr;
   const t = Date.parse(iso), now = Date.now();
   return t >= now - 6 * 3600e3 && t <= now + 36 * 3600e3;
 }
-function finish(matches) {
+function finish(matches, ppSet) {
   for (const m of matches) {
     const idxA = inIndex(m.playerA), idxB = inIndex(m.playerB);
     const named = !/^\d+$/.test(String(m.playerA)) && !/^\d+$/.test(String(m.playerB));
     m.indexed = idxA && idxB;
     m.readable = (idxA && idxB) || (HAS_LIVE() && named);
+    m.hasPP = ppHas(ppSet, m.playerA) || ppHas(ppSet, m.playerB);   // PrizePicks posts a line for this match
   }
-  matches.sort((a, b) => (b.indexed - a.indexed) || (b.readable - a.readable)
+  matches.sort((a, b) => (b.hasPP - a.hasPP) || (b.indexed - a.indexed) || (b.readable - a.readable)
     || (Date.parse(a.startTime) - Date.parse(b.startTime)));
   return matches;
 }
@@ -167,10 +201,12 @@ export default async function handler(req, res) {
       const m = await fn(date);
       if (m == null) { errors.push(`${name}: no key`); continue; }
       if (!m.length) { errors.push(`${name}: 0 fixtures in window`); continue; }
-      const matches = finish(m);
+      const ppSet = await prizePicksNames();
+      const matches = finish(m, ppSet);
       const data = { source: name, date: date || 'upcoming', count: matches.length,
         readableCount: matches.filter((x) => x.readable).length,
-        indexedCount: matches.filter((x) => x.indexed).length, matches, note: null };
+        indexedCount: matches.filter((x) => x.indexed).length,
+        ppCount: matches.filter((x) => x.hasPP).length, matches, note: null };
       CACHE = { key, at: Date.now(), data };
       res.setHeader('Cache-Control', 'no-store');
       res.status(200).json({ ok: true, ...data });
