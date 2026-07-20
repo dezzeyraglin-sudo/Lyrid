@@ -21,8 +21,18 @@
 //     "entries": [{ id, date, gamePk, hitterId, ..., actualHR, graded, ... }],
 //     "byTier": { ...rollup over loaded entries... }
 //   },
+//   "bestBetHistory": {              // (Storage Fix — July 20, 2026)
+//     "2026-07-19": {
+//       "2026-07-19_777012_660271": { entryId, date, gamePk, hitterId, ... }
+//     }
+//   },
 //   "watermark": "2026-06-07T18:42:11.123Z"   // pass back as ?since= next time
 // }
+//
+// (Storage Fix — July 20, 2026) bestBetHistory added. The client keys this
+// store as state.bestBetHistory[date][entryId] (see logBestBets in index.html),
+// so we return it NESTED BY DATE to make hydration a direct merge, exactly like
+// projectionAudit/hrAudit.
 // =============================================================================
 
 import { createClient } from '@supabase/supabase-js';
@@ -107,6 +117,29 @@ export default async function handler(req, res) {
   }
 
   // -------------------------------------------------------------------------
+  // Fetch best_bet_history  (Storage Fix — July 20, 2026)
+  // -------------------------------------------------------------------------
+  let bbhRows = [];
+  {
+    let from = 0;
+    while (true) {
+      let q = sb.from('best_bet_history').select('*').eq('user_id', userId)
+        .order('updated_at', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (sinceValid) q = q.gt('updated_at', sinceValid);
+      const { data, error } = await q;
+      if (error) {
+        console.error('[audit/load] best_bet_history fetch error', error);
+        return res.status(500).json({ error: 'best_bet_history fetch failed', message: error.message });
+      }
+      if (!data || data.length === 0) break;
+      bbhRows = bbhRows.concat(data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Transform back into client-shaped state.projectionAudit
   //   { "{date}_{gamePk}": { gamePk, date, awayTeam, homeTeam,
   //                          projTotal, actualTotal, actualAwayRuns,
@@ -174,9 +207,61 @@ export default async function handler(req, res) {
     else byTier[e.hrTier].misses++;
   }
 
+  // -------------------------------------------------------------------------
+  // Transform back into client-shaped state.bestBetHistory
+  //   { "YYYY-MM-DD": { "<entryId>": { ...pick... } } }
+  //
+  // (Storage Fix — July 20, 2026) The full pick blob lives in the `data` jsonb
+  // column; the typed columns are a queryable projection of it. We spread `data`
+  // first, then overlay the typed columns — but ONLY when the typed column is
+  // non-null, so a null column can never clobber a populated value inside the
+  // blob. `graded` is the exception: it is NOT NULL-defaulted and is always
+  // authoritative, so it always overlays.
+  // -------------------------------------------------------------------------
+  const bestBetHistory = {};
+  for (const r of bbhRows) {
+    const pick = (r.data && typeof r.data === 'object') ? { ...r.data } : {};
+
+    pick.entryId = r.entry_id;
+    if (r.game_date != null)    pick.date         = r.game_date;
+    if (r.game_pk != null)      pick.gamePk       = Number(r.game_pk);
+    if (r.hitter_id != null)    pick.hitterId     = r.hitter_id;
+    if (r.hitter_name != null)  pick.hitterName   = r.hitter_name;
+    if (r.team != null)         pick.team         = r.team;
+    if (r.opponent != null)     pick.opponent     = r.opponent;
+    if (r.pitcher_name != null) pick.pitcherName  = r.pitcher_name;
+    if (r.prop_key != null)     pick.propKey      = r.prop_key;
+    if (r.result != null)       pick.result       = r.result;
+    // `tier` is deliberately NOT overlaid from the column. sync.js writes
+    // `_unifiedTier || tier` there so the server can query one tier field, but
+    // the client keeps these SEPARATE: `tier` holds the legacy value ('gold',
+    // 'elite', 'imported') that the render/stat code branches on, while
+    // `_unifiedTier` holds PLATINUM/GOLD/SILVER/LEAN. Overlaying would rewrite
+    // a legacy 'gold' pick as 'PLATINUM' on every hydrate. Both fields already
+    // round-trip verbatim inside the `data` blob; restore only if absent.
+    if (pick.tier == null && r.tier != null) pick.tier = r.tier;
+    if (r.logged_at != null)    pick.loggedAt     = Number(r.logged_at);
+    pick.graded = !!r.graded;
+
+    // Date key: prefer the typed column, fall back to the blob, then to the
+    // entry_id prefix (entryIds are always `YYYY-MM-DD_...`). A pick with no
+    // resolvable date is unroutable on the client, so skip it rather than
+    // creating an "undefined" bucket.
+    const dateKey = r.game_date || pick.date ||
+      (/^\d{4}-\d{2}-\d{2}/.test(r.entry_id) ? r.entry_id.slice(0, 10) : null);
+    if (!dateKey) {
+      console.warn('[audit/load] skipping best_bet_history row with no date', r.entry_id);
+      continue;
+    }
+    pick.date = dateKey;
+
+    if (!bestBetHistory[dateKey]) bestBetHistory[dateKey] = {};
+    bestBetHistory[dateKey][r.entry_id] = pick;
+  }
+
   // Watermark for next incremental call
   let watermark = sinceValid || new Date(0).toISOString();
-  for (const r of [...projectionRows, ...hrRows]) {
+  for (const r of [...projectionRows, ...hrRows, ...bbhRows]) {
     if (r.updated_at && r.updated_at > watermark) watermark = r.updated_at;
   }
 
@@ -184,10 +269,12 @@ export default async function handler(req, res) {
     ok: true,
     projectionAudit,
     hrAudit: { entries: hrEntries, byTier },
+    bestBetHistory,
     watermark,
     counts: {
       projectionAudit: projectionRows.length,
-      hrAudit: hrEntries.length
+      hrAudit: hrEntries.length,
+      bestBetHistory: bbhRows.length
     }
   });
 }
