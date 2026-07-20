@@ -5982,13 +5982,33 @@ const LyridStorage = (function() {
           if (e && e.date && e.date < cut7 && e.graded) delete state.projectionAudit[k];
         }
       }
+      // (Storage Fix — July 20, 2026) DELETE ONLY WHAT THE SERVER CONFIRMS.
+      //
+      // This branch used to delete every pick date older than 7 days on the
+      // stated assumption that "full history stays on the server". For picks
+      // that was not true — best_bet_history did not exist, so this path was
+      // silently destroying the pick record it claimed to be protecting. Now
+      // that picks are server-backed we keep the trim, but only drop picks
+      // individually confirmed pushed. Unsynced picks stay local and take their
+      // chances with the quota; losing them is not recoverable, and the toast
+      // below tells the truth about what was kept.
+      let bbhKept = 0;
       if (state.bestBetHistory) {
+        const syncedFn = (window.LyridAuditSync && window.LyridAuditSync.isPickSynced) || null;
         for (const dk of Object.keys(state.bestBetHistory)) {
-          if (dk < cut7) delete state.bestBetHistory[dk];
+          if (dk >= cut7) continue;
+          const byEntry = state.bestBetHistory[dk] || {};
+          for (const entryId of Object.keys(byEntry)) {
+            if (syncedFn && syncedFn(dk, entryId)) delete byEntry[entryId];
+            else bbhKept++;
+          }
+          if (Object.keys(byEntry).length === 0) delete state.bestBetHistory[dk];
         }
       }
       write();
-      showToast('Storage recovered — old local history trimmed (full history stays on the server)', false);
+      showToast(bbhKept > 0
+        ? `Storage recovered — old synced history trimmed. ${bbhKept} unsynced pick${bbhKept === 1 ? '' : 's'} kept locally.`
+        : 'Storage recovered — old local history trimmed (full history stays on the server)', false);
       return true;
     } catch (_) {
       showToast('Storage still full — open Settings → Free Up Space', true);
@@ -6049,6 +6069,21 @@ function saveState() {
       } else { showToast('Storage full — open Settings → Free Up Space', true); }
     } catch (_) {}
   }
+
+  // (Storage Fix — July 20, 2026) Queue any changed picks for server sync.
+  // Every pick write path calls saveState(), so hooking here covers all of them
+  // — logBestBets, gradeAllBestBets, gradeBestBet, setBestBetResult, the CSV
+  // importer and addManualBestBet — including any added later. Debounced so a
+  // burst of saves (the grader loops over hundreds of picks) rescans once.
+  // Declared on window because LyridAuditSync is defined after this function.
+  try {
+    if (window.LyridAuditSync && window.LyridAuditSync.reconcile) {
+      clearTimeout(window.__bbhReconcileTimer);
+      window.__bbhReconcileTimer = setTimeout(() => {
+        try { window.LyridAuditSync.reconcile(); } catch (_) {}
+      }, 800);
+    }
+  } catch (_) {}
 }
 
 // (Drop #37) Storage UI — meter + manual cleanup.
@@ -6114,11 +6149,18 @@ const LyridAuditSync = (function() {
   // Map: key → JSON.stringify of the entry at last successful push.
   const projectionPushedHash = new Map();
   const hrPushedHash = new Map();
+  // (Storage Fix — July 20, 2026) Same tracking for logged picks.
+  // Key format: `${date}|${entryId}` — bestBetHistory is nested by date.
+  const bbhPushedHash = new Map();
   // Coalesce many small writes into a single network call
   let pendingProjection = new Set();
   let pendingHr = new Set();
+  let pendingBbh = new Set();
   let flushTimer = null;
   const FLUSH_DELAY_MS = 1500;
+  // Picks carry a fat blob (box-score `line`, convergence stamps). Push them in
+  // modest batches so the one-time ~900-pick backfill can't blow the body limit.
+  const BBH_PUSH_CHUNK = 150;
 
   function getWatermark() {
     try { return localStorage.getItem(WATERMARK_KEY) || null; } catch(_) { return null; }
@@ -6210,6 +6252,55 @@ const LyridAuditSync = (function() {
         state.hrAudit.byTier = payload.hrAudit.byTier;
       }
 
+      // ---------------------------------------------------------------------
+      // (Storage Fix — July 20, 2026) Merge bestBetHistory — nested date→entryId.
+      // Same null-safe, graded-wins rule as the two stores above:
+      //   • server-only entry            → take it
+      //   • server graded, local not     → merge, server's non-null fields win
+      //   • local graded, server not     → KEEP LOCAL untouched (re-pushed below)
+      //   • otherwise                    → merge, server's non-null fields win
+      // A pick with a `result` counts as graded even if the flag lagged — the
+      // grader sets both, but older rows predate the flag.
+      // ---------------------------------------------------------------------
+      const isGraded = (p) => !!(p && (p.graded || p.result));
+      state.bestBetHistory = state.bestBetHistory || {};
+      for (const [date, byEntry] of Object.entries(payload.bestBetHistory || {})) {
+        if (!byEntry || typeof byEntry !== 'object') continue;
+        if (!state.bestBetHistory[date]) state.bestBetHistory[date] = {};
+        for (const [entryId, srv] of Object.entries(byEntry)) {
+          if (!srv) continue;
+          const local = state.bestBetHistory[date][entryId];
+          if (local && isGraded(local) && !isGraded(srv)) {
+            // Local is more complete. Leave it untouched AND deliberately do
+            // NOT record a pushed-hash: stamping one here would mark the pick
+            // "already in sync" and reconcile() would skip it, leaving the
+            // stale ungraded row on the server permanently and losing the
+            // graded result on every other device. Omitting the hash is what
+            // makes reconcile() re-push it.
+            continue;
+          }
+          state.bestBetHistory[date][entryId] = local
+            ? mergePreferNonNull(local, srv)
+            : srv;
+          // Only mark in-sync when we accepted the server's copy.
+          bbhPushedHash.set(`${date}|${entryId}`, hashOf(state.bestBetHistory[date][entryId]));
+        }
+      }
+
+      // ---------------------------------------------------------------------
+      // (Storage Fix — July 20, 2026) AUTO-BACKFILL / MIGRATION.
+      //
+      // This is load-bearing, not a nicety. Merging alone does NOT get local
+      // picks to the server: a push only happens when a key lands in a pending
+      // set, and hydrate never adds local-only keys. On first deploy the server
+      // table is empty and the device holds 900+ picks, so without this sweep
+      // they would sit in localStorage forever and the whole fix would be a
+      // no-op. reconcile() diffs every local pick against bbhPushedHash and
+      // queues anything the server hasn't confirmed — which covers both the
+      // one-time migration and any write path that forgot to mark itself dirty.
+      // ---------------------------------------------------------------------
+      reconcile();
+
       if (payload.watermark) setWatermark(payload.watermark);
       lastFullLoad = Date.now();
       saveState();
@@ -6240,6 +6331,50 @@ const LyridAuditSync = (function() {
     pendingHr.add(id);
     scheduleFlush();
   }
+  // (Storage Fix — July 20, 2026) Mark one logged pick dirty.
+  function markBbhDirty(date, entryId) {
+    if (!date || !entryId) return;
+    pendingBbh.add(`${date}|${entryId}`);
+    scheduleFlush();
+  }
+
+  // -------------------------------------------------------------------------
+  // (Storage Fix — July 20, 2026) RECONCILE — the safety net that makes pick
+  // sync durable without hooking every write site.
+  //
+  // Picks are written from many places (logBestBets, gradeAllBestBets,
+  // gradeBestBet, setBestBetResult, the CSV importer, addManualBestBet). Hooking
+  // each one is fragile — one missed site silently drops picks, which is exactly
+  // the failure mode this project is trying to eliminate. Instead we diff the
+  // whole store against the last-pushed hashes and queue whatever differs.
+  // Cost is one stable-stringify per pick; saveState already stringifies the
+  // entire state on every call, so this is the same order of work.
+  //
+  // Returns the number of picks queued (used by backfillPicks for reporting).
+  // -------------------------------------------------------------------------
+  function reconcile() {
+    let queued = 0;
+    try {
+      const store = state.bestBetHistory || {};
+      for (const date of Object.keys(store)) {
+        const byEntry = store[date];
+        if (!byEntry || typeof byEntry !== 'object') continue;
+        for (const entryId of Object.keys(byEntry)) {
+          const pick = byEntry[entryId];
+          if (!pick) continue;
+          const key = `${date}|${entryId}`;
+          if (bbhPushedHash.get(key) === hashOf(pick)) continue;
+          pendingBbh.add(key);
+          queued++;
+        }
+      }
+      if (queued > 0) scheduleFlush();
+    } catch (err) {
+      console.warn('[audit-sync] reconcile error:', err.message);
+    }
+    return queued;
+  }
+
   function scheduleFlush() {
     if (flushTimer) return;
     flushTimer = setTimeout(() => { flushTimer = null; flush(); }, FLUSH_DELAY_MS);
@@ -6290,18 +6425,45 @@ const LyridAuditSync = (function() {
     }
     pendingHr.clear();
 
-    if (projectionAudit.length === 0 && hrAudit.length === 0) return;
+    // (Storage Fix — July 20, 2026) Collect dirty picks. Drained into a local
+    // array BEFORE any await so concurrent writes land in a fresh pending set.
+    const bbhStore = state.bestBetHistory || {};
+    const bbhPending = [];
+    for (const key of pendingBbh) {
+      const sep = key.indexOf('|');
+      if (sep < 0) continue;
+      const date = key.slice(0, sep);
+      const entryId = key.slice(sep + 1);
+      const pick = bbhStore[date] && bbhStore[date][entryId];
+      if (!pick) continue;
+      const h = hashOf(pick);
+      if (bbhPushedHash.get(key) === h) continue;
+      bbhPending.push({ key, hash: h, pick: { ...pick, entryId, date } });
+    }
+    pendingBbh.clear();
+
+    if (projectionAudit.length === 0 && hrAudit.length === 0 && bbhPending.length === 0) return;
 
     try {
       const res = await fetch('/api/audit/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         cache: 'no-store',
-        body: JSON.stringify({ projectionAudit, hrAudit })
+        body: JSON.stringify({
+          projectionAudit,
+          hrAudit,
+          // First chunk rides along with the existing payload; the rest follow.
+          bestBetHistory: bbhPending.slice(0, BBH_PUSH_CHUNK).map(b => b.pick)
+        })
       });
       if (!res.ok) {
-        if (res.status === 401) return;  // signed out; pending will retry on next save
+        if (res.status === 401) {
+          // Signed out — requeue picks so nothing is lost on re-auth.
+          for (const b of bbhPending) pendingBbh.add(b.key);
+          return;
+        }
         console.warn('[audit-sync] flush failed:', res.status);
+        for (const b of bbhPending) pendingBbh.add(b.key);
         return;
       }
       // Mark successfully-pushed entries as in-sync
@@ -6312,9 +6474,60 @@ const LyridAuditSync = (function() {
       for (const e of hrAudit) {
         hrPushedHash.set(e.id, hashOf(e));
       }
+      for (const b of bbhPending.slice(0, BBH_PUSH_CHUNK)) {
+        bbhPushedHash.set(b.key, b.hash);
+      }
+
+      // Remaining pick chunks — sequential so we never open 6 parallel writes
+      // during the one-time ~900-pick backfill.
+      for (let i = BBH_PUSH_CHUNK; i < bbhPending.length; i += BBH_PUSH_CHUNK) {
+        const chunk = bbhPending.slice(i, i + BBH_PUSH_CHUNK);
+        try {
+          const r2 = await fetch('/api/audit/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            cache: 'no-store',
+            body: JSON.stringify({ bestBetHistory: chunk.map(b => b.pick) })
+          });
+          if (!r2.ok) {
+            // Requeue this chunk and everything after it, then stop.
+            for (const b of bbhPending.slice(i)) pendingBbh.add(b.key);
+            console.warn('[audit-sync] pick chunk push failed:', r2.status);
+            break;
+          }
+          for (const b of chunk) bbhPushedHash.set(b.key, b.hash);
+        } catch (err) {
+          for (const b of bbhPending.slice(i)) pendingBbh.add(b.key);
+          console.warn('[audit-sync] pick chunk push error:', err.message);
+          break;
+        }
+      }
+      if (bbhPending.length > 0) {
+        console.info('[audit-sync] pushed picks:', bbhPending.length - pendingBbh.size, 'of', bbhPending.length);
+      }
     } catch (err) {
+      // Network failure — requeue picks rather than dropping them.
+      for (const b of bbhPending) pendingBbh.add(b.key);
       console.warn('[audit-sync] flush error:', err.message);
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // (Storage Fix — July 20, 2026) Manual backfill — for forcing/verifying the
+  // migration from devtools:  await LyridAuditSync.backfillPicks()
+  //
+  // Clears the pushed-hash map so EVERY local pick is treated as unsynced, then
+  // reconciles and flushes. Safe to run repeatedly — the server upsert is
+  // idempotent and its graded-wins guard refuses any downgrade.
+  // -------------------------------------------------------------------------
+  async function backfillPicks() {
+    bbhPushedHash.clear();
+    const queued = reconcile();
+    console.info('[audit-sync] backfill queued', queued, 'picks');
+    await flush();
+    const remaining = pendingBbh.size;
+    console.info('[audit-sync] backfill complete —', queued - remaining, 'pushed,', remaining, 'still pending');
+    return { queued, pushed: queued - remaining, remaining };
   }
 
   // -------------------------------------------------------------------------
@@ -6340,9 +6553,26 @@ const LyridAuditSync = (function() {
     hydrate,
     markProjectionDirty,
     markHrDirty,
+    // (Storage Fix — July 20, 2026)
+    markBbhDirty,
+    reconcile,
+    backfillPicks,
+    // True only if this exact pick has been confirmed pushed to the server.
+    // Used to gate destructive local trimming — see recoverFromQuota.
+    isPickSynced: (date, entryId) => {
+      const pick = state.bestBetHistory?.[date]?.[entryId];
+      if (!pick) return false;
+      return bbhPushedHash.get(`${date}|${entryId}`) === hashOf(pick);
+    },
     flush,
     // For debugging from devtools
-    _state: () => ({ pendingProjection: pendingProjection.size, pendingHr: pendingHr.size, lastFullLoad })
+    _state: () => ({
+      pendingProjection: pendingProjection.size,
+      pendingHr: pendingHr.size,
+      pendingBbh: pendingBbh.size,
+      bbhSynced: bbhPushedHash.size,
+      lastFullLoad
+    })
   };
 })();
 
@@ -17259,6 +17489,9 @@ function setBestBetResult(date, id, result) {
   e.result = e.result === result ? null : result;
   e.graded = !!e.result;
   saveState();
+  // (Storage Fix — July 20, 2026) A manual grade is a high-value single write —
+  // push it immediately rather than waiting for the reconcile sweep.
+  try { LyridAuditSync.markBbhDirty(date, id); } catch(_) {}
   renderHistory();
 }
 
