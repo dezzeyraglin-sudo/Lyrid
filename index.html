@@ -21402,9 +21402,9 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var F = factors(m), lean = winProbA(m)>=0.5?'a':'b';
     var top = F.filter(function(f){return f.dir===lean;}).sort(function(x,y){return y.weight-x.weight;})[0];
     var name = lean==='a'?m.playerA:m.playerB;
-    var map = { surface:'a much better '+(m.surface||'')+' player', rank:'the far higher-ranked player',
-                form:'in much better form', h2h:'the head-to-head edge' };
-    return name+' favored — mostly because he/she is '+((top&&map[top.key])||'the stronger profile on paper')+'.';
+    var map = { surface:'much better '+(m.surface||'')+' player', rank:'far higher-ranked player',
+                form:'player in much better form', h2h:'head-to-head edge' };
+    return name+' favored — mostly the '+((top&&map[top.key])||'stronger profile on paper')+'.';
   }
   window.LyridTennis = { factors:factors, winProbA:winProbA, flipRisks:flipRisks, archetype:archetype };
 })();
@@ -21486,6 +21486,13 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   #tennis-panel .lyr-wt-thin{color:#f5a623}
   #tennis-panel .lyr-flip{margin:0;padding-left:18px;font-size:.85rem;color:var(--text-secondary);line-height:1.5}
   #tennis-panel .lyr-flip li{margin-bottom:4px}
+  #tennis-panel .lyr-filterbar{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 var(--space-2);align-items:center}
+  #tennis-panel .lyr-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:999px;border:0.5px solid var(--border-hairline);background:transparent;color:var(--text-secondary);font-size:var(--size-eyebrow);font-weight:600;cursor:pointer;white-space:nowrap}
+  #tennis-panel .lyr-chip.on{background:var(--accent,#6b46ff);color:#fff;border-color:transparent}
+  #tennis-panel .lyr-chip-n{opacity:.7;font-weight:700}
+  #tennis-panel .lyr-chip.on .lyr-chip-n{opacity:.9}
+  #tennis-panel .lyr-chip-sep{width:1px;height:18px;background:var(--border-hairline);margin:0 2px}
+  #tennis-panel .lyr-filtercount{font-size:var(--size-eyebrow);color:var(--text-tertiary,#8a8f98);margin:0 0 var(--space-2)}
   #tennis-panel .lyrid-pp-toggle{display:inline-flex;align-items:center;gap:6px;margin:0 0 var(--space-2);padding:6px 12px;border-radius:999px;border:0.5px solid var(--border-hairline);background:transparent;color:var(--text-secondary);font-size:var(--size-eyebrow);cursor:pointer}
   #tennis-panel .lyrid-pp-toggle.on{background:var(--accent,#6b46ff);color:#fff;border-color:transparent}
   #tennis-panel .lyrid-tennis-autofill{margin:var(--space-2) 0;font-size:var(--size-eyebrow);color:var(--text-secondary)}
@@ -21626,15 +21633,51 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">${noRead ? '—' : 'read'}</div>
         <div class="lyrid-game-projection-value" aria-hidden="true">${noRead ? '·' : '→'}</div></div></button>`;
   }
-  let tennisPPOnly = false;
-  function boardHtml(matches) {
-    const anyPP = matches.some(m => m.hasPP);
-    const shown = (tennisPPOnly && anyPP) ? matches.filter(m => m.hasPP) : matches;
-    const toggle = anyPP ? `<button class="lyrid-pp-toggle${tennisPPOnly?' on':''}" type="button" onclick="tennisTogglePP()">${tennisPPOnly?'✓ ':''}PrizePicks only (${matches.filter(m=>m.hasPP).length})</button>` : '';
-    if (!matches || !matches.length)
-      return '<div class="lyrid-empty"><div class="lyrid-empty-title">No matches in window</div><div class="lyrid-empty-text">Off-week or between tournaments — the schedule feed found no ATP/WTA fixtures for this day.</div></div>';
-    return `<div class="lyrid-games-list">${matches.map(matchRow).join('')}</div>`;
+  // Board filters: tour (ATP/WTA), surface, and PrizePicks. Each chip shows a live count and the
+  // board re-renders on tap. Keeps 500+ matches navigable without scrolling.
+  const tennisFilter = { tour: 'all', surface: 'all', pp: false };
+  function applyFilters(matches) {
+    return matches.filter((m) =>
+      (tennisFilter.tour === 'all' || (m.tour || '').toUpperCase() === tennisFilter.tour) &&
+      (tennisFilter.surface === 'all' || (m.surface || '') === tennisFilter.surface) &&
+      (!tennisFilter.pp || m.hasPP));
   }
+  function chip(kind, val, label, count, active) {
+    return `<button class="lyr-chip${active ? ' on' : ''}" type="button" onclick="tennisSetFilter('${kind}','${val}')">${label}${count != null ? ` <span class="lyr-chip-n">${count}</span>` : ''}</button>`;
+  }
+  function boardHtml(matches) {
+    if (!matches || !matches.length)
+      return '<div class="lyrid-empty"><div class="lyrid-empty-title">No matches in window</div><div class="lyrid-empty-text">Off-week or between tournaments — the schedule feed found no fixtures for this day.</div></div>';
+    const count = (pred) => matches.filter(pred).length;
+    const F = tennisFilter;
+    const ppN = count((m) => m.hasPP);
+    // build the chip rows only for categories that actually exist in this slate
+    const tours = [...new Set(matches.map((m) => (m.tour || '').toUpperCase()).filter(Boolean))];
+    const surfaces = [...new Set(matches.map((m) => m.surface).filter(Boolean))];
+    let bar = '<div class="lyr-filterbar">';
+    if (ppN) bar += chip('pp', 'toggle', '⭐ PrizePicks', ppN, F.pp);
+    bar += chip('tour', 'all', 'All tours', matches.length, F.tour === 'all');
+    for (const t of tours) bar += chip('tour', t, t, count((m) => (m.tour || '').toUpperCase() === t), F.tour === t);
+    if (surfaces.length > 1) {
+      bar += '<span class="lyr-chip-sep"></span>';
+      bar += chip('surface', 'all', 'All courts', null, F.surface === 'all');
+      for (const s of surfaces) bar += chip('surface', s, s, count((m) => m.surface === s), F.surface === s);
+    }
+    bar += '</div>';
+
+    const shown = applyFilters(matches);
+    const body = shown.length
+      ? `<div class="lyrid-games-list">${shown.map(matchRow).join('')}</div>`
+      : '<div class="lyrid-empty"><div class="lyrid-empty-text">No matches fit these filters — tap a chip to widen.</div></div>';
+    return bar + `<div class="lyr-filtercount">${shown.length} of ${matches.length} shown</div>` + body;
+  }
+  function tennisSetFilter(kind, val) {
+    if (kind === 'pp') tennisFilter.pp = !tennisFilter.pp;
+    else tennisFilter[kind] = val;
+    const list = document.getElementById('tennisGamesList');
+    if (list && tennisState.slate) list.innerHTML = boardHtml(tennisState.slate);
+  }
+  window.tennisSetFilter = tennisSetFilter;
 
   async function loadTennisSlate() {
     const list = document.getElementById('tennisGamesList');
@@ -21666,12 +21709,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     } catch { return null; }
   }
 
-  function tennisTogglePP() {
-    tennisPPOnly = !tennisPPOnly;
-    const list = document.getElementById('tennisGamesList');
-    if (list && tennisState.slate) list.innerHTML = boardHtml(tennisState.slate);
-  }
-  window.tennisTogglePP = tennisTogglePP;
 
   async function analyzeTennisMatch(matchId, lines) {
     tennisState.selectedMatchId = matchId;
