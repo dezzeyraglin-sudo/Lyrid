@@ -21329,6 +21329,125 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 
 </script>
 
+<style>
+.lyr-tn{max-width:640px;margin:20px auto;background:#fff;border:1px solid #e7e1d5;border-radius:16px;padding:22px;color:#1c2c4c}
+.tn-match{font-family:Fraunces,Georgia,serif;font-size:22px;font-weight:700}
+.tn-match span{color:#9a9ead;font-size:15px;font-style:italic}
+.tn-meta{color:#8a8f9c;font-size:12px;letter-spacing:.04em;margin-top:2px}
+.tn-lean{background:#f7f5ef;border-radius:12px;padding:14px 16px;margin:14px 0}
+.tn-leanrow{display:flex;align-items:center;gap:10px}
+.tn-arrow{font-size:10px;font-weight:700;letter-spacing:.1em;color:#2f6b3f}
+.tn-name{font-family:Fraunces,Georgia,serif;font-size:18px;font-weight:600}
+.tn-pct{font-size:20px;font-weight:700}
+.tn-bar{font-family:monospace;color:#2f6b3f;letter-spacing:-1px}
+.tn-badge{display:inline-block;margin-top:10px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;border-radius:20px}
+.tn-priors{background:#f3ecd9;color:#8a6d2f}
+.tn-live{background:#edf4ee;color:#2f6b3f;border:1px solid #d8e6da}
+.tn-why-h,.tn-flip-h{font-size:11px;font-weight:700;letter-spacing:.08em;color:#5a6275;margin:16px 0 6px}
+.tn-arche{font-size:14px;font-weight:600;margin-bottom:10px;color:#1c2c4c}
+.tn-fac{display:flex;align-items:baseline;gap:8px;padding:7px 0;border-top:1px solid #efeae0;font-size:13px}
+.tn-tick{color:#2f6b3f;font-weight:700;width:22px}
+.tn-thin{color:#b0823a}
+.tn-flabel{font-weight:600;min-width:96px}
+.tn-fdetail{color:#5a6275;flex:1}
+.tn-ffav{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#9a9ead}
+.tn-flip{margin:2px 0 0;padding-left:18px;color:#9a5b1a;font-size:12.5px;line-height:1.5}
+.tn-honest{margin-top:14px;font-size:12px;color:#5a6275;font-style:italic;border-top:1px solid #efeae0;padding-top:10px}
+</style>
+<script>
+/* A. Factor engine → window.LyridTennis */
+(function () {
+  'use strict';
+  var CONFIDENCE = 0.55;  // squash constant. Spec value 0.55 (bold). Lower = more humble (0.25 ~ mockup 68%).
+  function factors(m) {
+    var F = [];
+    if (m.surfWinA != null && m.surfWinB != null) {
+      var gap = m.surfWinA - m.surfWinB;
+      F.push({ key:'surface', label:(m.surface||'surface')+' record',
+        detail: Math.round(m.surfWinA*100)+'% vs '+Math.round(m.surfWinB*100)+'% career win rate',
+        dir: gap>=0?'a':'b', weight: Math.min(3, Math.abs(gap)*8), thin:(m.surfNA||0)<20||(m.surfNB||0)<20 });
+    }
+    if (m.rankA && m.rankB) {
+      var rg = m.rankB - m.rankA;
+      F.push({ key:'rank', label:'Ranking', detail:'#'+m.rankA+' vs #'+m.rankB+' — '+Math.abs(rg)+' spots',
+        dir: rg>=0?'a':'b', weight: Math.min(2.5, Math.abs(rg)/40), thin:false });
+    }
+    if (m.formA != null && m.formB != null) {
+      F.push({ key:'form', label:'Recent form', detail:'won '+m.formA+' of last 10; opp '+m.formB+' of 10',
+        dir: m.formA>=m.formB?'a':'b', weight: Math.min(2, Math.abs(m.formA-m.formB)*0.35), thin:false });
+    }
+    if (m.h2hA != null && m.h2hB != null) {
+      var n = m.h2hA + m.h2hB;
+      F.push({ key:'h2h', label:'Head-to-head', detail: n===0?'never met':(m.h2hA+'-'+m.h2hB+' all-time'),
+        dir: m.h2hA>=m.h2hB?'a':'b', weight: n===0?0:Math.min(1.5, n*0.3), thin: n<3 });
+    }
+    return F.filter(Boolean);
+  }
+  function winProbA(m) {
+    var F = factors(m), net = 0;
+    F.forEach(function (f) { var w = f.thin ? f.weight*0.35 : f.weight; net += (f.dir==='a'?1:-1)*w; });
+    return 1/(1+Math.exp(-net*CONFIDENCE));
+  }
+  function flipRisks(m) {
+    var F = factors(m), lean = winProbA(m)>=0.5?'a':'b', out = [];
+    F.filter(function(f){ return f.dir!==lean && f.weight>0.5; })
+     .sort(function(x,y){ return y.weight-x.weight; })
+     .slice(0,2).forEach(function(f){ out.push('Opponent has the edge in '+f.label.toLowerCase()+' ('+f.detail+')'); });
+    F.filter(function(f){ return f.thin && f.weight>0; })
+     .forEach(function(f){ out.push('Thin sample on '+f.label.toLowerCase()+' — the model leans on ranking here, where upsets happen'); });
+    if (!out.length) out.push('No single clean flip factor — but priors models miss live momentum and injuries entirely');
+    return out.slice(0,3);
+  }
+  function archetype(m) {
+    var F = factors(m), lean = winProbA(m)>=0.5?'a':'b';
+    var top = F.filter(function(f){return f.dir===lean;}).sort(function(x,y){return y.weight-x.weight;})[0];
+    var name = lean==='a'?m.playerA:m.playerB;
+    var map = { surface:'a much better '+(m.surface||'')+' player', rank:'the far higher-ranked player',
+                form:'in much better form', h2h:'the head-to-head edge' };
+    return name+' favored — mostly because he/she is '+((top&&map[top.key])||'the stronger profile on paper')+'.';
+  }
+  window.LyridTennis = { factors:factors, winProbA:winProbA, flipRisks:flipRisks, archetype:archetype };
+})();
+
+/* B. Card renderer → window.LyridTennisUI */
+(function () {
+  'use strict';
+  function esc(s){ return String(s==null?'':s).replace(/</g,'&lt;'); }
+  function bar(pct){ var n=Math.round(pct/10); return '\u2588'.repeat(n)+'\u2591'.repeat(10-n); }
+  function tick(f){ return f.thin ? '\u26a0' : (f.weight>=2 ? '\u2713\u2713' : '\u2713'); }
+  function render(m, gradeStatus) {
+    var T = window.LyridTennis;
+    var pA = T.winProbA(m), lean = pA>=0.5, name = lean?m.playerA:m.playerB, pct = Math.round((lean?pA:1-pA)*100);
+    var F = T.factors(m).sort(function(x,y){return y.weight-x.weight;});
+    var banner = gradeStatus && gradeStatus.shipped
+      ? '<span class="tn-badge tn-live">TRACKED EDGE \u00b7 '+esc(gradeStatus.bucketLabel)+' '+Math.round(gradeStatus.hitRate*100)+'% on n='+gradeStatus.n+'</span>'
+      : '<span class="tn-badge tn-priors">PRIORS ONLY \u00b7 logging, not bettable ('+((gradeStatus&&gradeStatus.n)||0)+'/50)</span>';
+    var facRows = F.map(function(f){
+      var favName = (f.dir==='a'?m.playerA:m.playerB).split(' ').pop();
+      return '<div class="tn-fac"><span class="tn-tick '+(f.thin?'tn-thin':'')+'">'+tick(f)+'</span>'+
+        '<span class="tn-flabel">'+esc(f.label)+'</span>'+
+        '<span class="tn-fdetail">'+esc(f.detail)+'</span>'+
+        '<span class="tn-ffav">'+esc(favName)+'</span></div>';
+    }).join('');
+    var flips = T.flipRisks(m).map(function(r){ return '<li>'+esc(r)+'</li>'; }).join('');
+    var box = document.getElementById('tennis-card'); if(!box) return;
+    box.innerHTML =
+      '<div class="tn-head"><div class="tn-match">'+esc(m.playerA)+' <span>vs</span> '+esc(m.playerB)+'</div>'+
+        '<div class="tn-meta">'+esc(m.surface||'')+' \u00b7 '+esc(m.event||'')+' \u00b7 '+esc(m.tour||'')+'</div></div>'+
+      '<div class="tn-lean"><div class="tn-leanrow"><span class="tn-arrow">LEAN \u2192</span>'+
+        '<span class="tn-name">'+esc(name)+'</span><span class="tn-pct">'+pct+'%</span>'+
+        '<span class="tn-bar">'+bar(pct)+'</span></div>'+banner+'</div>'+
+      '<div class="tn-why-h">WHY '+esc(name.split(' ').pop().toUpperCase())+' \u2014 '+F.length+' factors, weighted</div>'+
+      '<div class="tn-arche">'+esc(T.archetype(m))+'</div>'+ facRows +
+      '<div class="tn-flip-h">WHAT COULD FLIP IT</div><ul class="tn-flip">'+flips+'</ul>'+
+      '<div class="tn-honest">'+(gradeStatus&&gradeStatus.shipped
+        ? 'This bucket has cleared our bar \u2014 bet it like any tracked edge, at a fair price.'
+        : 'This is a priors read, not a tracked edge. Our tennis model is still proving itself \u2014 we log every match before trusting it. Bet accordingly, or just use it to understand the matchup.')+'</div>';
+  }
+  window.LyridTennisUI = { render: render };
+})();
+</script>
+
 <!-- ===== TENNIS MODULE ===== -->
 <style>
   #tennis-panel .lyrid-tennis-read{display:block;padding:var(--space-4)}
@@ -21344,6 +21463,33 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   #tennis-panel .lyrid-tennis-gates{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--space-2)}
   #tennis-panel .lyrid-chip.warn{background:var(--data-warning-surface);color:var(--data-warning);font-size:var(--size-eyebrow);padding:2px 8px;border-radius:999px}
   #tennis-panel .lyrid-tennis-footer{margin-top:var(--space-3);font-size:var(--size-eyebrow);color:var(--text-tertiary,var(--text-secondary))}
+
+  #tennis-panel .lyr-tug{margin:var(--space-3) 0;padding:var(--space-3);border-radius:var(--radius-lg,14px);border:0.5px solid var(--border-hairline);background:var(--surface-raised,rgba(255,255,255,0.02))}
+  #tennis-panel .lyr-tug-context{font-size:var(--size-eyebrow);letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary,#8a8f98);margin-bottom:6px}
+  #tennis-panel .lyr-tug-headline{font-size:1.05rem;font-weight:650;line-height:1.35;margin-bottom:var(--space-3)}
+  #tennis-panel .lyr-tug-barrow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  #tennis-panel .lyr-tug-lean{font-size:var(--size-eyebrow);font-weight:700;color:var(--text-tertiary,#8a8f98);letter-spacing:.06em}
+  #tennis-panel .lyr-tug-bar{position:relative;flex:1;height:30px;border-radius:999px;background:var(--surface-sunken,rgba(255,255,255,0.05));overflow:hidden}
+  #tennis-panel .lyr-tug-fill{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,var(--accent,#6b46ff),var(--accent-2,#8b6bff));border-radius:999px;transition:width .5s ease}
+  #tennis-panel .lyr-tug-barlabel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.82rem;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4)}
+  #tennis-panel .lyr-tug-banner{font-size:var(--size-eyebrow);line-height:1.4;padding:7px 10px;border-radius:var(--radius-md,10px);background:rgba(255,180,60,.08);border:0.5px solid rgba(255,180,60,.25);color:var(--text-secondary);margin-bottom:var(--space-3)}
+  #tennis-panel .lyr-tug-graded{background:rgba(80,220,140,.08);border-color:rgba(80,220,140,.3)}
+  #tennis-panel .lyr-section-title{font-size:var(--size-eyebrow);text-transform:uppercase;letter-spacing:.05em;color:var(--text-tertiary,#8a8f98);margin:var(--space-3) 0 8px;font-weight:700}
+  #tennis-panel .lyr-factor{padding:8px 0;border-bottom:0.5px solid var(--border-hairline)}
+  #tennis-panel .lyr-factor:last-child{border-bottom:0}
+  #tennis-panel .lyr-factor-head{display:flex;align-items:center;gap:8px}
+  #tennis-panel .lyr-factor-label{font-weight:620;font-size:.92rem}
+  #tennis-panel .lyr-factor-detail{font-size:.85rem;color:var(--text-secondary);margin-top:2px;margin-left:26px}
+  #tennis-panel .lyr-wt{display:inline-flex;min-width:20px;justify-content:center;font-size:.8rem;font-weight:700}
+  #tennis-panel .lyr-wt-strong{color:#4ade80}
+  #tennis-panel .lyr-wt-mid{color:var(--text-secondary)}
+  #tennis-panel .lyr-wt-thin{color:#f5a623}
+  #tennis-panel .lyr-flip{margin:0;padding-left:18px;font-size:.85rem;color:var(--text-secondary);line-height:1.5}
+  #tennis-panel .lyr-flip li{margin-bottom:4px}
+  #tennis-panel .lyrid-pp-toggle{display:inline-flex;align-items:center;gap:6px;margin:0 0 var(--space-2);padding:6px 12px;border-radius:999px;border:0.5px solid var(--border-hairline);background:transparent;color:var(--text-secondary);font-size:var(--size-eyebrow);cursor:pointer}
+  #tennis-panel .lyrid-pp-toggle.on{background:var(--accent,#6b46ff);color:#fff;border-color:transparent}
+  #tennis-panel .lyrid-tennis-autofill{margin:var(--space-2) 0;font-size:var(--size-eyebrow);color:var(--text-secondary)}
+  #tennis-panel .lyrid-tennis-disclaimer{margin:var(--space-2) 0;padding:8px 10px;border-radius:var(--radius-md);border:0.5px solid var(--border-hairline);font-size:var(--size-eyebrow);line-height:1.45;color:var(--text-secondary)}
   #tennis-panel .lyrid-tennis-proj{font-size:var(--size-caption);color:var(--text-secondary);margin:var(--space-2) 0}
   #tennis-panel .lyrid-tennis-lines{margin:var(--space-2) 0 var(--space-3)}
   #tennis-panel .lyrid-tennis-lines-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--space-2)}
@@ -21389,17 +21535,55 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         ${f('totalGames', 'total games', cur.totalGames)}
         ${f('fantasyA', 'fantasy ' + names[0], cur.fantasyA)}
         ${f('fantasyB', 'fantasy ' + names[1], cur.fantasyB)}
+        ${f('gamesWonA', 'games won ' + names[0], cur.gamesWonA)}
+        ${f('gamesWonB', 'games won ' + names[1], cur.gamesWonB)}
       </div>
       <button class="lyrid-btn" type="button" onclick="applyTennisLines('${esc(matchId)}')">Apply lines</button>
     </div>`;
   }
 
-  function renderRead(read, matchId, cur) {
+
+  // The tug-of-war card (per the design spec). Plain-language WHY, weighted factors with receipts,
+  // what-could-flip-it, and the honesty banner that upgrades when a bucket clears.
+  function weightBadge(w) {
+    if (w === '++') return '<span class="lyr-wt lyr-wt-strong" title="biggest factor">\u2713\u2713</span>';
+    if (w === '+')  return '<span class="lyr-wt lyr-wt-mid" title="supporting">\u2713</span>';
+    return '<span class="lyr-wt lyr-wt-thin" title="thin / low confidence">\u26a0</span>';
+  }
+  function narrativeCard(n) {
+    if (!n) return '';
+    const factors = (n.factors || []).map((f) => `
+      <div class="lyr-factor">
+        <div class="lyr-factor-head">${weightBadge(f.weight)}<span class="lyr-factor-label">${esc(f.label)}</span></div>
+        <div class="lyr-factor-detail">${esc(f.detail)}</div>
+      </div>`).join('');
+    const flips = (n.flip || []).map((x) => `<li>${esc(x)}</li>`).join('');
+    return `
+      <div class="lyr-tug">
+        <div class="lyr-tug-context">${esc(n.context || '')}</div>
+        <div class="lyr-tug-headline">${esc(n.headline)}</div>
+        <div class="lyr-tug-barrow">
+          <span class="lyr-tug-lean">LEAN</span>
+          <div class="lyr-tug-bar"><div class="lyr-tug-fill" style="width:${Math.max(0,Math.min(100,n.barFill))}%"></div>
+            <span class="lyr-tug-barlabel">${esc(n.favLast)} ${n.favPct}%</span></div>
+        </div>
+        ${n.priorsOnly ? `<div class="lyr-tug-banner">\u26a0 ${esc(n.gradedLabel)}</div>`
+                       : `<div class="lyr-tug-banner lyr-tug-graded">\u2713 ${esc(n.gradedLabel)}</div>`}
+        <div class="lyr-section-title">Why ${esc(n.favLast)} \u2014 weighted factors</div>
+        <div class="lyr-factors">${factors}</div>
+        <div class="lyr-section-title">What could flip it</div>
+        <ul class="lyr-flip">${flips}</ul>
+      </div>`;
+  }
+
+  function renderRead(read, matchId, cur, autoFilled, narrative) {
     if (!read) return '<div class="lyrid-empty"><div class="lyrid-empty-title">No read</div></div>';
     const w = read.winProb || {}, holds = read.holds || {};
     const names = Object.keys(w).filter((k) => k !== 'favored' && k !== 'edge');
     const pj = read.projected || {};
-    const drivers = ((read.drivers && read.drivers.aces) || []).concat((read.drivers && read.drivers.totalGames) || []);
+    const drivers = ((read.drivers && read.drivers.circumstances) || [])
+      .concat((read.drivers && read.drivers.aces) || [])
+      .concat((read.drivers && read.drivers.totalGames) || []);
     const g = read.gates || {};
     const chips = [ (g.thinSampleA || g.thinSampleB) ? 'thin surface sample' : '',
       (g.retirementA || g.retirementB) ? 'retirement risk' : '', g.blowout ? 'rout risk' : '' ].filter(Boolean);
@@ -21410,6 +21594,10 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       <div class="lyrid-tennis-winprob">${names.map((n) => `<span>${esc(n)} ${pct(w[n])} · hold ${pct(holds[n])}</span>`).join('')}</div>
       <div class="lyrid-tennis-proj">Projected — fantasy ${esc(names[0])} <b>${one(fA)}</b> · ${esc(names[1])} <b>${one(fB)}</b>
         · total games <b>${one(pj.totalGames)}</b></div>
+      ${narrativeCard(narrative)}
+      ${read.disclaimer ? `<div class="lyrid-tennis-disclaimer">${esc(read.disclaimer)}</div>` : ''}
+      ${read.thinTotals ? `<div class="lyrid-tennis-disclaimer">⚠ Thin serve sample (${Math.min(read.sampleA,read.sampleB)} matches) — total games & games-won default toward average (~22.5) and shouldn't be trusted. Win/fantasy on clear mismatches are more reliable.</div>` : ''}
+      ${autoFilled ? '<div class="lyrid-tennis-autofill">Lines auto-filled from PrizePicks (standard lines). Edit any field and re-apply.</div>' : ''}
       ${linesForm(matchId, names, cur || {})}
       ${propRow('Aces — ' + names[0], read.props && read.props.acesA)}
       ${propRow('Aces — ' + names[1], read.props && read.props.acesB)}
@@ -21417,6 +21605,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       ${propRow('Total Games', read.props && read.props.totalGames)}
       ${propRow('Fantasy — ' + names[0], read.props && read.props.fantasyA)}
       ${propRow('Fantasy — ' + names[1], read.props && read.props.fantasyB)}
+      ${propRow('Games Won — ' + names[0], read.props && read.props.gamesWonA)}
+      ${propRow('Games Won — ' + names[1], read.props && read.props.gamesWonB)}
       ${drivers.length ? `<details class="lyrid-tennis-drivers"><summary>why</summary><ul>${drivers.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></details>` : ''}
       ${chips.length ? `<div class="lyrid-tennis-gates">${chips.map((c) => `<span class="lyrid-chip warn">${esc(c)}</span>`).join('')}</div>` : ''}
       <div class="lyrid-tennis-footer">Priors only — not bets, until a slate is graded. ${esc((read.note || ''))}</div></div>`;
@@ -21424,16 +21614,23 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 
   function matchRow(m) {
     const sel = String(m.matchId) === String(tennisState.selectedMatchId);
+    const noRead = m.readable === false;
+    const cold = m.readable && m.indexed === false;   // readable via live cold-start, not deep history
+    const pp = m.hasPP === true;
     const sub = `${esc(m.surface)} · ${esc(m.tour)}${m.tournament ? ' · ' + esc(m.tournament) : ''} · ${esc(m.bestOf === 5 ? 'Bo5' : 'Bo3')}`;
     return `<button class="lyrid-game-card${sel ? ' signal' : ''}" type="button" onclick="analyzeTennisMatch('${esc(m.matchId)}')" aria-label="Read ${esc(m.playerA)} vs ${esc(m.playerB)}">
       <div class="lyrid-game-time"><div class="lyrid-game-time-value">${esc(fmtTime(m.startTime))}</div>
-        <div class="lyrid-game-time-zone">${esc(m.tour)}</div></div>
+        <div class="lyrid-game-time-zone">${pp ? 'PP ●' : esc(m.tour)}</div></div>
       <div class="lyrid-game-matchup"><div class="lyrid-game-teams"><span>${esc(m.playerA)}</span><span class="at">vs</span><span>${esc(m.playerB)}</span></div>
-        <div class="lyrid-game-pitchers">${sub} · tap to analyze</div></div>
-      <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">read</div>
-        <div class="lyrid-game-projection-value" aria-hidden="true">→</div></div></button>`;
+        <div class="lyrid-game-pitchers">${sub} · ${noRead ? 'no data — no read' : (cold ? 'live profile · tap to analyze' : 'tap to analyze')}</div></div>
+      <div class="lyrid-game-projection"><div class="lyrid-game-projection-label">${noRead ? '—' : 'read'}</div>
+        <div class="lyrid-game-projection-value" aria-hidden="true">${noRead ? '·' : '→'}</div></div></button>`;
   }
+  let tennisPPOnly = false;
   function boardHtml(matches) {
+    const anyPP = matches.some(m => m.hasPP);
+    const shown = (tennisPPOnly && anyPP) ? matches.filter(m => m.hasPP) : matches;
+    const toggle = anyPP ? `<button class="lyrid-pp-toggle${tennisPPOnly?' on':''}" type="button" onclick="tennisTogglePP()">${tennisPPOnly?'✓ ':''}PrizePicks only (${matches.filter(m=>m.hasPP).length})</button>` : '';
     if (!matches || !matches.length)
       return '<div class="lyrid-empty"><div class="lyrid-empty-title">No matches in window</div><div class="lyrid-empty-text">Off-week or between tournaments — the schedule feed found no ATP/WTA fixtures for this day.</div></div>';
     return `<div class="lyrid-games-list">${matches.map(matchRow).join('')}</div>`;
@@ -21457,7 +21654,24 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }
   }
 
-  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB'];
+  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB', 'gamesWonA', 'gamesWonB'];
+
+  // Pull the standard PrizePicks lines for this matchup so the inputs prefill. Fails soft — if
+  // PrizePicks is unreachable or the shape changed, you just type them as before.
+  async function fetchPPLines(m) {
+    try {
+      const r = await fetch(`/api/tennis/prizepicks?a=${encodeURIComponent(m.playerA)}&b=${encodeURIComponent(m.playerB)}`, { cache: 'no-store' });
+      const j = await r.json();
+      return (j && j.ok && j.lines && Object.keys(j.lines).length) ? j.lines : null;
+    } catch { return null; }
+  }
+
+  function tennisTogglePP() {
+    tennisPPOnly = !tennisPPOnly;
+    const list = document.getElementById('tennisGamesList');
+    if (list && tennisState.slate) list.innerHTML = boardHtml(tennisState.slate);
+  }
+  window.tennisTogglePP = tennisTogglePP;
 
   async function analyzeTennisMatch(matchId, lines) {
     tennisState.selectedMatchId = matchId;
@@ -21466,16 +21680,40 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (list) list.innerHTML = boardHtml(tennisState.slate); // re-mark selection
     const m = tennisState.slate.find((x) => String(x.matchId) === String(matchId));
     if (!m) return;
-    const cur = lines || {};
-    if (container) container.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-title">Analyzing…</div></div>';
+    if (container) {
+      container.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-title">Analyzing…</div></div>';
+      try { container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { container.scrollIntoView(); }
+    }
+    // first open → try PrizePicks; after that respect whatever the user typed
+    let cur = lines || null;
+    let autoFilled = false;
+    if (!cur) { const pp = await fetchPPLines(m); if (pp) { cur = pp; autoFilled = true; } }
+    cur = cur || {};
     try {
       const qs = new URLSearchParams({ a: m.playerA, b: m.playerB, surface: m.surface, bestOf: m.bestOf });
       // Lines optional — none gives projections + drivers to eyeball vs the PrizePicks board.
       for (const k of LINE_KEYS) if (cur[k] != null && cur[k] !== '') qs.set(k, cur[k]);
       const r = await fetch('/api/tennis/analyze?' + qs.toString(), { cache: 'no-store' });
       const j = await r.json();
+      if (r.status === 404 && j && j.error === 'player not found') {
+        const miss = [j.a === false ? m.playerA : null, j.b === false ? m.playerB : null].filter(Boolean).join(' and ');
+        if (container) container.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">No read for this match</div>
+          <div class="lyrid-empty-text">${esc(miss || 'These players')} aren't in the serve index — usually a lower-tier (ITF/Challenger) or new player. Reads need match history. Try a tour-level match, or rebuild the index with wider data.</div></div>`;
+        return;
+      }
       if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status));
-      if (container) container.innerHTML = renderRead(j.read, matchId, cur);
+      if (container) {
+        // Spec card REPLACES the read view (per design). Light-theme card renders into #tennis-card.
+        if (j.cardModel && window.LyridTennisUI) {
+          container.innerHTML = '<section id="tennis-card" class="lyr-tn"></section>';
+          try { window.LyridTennisUI.render(j.cardModel, j.gradeStatus || { n: 0, shipped: false }); }
+          catch (e) { container.innerHTML = renderRead(j.read, matchId, cur, autoFilled); }
+        } else {
+          container.innerHTML = renderRead(j.read, matchId, cur, autoFilled);
+        }
+        // bring the read into view — on mobile the board pushes it well below the fold
+        try { container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { container.scrollIntoView(); }
+      }
     } catch (e) {
       if (container) container.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">Analysis unavailable</div><div class="lyrid-empty-text">${esc(String(e.message || e))}</div></div>`;
     }
