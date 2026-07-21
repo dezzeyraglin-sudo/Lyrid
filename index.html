@@ -21372,6 +21372,12 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       F.push({ key:'rank', label:'Ranking', detail:'#'+m.rankA+' vs #'+m.rankB+' — '+Math.abs(rg)+' spots',
         dir: rg>=0?'a':'b', weight: Math.min(2.5, Math.abs(rg)/40), thin:false });
     }
+    if (m.eloA != null && m.eloB != null) {
+      var ed = m.eloA - m.eloB;
+      F.push({ key:'elo', label:'Skill rating (Elo)',
+        detail: Math.round(m.eloA)+' vs '+Math.round(m.eloB)+(Math.abs(ed)>=1?' \u2014 '+Math.abs(Math.round(ed))+' point edge':''),
+        dir: ed>=0?'a':'b', weight: Math.min(3.2, Math.abs(ed)/60), thin:(m.eloNA||0)<20||(m.eloNB||0)<20 });
+    }
     if (m.formA != null && m.formB != null) {
       F.push({ key:'form', label:'Recent form', detail:'won '+m.formA+' of last 10; opp '+m.formB+' of 10',
         dir: m.formA>=m.formB?'a':'b', weight: Math.min(2, Math.abs(m.formA-m.formB)*0.35), thin:false });
@@ -21403,7 +21409,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var top = F.filter(function(f){return f.dir===lean;}).sort(function(x,y){return y.weight-x.weight;})[0];
     var name = lean==='a'?m.playerA:m.playerB;
     var map = { surface:'much better '+(m.surface||'')+' player', rank:'far higher-ranked player',
-                form:'player in much better form', h2h:'head-to-head edge' };
+                elo:'stronger player by the skill ratings', form:'player in much better form', h2h:'head-to-head edge' };
     return name+' favored — mostly the '+((top&&map[top.key])||'stronger profile on paper')+'.';
   }
   window.LyridTennis = { factors:factors, winProbA:winProbA, flipRisks:flipRisks, archetype:archetype };
@@ -21552,39 +21558,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   }
 
 
-  // The tug-of-war card (per the design spec). Plain-language WHY, weighted factors with receipts,
-  // what-could-flip-it, and the honesty banner that upgrades when a bucket clears.
-  function weightBadge(w) {
-    if (w === '++') return '<span class="lyr-wt lyr-wt-strong" title="biggest factor">\u2713\u2713</span>';
-    if (w === '+')  return '<span class="lyr-wt lyr-wt-mid" title="supporting">\u2713</span>';
-    return '<span class="lyr-wt lyr-wt-thin" title="thin / low confidence">\u26a0</span>';
-  }
-  function narrativeCard(n) {
-    if (!n) return '';
-    const factors = (n.factors || []).map((f) => `
-      <div class="lyr-factor">
-        <div class="lyr-factor-head">${weightBadge(f.weight)}<span class="lyr-factor-label">${esc(f.label)}</span></div>
-        <div class="lyr-factor-detail">${esc(f.detail)}</div>
-      </div>`).join('');
-    const flips = (n.flip || []).map((x) => `<li>${esc(x)}</li>`).join('');
-    return `
-      <div class="lyr-tug">
-        <div class="lyr-tug-context">${esc(n.context || '')}</div>
-        <div class="lyr-tug-headline">${esc(n.headline)}</div>
-        <div class="lyr-tug-barrow">
-          <span class="lyr-tug-lean">LEAN</span>
-          <div class="lyr-tug-bar"><div class="lyr-tug-fill" style="width:${Math.max(0,Math.min(100,n.barFill))}%"></div>
-            <span class="lyr-tug-barlabel">${esc(n.favLast)} ${n.favPct}%</span></div>
-        </div>
-        ${n.priorsOnly ? `<div class="lyr-tug-banner">\u26a0 ${esc(n.gradedLabel)}</div>`
-                       : `<div class="lyr-tug-banner lyr-tug-graded">\u2713 ${esc(n.gradedLabel)}</div>`}
-        <div class="lyr-section-title">Why ${esc(n.favLast)} \u2014 weighted factors</div>
-        <div class="lyr-factors">${factors}</div>
-        <div class="lyr-section-title">What could flip it</div>
-        <ul class="lyr-flip">${flips}</ul>
-      </div>`;
-  }
-
   function renderRead(read, matchId, cur, autoFilled, narrative) {
     if (!read) return '<div class="lyrid-empty"><div class="lyrid-empty-title">No read</div></div>';
     const w = read.winProb || {}, holds = read.holds || {};
@@ -21603,7 +21576,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       <div class="lyrid-tennis-winprob">${names.map((n) => `<span>${esc(n)} ${pct(w[n])} · hold ${pct(holds[n])}</span>`).join('')}</div>
       <div class="lyrid-tennis-proj">Projected — fantasy ${esc(names[0])} <b>${one(fA)}</b> · ${esc(names[1])} <b>${one(fB)}</b>
         · total games <b>${one(pj.totalGames)}</b></div>
-      ${narrativeCard(narrative)}
       ${read.disclaimer ? `<div class="lyrid-tennis-disclaimer">${esc(read.disclaimer)}</div>` : ''}
       ${read.thinTotals ? `<div class="lyrid-tennis-disclaimer">⚠ Thin serve sample (${Math.min(read.sampleA,read.sampleB)} matches) — total games & games-won default toward average (~22.5) and shouldn't be trusted. Win/fantasy on clear mismatches are more reliable.</div>` : ''}
       ${autoFilled ? '<div class="lyrid-tennis-autofill">Lines auto-filled from PrizePicks (standard lines). Edit any field and re-apply.</div>' : ''}
@@ -21754,10 +21726,30 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         }
         // bring the read into view — on mobile the board pushes it well below the fold
         try { container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { container.scrollIntoView(); }
+        // if real lines were graded, log them as validation data (silent, fail-soft, bet:false)
+        if (lines && Object.keys(lines).length && j.read && j.read.props) logGradedLines(m, j.read, cur);
       }
     } catch (e) {
       if (container) container.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">Analysis unavailable</div><div class="lyrid-empty-text">${esc(String(e.message || e))}</div></div>`;
     }
+  }
+
+  // Log each graded line as a forward validation point. Fire-and-forget; never blocks or alerts.
+  async function logGradedLines(m, read, cur) {
+    try {
+      const P = read.props || {};
+      const map = { totalGames:'Total Games', gamesWonA:'Games Won A', gamesWonB:'Games Won B',
+        acesA:'Aces A', acesB:'Aces B', dfA:'Double Faults A', fantasyA:'Fantasy A', fantasyB:'Fantasy B' };
+      const props = [];
+      for (const k of Object.keys(map)) {
+        const p = P[k]; if (!p || cur[k] == null || cur[k] === '') continue;   // only lines the user set
+        props.push({ market: map[k], line: Number(cur[k]), prob: p.prob, mean: p.mean, lean: p.lean });
+      }
+      if (!props.length) return;
+      await fetch('/api/tennis/log', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ matchId: m.matchId, playerA: m.playerA, playerB: m.playerB,
+          surface: m.surface, tour: m.tour, startTime: m.startTime, props }) });
+    } catch { /* logging is best-effort */ }
   }
 
   function applyTennisLines(matchId) {

@@ -158,6 +158,7 @@ export default async function handler(req, res) {
         playerA: playerA.name, playerB: playerB.name,
         surface: q.surface || 'Hard', event: q.event || read.tournament || '', tour: q.tour || read.tourLabel || '',
         rankA: playerA.rank || null, rankB: playerB.rank || null,
+        eloA: playerA.elo || null, eloB: playerB.elo || null, eloNA: playerA.eloN || 0, eloNB: playerB.eloN || 0,
         surfWinA: wA ? wA.v : null, surfWinB: wB ? wB.v : null, surfNA: wA ? wA.n : 0, surfNB: wB ? wB.n : 0,
         formA: (typeof fA === 'number') ? fA : null, formB: (typeof fB === 'number') ? fB : null,
         h2hA: (playerA.h2h && playerB.id != null) ? (playerA.h2h[playerB.id] || 0) : null,
