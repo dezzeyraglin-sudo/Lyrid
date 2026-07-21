@@ -21486,6 +21486,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   #tennis-panel .lyr-wt-thin{color:#f5a623}
   #tennis-panel .lyr-flip{margin:0;padding-left:18px;font-size:.85rem;color:var(--text-secondary);line-height:1.5}
   #tennis-panel .lyr-flip li{margin-bottom:4px}
+  #tennis-panel #tennis-lines{margin-top:var(--space-3)}
+  #tennis-panel .lyr-lines-head{font-size:var(--size-eyebrow);text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--text-tertiary,#8a8f98);padding-top:var(--space-3);border-top:0.5px solid var(--border-hairline);margin-bottom:var(--space-2)}
   #tennis-panel .lyr-filterbar{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 var(--space-2);align-items:center}
   #tennis-panel .lyr-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:999px;border:0.5px solid var(--border-hairline);background:transparent;color:var(--text-secondary);font-size:var(--size-eyebrow);font-weight:600;cursor:pointer;white-space:nowrap}
   #tennis-panel .lyr-chip.on{background:var(--accent,#6b46ff);color:#fff;border-color:transparent}
@@ -21740,13 +21742,15 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       }
       if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status));
       if (container) {
-        // Spec card REPLACES the read view (per design). Light-theme card renders into #tennis-card.
+        // Card (the plain-language WHY) sits ON TOP; the line inputs + graded projections sit BELOW
+        // it, so you get the read AND can grade PrizePicks lines against the model in one view.
         if (j.cardModel && window.LyridTennisUI) {
-          container.innerHTML = '<section id="tennis-card" class="lyr-tn"></section>';
+          container.innerHTML = '<section id="tennis-card" class="lyr-tn"></section>'
+            + '<div id="tennis-lines"><div class="lyr-lines-head">Grade the lines</div>' + renderRead(j.read, matchId, cur, autoFilled, j.narrative) + '</div>';
           try { window.LyridTennisUI.render(j.cardModel, j.gradeStatus || { n: 0, shipped: false }); }
-          catch (e) { container.innerHTML = renderRead(j.read, matchId, cur, autoFilled); }
+          catch (e) { /* card failed → the read below still stands on its own */ }
         } else {
-          container.innerHTML = renderRead(j.read, matchId, cur, autoFilled);
+          container.innerHTML = renderRead(j.read, matchId, cur, autoFilled, j.narrative);
         }
         // bring the read into view — on mobile the board pushes it well below the fold
         try { container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { container.scrollIntoView(); }
