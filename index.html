@@ -3342,6 +3342,45 @@
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--accent);color:#0a0d0a;padding:10px 18px;border-radius:6px;font-weight:700;font-size:12px;letter-spacing:0.05em;z-index:200;transition:transform 0.3s ease}
   .toast.show{transform:translateX(-50%) translateY(0)}
   .toast.danger{background:var(--danger)}
+
+/* ===== LYRID NFL PICK CARDS (integration) — all colors from tokens ===== */
+.nfl-pick-card{background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-lg);padding:var(--space-5);box-shadow:var(--elevation-hover);margin-bottom:var(--space-4)}
+.nfl-pick-head{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--space-3);margin-bottom:var(--space-4)}
+.nfl-pick-player{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-semibold);letter-spacing:var(--tracking-tight);line-height:var(--line-h3)}
+.nfl-pick-prop{font-size:var(--size-body-sm);color:var(--text-secondary);margin-top:var(--space-1)}
+.nfl-line-val{font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--text-primary);font-weight:var(--weight-medium)}
+.nfl-tier-badge{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;font-weight:var(--weight-medium);padding:var(--space-1) var(--space-2);border-radius:var(--radius-pill);white-space:nowrap}
+.nfl-tier-badge.guaranteed{background:var(--tier-elite-fill);color:var(--tier-elite-text)}
+.nfl-tier-badge.platinum{background:var(--tier-strong-fill);color:var(--tier-strong-text)}
+.nfl-tier-badge.gold{background:var(--tier-solid-fill);color:var(--tier-solid-text)}
+.nfl-tier-badge.none{background:var(--surface-muted);color:var(--text-muted)}
+.nfl-verdict{display:flex;align-items:baseline;gap:var(--space-3);padding:var(--space-3) 0;border-top:0.5px solid var(--border-hairline);border-bottom:0.5px solid var(--border-hairline);margin-bottom:var(--space-4)}
+.nfl-verdict.noplay{opacity:0.55}
+.nfl-dir{font-size:var(--size-h2);font-family:var(--font-serif);font-weight:var(--weight-semibold)}
+.nfl-dir.higher{color:var(--data-positive)}
+.nfl-dir.lower{color:var(--data-negative)}
+.nfl-dir.muted{color:var(--text-muted)}
+.nfl-prob{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-lg);color:var(--text-primary)}
+.nfl-prob-label{font-size:var(--size-caption);color:var(--text-muted);margin-left:auto}
+.nfl-filter-row{display:flex;align-items:center;gap:var(--space-2);font-size:var(--size-body-sm);padding:var(--space-1) 0}
+.nfl-filter-check{width:16px;height:16px;border-radius:var(--radius-pill);display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
+.nfl-filter-check.pass{background:var(--data-positive-surface);color:var(--data-positive)}
+.nfl-filter-check.fail{background:var(--data-negative-surface);color:var(--data-negative)}
+.nfl-filter-label{color:var(--text-secondary)}
+.nfl-filter-detail{color:var(--text-muted);font-size:var(--size-caption);padding-left:var(--space-1)}
+.nfl-section-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;font-weight:var(--weight-medium);color:var(--text-secondary);margin:var(--space-4) 0 var(--space-2)}
+.nfl-driver{display:flex;align-items:baseline;gap:var(--space-2);padding:var(--space-1) 0;font-size:var(--size-body-sm)}
+.nfl-driver-dir{font-family:var(--font-mono);font-weight:var(--weight-medium);width:44px;flex-shrink:0}
+.nfl-driver-dir.pos{color:var(--data-positive)}
+.nfl-driver-dir.neg{color:var(--data-negative)}
+.nfl-driver-text{color:var(--text-secondary)}
+.nfl-outlook-tag{display:inline-block;font-size:var(--size-caption);font-weight:var(--weight-medium);padding:var(--space-1) var(--space-3);border-radius:var(--radius-sm);margin-bottom:var(--space-2)}
+.nfl-outlook-tag.flourish{background:var(--data-positive-surface);color:var(--data-positive)}
+.nfl-outlook-tag.struggle{background:var(--data-negative-surface);color:var(--data-negative)}
+.nfl-outlook-tag.neutral{background:var(--surface-muted);color:var(--text-secondary)}
+.nfl-blocked-note{background:var(--data-warning-surface);color:var(--data-warning);font-size:var(--size-caption);padding:var(--space-2) var(--space-3);border-radius:var(--radius-sm);margin-top:var(--space-3)}
+.nfl-provisional{font-size:var(--size-caption);color:var(--text-muted);margin-top:var(--space-3);font-style:italic}
+/* ===== END NFL CSS ===== */
 </style>
 
 <!-- Lyrid analysis screen overrides — loaded LAST so they win the cascade against the inline legacy styles above -->
@@ -3367,6 +3406,7 @@
     <button class="lyrid-nav-btn" data-tab="wnba" onclick="switchTab('wnba')">WNBA</button>
     <button class="lyrid-nav-btn" data-tab="cs2" onclick="switchToCs2()">CS2</button>
     <button class="lyrid-nav-btn" data-tab="tennis" onclick="switchTab('tennis')">Tennis</button>
+    <button class="lyrid-nav-btn" data-tab="nfl" onclick="switchTab('nfl')">NFL</button>
     <button class="lyrid-nav-btn" data-tab="track" onclick="switchTab('track')">Track</button>
     <button class="lyrid-nav-btn" data-tab="history" onclick="switchTab('history')">History</button>
     <button class="lyrid-nav-btn" data-tab="settings" onclick="switchTab('settings')">Settings</button>
@@ -3549,6 +3589,24 @@
   <div id="tennisBanner"></div>
   <div id="tennisGamesList"></div>
   <div id="tennisAnalysisContainer"></div>
+</div>
+
+<!-- NFL -->
+<div class="panel-content" id="nfl-panel">
+  <div class="lyrid-page-header">
+    <div class="lyrid-page-eyebrow" id="nflPageEyebrow">NFL · yardage props · in-season</div>
+    <div class="lyrid-date-nav">
+      <button class="lyrid-date-btn" type="button" onclick="nflChangeDate(-1)" aria-label="Previous day">‹</button>
+      <span class="lyrid-date-current" id="nflDateDisplay">Today</span>
+      <button class="lyrid-date-btn" type="button" onclick="nflChangeDate(1)" aria-label="Next day">›</button>
+      <button class="lyrid-date-btn" type="button" onclick="nflChangeDate('today')" style="margin-left:4px">Today</button>
+    </div>
+    <button class="lyrid-btn primary" id="loadNflBtn" onclick="loadNflSlate()">Refresh</button>
+    <span id="nflMeta" class="lyrid-eyebrow" style="margin-left:auto"></span>
+  </div>
+  <div id="nflBanner"></div>
+  <div id="nflGamesList"></div>
+  <div id="nflAnalysisContainer"></div>
 </div>
 
 <!-- TRACK -->
@@ -21786,6 +21844,144 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       if (tabName === 'tennis' && !tennisState.loaded) loadTennisSlate();
     };
   }
+})();
+</script>
+
+
+<!-- ===== LYRID NFL INTEGRATION ===== -->
+<script>
+(function () {
+  'use strict';
+
+  var nflState = { loaded: false, date: null };
+
+  // ---- date helpers (mirror the other sports' change-date pattern) ----
+  function todayStr() {
+    try { return (window.getTodayStr && window.getTodayStr()) || new Date().toISOString().slice(0, 10); }
+    catch (_) { return new Date().toISOString().slice(0, 10); }
+  }
+  function setNflDateDisplay() {
+    var el = document.getElementById('nflDateDisplay');
+    if (el) el.textContent = (nflState.date === todayStr() || !nflState.date) ? 'Today' : nflState.date;
+  }
+  window.nflChangeDate = function (delta) {
+    var base = nflState.date || todayStr();
+    if (delta === 'today') { nflState.date = todayStr(); }
+    else {
+      var d = new Date(base + 'T00:00:00');
+      d.setDate(d.getDate() + delta);
+      nflState.date = d.toISOString().slice(0, 10);
+    }
+    setNflDateDisplay();
+    window.loadNflSlate();
+  };
+
+  // ---- tier badge class map (GUARANTEED->elite, PLATINUM->strong, GOLD->solid) ----
+  var TIER_CLASS = { GUARANTEED: 'guaranteed', PLATINUM: 'platinum', GOLD: 'gold', none: 'none' };
+
+  // ---- render one classifier verdict as a Lyrid pick card ----
+  function renderNflCard(item) {
+    var v = item.verdict || {};
+    var tier = v.tier_candidate || 'none';
+    var noPlay = tier === 'none';
+    var dir = v.pick === 'higher' ? 'higher' : 'lower';
+    var pOver = (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver) || 0;
+    var f = v.filters || {};
+
+    function filterRow(label, pass) {
+      return '<div class="nfl-filter-row">' +
+        '<span class="nfl-filter-check ' + (pass ? 'pass' : 'fail') + '">' + (pass ? '\u2713' : '\u2715') + '</span>' +
+        '<span class="nfl-filter-label">' + label + '</span></div>';
+    }
+    var filters = filterRow('Soft line', f.softLine) + filterRow('Volume-secure', f.volumeSecure) + filterRow('Script-clear', f.scriptClear);
+    var reasons = (v.reasons || []).map(function (r) { return '<div class="nfl-filter-detail">\u00b7 ' + r + '</div>'; }).join('');
+    var blocked = (v.blocked && v.blocked.length) ? '<div class="nfl-blocked-note">Blocked: ' + v.blocked[0] + '</div>' : '';
+
+    var outlookHTML = '';
+    if (item.outlook) {
+      var drivers = (item.outlook.drivers || []).slice(0, 4).map(function (d) {
+        return '<div class="nfl-driver"><span class="nfl-driver-dir ' + (d.dir === '+' ? 'pos' : 'neg') + '">' +
+          (d.dir === '+' ? '\u25b2' : '\u25bc') + ' ' + Math.abs(d.w).toFixed(2) + '</span>' +
+          '<span class="nfl-driver-text">' + d.f + '</span></div>';
+      }).join('');
+      outlookHTML = '<div class="nfl-section-eyebrow">QB Outlook</div>' +
+        '<span class="nfl-outlook-tag ' + item.outlook.outlook + '">' + item.outlook.outlook + '</span>' + drivers;
+    }
+
+    // NO-PLAY refinement: desaturate the verdict row so a blocked pick never reads as a rec
+    var verdictRow = '<div class="nfl-verdict' + (noPlay ? ' noplay' : '') + '">' +
+      '<span class="nfl-dir ' + dir + (noPlay ? ' muted' : '') + '">' + (dir === 'higher' ? 'Higher' : 'Lower') + '</span>' +
+      '<span class="nfl-prob">' + Math.round(pOver * 100) + '%</span>' +
+      '<span class="nfl-prob-label">model P(over)</span></div>';
+
+    return '<div class="nfl-pick-card">' +
+      '<div class="nfl-pick-head"><div>' +
+        '<div class="nfl-pick-player">' + (item.player || '') + '</div>' +
+        '<div class="nfl-pick-prop">' + (item.propLabel || '') + ' <span class="nfl-line-val">' + v.line + '</span></div>' +
+      '</div><span class="nfl-tier-badge ' + TIER_CLASS[tier] + '">' + (noPlay ? 'No Play' : tier) + '</span></div>' +
+      verdictRow +
+      '<div class="nfl-section-eyebrow">Three-Filter Check</div>' + filters + reasons + blocked + outlookHTML +
+      '<div class="nfl-provisional">Provisional \u2014 tiers calibrate against backtest before badges go live.</div>' +
+    '</div>';
+  }
+
+  // ---- load the NFL slate (mirrors loadCs2Slate shape) ----
+  window.loadNflSlate = async function () {
+    var list = document.getElementById('nflGamesList');
+    var analysis = document.getElementById('nflAnalysisContainer');
+    var meta = document.getElementById('nflMeta');
+    if (!nflState.date) nflState.date = todayStr();
+    setNflDateDisplay();
+    if (analysis) analysis.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-text">Loading NFL slate\u2026</div></div>';
+    if (list) list.innerHTML = '';
+
+    var data = null;
+    for (var i = 0; i < 1; i++) {
+      try {
+        var res = await fetch('/api/nfl/slate?date=' + encodeURIComponent(nflState.date), { cache: 'no-store' });
+        if (res.ok) { data = await res.json(); break; }
+      } catch (_) { /* endpoint not deployed yet */ }
+    }
+    nflState.loaded = true;
+
+    // off-season / no endpoint yet — honest empty state, never a fake pick
+    if (!data || !Array.isArray(data.picks) || !data.picks.length) {
+      if (analysis) analysis.innerHTML =
+        '<div class="lyrid-empty"><div class="lyrid-empty-text">No NFL slate for this date.</div>' +
+        '<div class="lyrid-empty-sub">NFL props run in-season (Sept\u2013Feb). The engine is live once the slate posts.</div></div>';
+      if (meta) meta.textContent = '';
+      return;
+    }
+
+    if (meta) meta.textContent = data.picks.length + ' props \u00b7 ' + (data.source || 'engine');
+    if (analysis) analysis.innerHTML = data.picks.map(renderNflCard).join('');
+
+    // feed qualifying picks into the shared parlay builder (same seam as MLB/WNBA)
+    try {
+      if (typeof setSportCandidates === 'function') {
+        var cands = data.picks
+          .filter(function (p) { return p.verdict && p.verdict.tier_candidate && p.verdict.tier_candidate !== 'none'; })
+          .map(function (p) {
+            return {
+              id: 'nfl-' + (p.player_key || p.player) + '-' + p.verdict.line,
+              sport: 'nfl', player: p.player, market: p.propLabel,
+              line: p.verdict.line, pick: p.verdict.pick,
+              tier: p.verdict.tier_candidate, edge: p.verdict.edge,
+              flags: {}
+            };
+          });
+        setSportCandidates('nfl', cands);
+      }
+    } catch (_) { /* parlay UI not present on this view */ }
+  };
+
+  // ---- lazy-load hook: wrap switchTab WITHOUT replacing it ----
+  // (idempotent — wraps the existing generic router so NFL loads on first open)
+  var _prevSwitchTab = window.switchTab;
+  window.switchTab = function (tabName) {
+    if (typeof _prevSwitchTab === 'function') _prevSwitchTab(tabName);
+    if (tabName === 'nfl' && !nflState.loaded) window.loadNflSlate();
+  };
 })();
 </script>
 
