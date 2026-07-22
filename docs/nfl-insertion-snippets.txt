@@ -1,0 +1,97 @@
+LYRID NFL INTEGRATION — INSERTION SNIPPETS
+==========================================
+Three edits to index.html, all additive. Fork from the deployed file first.
+
+------------------------------------------------------------------
+EDIT 1 — NAV BUTTON
+Location: inside <nav class="lyrid-header-nav"> (~line 3369),
+after the Tennis button, before the Track button.
+------------------------------------------------------------------
+    <button class="lyrid-nav-btn" data-tab="nfl" onclick="switchTab('nfl')">NFL</button>
+
+
+------------------------------------------------------------------
+EDIT 2 — PANEL
+Location: after the tennis-panel closes (~line 3552), before <!-- TRACK -->.
+Mirrors the tennis panel structure exactly (standard nfl* IDs).
+------------------------------------------------------------------
+<div class="panel-content" id="nfl-panel">
+  <div class="lyrid-page-header">
+    <div class="lyrid-page-eyebrow" id="nflPageEyebrow">NFL · yardage props · in-season</div>
+    <div class="lyrid-date-nav">
+      <button class="lyrid-date-btn" type="button" onclick="nflChangeDate(-1)" aria-label="Previous day">‹</button>
+      <span class="lyrid-date-current" id="nflDateDisplay">Today</span>
+      <button class="lyrid-date-btn" type="button" onclick="nflChangeDate(1)" aria-label="Next day">›</button>
+      <button class="lyrid-date-btn" type="button" onclick="nflChangeDate('today')" style="margin-left:4px">Today</button>
+    </div>
+    <button class="lyrid-btn primary" id="loadNflBtn" onclick="loadNflSlate()">Refresh</button>
+    <span id="nflMeta" class="lyrid-eyebrow" style="margin-left:auto"></span>
+  </div>
+  <div id="nflBanner"></div>
+  <div id="nflGamesList"></div>
+  <div id="nflAnalysisContainer"></div>
+</div>
+
+
+------------------------------------------------------------------
+EDIT 3 — SCOPED CSS
+Location: inside the main <style> block (anywhere), or in tokens.css.
+All colors pull from Lyrid tokens — no ad-hoc values.
+------------------------------------------------------------------
+<style>
+.nfl-pick-card { background: var(--surface-card); border: 0.5px solid var(--border-hairline); border-radius: var(--radius-lg); padding: var(--space-5); box-shadow: var(--elevation-hover); margin-bottom: var(--space-4); }
+.nfl-pick-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-4); }
+.nfl-pick-player { font-family: var(--font-serif); font-size: var(--size-h3); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-tight); line-height: var(--line-h3); }
+.nfl-pick-prop { font-size: var(--size-body-sm); color: var(--text-secondary); margin-top: var(--space-1); }
+.nfl-line-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); font-weight: var(--weight-medium); }
+.nfl-tier-badge { font-size: var(--size-eyebrow); letter-spacing: var(--tracking-eyebrow); text-transform: uppercase; font-weight: var(--weight-medium); padding: var(--space-1) var(--space-2); border-radius: var(--radius-pill); white-space: nowrap; }
+.nfl-tier-badge.guaranteed { background: var(--tier-elite-fill); color: var(--tier-elite-text); }
+.nfl-tier-badge.platinum { background: var(--tier-strong-fill); color: var(--tier-strong-text); }
+.nfl-tier-badge.gold { background: var(--tier-solid-fill); color: var(--tier-solid-text); }
+.nfl-tier-badge.none { background: var(--surface-muted); color: var(--text-muted); }
+.nfl-verdict { display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-3) 0; border-top: 0.5px solid var(--border-hairline); border-bottom: 0.5px solid var(--border-hairline); margin-bottom: var(--space-4); }
+.nfl-verdict.noplay { opacity: 0.55; }
+.nfl-dir { font-size: var(--size-h2); font-family: var(--font-serif); font-weight: var(--weight-semibold); }
+.nfl-dir.higher { color: var(--data-positive); }
+.nfl-dir.lower { color: var(--data-negative); }
+.nfl-dir.muted { color: var(--text-muted); }
+.nfl-prob { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--size-mono-lg); color: var(--text-primary); }
+.nfl-prob-label { font-size: var(--size-caption); color: var(--text-muted); margin-left: auto; }
+.nfl-filter-row { display: flex; align-items: center; gap: var(--space-2); font-size: var(--size-body-sm); padding: var(--space-1) 0; }
+.nfl-filter-check { width: 16px; height: 16px; border-radius: var(--radius-pill); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+.nfl-filter-check.pass { background: var(--data-positive-surface); color: var(--data-positive); }
+.nfl-filter-check.fail { background: var(--data-negative-surface); color: var(--data-negative); }
+.nfl-filter-label { color: var(--text-secondary); }
+.nfl-filter-detail { color: var(--text-muted); font-size: var(--size-caption); padding-left: var(--space-1); }
+.nfl-section-eyebrow { font-size: var(--size-eyebrow); letter-spacing: var(--tracking-eyebrow); text-transform: uppercase; font-weight: var(--weight-medium); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-2); }
+.nfl-driver { display: flex; align-items: baseline; gap: var(--space-2); padding: var(--space-1) 0; font-size: var(--size-body-sm); }
+.nfl-driver-dir { font-family: var(--font-mono); font-weight: var(--weight-medium); width: 44px; flex-shrink: 0; }
+.nfl-driver-dir.pos { color: var(--data-positive); }
+.nfl-driver-dir.neg { color: var(--data-negative); }
+.nfl-driver-text { color: var(--text-secondary); }
+.nfl-outlook-tag { display: inline-block; font-size: var(--size-caption); font-weight: var(--weight-medium); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); margin-bottom: var(--space-2); }
+.nfl-outlook-tag.flourish { background: var(--data-positive-surface); color: var(--data-positive); }
+.nfl-outlook-tag.struggle { background: var(--data-negative-surface); color: var(--data-negative); }
+.nfl-outlook-tag.neutral { background: var(--surface-muted); color: var(--text-secondary); }
+.nfl-blocked-note { background: var(--data-warning-surface); color: var(--data-warning); font-size: var(--size-caption); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); margin-top: var(--space-3); }
+.nfl-provisional { font-size: var(--size-caption); color: var(--text-muted); margin-top: var(--space-3); font-style: italic; }
+</style>
+
+
+------------------------------------------------------------------
+EDIT 4 — INTEGRATION SCRIPT
+Add the entire contents of nfl-integration.html ONCE near the end of
+<body>, AFTER window.switchTab is defined (after ~line 7955).
+It wraps switchTab idempotently (no core edits) and lazy-loads NFL.
+------------------------------------------------------------------
+
+NOTES
+-----
+* switchTab is generic — it already activates #nfl-panel by convention.
+  The wrapper only adds first-open lazy loading; it does not replace the router.
+* The loader expects GET /api/nfl/slate?date=YYYY-MM-DD returning
+  { source, picks: [{ player, player_key, propLabel, verdict, outlook? }] }
+  where verdict is the nflClassify.classifyProp() output shape.
+* Off-season / missing endpoint => honest empty state, never a fabricated pick.
+* Qualifying picks (tier != none) auto-register into the existing parlay
+  builder via setSportCandidates('nfl', ...) — same seam MLB/WNBA use.

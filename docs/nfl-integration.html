@@ -1,0 +1,147 @@
+<!-- ============================================================
+     LYRID NFL INTEGRATION  (drop-in, self-contained)
+     Add this <script> block ONCE, near the end of <body> in index.html,
+     AFTER window.switchTab is defined (i.e. after line ~7955).
+
+     It touches NOTHING in the existing switchTab chain. It:
+       1. lazy-loads the NFL slate the first time the NFL tab opens
+       2. renders classifier verdicts into #nflAnalysisContainer using
+          the Lyrid pick-card markup (tokens already loaded globally)
+       3. registers NFL candidates into the shared parlay UI via
+          setSportCandidates('nfl', ...) — same seam MLB/WNBA use
+     ============================================================ -->
+<script>
+(function () {
+  'use strict';
+
+  var nflState = { loaded: false, date: null };
+
+  // ---- date helpers (mirror the other sports' change-date pattern) ----
+  function todayStr() {
+    try { return (window.getTodayStr && window.getTodayStr()) || new Date().toISOString().slice(0, 10); }
+    catch (_) { return new Date().toISOString().slice(0, 10); }
+  }
+  function setNflDateDisplay() {
+    var el = document.getElementById('nflDateDisplay');
+    if (el) el.textContent = (nflState.date === todayStr() || !nflState.date) ? 'Today' : nflState.date;
+  }
+  window.nflChangeDate = function (delta) {
+    var base = nflState.date || todayStr();
+    if (delta === 'today') { nflState.date = todayStr(); }
+    else {
+      var d = new Date(base + 'T00:00:00');
+      d.setDate(d.getDate() + delta);
+      nflState.date = d.toISOString().slice(0, 10);
+    }
+    setNflDateDisplay();
+    window.loadNflSlate();
+  };
+
+  // ---- tier badge class map (GUARANTEED->elite, PLATINUM->strong, GOLD->solid) ----
+  var TIER_CLASS = { GUARANTEED: 'guaranteed', PLATINUM: 'platinum', GOLD: 'gold', none: 'none' };
+
+  // ---- render one classifier verdict as a Lyrid pick card ----
+  function renderNflCard(item) {
+    var v = item.verdict || {};
+    var tier = v.tier_candidate || 'none';
+    var noPlay = tier === 'none';
+    var dir = v.pick === 'higher' ? 'higher' : 'lower';
+    var pOver = (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver) || 0;
+    var f = v.filters || {};
+
+    function filterRow(label, pass) {
+      return '<div class="nfl-filter-row">' +
+        '<span class="nfl-filter-check ' + (pass ? 'pass' : 'fail') + '">' + (pass ? '\u2713' : '\u2715') + '</span>' +
+        '<span class="nfl-filter-label">' + label + '</span></div>';
+    }
+    var filters = filterRow('Soft line', f.softLine) + filterRow('Volume-secure', f.volumeSecure) + filterRow('Script-clear', f.scriptClear);
+    var reasons = (v.reasons || []).map(function (r) { return '<div class="nfl-filter-detail">\u00b7 ' + r + '</div>'; }).join('');
+    var blocked = (v.blocked && v.blocked.length) ? '<div class="nfl-blocked-note">Blocked: ' + v.blocked[0] + '</div>' : '';
+
+    var outlookHTML = '';
+    if (item.outlook) {
+      var drivers = (item.outlook.drivers || []).slice(0, 4).map(function (d) {
+        return '<div class="nfl-driver"><span class="nfl-driver-dir ' + (d.dir === '+' ? 'pos' : 'neg') + '">' +
+          (d.dir === '+' ? '\u25b2' : '\u25bc') + ' ' + Math.abs(d.w).toFixed(2) + '</span>' +
+          '<span class="nfl-driver-text">' + d.f + '</span></div>';
+      }).join('');
+      outlookHTML = '<div class="nfl-section-eyebrow">QB Outlook</div>' +
+        '<span class="nfl-outlook-tag ' + item.outlook.outlook + '">' + item.outlook.outlook + '</span>' + drivers;
+    }
+
+    // NO-PLAY refinement: desaturate the verdict row so a blocked pick never reads as a rec
+    var verdictRow = '<div class="nfl-verdict' + (noPlay ? ' noplay' : '') + '">' +
+      '<span class="nfl-dir ' + dir + (noPlay ? ' muted' : '') + '">' + (dir === 'higher' ? 'Higher' : 'Lower') + '</span>' +
+      '<span class="nfl-prob">' + Math.round(pOver * 100) + '%</span>' +
+      '<span class="nfl-prob-label">model P(over)</span></div>';
+
+    return '<div class="nfl-pick-card">' +
+      '<div class="nfl-pick-head"><div>' +
+        '<div class="nfl-pick-player">' + (item.player || '') + '</div>' +
+        '<div class="nfl-pick-prop">' + (item.propLabel || '') + ' <span class="nfl-line-val">' + v.line + '</span></div>' +
+      '</div><span class="nfl-tier-badge ' + TIER_CLASS[tier] + '">' + (noPlay ? 'No Play' : tier) + '</span></div>' +
+      verdictRow +
+      '<div class="nfl-section-eyebrow">Three-Filter Check</div>' + filters + reasons + blocked + outlookHTML +
+      '<div class="nfl-provisional">Provisional \u2014 tiers calibrate against backtest before badges go live.</div>' +
+    '</div>';
+  }
+
+  // ---- load the NFL slate (mirrors loadCs2Slate shape) ----
+  window.loadNflSlate = async function () {
+    var list = document.getElementById('nflGamesList');
+    var analysis = document.getElementById('nflAnalysisContainer');
+    var meta = document.getElementById('nflMeta');
+    if (!nflState.date) nflState.date = todayStr();
+    setNflDateDisplay();
+    if (analysis) analysis.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-text">Loading NFL slate\u2026</div></div>';
+    if (list) list.innerHTML = '';
+
+    var data = null;
+    for (var i = 0; i < 1; i++) {
+      try {
+        var res = await fetch('/api/nfl/slate?date=' + encodeURIComponent(nflState.date), { cache: 'no-store' });
+        if (res.ok) { data = await res.json(); break; }
+      } catch (_) { /* endpoint not deployed yet */ }
+    }
+    nflState.loaded = true;
+
+    // off-season / no endpoint yet — honest empty state, never a fake pick
+    if (!data || !Array.isArray(data.picks) || !data.picks.length) {
+      if (analysis) analysis.innerHTML =
+        '<div class="lyrid-empty"><div class="lyrid-empty-text">No NFL slate for this date.</div>' +
+        '<div class="lyrid-empty-sub">NFL props run in-season (Sept\u2013Feb). The engine is live once the slate posts.</div></div>';
+      if (meta) meta.textContent = '';
+      return;
+    }
+
+    if (meta) meta.textContent = data.picks.length + ' props \u00b7 ' + (data.source || 'engine');
+    if (analysis) analysis.innerHTML = data.picks.map(renderNflCard).join('');
+
+    // feed qualifying picks into the shared parlay builder (same seam as MLB/WNBA)
+    try {
+      if (typeof setSportCandidates === 'function') {
+        var cands = data.picks
+          .filter(function (p) { return p.verdict && p.verdict.tier_candidate && p.verdict.tier_candidate !== 'none'; })
+          .map(function (p) {
+            return {
+              id: 'nfl-' + (p.player_key || p.player) + '-' + p.verdict.line,
+              sport: 'nfl', player: p.player, market: p.propLabel,
+              line: p.verdict.line, pick: p.verdict.pick,
+              tier: p.verdict.tier_candidate, edge: p.verdict.edge,
+              flags: {}
+            };
+          });
+        setSportCandidates('nfl', cands);
+      }
+    } catch (_) { /* parlay UI not present on this view */ }
+  };
+
+  // ---- lazy-load hook: wrap switchTab WITHOUT replacing it ----
+  // (idempotent — wraps the existing generic router so NFL loads on first open)
+  var _prevSwitchTab = window.switchTab;
+  window.switchTab = function (tabName) {
+    if (typeof _prevSwitchTab === 'function') _prevSwitchTab(tabName);
+    if (tabName === 'nfl' && !nflState.loaded) window.loadNflSlate();
+  };
+})();
+</script>
