@@ -17,7 +17,7 @@
 // IP. On any fetch failure we return source:'unavailable' with an empty slate so
 // the UI shows its honest empty state and the manual tracker remains the fallback.
 
-import { parsePrizePicks, normalizeLines } from '../../lib/nfl/nflLineAdapters.js';
+import { parsePrizePicks, normalizeLines, getUnmappedStats, clearUnmappedStats } from '../../lib/nfl/nflLineAdapters.js';
 import { classifyProp } from '../../lib/nfl/nflClassify.js';
 import { compProject } from '../../lib/nfl/nflCompEngine.js';
 
@@ -73,8 +73,33 @@ export default async function handler(req, res) {
     });
   }
 
-  // 2) normalize to yardage lines, filter to the requested date
+  // 2) normalize to yardage lines, filter to the requested date.
+  //    IMPORTANT: PrizePicks start_time is UTC; an evening ET kickoff (e.g. Sept 9
+  //    7:20pm ET) is the NEXT calendar day in UTC. The adapter's raw slice(0,10)
+  //    would misfile it. Re-derive the game date in US Eastern (the NFL's
+  //    operational timezone) so it matches the date the user is browsing.
+  clearUnmappedStats();
   let lines = normalizeLines(parsePrizePicks(ppJson));
+  lines = lines.map(l => {
+    const st = l._start_time || l.start_time || null;
+    // parsePrizePicks stores game_date from a.start_time; recompute in ET from the
+    // original if available, else keep. We also stash the ET date for filtering.
+    let etDate = l.game_date;
+    try {
+      // reconstruct a Date from the PP start_time if the adapter kept it; otherwise
+      // fall back to treating game_date as a plain date (already sliced).
+      if (l.raw_start || st) {
+        const d = new Date(l.raw_start || st);
+        if (!isNaN(d)) {
+          etDate = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+          }).format(d); // en-CA yields YYYY-MM-DD
+        }
+      }
+    } catch (_) { /* keep etDate */ }
+    return { ...l, game_date: etDate };
+  });
+  const datesSeen = Array.from(new Set(lines.map(l => l.game_date).filter(Boolean))).sort();
   if (date) lines = lines.filter(l => !l.game_date || l.game_date === date);
 
   if (!lines.length) {
@@ -83,6 +108,7 @@ export default async function handler(req, res) {
       date,
       picks: [],
       note: 'No PrizePicks yardage lines for this date yet.',
+      diagnostics: { unmappedStatTypes: getUnmappedStats(), datesSeen: datesSeen.slice(0, 12) },
     });
   }
 
@@ -145,6 +171,7 @@ export default async function handler(req, res) {
     date,
     count: picks.length,
     picks,
+    diagnostics: { unmappedStatTypes: getUnmappedStats(), propFamilies: Array.from(new Set(lines.map(l => l.prop_type))) },
     note: baselineReady ? undefined : 'Showing PrizePicks lines. Tier analysis activates once the nflverse baseline is loaded.',
   });
 }

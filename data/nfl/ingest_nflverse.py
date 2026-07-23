@@ -19,8 +19,21 @@ import requests
 NFLVERSE = "https://github.com/nflverse/nflverse-data/releases/download"
 
 def load_player_stats(season):
-    url = f"{NFLVERSE}/player_stats/player_stats_{season}.parquet"
-    return pd.read_parquet(url)
+    """nflverse RENAMED this release: 2024-and-earlier live under
+    player_stats/player_stats_{yr}.parquet, 2025+ under
+    stats_player/stats_player_week_{yr}.parquet. Try both so a season never
+    silently 404s (this bug would have skipped the most recent season)."""
+    candidates = [
+        f"{NFLVERSE}/stats_player/stats_player_week_{season}.parquet",
+        f"{NFLVERSE}/player_stats/player_stats_{season}.parquet",
+    ]
+    last = None
+    for url in candidates:
+        try:
+            return pd.read_parquet(url)
+        except Exception as e:
+            last = e
+    raise RuntimeError(f"no player stats release found for {season}: {last}")
 
 def load_snap_counts(season):
     try:

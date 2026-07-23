@@ -105,11 +105,17 @@
     }
     nflState.loaded = true;
 
-    // off-season / no endpoint yet — honest empty state, never a fake pick
+    // off-season / no endpoint yet — honest empty state, never a fake pick.
+    // Surface the actual fetched date + source + any server note so the reason
+    // for an empty slate is visible, not guessed.
     if (!data || !Array.isArray(data.picks) || !data.picks.length) {
+      var why = data && data.note ? data.note
+        : 'NFL props run in-season (Sept\u2013Feb). The engine is live once the slate posts.';
+      var src = data && data.source ? data.source : 'no response';
       if (analysis) analysis.innerHTML =
-        '<div class="lyrid-empty"><div class="lyrid-empty-text">No NFL slate for this date.</div>' +
-        '<div class="lyrid-empty-sub">NFL props run in-season (Sept\u2013Feb). The engine is live once the slate posts.</div></div>';
+        '<div class="lyrid-empty"><div class="lyrid-empty-text">No NFL slate for ' + nflState.date + '.</div>' +
+        '<div class="lyrid-empty-sub">' + why + '</div>' +
+        '<div class="lyrid-empty-sub" style="opacity:.6">source: ' + src + '</div></div>';
       if (meta) meta.textContent = '';
       return;
     }

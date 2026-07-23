@@ -269,3 +269,90 @@ create table if not exists nfl_defense_suppression (
   rush_epa_allowed numeric, rush_success_allowed numeric, ypc_allowed numeric,
   updated_at timestamptz default now(), unique (team_abbr, season)
 );
+
+-- ---------------------------------------------------------------------------
+-- 13. COVERAGE ALLOWED BY POSITION GROUP (build_coverage_by_position.py)
+--     RBs are covered by LB/S, not CBs — this is the RB-receiving matchup path.
+-- ---------------------------------------------------------------------------
+create table if not exists nfl_defense_coverage_by_pos (
+  id bigint generated always as identity primary key,
+  team_abbr text references nfl_teams(team_abbr), season int not null,
+  pos_group text check (pos_group in ('RB','TE','WR')) not null,
+  targets int, yards numeric, completions int, epa numeric,
+  yards_per_target numeric, catch_rate_allowed numeric,
+  updated_at timestamptz default now(), unique (team_abbr, season, pos_group)
+);
+
+-- ---------------------------------------------------------------------------
+-- 14. DAY-OF AVAILABILITY SNAPSHOTS (nflInactives.js) — audit trail for the gate
+-- ---------------------------------------------------------------------------
+create table if not exists nfl_availability_snapshots (
+  id bigint generated always as identity primary key,
+  game_date date not null,
+  player_name text not null,
+  team_abbr text, position text,
+  status text check (status in ('active','doubtful','out','unknown')),
+  status_raw text, detail text,
+  fetched_at timestamptz default now(),
+  unique (game_date, player_name)
+);
+
+-- ---------------------------------------------------------------------------
+-- 15. PENALTY DRAG (build_penalty_drag.py) — completed catches erased by flags
+-- ---------------------------------------------------------------------------
+create table if not exists nfl_team_penalty_drag (
+  id bigint generated always as identity primary key,
+  team_abbr text references nfl_teams(team_abbr), season int not null,
+  pass_plays int, wiped_pass_plays int, nullify_pct numeric, top_penalty text,
+  updated_at timestamptz default now(), unique (team_abbr, season)
+);
+
+-- ---------------------------------------------------------------------------
+-- 16. RECEIVER / QB EFFICIENCY (pfr_advstats) — drops + accuracy
+-- ---------------------------------------------------------------------------
+create table if not exists nfl_player_efficiency (
+  id bigint generated always as identity primary key,
+  player_key text not null, season int not null, week int,
+  receiving_drop int, receiving_drop_pct numeric,
+  passing_bad_throws int, passing_bad_throw_pct numeric, passing_drop_pct numeric,
+  target_rate numeric,
+  updated_at timestamptz default now(), unique (player_key, season, week)
+);
+
+-- ---------------------------------------------------------------------------
+-- 17. RECEIVER QUALITY (build_receiver_quality.py)
+--     rec_cpoe = catches balls he statistically shouldn't ("catches bad balls") —
+--     this is the SHIELD against an inaccurate QB. Plus snap-share security.
+-- ---------------------------------------------------------------------------
+create table if not exists nfl_receiver_quality (
+  id bigint generated always as identity primary key,
+  player_key text not null, player_name text, position text, season int not null,
+  targets int, catches int, catch_rate numeric, exp_cp numeric, rec_cpoe numeric, adot numeric,
+  offense_pct_mean numeric, offense_pct_sd numeric, games int,
+  updated_at timestamptz default now(), unique (player_key, season)
+);
+
+-- ---------------------------------------------------------------------------
+-- 18-19. PRESSURE PROFILES (build_pressure_profiles.py)
+--   QB: sacks-per-pressure (escapability), and where the ball goes under duress
+--       (TE dump-off lean, aDOT hold vs collapse) — this REDISTRIBUTES yardage
+--       between a team's own pass-catchers.
+--   TEAM: protection allowed (offense) vs pressure generated (defense).
+-- ---------------------------------------------------------------------------
+create table if not exists nfl_qb_pressure_profile (
+  id bigint generated always as identity primary key,
+  player_key text not null, player_name text, season int not null, attempts int,
+  te_share_clean numeric, te_share_pressured numeric,
+  adot_clean numeric, adot_pressured numeric, pressure_rate numeric,
+  times_sacked int, times_pressured int, times_blitzed int, times_hurried int,
+  sack_per_pressure numeric,
+  updated_at timestamptz default now(), unique (player_key, season)
+);
+
+create table if not exists nfl_team_pressure (
+  id bigint generated always as identity primary key,
+  team_abbr text references nfl_teams(team_abbr), season int not null,
+  dropbacks int, sacks_allowed int, hits_allowed int, sack_pct_allowed numeric,
+  sacks int, hits int, plays int, sack_rate numeric, pressure_rate numeric,
+  updated_at timestamptz default now(), unique (team_abbr, season)
+);
