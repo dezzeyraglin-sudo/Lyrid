@@ -56,6 +56,18 @@ it displays the history on the card and lets nflPlayerVsOpponent.js (min 4 meeti
 shrunk, capped +/-0.25) do any actual weighting. Same discipline as the retired MLB
 SCORCHING tier.
 
+## Injured lineups — `lib/nfl/nflInjuryImpact.js`
+Detection lives in `nflInactives.js`; **magnitude** lives here.
+* **Offense (measured, real).** nflverse 2024, 51 teammate observations where a
+  team's top target missed: **+4.2pp target share, +6.2 yds, 60.8% of teammates
+  gained, p=0.021.** Scaled by ROLE PROXIMITY — a direct same-role replacement
+  projects ~+7-8pp / +25 yds, a distant-role teammate ~+2pp / +12 yds.
+* **Defense (detected, NOT quantified).** The same test on defenses missing their
+  top CB found n=6 usable splits, mean -0.4 yds, p=0.97 — too small to establish a
+  magnitude. So opponent injuries emit a FLAG and widen `uncertainty`; they do not
+  move the projection, and a GUARANTEED tier is demoted to PLATINUM because the
+  matchup read it rested on just went stale.
+
 ## Deploy order
 1. **Schema** — run `sql/001_nfl_schema.sql` in Supabase (14 tables, idempotent).
 2. **Ingest** (local, needs your Supabase service key):
