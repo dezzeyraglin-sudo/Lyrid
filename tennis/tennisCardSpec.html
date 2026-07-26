@@ -15,6 +15,10 @@
 .tn-live{background:#edf4ee;color:#2f6b3f;border:1px solid #d8e6da}
 .tn-why-h,.tn-flip-h{font-size:11px;font-weight:700;letter-spacing:.08em;color:#5a6275;margin:16px 0 6px}
 .tn-arche{font-size:14px;font-weight:600;margin-bottom:10px;color:#1c2c4c}
+.tn-close{display:inline-flex;align-items:center;font-size:10px;font-weight:800;letter-spacing:.06em;color:#fff;background:#c2410c;padding:3px 8px;border-radius:20px;margin-left:2px}
+.tn-flow{font-size:13px;line-height:1.5;color:#3a4256;background:#f4f6f9;border-radius:10px;padding:11px 13px;margin:12px 0}
+.tn-flow-h{display:block;font-size:10px;font-weight:700;letter-spacing:.08em;color:#7a8194;margin-bottom:4px}
+.tn-conflict{font-size:12px;color:#9a5b1a;background:#faf3e6;border-radius:8px;padding:8px 10px;margin-bottom:10px;line-height:1.45}
 .tn-fac{display:flex;align-items:baseline;gap:8px;padding:7px 0;border-top:1px solid #efeae0;font-size:13px}
 .tn-tick{color:#2f6b3f;font-weight:700;width:22px}
 .tn-thin{color:#b0823a}
@@ -42,6 +46,12 @@
       F.push({ key:'rank', label:'Ranking', detail:'#'+m.rankA+' vs #'+m.rankB+' — '+Math.abs(rg)+' spots',
         dir: rg>=0?'a':'b', weight: Math.min(2.5, Math.abs(rg)/40), thin:false });
     }
+    if (m.eloA != null && m.eloB != null) {
+      var ed = m.eloA - m.eloB;
+      F.push({ key:'elo', label:'Skill rating (Elo)',
+        detail: Math.round(m.eloA)+' vs '+Math.round(m.eloB)+(Math.abs(ed)>=1?' \u2014 '+Math.abs(Math.round(ed))+' point edge':''),
+        dir: ed>=0?'a':'b', weight: Math.min(3.2, Math.abs(ed)/60), thin:(m.eloNA||0)<20||(m.eloNB||0)<20 });
+    }
     if (m.formA != null && m.formB != null) {
       F.push({ key:'form', label:'Recent form', detail:'won '+m.formA+' of last 10; opp '+m.formB+' of 10',
         dir: m.formA>=m.formB?'a':'b', weight: Math.min(2, Math.abs(m.formA-m.formB)*0.35), thin:false });
@@ -54,9 +64,21 @@
     return F.filter(Boolean);
   }
   function winProbA(m) {
-    var F = factors(m), net = 0;
+    // SINGLE SOURCE OF TRUTH: if the engine's Elo win prob is supplied, the card shows THAT — the
+    // same number the projections and line-grading use — so 'favored 74%' means one thing app-wide.
+    // The visible factors below explain WHICH WAY each force pushes (direction), while Elo sets the
+    // magnitude. Guardrail E holds in spirit: the lean the receipts point to must match the number.
+    if (m.engineWinA != null && isFinite(m.engineWinA)) return Math.max(0.01, Math.min(0.99, m.engineWinA));
+    var F = factors(m), net = 0;   // fallback only when no engine prob (e.g. cold-start)
     F.forEach(function (f) { var w = f.thin ? f.weight*0.35 : f.weight; net += (f.dir==='a'?1:-1)*w; });
     return 1/(1+Math.exp(-net*CONFIDENCE));
+  }
+  // Do the visible factors, on balance, point the same way as the displayed number? Used to warn
+  // if Elo and the receipts disagree, so the card never shows a lean its own factors contradict.
+  function factorsAgree(m) {
+    var pA = winProbA(m), F = factors(m), net = 0;
+    F.forEach(function (f) { var w = f.thin ? f.weight*0.35 : f.weight; net += (f.dir==='a'?1:-1)*w; });
+    return (pA >= 0.5) === (net >= 0) || Math.abs(net) < 0.3;   // agree, or factors ~neutral
   }
   function flipRisks(m) {
     var F = factors(m), lean = winProbA(m)>=0.5?'a':'b', out = [];
@@ -72,17 +94,23 @@
     var F = factors(m), lean = winProbA(m)>=0.5?'a':'b';
     var top = F.filter(function(f){return f.dir===lean;}).sort(function(x,y){return y.weight-x.weight;})[0];
     var name = lean==='a'?m.playerA:m.playerB;
-    var map = { surface:'a much better '+(m.surface||'')+' player', rank:'the far higher-ranked player',
-                form:'in much better form', h2h:'the head-to-head edge' };
-    return name+' favored — mostly because he/she is '+((top&&map[top.key])||'the stronger profile on paper')+'.';
+    var map = { surface:'much better '+(m.surface||'')+' player', rank:'far higher-ranked player',
+                elo:'stronger player by the skill ratings', form:'player in much better form', h2h:'head-to-head edge' };
+    return name+' favored — mostly the '+((top&&map[top.key])||'stronger profile on paper')+'.';
   }
-  window.LyridTennis = { factors:factors, winProbA:winProbA, flipRisks:flipRisks, archetype:archetype };
+  window.LyridTennis = { factors:factors, winProbA:winProbA, factorsAgree:factorsAgree, flipRisks:flipRisks, archetype:archetype };
 })();
 
 /* B. Card renderer → window.LyridTennisUI */
 (function () {
   'use strict';
   function esc(s){ return String(s==null?'':s).replace(/</g,'&lt;'); }
+  // Permanent guard: tennis has men's + women's draws, so NO gendered pronoun should ever render.
+  // This neutralizes any that slip into a template, so the bug can't come back from a future edit.
+  function degender(s){ return String(s==null?'':s)
+    .replace(/\bhe's\b/gi,'is').replace(/\bshe's\b/gi,'is').replace(/\bhe\/she\b/gi,'the player')
+    .replace(/\bhis\b/gi,'their').replace(/\bher\b/gi,'their').replace(/\bhim\b/gi,'them')
+    .replace(/\bhe\b/gi,'they').replace(/\bshe\b/gi,'they'); }
   function bar(pct){ var n=Math.round(pct/10); return '\u2588'.repeat(n)+'\u2591'.repeat(10-n); }
   function tick(f){ return f.thin ? '\u26a0' : (f.weight>=2 ? '\u2713\u2713' : '\u2713'); }
   function render(m, gradeStatus) {
@@ -106,9 +134,12 @@
         '<div class="tn-meta">'+esc(m.surface||'')+' \u00b7 '+esc(m.event||'')+' \u00b7 '+esc(m.tour||'')+'</div></div>'+
       '<div class="tn-lean"><div class="tn-leanrow"><span class="tn-arrow">LEAN \u2192</span>'+
         '<span class="tn-name">'+esc(name)+'</span><span class="tn-pct">'+pct+'%</span>'+
-        '<span class="tn-bar">'+bar(pct)+'</span></div>'+banner+'</div>'+
+        '<span class="tn-bar">'+bar(pct)+'</span>'+
+        (m.closeGame ? '<span class="tn-close">\u26a1 CLOSE</span>' : '')+'</div>'+banner+'</div>'+
+      (m.matchFlow ? '<div class="tn-flow"><span class="tn-flow-h">HOW IT PLAYS OUT</span>'+esc(m.matchFlow)+'</div>' : '')+
       '<div class="tn-why-h">WHY '+esc(name.split(' ').pop().toUpperCase())+' \u2014 '+F.length+' factors, weighted</div>'+
-      '<div class="tn-arche">'+esc(T.archetype(m))+'</div>'+ facRows +
+      (T.factorsAgree(m) ? '' : '<div class="tn-conflict">\u26a0 Close call \u2014 the skill ratings lean '+esc(name.split(" ").pop())+', but the surface/ranking factors below lean the other way. That tension is why this read is soft.</div>')+
+      '<div class="tn-arche">'+esc(degender(T.archetype(m)))+'</div>'+ facRows +
       '<div class="tn-flip-h">WHAT COULD FLIP IT</div><ul class="tn-flip">'+flips+'</ul>'+
       '<div class="tn-honest">'+(gradeStatus&&gradeStatus.shipped
         ? 'This bucket has cleared our bar \u2014 bet it like any tracked edge, at a fair price.'

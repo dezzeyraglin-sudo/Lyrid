@@ -55,7 +55,14 @@ export function buildMatchRead({
     const prob = Math.min(0.72, lean === 'UNDER' ? ou.under : ou.over); // CS2 display cap
     const verdict = tennisClassify({ market, lean, line, prob, mean: ou.mean,
       surfaceN, rankGap, recentRetirement: retire });
-    return { market, lean, line, prob, mean: ou.mean, verdict };
+    // variance-aware confidence: tier + how far the projection sits from the line in SDs.
+    // When the projection and the market line disagree by a lot, flag it — the market may know
+    // something the priors miss (injury, form). Low edgeSds = the line is inside the noise.
+    const tier = ou.tier || (prob >= 0.70 ? 'strong' : prob >= 0.62 ? 'lean' : 'coinflip');
+    const edgeSds = ou.edgeSds != null ? ou.edgeSds : null;
+    const marketGap = (line != null) ? Math.round((ou.mean - line) * 10) / 10 : null;
+    const marketDisagrees = (marketGap != null && Math.abs(marketGap) >= 2.5);
+    return { market, lean, line, prob, mean: ou.mean, verdict, tier, edgeSds, marketGap, marketDisagrees, stdev: ou.stdev };
   };
 
   const props = {
@@ -127,15 +134,76 @@ export function buildMatchRead({
   // can fade the totals read instead of trusting it.
   const nA = (playerA.surfaces?.ALL?.n) || 0, nB = (playerB.surfaces?.ALL?.n) || 0;
   const thinTotals = Math.min(nA, nB) < 50;
+  // Match-flow explanation: how the match is likely to PLAY OUT, in plain language, from the sim's
+  // win prob, hold rates, decider probability, and projected total games. Plus a close-game flag.
+  const favLast = favored.split(' ').pop();
+  const dogLast = (favored === A.name ? B.name : A.name).split(' ').pop();
+  const decider = proj.deciderProb != null ? proj.deciderProb : null;
+  const totG = (proj.totalGames && proj.totalGames.mean) || null;
+  const hFav = favored === A.name ? proj.holdA : proj.holdB;
+  const hDog = favored === A.name ? proj.holdB : proj.holdA;
+  // close game when the winner is genuinely in doubt OR a deciding set is more likely than not
+  const closeGame = winEdge < 0.12 || (decider != null && decider >= 0.50);
+  let matchFlow;
+  if (winEdge < 0.08) {
+    matchFlow = `Near coin-flip. ${favLast} and ${dogLast} are separated by a hair — expect it to come down to a few points, and don't be surprised by either winner.`;
+  } else if (closeGame) {
+    matchFlow = `${favLast} is favored but ${dogLast} should hang around — ${decider != null ? Math.round(decider * 100) + '% chance it goes the distance' : 'a deciding set is live'}. Competitive throughout rather than a rout.`;
+  } else if (winEdge >= 0.30) {
+    matchFlow = `${favLast} is a heavy favorite and should close it out in straight sets. ${dogLast} would need something to go wrong for the favorite to keep it interesting.`;
+  } else {
+    matchFlow = `${favLast} is the clear pick but not a lock — ${dogLast} can take a set. Lean ${favLast}, but a three-setter is on the table.`;
+  }
+  // serve texture: both holding well → long/tight; both breakable → swingy
+  if (hFav != null && hDog != null) {
+    if (hFav >= 0.78 && hDog >= 0.75) matchFlow += ` Both hold serve well, so expect tight sets and maybe a tiebreak — games could run high.`;
+    else if (hFav < 0.68 && hDog < 0.68) matchFlow += ` Neither holds serve reliably, so expect breaks both ways and a lower game count.`;
+  }
+
   return {
     matchup: `${A.name} vs ${B.name}`, surface, bestOf,
     thinTotals, sampleA: nA, sampleB: nB,
     tier: (coldA || coldB) ? 'off-index (ITF/Challenger/new)' : 'indexed',
     disclaimer,
+    matchFlow, closeGame, deciderProb: decider,
+    tiebreakProb: proj.tiebreakProb != null ? proj.tiebreakProb : null,
+    expTiebreaks: proj.expTiebreaks != null ? proj.expTiebreaks : null,
+    // one label a bettor can act on: how likely the match drags long (3-set and/or tiebreaks)
+    matchShape: (function(){
+      const d = proj.deciderProb || 0, tb = proj.tiebreakProb || 0;
+      if (tb >= 0.6) return { key:'tb', text:`Tiebreak likely (${Math.round(tb*100)}%) — big-serving matchup, games run high`, pushesOver:true };
+      if (d >= 0.55) return { key:'3set', text:`Third set more likely than not (${Math.round(d*100)}%) — lean toward the over on games`, pushesOver:true };
+      if (d <= 0.30 && tb <= 0.25) return { key:'clean', text:`Should be clean — ${Math.round((1-d)*100)}% straight sets, tiebreak unlikely (${Math.round(tb*100)}%)`, pushesOver:false };
+      return { key:'even', text:`${Math.round(d*100)}% chance of a third set, ${Math.round(tb*100)}% of a tiebreak`, pushesOver:false };
+    })(),
     winProb: { [A.name]: proj.winProbA, [B.name]: proj.winProbB, favored, edge: winEdge },
     holds: { [A.name]: proj.holdA, [B.name]: proj.holdB },
     circumstances: { [A.name]: contextA, [B.name]: contextB, h2hEdge },
     props, drivers, projected,
+    // BEST PLAY: rank this match's props by winnability, not just confidence. Fantasy is the
+    // proven market (4/4 in live testing); total-games is coin-flip (±5.8 variance); games-won is
+    // now bias-corrected. Score = market reliability × confidence tier × variance edge. Only props
+    // that clear a real bar surface as a 'best play' — most matches have none, and that's honest.
+    bestPlay: (function () {
+      const MARKET_WEIGHT = { fantasyA: 1.0, fantasyB: 1.0, totalGames: 0.55, gamesWonA: 0.7, gamesWonB: 0.7, acesA: 0.5, acesB: 0.5, dfA: 0.4 };
+      let best = null;
+      for (const [k, pr] of Object.entries(props || {})) {
+        if (!pr || pr.line == null || pr.prob == null) continue;
+        const mw = MARKET_WEIGHT[k] || 0.4;
+        const tierMul = pr.tier === 'strong' ? 1.0 : pr.tier === 'lean' ? 0.6 : 0.25;
+        const edge = pr.edgeSds != null ? Math.min(1, pr.edgeSds) : 0.3;
+        const score = mw * tierMul * (0.5 + edge);        // 0..~1.5
+        if (!best || score > best.score) best = { market: k, lean: pr.lean, line: pr.line, prob: pr.prob, tier: pr.tier, score: Math.round(score * 100) / 100 };
+      }
+      // only call it a 'best play' if it clears the bar — fantasy strong, or any strong-tier edge
+      if (best && best.score >= 0.62) {
+        best.label = best.market.startsWith('fantasy') ? 'Best play — fantasy is the model\'s strongest market'
+          : best.tier === 'strong' ? 'Best play — line sits outside the variance'
+          : 'Best available, but modest';
+        best.recommend = best.score >= 0.62;
+      } else if (best) { best.label = 'No strong play here — all props are inside the noise'; best.recommend = false; }
+      return best;
+    })(),
     gates: {
       thinSampleA: A.p._n < 20, thinSampleB: B.p._n < 20,
       retirementA: recentRetirementA, retirementB: recentRetirementB,

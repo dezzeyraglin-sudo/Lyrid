@@ -107,17 +107,17 @@ export function buildNarrative(read, A, B) {
   // one-sentence headline: who, how much, and the single biggest driver in plain words
   const big = fs.find((f) => f.weight === '++') || fs[0];
   const driverPhrase = big ? ({
-    surface: `he's a far better ${read.surface.toLowerCase()} player`,
-    rank: 'he\'s ranked well above his opponent',
-    elo: 'the skill ratings favor him clearly',
-    form: 'he\'s been more active lately',
-  })[big.key] || 'the priors favor him' : 'the priors favor him';
+    surface: `the far better ${read.surface.toLowerCase()} player`,
+    rank: 'ranked well above the opponent',
+    elo: 'clearly stronger by the skill ratings',
+    form: 'in much better recent form',
+  })[big.key] || 'the stronger profile on paper' : 'the stronger profile on paper';
 
   return {
     matchup: read.matchup,
     context: [read.surface, read.tournament, read.tourLabel].filter(Boolean).join(' · '),
     favored: favKey, favLast, favPct,
-    headline: `${favLast} favored ${favPct}% — mostly because ${driverPhrase}.`,
+    headline: `${favLast} favored ${favPct}% — mostly ${driverPhrase}.`,
     barFill: favPct,
     factors: fs.map((f) => ({ label: f.label, detail: f.detail, weight: f.weight })),
     flip: flipRisk(A, B, read.surface, fs, thinAny),

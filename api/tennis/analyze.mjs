@@ -159,6 +159,14 @@ export default async function handler(req, res) {
         surface: q.surface || 'Hard', event: q.event || read.tournament || '', tour: q.tour || read.tourLabel || '',
         rankA: playerA.rank || null, rankB: playerB.rank || null,
         eloA: playerA.elo || null, eloB: playerB.elo || null, eloNA: playerA.eloN || 0, eloNB: playerB.eloN || 0,
+        // the engine's own win prob for A — makes the card's headline % the SAME number the
+        // projections and line-grading use (single source of truth). Falls back to factor logistic
+        // only when this is null (cold-start players with no read).
+        engineWinA: (read.winProb && read.winProb[playerA.name] != null) ? read.winProb[playerA.name] : null,
+        matchFlow: read.matchFlow || null, closeGame: !!read.closeGame, deciderProb: read.deciderProb != null ? read.deciderProb : null,
+        tiebreakProb: read.tiebreakProb != null ? read.tiebreakProb : null, expTiebreaks: read.expTiebreaks != null ? read.expTiebreaks : null,
+        matchShape: read.matchShape || null,
+        bestPlay: read.bestPlay || null,
         surfWinA: wA ? wA.v : null, surfWinB: wB ? wB.v : null, surfNA: wA ? wA.n : 0, surfNB: wB ? wB.n : 0,
         formA: (typeof fA === 'number') ? fA : null, formB: (typeof fB === 'number') ? fB : null,
         h2hA: (playerA.h2h && playerB.id != null) ? (playerA.h2h[playerB.id] || 0) : null,
