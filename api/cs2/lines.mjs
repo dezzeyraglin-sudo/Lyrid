@@ -65,26 +65,27 @@ async function underdog(players) {
 }
 
 async function prizepicks(players) {
-  const lg = await getJson("https://api.prizepicks.com/leagues");
-  const csIds = (lg.data || [])
-    .filter((x) => /(^|\W)(cs2?|counter)/i.test(x.attributes?.name || ""))
-    .map((x) => x.id);
-  if (!csIds.length) return 0;
+  // partner-api returns 200 from datacenter IPs where api.prizepicks.com hard-403s
+  // (this is exactly how the working /api/pp-lines beats the block). One call, all
+  // leagues in `included`, filter to CS2 by league name.
+  const j = await getJson("https://partner-api.prizepicks.com/projections?per_page=1000");
+  const names = {}, leagues = {};
+  for (const inc of j.included || []) {
+    if (inc.type === "new_player") names[inc.id] = inc.attributes?.display_name || inc.attributes?.name;
+    else if (inc.type === "league") leagues[inc.id] = inc.attributes?.name;
+  }
   let kept = 0;
-  for (const id of csIds) {
-    const j = await getJson(`https://api.prizepicks.com/projections?league_id=${id}&per_page=500&single_stat=true`);
-    const names = {};
-    for (const inc of j.included || []) if (inc.type === "new_player") names[inc.id] = inc.attributes?.display_name || inc.attributes?.name;
-    for (const d of j.data || []) {
-      const a = d.attributes || {};
-      const st = `${a.stat_type || ""}`;
-      if (!MAPS12_RE.test(st) && !MAPS12_RE.test(a.description || "")) continue;
-      const stat = HS_RE.test(st) ? "hs" : KILLS_RE.test(st) ? "kills" : null;
-      if (!stat) continue;
-      const pid = d.relationships?.new_player?.data?.id;
-      add(players, names[pid] || null, stat, Number(a.line_score), "prizepicks", a.odds_type || "standard");
-      kept++;
-    }
+  for (const d of j.data || []) {
+    const a = d.attributes || {};
+    const lgId = d.relationships?.league?.data?.id;
+    if (!/(cs2?|counter)/i.test(leagues[lgId] || "")) continue;
+    const st = `${a.stat_type || ""}`;
+    if (!MAPS12_RE.test(st) && !MAPS12_RE.test(a.description || "")) continue;
+    const stat = HS_RE.test(st) ? "hs" : KILLS_RE.test(st) ? "kills" : null;
+    if (!stat) continue;
+    const pid = d.relationships?.new_player?.data?.id;
+    add(players, names[pid] || null, stat, Number(a.line_score), "prizepicks", a.odds_type || "standard");
+    kept++;
   }
   return kept;
 }
