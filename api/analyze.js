@@ -1566,6 +1566,48 @@ export default async function handler(req, res) {
         // PITCHER NOVELTY: career stats for rookie/callup K boost
         careerStats
       });
+      // ====================================================================
+      // ARCHETYPE -> STRIKEOUT PROJECTION (LIVE — user's call). A whiff-ace with
+      // above-avg velo misses more bats -> nudge the K projection OVER; a
+      // contact-buffet / soft-velo arm -> nudge UNDER. CONSERVATIVE +/-8% cap so
+      // it adjusts, never dominates, the arsenal-vs-lineup K engine that already
+      // ran inside buildPitcherProps (avoids double-counting the same whiff).
+      // Uses the Tier-2 pitch velo now on `arsenal` (data.js). UNVALIDATED
+      // magnitude — stamped (_archetypeK) on projection.ks + the ks rec so the
+      // DK-line grading pass can validate it and reweight/pull. Deploy after
+      // data.js+savant.js (needs velo). Falls back to whiff-only if velo absent.
+      // ====================================================================
+      try {
+        const _LG_VELO = { FF:93.9,FA:93.9,SI:93.3,FT:93.3,FC:89.0,SL:85.0,ST:82.0,SV:83.5,CU:79.5,KC:81.5,CS:74.0,CH:85.5,FS:85.5,FO:84.5,SC:86.0,KN:76.0 };
+        let _wSum=0,_whiffNum=0,_whiffW=0,_veloNum=0,_veloW=0;
+        for (const _p of (arsenal || [])) {
+          const _u = parseFloat(_p.usage); const _w = Number.isFinite(_u) ? _u : 1; _wSum += _w;
+          const _wh = parseFloat(_p.whiffPct); if (Number.isFinite(_wh)) { _whiffNum += _wh*_w; _whiffW += _w; }
+          const _v = parseFloat(_p.velo); const _b = _LG_VELO[String(_p.typeCode||'').toUpperCase()];
+          if (Number.isFinite(_v) && Number.isFinite(_b)) { _veloNum += (_v-_b)*_w; _veloW += _w; }
+        }
+        const _wWhiff = _whiffW>0 ? _whiffNum/_whiffW : null;
+        const _veloDelta = _veloW>0 ? +(_veloNum/_veloW).toFixed(1) : null;
+        if (_wWhiff != null && pitcherProps) {
+          const _stuff = (_wWhiff - 24.5) + (_veloDelta != null ? _veloDelta*0.6 : 0);
+          const _kFactor = Math.min(1.08, Math.max(0.92, +(1 + _stuff*0.010).toFixed(3)));
+          if (_kFactor !== 1) {
+            const _stamp = { factor:_kFactor, stuffScore:+_stuff.toFixed(1), wWhiff:+_wWhiff.toFixed(1), veloDelta:_veloDelta, live:true, unvalidated:true };
+            if (pitcherProps.projection && Number.isFinite(parseFloat(pitcherProps.projection.ks))) {
+              _stamp.ksBefore = +parseFloat(pitcherProps.projection.ks).toFixed(2);
+              pitcherProps.projection.ks = +(parseFloat(pitcherProps.projection.ks) * _kFactor).toFixed(2);
+              _stamp.ksAfter = pitcherProps.projection.ks;
+            }
+            for (const _rec of (pitcherProps.recommendations || [])) {
+              if (_rec.type === 'strikeouts' && Number.isFinite(parseFloat(_rec.projection))) {
+                _rec.projection = +(parseFloat(_rec.projection) * _kFactor).toFixed(2);
+                _rec._archetypeK = _stamp;
+              }
+            }
+            pitcherProps._archetypeK = _stamp;
+          }
+        }
+      } catch (_) {}
 
       // Top 3 HR projections regardless of tier — used for diagnostic display so
       // the user can see what the model is *almost* badging. Pulls from the same
