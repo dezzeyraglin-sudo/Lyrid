@@ -3342,6 +3342,45 @@
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--accent);color:#0a0d0a;padding:10px 18px;border-radius:6px;font-weight:700;font-size:12px;letter-spacing:0.05em;z-index:200;transition:transform 0.3s ease}
   .toast.show{transform:translateX(-50%) translateY(0)}
   .toast.danger{background:var(--danger)}
+
+/* ===== LYRID NFL PICK CARDS (integration) — all colors from tokens ===== */
+.nfl-pick-card{background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-lg);padding:var(--space-5);box-shadow:var(--elevation-hover);margin-bottom:var(--space-4)}
+.nfl-pick-head{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--space-3);margin-bottom:var(--space-4)}
+.nfl-pick-player{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-semibold);letter-spacing:var(--tracking-tight);line-height:var(--line-h3)}
+.nfl-pick-prop{font-size:var(--size-body-sm);color:var(--text-secondary);margin-top:var(--space-1)}
+.nfl-line-val{font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--text-primary);font-weight:var(--weight-medium)}
+.nfl-tier-badge{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;font-weight:var(--weight-medium);padding:var(--space-1) var(--space-2);border-radius:var(--radius-pill);white-space:nowrap}
+.nfl-tier-badge.guaranteed{background:var(--tier-elite-fill);color:var(--tier-elite-text)}
+.nfl-tier-badge.platinum{background:var(--tier-strong-fill);color:var(--tier-strong-text)}
+.nfl-tier-badge.gold{background:var(--tier-solid-fill);color:var(--tier-solid-text)}
+.nfl-tier-badge.none{background:var(--surface-muted);color:var(--text-muted)}
+.nfl-verdict{display:flex;align-items:baseline;gap:var(--space-3);padding:var(--space-3) 0;border-top:0.5px solid var(--border-hairline);border-bottom:0.5px solid var(--border-hairline);margin-bottom:var(--space-4)}
+.nfl-verdict.noplay{opacity:0.55}
+.nfl-dir{font-size:var(--size-h2);font-family:var(--font-serif);font-weight:var(--weight-semibold)}
+.nfl-dir.higher{color:var(--data-positive)}
+.nfl-dir.lower{color:var(--data-negative)}
+.nfl-dir.muted{color:var(--text-muted)}
+.nfl-prob{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--size-mono-lg);color:var(--text-primary)}
+.nfl-prob-label{font-size:var(--size-caption);color:var(--text-muted);margin-left:auto}
+.nfl-filter-row{display:flex;align-items:center;gap:var(--space-2);font-size:var(--size-body-sm);padding:var(--space-1) 0}
+.nfl-filter-check{width:16px;height:16px;border-radius:var(--radius-pill);display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
+.nfl-filter-check.pass{background:var(--data-positive-surface);color:var(--data-positive)}
+.nfl-filter-check.fail{background:var(--data-negative-surface);color:var(--data-negative)}
+.nfl-filter-label{color:var(--text-secondary)}
+.nfl-filter-detail{color:var(--text-muted);font-size:var(--size-caption);padding-left:var(--space-1)}
+.nfl-section-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;font-weight:var(--weight-medium);color:var(--text-secondary);margin:var(--space-4) 0 var(--space-2)}
+.nfl-driver{display:flex;align-items:baseline;gap:var(--space-2);padding:var(--space-1) 0;font-size:var(--size-body-sm)}
+.nfl-driver-dir{font-family:var(--font-mono);font-weight:var(--weight-medium);width:44px;flex-shrink:0}
+.nfl-driver-dir.pos{color:var(--data-positive)}
+.nfl-driver-dir.neg{color:var(--data-negative)}
+.nfl-driver-text{color:var(--text-secondary)}
+.nfl-outlook-tag{display:inline-block;font-size:var(--size-caption);font-weight:var(--weight-medium);padding:var(--space-1) var(--space-3);border-radius:var(--radius-sm);margin-bottom:var(--space-2)}
+.nfl-outlook-tag.flourish{background:var(--data-positive-surface);color:var(--data-positive)}
+.nfl-outlook-tag.struggle{background:var(--data-negative-surface);color:var(--data-negative)}
+.nfl-outlook-tag.neutral{background:var(--surface-muted);color:var(--text-secondary)}
+.nfl-blocked-note{background:var(--data-warning-surface);color:var(--data-warning);font-size:var(--size-caption);padding:var(--space-2) var(--space-3);border-radius:var(--radius-sm);margin-top:var(--space-3)}
+.nfl-provisional{font-size:var(--size-caption);color:var(--text-muted);margin-top:var(--space-3);font-style:italic}
+/* ===== END NFL CSS ===== */
 </style>
 
 <!-- Lyrid analysis screen overrides — loaded LAST so they win the cascade against the inline legacy styles above -->
@@ -3367,6 +3406,7 @@
     <button class="lyrid-nav-btn" data-tab="wnba" onclick="switchTab('wnba')">WNBA</button>
     <button class="lyrid-nav-btn" data-tab="cs2" onclick="switchToCs2()">CS2</button>
     <button class="lyrid-nav-btn" data-tab="tennis" onclick="switchTab('tennis')">Tennis</button>
+    <button class="lyrid-nav-btn" data-tab="nfl" onclick="switchTab('nfl')">NFL</button>
     <button class="lyrid-nav-btn" data-tab="track" onclick="switchTab('track')">Track</button>
     <button class="lyrid-nav-btn" data-tab="history" onclick="switchTab('history')">History</button>
     <button class="lyrid-nav-btn" data-tab="settings" onclick="switchTab('settings')">Settings</button>
@@ -3549,6 +3589,24 @@
   <div id="tennisBanner"></div>
   <div id="tennisGamesList"></div>
   <div id="tennisAnalysisContainer"></div>
+</div>
+
+<!-- NFL -->
+<div class="panel-content" id="nfl-panel">
+  <div class="lyrid-page-header">
+    <div class="lyrid-page-eyebrow" id="nflPageEyebrow">NFL · yardage props · in-season</div>
+    <div class="lyrid-date-nav">
+      <button class="lyrid-date-btn" type="button" onclick="nflChangeDate(-1)" aria-label="Previous day">‹</button>
+      <span class="lyrid-date-current" id="nflDateDisplay">Today</span>
+      <button class="lyrid-date-btn" type="button" onclick="nflChangeDate(1)" aria-label="Next day">›</button>
+      <button class="lyrid-date-btn" type="button" onclick="nflChangeDate('today')" style="margin-left:4px">Today</button>
+    </div>
+    <button class="lyrid-btn primary" id="loadNflBtn" onclick="loadNflSlate()">Refresh</button>
+    <span id="nflMeta" class="lyrid-eyebrow" style="margin-left:auto"></span>
+  </div>
+  <div id="nflBanner"></div>
+  <div id="nflGamesList"></div>
+  <div id="nflAnalysisContainer"></div>
 </div>
 
 <!-- TRACK -->
@@ -20024,6 +20082,9 @@ async function autoGradeOnAppOpen() {
   #cs2-panel .cs2-uncovered>summary:hover{color:var(--ink)}
   #cs2-panel .cs2-uncovered-list{margin-top:6px;opacity:0.6}
   #cs2-panel .cs2-pcard{background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-2)}
+  #cs2-panel .cs2-auto-badge{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:var(--radius-pill, 999px);background:var(--brand-primary);color:#fff;font-family:var(--font-sans);font-size:9px;font-weight:700;letter-spacing:0.05em;vertical-align:middle}
+  #cs2-panel .cs2-why{margin:8px 0 4px;padding:9px 12px;border-radius:var(--radius-sm, 8px);background:var(--surface-subtle, rgba(0,0,0,0.03));border-left:2.5px solid var(--brand-primary);font-size:12.5px;line-height:1.5;color:var(--text-secondary, #555)}
+  #cs2-panel .cs2-why b{color:var(--ink)}
   #cs2-panel .cs2-pcard-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
   #cs2-panel .cs2-nick{font-family:var(--font-sans);font-weight:500;font-size:var(--size-body-sm);color:var(--text-primary)}
   #cs2-panel .cs2-role{font-size:10px;color:var(--text-secondary)}
@@ -20057,7 +20118,7 @@ async function autoGradeOnAppOpen() {
 </style>
 <script>
 (function () {
-  const state = { raw: null, selectedMatchId: null, loaded: false, lines: {}, lineKeys: {}, lineP: {} };
+  const state = { raw: null, selectedMatchId: null, loaded: false, lines: {}, lineKeys: {}, lineP: {}, autoLines: {} };
   try { state.lines = JSON.parse(localStorage.getItem('lyrid_cs2_lines') || '{}') || {}; } catch (_) { state.lines = {}; }
   window._cs2State = state;
 
@@ -20278,8 +20339,18 @@ async function autoGradeOnAppOpen() {
         ${rr.teamA && rr.teamB ? `<div class="cs2-rr-splits">${esc(m.teamA)} — pistol ${rr.teamA.pistol}% · CT ${rr.teamA.ct}% · T ${rr.teamA.t}% &nbsp;|&nbsp; ${esc(m.teamB)} — pistol ${rr.teamB.pistol}% · CT ${rr.teamB.ct}% · T ${rr.teamB.t}%</div>` : ''}
         ${rr.teamA && rr.teamB && rr.teamA.openingWin != null ? `<div class="cs2-rr-splits">${esc(m.teamA)} — opening ${rr.teamA.openingWin}% · trade ${rr.teamA.tradeRatio} · eco ${rr.teamA.ecoWin}% · streak ${rr.teamA.snowball} &nbsp;|&nbsp; ${esc(m.teamB)} — opening ${rr.teamB.openingWin}% · trade ${rr.teamB.tradeRatio} · eco ${rr.teamB.ecoWin}% · streak ${rr.teamB.snowball}</div>` : ''}
       </div>`;
+    const _gap = vol.gap ?? 0;
+    const teamCtx = {};
+    for (const t in byTeam) {
+      const isA = t === m.teamA;
+      const myRank = isA ? m.rankA : m.rankB, oppRank = isA ? m.rankB : m.rankA;
+      const favored = (myRank != null && oppRank != null) ? myRank < oppRank : null;
+      teamCtx[t] = { erounds: vol.erounds, gap: _gap, favored,
+        oppWeaker: (myRank != null && oppRank != null) && oppRank > myRank + 6,
+        oppStronger: (myRank != null && oppRank != null) && oppRank < myRank - 6 };
+    }
     const teamsHtml = Object.keys(byTeam).map(t =>
-      `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(p => renderCs2PlayerCard(p, m.matchId, m.windowLabel)).join('')}`).join('');
+      `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(p => renderCs2PlayerCard(p, m.matchId, m.windowLabel, teamCtx[t])).join('')}`).join('');
 
     // Lopsided-matchup caution. Validated on 826 maps: ranking gap only weakly
     // predicts blowouts (corr +0.06), but at a big mismatch (points-gap ≥ ~16 or
@@ -20314,6 +20385,7 @@ async function autoGradeOnAppOpen() {
       </div>`;
     container.innerHTML = header + blowoutBanner + roundReadHtml + teamsHtml +
       `<div class="cs2-foot">Reads cover Maps 1+2 kills only, and aren't yet weighed against the live Underdog line — use as a watchlist, not locks.</div>`;
+    try { cs2FillLines(matchId); } catch (_) {}
     // Bring the read into view. The games list above can be long, so without this
     // the analysis renders far below the fold and a click looks like it did nothing.
     try { if (scroll) container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
@@ -20394,7 +20466,83 @@ async function autoGradeOnAppOpen() {
     if (el && p) el.innerHTML = cs2RenderLineResult(p, val);
   };
 
-  function renderCs2PlayerCard(p, matchId, windowLabel = 'Maps 1+2') {
+  const CS2_LINES = {
+    ok: false, loaded: false, loading: null, byName: {},
+    key(n) { const s = String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim(); return s.includes(' ') ? s.split(' ').pop() : s; },
+    async load(force) {
+      if (this.loaded && !force) return this;
+      if (this.loading) return this.loading;
+      this.loading = (async () => {
+        try { const r = await fetch('/api/cs2/lines', { cache: 'no-store' }); const j = await r.json();
+          if (j && j.ok && j.players) { this.ok = true; this.byName = j.players; } else { this.ok = false; }
+        } catch (_) { this.ok = false; }
+        this.loaded = true; this.loading = null; return this;
+      })();
+      return this.loading;
+    }
+  };
+
+  window.cs2FillLines = async function (matchId) {
+    const store = await CS2_LINES.load();
+    if (!store.ok) return;
+    const data = state.raw; const m = (data.matches || []).find(x => String(x.matchId) === String(matchId));
+    if (!m || !m.players) return;
+    for (const p of m.players) {
+      const rec = store.byName[CS2_LINES.key(p.nick)];
+      if (!rec) continue;
+      for (const [statKey, slot] of [['kills', 'kills'], ['hs', 'hs']]) {
+        const val = rec[slot] && rec[slot].line;
+        if (val == null) continue;
+        const key = `${matchId}|${p.nick}|${statKey}`;
+        if (state.lines[key] != null) continue;
+        state.autoLines[key] = { line: val, source: rec[slot].source, oddsType: rec[slot].oddsType };
+        const sid = 'cs2_' + key.replace(/[^A-Za-z0-9]/g, '_');
+        const inp = document.getElementById('in_' + sid);
+        if (inp && (inp.value === '' || inp.value == null)) inp.value = val;
+        const resEl = document.getElementById('lr_' + sid); const proj = state.lineP[sid];
+        if (resEl && proj) {
+          const src = rec[slot].source === 'underdog' ? 'UD' : 'PP';
+          const alt = rec[slot].oddsType && rec[slot].oddsType !== 'standard' ? ' ' + esc(rec[slot].oddsType) : '';
+          resEl.innerHTML = cs2RenderLineResult(proj, val) + ` <span class="cs2-auto-badge" title="auto-filled from ${esc(rec[slot].source)}">${src}${alt}</span>`;
+        }
+      }
+    }
+  };
+
+  // Synthesize a plain-English "why over/under" from the signals the engine already
+  // computes. Picks the 2-3 most salient factors, orients them, and composes a line.
+  function cs2WhyRead(p, ctx) {
+    ctx = ctx || {};
+    const R = [];
+    if (p.role === 'Support/IGL') R.push({ dir: 'under', pri: 8, txt: 'support/IGL — kills bleed into utility and assists, not frags' });
+    if (p.kpr != null && p.kpr >= 0.78) R.push({ dir: 'over', pri: 6, txt: `high fragger (${p.kpr} KPR) — carries kill volume` });
+    if (p.kpr != null && p.kpr <= 0.58 && p.role !== 'Support/IGL') R.push({ dir: 'under', pri: 5, txt: `low frag output (${p.kpr} KPR) — rarely piles up kills` });
+    if (p.openingWin != null && p.openingWin >= 55) R.push({ dir: 'over', pri: 7, txt: `wins his openings (${p.openingWin}%) — survives to multi-frag` });
+    if (p.openingWin != null && p.openingWin <= 44) R.push({ dir: 'under', pri: 7, txt: `loses openings (${p.openingWin}%) — dies early, ceiling capped` });
+    if (p.survival != null && p.survival <= 28) R.push({ dir: 'under', pri: 6, txt: `dies a lot (survives only ${p.survival}%) — outgunned, trades kills away` });
+    if (p.deathsPerMap != null && p.deathsPerMap >= 20) R.push({ dir: 'under', pri: 4, txt: `${p.deathsPerMap} deaths/map — high-risk, passive value` });
+    if (p.clutchPerMap != null && p.clutchPerMap >= 0.6) R.push({ dir: 'over', pri: 5, txt: `clutch threat (${p.clutchPerMap}/map) — fat right tail, ceiling live` });
+    if (p.adr != null && p.adr >= 80 && p.kpr != null && p.kpr < 0.62) R.push({ dir: 'under', pri: 4, txt: `damage without frags (ADR ${p.adr}) — impact doesn't convert to kills` });
+    if (p.adr != null && p.adr < 70 && p.kpr != null && p.kpr >= 0.70) R.push({ dir: 'over', pri: 3, txt: `kills outrun his damage — cleanup-dependent, spiky` });
+    if (p.formDelta != null && p.formDelta >= 0.12) R.push({ dir: 'over', pri: 6, txt: `heating up (KPR +${p.formDelta}) — season avg understates` });
+    if (p.formDelta != null && p.formDelta <= -0.12) R.push({ dir: 'under', pri: 6, txt: `cooling off (KPR ${p.formDelta}) — season avg overstates` });
+    if (p.mapFitPct != null && p.mapFitPct >= 8) R.push({ dir: 'over', pri: 4, txt: `strong on the expected maps (+${p.mapFitPct}%)` });
+    if (p.mapFitPct != null && p.mapFitPct <= -8) R.push({ dir: 'under', pri: 4, txt: `weak on the expected maps (${p.mapFitPct}%)` });
+    if (ctx.oppWeaker && p.kprWeak != null && p.kprStrong != null && p.kprWeak > p.kprStrong + 0.04) R.push({ dir: 'over', pri: 6, txt: `feasts on weaker sides (${p.kprWeak} KPR vs weak) — this opponent qualifies` });
+    if (ctx.oppStronger && p.kprStrong != null && p.kprWeak != null && p.kprStrong < p.kprWeak - 0.04) R.push({ dir: 'under', pri: 6, txt: `fades against stronger sides (${p.kprStrong} KPR vs strong) — this opponent qualifies` });
+    if (ctx.erounds != null && ctx.erounds >= 24) R.push({ dir: 'over', pri: 5, txt: 'even matchup, long maps projected — volume runs high for both sides' });
+    if (ctx.gap != null && ctx.gap >= 16 && ctx.favored === false) R.push({ dir: 'under', pri: 6, txt: 'heavy underdog — a fast, one-sided map caps his volume' });
+    if (ctx.gap != null && ctx.gap >= 16 && ctx.favored === true) R.push({ dir: 'over', pri: 3, txt: 'heavy favorite — could stomp for a big number, but a fast map is the risk' });
+    if (!R.length) return '';
+    R.sort((a, b) => b.pri - a.pri);
+    const top = R.slice(0, 3);
+    const over = top.filter((r) => r.dir === 'over').reduce((s, r) => s + r.pri, 0);
+    const under = top.filter((r) => r.dir === 'under').reduce((s, r) => s + r.pri, 0);
+    const lean = over === under ? 'mixed signals' : over > under ? 'leans over' : 'leans under';
+    return `${top.map((r) => r.txt).join('; ')} → <b>${lean}</b>`;
+  }
+
+  function renderCs2PlayerCard(p, matchId, windowLabel = 'Maps 1+2', ctx) {
     const mf = p.mapFitPct == null ? 'n/a' : (p.mapFitPct >= 0 ? '+' : '') + p.mapFitPct + '%';
     const thin = p.thin ? `<span class="cs2-thin">THIN n=${p.n}</span>` : '';
     const st = (v, k) => `<span class="cs2-stat">${v}<span class="k">${k}</span></span>`;
@@ -20404,12 +20552,15 @@ async function autoGradeOnAppOpen() {
       const key = `${matchId}|${p.nick}|${statKey}`;
       const sid = 'cs2_' + key.replace(/[^A-Za-z0-9]/g, '_');
       state.lineKeys[sid] = key; state.lineP[sid] = proj;
-      const cur = state.lines[key] == null ? '' : state.lines[key];
+      const auto = state.autoLines[key];
+      const cur = state.lines[key] != null ? state.lines[key] : (auto != null ? auto.line : '');
+      const badge = (state.lines[key] == null && auto != null)
+        ? ` <span class="cs2-auto-badge" title="auto-filled from ${esc(auto.source)}">${auto.source === 'underdog' ? 'UD' : 'PP'}${auto.oddsType && auto.oddsType !== 'standard' ? ' ' + esc(auto.oddsType) : ''}</span>` : '';
       return `
         <div class="cs2-line-row">
           <span class="cs2-line-label">${esc(label)}</span>
-          <input class="cs2-line-input" type="number" step="0.5" inputmode="decimal" value="${esc(cur)}" placeholder="—" oninput="cs2SetLine('${sid}', this.value)">
-          <span class="cs2-line-res" id="lr_${sid}">${cs2RenderLineResult(proj, cur)}</span>
+          <input id="in_${sid}" class="cs2-line-input" type="number" step="0.5" inputmode="decimal" value="${esc(cur)}" placeholder="—" oninput="cs2SetLine('${sid}', this.value)">
+          <span class="cs2-line-res" id="lr_${sid}">${cs2RenderLineResult(proj, cur)}${badge}</span>
         </div>`;
     };
     const oppAdj = (p.kprStrong == null || p.kprWeak == null) ? '' : `
@@ -20450,6 +20601,7 @@ async function autoGradeOnAppOpen() {
           <span class="cs2-range-val">${p.ceiling}<span class="k">ceiling</span></span>
           <span class="cs2-mapfit">map-fit ${mf}</span>
         </div>
+        ${(() => { const w = cs2WhyRead(p, ctx); return w ? `<div class="cs2-why">${w}</div>` : ''; })()}
         <div class="cs2-prop">prop: ${esc(p.propType)}</div>
         ${mkRow('kills', 'Kills line', { median: p.median, floor: p.floor, ceiling: p.ceiling })}
         ${mkRow('hs', 'HS line', { median: p.hsMedian, floor: p.hsFloor, ceiling: p.hsCeiling })}
@@ -21345,10 +21497,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 .tn-live{background:#edf4ee;color:#2f6b3f;border:1px solid #d8e6da}
 .tn-why-h,.tn-flip-h{font-size:11px;font-weight:700;letter-spacing:.08em;color:#5a6275;margin:16px 0 6px}
 .tn-arche{font-size:14px;font-weight:600;margin-bottom:10px;color:#1c2c4c}
-.tn-close{display:inline-flex;align-items:center;font-size:10px;font-weight:800;letter-spacing:.06em;color:#fff;background:#c2410c;padding:3px 8px;border-radius:20px;margin-left:2px}
-.tn-flow{font-size:13px;line-height:1.5;color:#3a4256;background:#f4f6f9;border-radius:10px;padding:11px 13px;margin:12px 0}.tn-bestplay{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;font-weight:650;color:#1a5e2a;background:#e8f5ec;border:0.5px solid #b8dfc4;border-radius:10px;padding:10px 13px;margin:10px 0}.tn-bp-pick{font-weight:800;background:#1a5e2a;color:#fff;padding:2px 9px;border-radius:6px;font-size:12px}.tn-bp-none{color:#7a8194;background:#f2f4f7;border-color:#e2e6ec;font-weight:500}.tn-shape{display:flex;align-items:center;gap:8px;font-size:12.5px;line-height:1.4;color:#3a4256;background:#eef1f5;border-radius:9px;padding:9px 12px;margin:8px 0 12px}.tn-shape-over{background:#fdf2e6;color:#9a5b1a}.tn-shape-ico{font-size:15px}
-.tn-flow-h{display:block;font-size:10px;font-weight:700;letter-spacing:.08em;color:#7a8194;margin-bottom:4px}
-.tn-conflict{font-size:12px;color:#9a5b1a;background:#faf3e6;border-radius:8px;padding:8px 10px;margin-bottom:10px;line-height:1.45}
 .tn-fac{display:flex;align-items:baseline;gap:8px;padding:7px 0;border-top:1px solid #efeae0;font-size:13px}
 .tn-tick{color:#2f6b3f;font-weight:700;width:22px}
 .tn-thin{color:#b0823a}
@@ -21394,21 +21542,9 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     return F.filter(Boolean);
   }
   function winProbA(m) {
-    // SINGLE SOURCE OF TRUTH: if the engine's Elo win prob is supplied, the card shows THAT — the
-    // same number the projections and line-grading use — so 'favored 74%' means one thing app-wide.
-    // The visible factors below explain WHICH WAY each force pushes (direction), while Elo sets the
-    // magnitude. Guardrail E holds in spirit: the lean the receipts point to must match the number.
-    if (m.engineWinA != null && isFinite(m.engineWinA)) return Math.max(0.01, Math.min(0.99, m.engineWinA));
-    var F = factors(m), net = 0;   // fallback only when no engine prob (e.g. cold-start)
+    var F = factors(m), net = 0;
     F.forEach(function (f) { var w = f.thin ? f.weight*0.35 : f.weight; net += (f.dir==='a'?1:-1)*w; });
     return 1/(1+Math.exp(-net*CONFIDENCE));
-  }
-  // Do the visible factors, on balance, point the same way as the displayed number? Used to warn
-  // if Elo and the receipts disagree, so the card never shows a lean its own factors contradict.
-  function factorsAgree(m) {
-    var pA = winProbA(m), F = factors(m), net = 0;
-    F.forEach(function (f) { var w = f.thin ? f.weight*0.35 : f.weight; net += (f.dir==='a'?1:-1)*w; });
-    return (pA >= 0.5) === (net >= 0) || Math.abs(net) < 0.3;   // agree, or factors ~neutral
   }
   function flipRisks(m) {
     var F = factors(m), lean = winProbA(m)>=0.5?'a':'b', out = [];
@@ -21428,19 +21564,13 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
                 elo:'stronger player by the skill ratings', form:'player in much better form', h2h:'head-to-head edge' };
     return name+' favored — mostly the '+((top&&map[top.key])||'stronger profile on paper')+'.';
   }
-  window.LyridTennis = { factors:factors, winProbA:winProbA, factorsAgree:factorsAgree, flipRisks:flipRisks, archetype:archetype };
+  window.LyridTennis = { factors:factors, winProbA:winProbA, flipRisks:flipRisks, archetype:archetype };
 })();
 
 /* B. Card renderer → window.LyridTennisUI */
 (function () {
   'use strict';
   function esc(s){ return String(s==null?'':s).replace(/</g,'&lt;'); }
-  // Permanent guard: tennis has men's + women's draws, so NO gendered pronoun should ever render.
-  // This neutralizes any that slip into a template, so the bug can't come back from a future edit.
-  function degender(s){ return String(s==null?'':s)
-    .replace(/\bhe's\b/gi,'is').replace(/\bshe's\b/gi,'is').replace(/\bhe\/she\b/gi,'the player')
-    .replace(/\bhis\b/gi,'their').replace(/\bher\b/gi,'their').replace(/\bhim\b/gi,'them')
-    .replace(/\bhe\b/gi,'they').replace(/\bshe\b/gi,'they'); }
   function bar(pct){ var n=Math.round(pct/10); return '\u2588'.repeat(n)+'\u2591'.repeat(10-n); }
   function tick(f){ return f.thin ? '\u26a0' : (f.weight>=2 ? '\u2713\u2713' : '\u2713'); }
   function render(m, gradeStatus) {
@@ -21464,14 +21594,9 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         '<div class="tn-meta">'+esc(m.surface||'')+' \u00b7 '+esc(m.event||'')+' \u00b7 '+esc(m.tour||'')+'</div></div>'+
       '<div class="tn-lean"><div class="tn-leanrow"><span class="tn-arrow">LEAN \u2192</span>'+
         '<span class="tn-name">'+esc(name)+'</span><span class="tn-pct">'+pct+'%</span>'+
-        '<span class="tn-bar">'+bar(pct)+'</span>'+
-        (m.closeGame ? '<span class="tn-close">\u26a1 CLOSE</span>' : '')+'</div>'+banner+'</div>'+
-      (m.bestPlay && m.bestPlay.recommend ? '<div class="tn-bestplay">\u2605 '+esc(m.bestPlay.label)+'<span class="tn-bp-pick">'+esc((m.bestPlay.market||'').replace(/A$/,'').replace(/B$/,''))+' '+esc(m.bestPlay.lean||'')+' '+esc(m.bestPlay.line)+'</span></div>' : (m.bestPlay ? '<div class="tn-bestplay tn-bp-none">\u2298 '+esc(m.bestPlay.label)+'</div>' : ''))+
-      (m.matchFlow ? '<div class="tn-flow"><span class="tn-flow-h">HOW IT PLAYS OUT</span>'+esc(m.matchFlow)+'</div>' : '')+
-      (m.matchShape ? '<div class="tn-shape'+(m.matchShape.pushesOver?' tn-shape-over':'')+'"><span class="tn-shape-ico">'+(m.matchShape.key==='tb'?'\u26a1':m.matchShape.key==='3set'?'\u23f1':m.matchShape.key==='clean'?'\u2713':'\u2696')+'</span>'+esc(m.matchShape.text)+'</div>' : '')+
+        '<span class="tn-bar">'+bar(pct)+'</span></div>'+banner+'</div>'+
       '<div class="tn-why-h">WHY '+esc(name.split(' ').pop().toUpperCase())+' \u2014 '+F.length+' factors, weighted</div>'+
-      (T.factorsAgree(m) ? '' : '<div class="tn-conflict">\u26a0 Close call \u2014 the skill ratings lean '+esc(name.split(" ").pop())+', but the surface/ranking factors below lean the other way. That tension is why this read is soft.</div>')+
-      '<div class="tn-arche">'+esc(degender(T.archetype(m)))+'</div>'+ facRows +
+      '<div class="tn-arche">'+esc(T.archetype(m))+'</div>'+ facRows +
       '<div class="tn-flip-h">WHAT COULD FLIP IT</div><ul class="tn-flip">'+flips+'</ul>'+
       '<div class="tn-honest">'+(gradeStatus&&gradeStatus.shipped
         ? 'This bucket has cleared our bar \u2014 bet it like any tracked edge, at a fair price.'
@@ -21536,12 +21661,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   #tennis-panel .lyrid-tennis-lines{margin:var(--space-2) 0 var(--space-3)}
   #tennis-panel .lyrid-tennis-lines-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--space-2)}
   #tennis-panel .lyrid-tennis-lineinput{width:96px;padding:6px 8px;font-size:var(--size-caption);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);background:var(--surface,transparent);color:inherit}
-
-  #tennis-panel .lyr-tier{font-size:9px;font-weight:800;letter-spacing:.06em;padding:3px 8px;border-radius:20px}
-  #tennis-panel .lyr-tier-strong{background:#1e4620;color:#7ee08a}
-  #tennis-panel .lyr-tier-lean{background:#3a3520;color:#e0c97e}
-  #tennis-panel .lyr-tier-coinflip{background:#3a2320;color:#e0947e}
-  #tennis-panel .lyrid-tennis-prop-mkt{font-size:11px;color:#e0947e;margin-top:4px;line-height:1.4}
 </style>
 <script>
 (function () {
@@ -21564,21 +21683,11 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   function propRow(label, prop) {
     if (!prop) return '';
     const v = prop.verdict || {};
-    // variance-aware label: coin-flip vs lean vs strong, from how far the projection sits from the
-    // line relative to the sim's spread. Plus a market-disagreement flag when PP's line is far off.
-    const tier = prop.tier || v.tier || 'UNGRADED';
-    const tierText = tier === 'coinflip' ? 'COIN-FLIP' : tier === 'lean' ? 'LEAN' : tier === 'strong' ? 'STRONG' : String(tier).toUpperCase();
-    const edgeNote = prop.edgeSds != null
-      ? (tier === 'coinflip' ? `line is inside the noise (only ${prop.edgeSds} SD from projection — expect ~40% miss)` :
-         tier === 'strong' ? `line sits ${prop.edgeSds} SD outside the noise — a real gap` :
-         `line ${prop.edgeSds} SD from projection`) : '';
-    const mkt = prop.marketDisagrees
-      ? `<div class="lyrid-tennis-prop-mkt">⚠ Model projects ${prop.mean.toFixed(1)} but the line is ${prop.line} — a ${Math.abs(prop.marketGap)}-game gap. The market may know something the priors miss.</div>` : '';
     return `<div class="lyrid-tennis-prop"><div class="lyrid-tennis-prop-head">
       <span class="lyrid-tennis-prop-label">${esc(label)}</span>
-      <span class="lyr-tier lyr-tier-${esc(tier)}">${esc(tierText)}</span></div>
+      <span class="${badgeClass(v.tier)}">${esc(v.tier || 'UNGRADED')}</span></div>
       <div class="lyrid-tennis-prop-line">${esc(prop.lean)} ${esc(prop.line)} · model ${pct(prop.prob)} · proj ${prop.mean == null ? '—' : prop.mean.toFixed(1)}</div>
-      <div class="lyrid-tennis-prop-reason">${esc(edgeNote)}</div>${mkt}</div>`;
+      <div class="lyrid-tennis-prop-reason">${esc(v.reason || '')}</div></div>`;
   }
   const one = (x) => (x == null ? '—' : Number(x).toFixed(1));
 
@@ -21829,6 +21938,150 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       if (tabName === 'tennis' && !tennisState.loaded) loadTennisSlate();
     };
   }
+})();
+</script>
+
+
+<!-- ===== LYRID NFL INTEGRATION ===== -->
+<script>
+(function () {
+  'use strict';
+
+  var nflState = { loaded: false, date: null };
+
+  // ---- date helpers (mirror the other sports' change-date pattern) ----
+  function todayStr() {
+    try { return (window.getTodayStr && window.getTodayStr()) || new Date().toISOString().slice(0, 10); }
+    catch (_) { return new Date().toISOString().slice(0, 10); }
+  }
+  function setNflDateDisplay() {
+    var el = document.getElementById('nflDateDisplay');
+    if (el) el.textContent = (nflState.date === todayStr() || !nflState.date) ? 'Today' : nflState.date;
+  }
+  window.nflChangeDate = function (delta) {
+    var base = nflState.date || todayStr();
+    if (delta === 'today') { nflState.date = todayStr(); }
+    else {
+      var d = new Date(base + 'T00:00:00');
+      d.setDate(d.getDate() + delta);
+      nflState.date = d.toISOString().slice(0, 10);
+    }
+    setNflDateDisplay();
+    window.loadNflSlate();
+  };
+
+  // ---- tier badge class map (GUARANTEED->elite, PLATINUM->strong, GOLD->solid) ----
+  var TIER_CLASS = { GUARANTEED: 'guaranteed', PLATINUM: 'platinum', GOLD: 'gold', none: 'none' };
+
+  // ---- render one classifier verdict as a Lyrid pick card ----
+  function renderNflCard(item) {
+    var v = item.verdict || {};
+    var tier = v.tier_candidate || 'none';
+    var noPlay = tier === 'none';
+    var dir = v.pick === 'higher' ? 'higher' : 'lower';
+    var pOver = (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver) || 0;
+    var f = v.filters || {};
+
+    function filterRow(label, pass) {
+      return '<div class="nfl-filter-row">' +
+        '<span class="nfl-filter-check ' + (pass ? 'pass' : 'fail') + '">' + (pass ? '\u2713' : '\u2715') + '</span>' +
+        '<span class="nfl-filter-label">' + label + '</span></div>';
+    }
+    var filters = filterRow('Soft line', f.softLine) + filterRow('Volume-secure', f.volumeSecure) + filterRow('Script-clear', f.scriptClear);
+    var reasons = (v.reasons || []).map(function (r) { return '<div class="nfl-filter-detail">\u00b7 ' + r + '</div>'; }).join('');
+    var blocked = (v.blocked && v.blocked.length) ? '<div class="nfl-blocked-note">Blocked: ' + v.blocked[0] + '</div>' : '';
+
+    var outlookHTML = '';
+    if (item.outlook) {
+      var drivers = (item.outlook.drivers || []).slice(0, 4).map(function (d) {
+        return '<div class="nfl-driver"><span class="nfl-driver-dir ' + (d.dir === '+' ? 'pos' : 'neg') + '">' +
+          (d.dir === '+' ? '\u25b2' : '\u25bc') + ' ' + Math.abs(d.w).toFixed(2) + '</span>' +
+          '<span class="nfl-driver-text">' + d.f + '</span></div>';
+      }).join('');
+      outlookHTML = '<div class="nfl-section-eyebrow">QB Outlook</div>' +
+        '<span class="nfl-outlook-tag ' + item.outlook.outlook + '">' + item.outlook.outlook + '</span>' + drivers;
+    }
+
+    // NO-PLAY refinement: desaturate the verdict row so a blocked pick never reads as a rec
+    var verdictRow = '<div class="nfl-verdict' + (noPlay ? ' noplay' : '') + '">' +
+      '<span class="nfl-dir ' + dir + (noPlay ? ' muted' : '') + '">' + (dir === 'higher' ? 'Higher' : 'Lower') + '</span>' +
+      '<span class="nfl-prob">' + Math.round(pOver * 100) + '%</span>' +
+      '<span class="nfl-prob-label">model P(over)</span></div>';
+
+    return '<div class="nfl-pick-card">' +
+      '<div class="nfl-pick-head"><div>' +
+        '<div class="nfl-pick-player">' + (item.player || '') + '</div>' +
+        '<div class="nfl-pick-prop">' + (item.propLabel || '') + ' <span class="nfl-line-val">' + v.line + '</span></div>' +
+      '</div><span class="nfl-tier-badge ' + TIER_CLASS[tier] + '">' + (noPlay ? 'No Play' : tier) + '</span></div>' +
+      verdictRow +
+      '<div class="nfl-section-eyebrow">Three-Filter Check</div>' + filters + reasons + blocked + outlookHTML +
+      '<div class="nfl-provisional">Provisional \u2014 tiers calibrate against backtest before badges go live.</div>' +
+    '</div>';
+  }
+
+  // ---- load the NFL slate (mirrors loadCs2Slate shape) ----
+  window.loadNflSlate = async function () {
+    var list = document.getElementById('nflGamesList');
+    var analysis = document.getElementById('nflAnalysisContainer');
+    var meta = document.getElementById('nflMeta');
+    if (!nflState.date) nflState.date = todayStr();
+    setNflDateDisplay();
+    if (analysis) analysis.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-text">Loading NFL slate\u2026</div></div>';
+    if (list) list.innerHTML = '';
+
+    var data = null;
+    for (var i = 0; i < 1; i++) {
+      try {
+        var res = await fetch('/api/nfl/slate?date=' + encodeURIComponent(nflState.date), { cache: 'no-store' });
+        if (res.ok) { data = await res.json(); break; }
+      } catch (_) { /* endpoint not deployed yet */ }
+    }
+    nflState.loaded = true;
+
+    // off-season / no endpoint yet — honest empty state, never a fake pick.
+    // Surface the actual fetched date + source + any server note so the reason
+    // for an empty slate is visible, not guessed.
+    if (!data || !Array.isArray(data.picks) || !data.picks.length) {
+      var why = data && data.note ? data.note
+        : 'NFL props run in-season (Sept\u2013Feb). The engine is live once the slate posts.';
+      var src = data && data.source ? data.source : 'no response';
+      if (analysis) analysis.innerHTML =
+        '<div class="lyrid-empty"><div class="lyrid-empty-text">No NFL slate for ' + nflState.date + '.</div>' +
+        '<div class="lyrid-empty-sub">' + why + '</div>' +
+        '<div class="lyrid-empty-sub" style="opacity:.6">source: ' + src + '</div></div>';
+      if (meta) meta.textContent = '';
+      return;
+    }
+
+    if (meta) meta.textContent = data.picks.length + ' props \u00b7 ' + (data.source || 'engine');
+    if (analysis) analysis.innerHTML = data.picks.map(renderNflCard).join('');
+
+    // feed qualifying picks into the shared parlay builder (same seam as MLB/WNBA)
+    try {
+      if (typeof setSportCandidates === 'function') {
+        var cands = data.picks
+          .filter(function (p) { return p.verdict && p.verdict.tier_candidate && p.verdict.tier_candidate !== 'none'; })
+          .map(function (p) {
+            return {
+              id: 'nfl-' + (p.player_key || p.player) + '-' + p.verdict.line,
+              sport: 'nfl', player: p.player, market: p.propLabel,
+              line: p.verdict.line, pick: p.verdict.pick,
+              tier: p.verdict.tier_candidate, edge: p.verdict.edge,
+              flags: {}
+            };
+          });
+        setSportCandidates('nfl', cands);
+      }
+    } catch (_) { /* parlay UI not present on this view */ }
+  };
+
+  // ---- lazy-load hook: wrap switchTab WITHOUT replacing it ----
+  // (idempotent — wraps the existing generic router so NFL loads on first open)
+  var _prevSwitchTab = window.switchTab;
+  window.switchTab = function (tabName) {
+    if (typeof _prevSwitchTab === 'function') _prevSwitchTab(tabName);
+    if (tabName === 'nfl' && !nflState.loaded) window.loadNflSlate();
+  };
 })();
 </script>
 
