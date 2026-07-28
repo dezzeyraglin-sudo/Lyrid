@@ -5415,6 +5415,22 @@ function applyMlbEngineRanking(propRecs, activeEngine) {
   // on HRR prop when SCORCHING form or L+bp-edge. Stamps metadata that the
   // UI uses to render the prop as UNDER recommended instead of OVER.
   const lyridUnderPick = applyLyridUnderTier(propRecs, hitterCtx);
+  // (2026-07-28) HRR FADE PULLED — user call. The multi-pathway/bullpen-edge
+  // inverse over-fired: it keyed on the near-universal "multiple pathways to
+  // over" reason, so it faded almost every HRR — including elite HR threats
+  // (e.g. a 49% P(HR>=1) bat) — using a cohort average that plainly doesn't
+  // apply there. Its displayed backtest numbers were also stale/inconsistent
+  // across three UI spots (67% n=30 SCORCHING vs 62% n=91 vs 62.1% n=58).
+  // We DEMOTE the live tier to a SHADOW: no bet, badge, or recommendation
+  // surfaces (all of those gate on _lyridUnderTier), but the classification
+  // rides along on _lyridUnderShadow so the REAL forward UNDER record keeps
+  // accruing and is shown honestly in renderHrrFadeRecord(). Re-enable only
+  // once that live sample clears its Wilson floor. Flip to false to restore.
+  const LYRID_HRR_FADE_PULLED = true;
+  if (LYRID_HRR_FADE_PULLED && lyridUnderPick && lyridUnderPick._lyridUnderTier) {
+    lyridUnderPick._lyridUnderShadow = lyridUnderPick._lyridUnderTier;
+    lyridUnderPick._lyridUnderTier = null;
+  }
   // (Drop #29 — June 12, 2026) Stamp VERIFIED cohort badges (rarely-K HITS
   // 72% n=25; elite-PTE + R-hitter 67% n=24). Display-layer metadata only —
   // doesn't change isBest priority, just makes the validated picks visible.
@@ -13382,7 +13398,45 @@ function renderBreakdown() {
       `;
     }).join('')}
     ${renderGhostBreakdown()}
+    ${renderHrrFadeRecord()}
   `;
+}
+
+// (2026-07-28) HRR FADE — LIVE RECORD. Replaces the old hardcoded 62%/n=58 with
+// the REAL forward record computed from graded picks in bestBetHistory. Cohort =
+// picks stamped with a live tier (_lyridUnderTier, legacy while the fade was
+// active) OR the shadow tier (_lyridUnderShadow, still accruing after the pull).
+// A fade WINS when the UNDER hits = the logged OVER result was a loss.
+function renderHrrFadeRecord() {
+  const wl = (w, n) => { if (!n) return 0; const z=1.96, p=w/n, den=1+z*z/n, c=p+z*z/(2*n), s=z*Math.sqrt(p*(1-p)/n + z*z/(4*n*n)); return (c-s)/den; };
+  const tally = { platinum:{w:0,n:0}, gold:{w:0,n:0} };
+  Object.values(state.bestBetHistory || {}).forEach(day => {
+    const items = Array.isArray(day) ? day : Object.values(day || {});
+    items.forEach(p => {
+      if (!p || !p.graded || !p.result) return;
+      const tier = p._lyridUnderTier || p._lyridUnderShadow;
+      if (tier !== 'platinum' && tier !== 'gold') return;
+      const overWon = ['win','w','hit'].includes(String(p.result).toLowerCase());
+      tally[tier].w += overWon ? 0 : 1;
+      tally[tier].n += 1;
+    });
+  });
+  const comb = { w: tally.platinum.w + tally.gold.w, n: tally.platinum.n + tally.gold.n };
+  const row = (label, t) => {
+    if (!t.n) return `<div class="breakdown-row"><div><div style="font-weight:700">${label}</div><div style="font-size:11px;color:var(--dim)">no graded picks yet</div></div><div class="bd-stats"><div class="bd-pct neutral">—</div></div></div>`;
+    const pct = t.w/t.n, lo = wl(t.w, t.n);
+    const cls = lo >= 0.524 ? 'hot' : pct <= 0.45 ? 'cold' : 'neutral';
+    return `<div class="breakdown-row"><div><div style="font-weight:700">${label}</div><div style="font-size:11px;color:var(--dim)">${t.w}-${t.n-t.w} · UNDER · Wilson lo ${(lo*100).toFixed(0)}%${lo>=0.524?' ✓ clears −110':''}</div></div><div class="bd-stats"><div class="bd-pct ${cls}">${(pct*100).toFixed(0)}%</div></div></div>`;
+  };
+  const verdict = comb.n < 40
+    ? `Sample too thin (n=${comb.n}) to re-enable — need ~40+ graded and Wilson lo ≥ 52.4%.`
+    : (wl(comb.w, comb.n) >= 0.524 ? `Live UNDER clears the −110 floor — safe to consider re-enabling.` : `Live UNDER is below the −110 floor — keep it pulled.`);
+  return `<h2 style="margin-top:20px">HRR FADE · LIVE RECORD <span style="font-size:11px;color:#c05a5a;font-weight:800;letter-spacing:0.05em">PULLED</span></h2>
+    <div style="font-size:11px;color:var(--dim);margin-bottom:8px">Recommendations disabled 2026-07-28 (over-fired on HR threats; hardcoded backtest was stale). This is the REAL forward record from graded picks — shadow-stamped so it keeps accruing while pulled.</div>
+    ${row('Platinum (bp-edge / crush)', tally.platinum)}
+    ${row('Gold (solid / neutral)', tally.gold)}
+    ${row('Combined', comb)}
+    <div style="font-size:11px;color:var(--ink);margin-top:8px">${verdict}</div>`;
 }
 
 // (Drop #48) GHOST-SCORE RECORD. Reads graded fades from bestBetHistory,
@@ -13907,7 +13961,8 @@ function logBestBets(data) {
         _bestForLog._verifiedCohort ||
         _bestForLog._lyridUnderTier === 'platinum' ||
         _bestForLog._lyridUnderTier === 'gold' ||
-        m._verifiedCohort || m._lyridUnderTier === 'platinum' || m._lyridUnderTier === 'gold'
+        m._verifiedCohort || m._lyridUnderTier === 'platinum' || m._lyridUnderTier === 'gold' ||
+        _bestForLog._lyridUnderShadow || m._lyridUnderShadow
       );
       if (!m.isTopPick && !_hasBettableTier) continue;
       // Banned-list enforcement (see comment above on HR audit log).
@@ -14081,6 +14136,7 @@ function logBestBets(data) {
         // Picks with this set are recommended on the UNDER side; the
         // grader inverts win/loss accordingly.
         _lyridUnderTier: bestBet._lyridUnderTier || null,
+        _lyridUnderShadow: bestBet._lyridUnderShadow || null,
         _lyridUnderWR: bestBet._lyridUnderWR || null,
         _lyridUnderN: bestBet._lyridUnderN || null,
         _lyridUnderRule: bestBet._lyridUnderRule || null,
