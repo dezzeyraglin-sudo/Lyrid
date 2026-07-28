@@ -76,6 +76,18 @@ export function arsenalURL(season, type) {
   return `https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats?type=${type}&pitchType=&year=${season}&team=&min=10&csv=true`;
 }
 
+// PITCHER VELOCITY (Tier 2 of the archetype feature). The pitch-arsenal-STATS
+// leaderboard above returns results (whiff/ba/woba/hard-hit) but NOT velocity.
+// The separate pitch-arsenalS?type=avg_speed leaderboard returns per-pitcher
+// average velocity in WIDE format — one row per pitcher, one column per pitch
+// type: ff_avg_speed, si_avg_speed, fc_avg_speed, sl_avg_speed, ch_avg_speed,
+// cu_avg_speed, fs_avg_speed, kn_avg_speed, st_avg_speed, sv_avg_speed. Keyed on
+// `pitcher` (== player_id). Verified live against the 2025 CSV before wiring.
+// Pitchers only (no batter variant), so no `type=pitcher` param here.
+export function arsenalVeloURL(season) {
+  return `https://baseballsavant.mlb.com/leaderboard/pitch-arsenals?year=${season}&min=10&type=avg_speed&hand=&csv=true`;
+}
+
 // Percentile rankings - overall hitter Statcast metrics
 export function percentileURL(season, type) {
   return `https://baseballsavant.mlb.com/leaderboard/percentile-rankings?type=${type}&year=${season}&csv=true`;

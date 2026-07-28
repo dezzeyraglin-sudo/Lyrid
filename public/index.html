@@ -7203,44 +7203,59 @@ function buildControlChip(pitcherMeta) {
 }
 
 // ============================================================================
-// PITCHER VELOCITY + ARCHETYPE — TIER 1 (see PITCHER_VELOCITY_ARCHETYPE_SPEC.md)
+// PITCHER VELOCITY + ARCHETYPE (see PITCHER_VELOCITY_ARCHETYPE_SPEC.md)
 //
 // Foundational read the user asked for: "which hitters get suppressed vs which
-// feast" + "K-ace vs ERA-buffet". Tier 1 ships from data ALREADY flowing to the
-// client — usage-weighted whiff% + hard-hit% off s.pitcherArsenal, plus the
-// pitcher's K%/BB% (platoonMeta.pitcher) — with NO data.js / analyze.js change.
+// feast" + "K-ace vs ERA-buffet". Classifies each pitcher from the arsenal
+// aggregate — usage-weighted whiff% + hard-hit% + (TIER 2) velocity-vs-league
+// per pitch type — plus K%/BB% for the run-environment read.
 //
-// TIER 2 (NOT in this build): pitch VELOCITY per type is genuinely absent from
-// the current pull (confirmed in data.js — no release_speed/start_speed). Adding
-// it is a matched-pair data.js + savant.js + analyze.js change (deploy data.js
-// first). Until then we do NOT fabricate velo numbers — the "stuff" score below
-// is whiff-only and the header chip omits the velo delta. The arsenal chip
-// already has an unused `p.velo` slot (line ~9235) ready to light up in Tier 2.
+// TIER 1: whiff/hard-hit/K/BB (data already flowing). TIER 2 (LIVE): pitch
+// `velo` per type now arrives on s.pitcherArsenal from the data.js Statcast
+// pull (pitch-arsenals avg_speed). We convert it to a delta vs the pitch type's
+// LEAGUE AVERAGE (a 94mph FB only suppresses relative to the ~93.9 FB mean; a 91
+// is a produce signal) and fold that delta into the "stuff" score + the vote.
+// If velo is absent (older payload / missing column) it degrades cleanly to the
+// Tier 1 whiff-only read — velo is never fabricated.
 //
-// DISCIPLINE: every threshold here is UNVALIDATED. It is stamped on logged picks
-// (_pitcherArchetype / _stuffScore / _archetypeVote) so the backup grading pass
-// can VALIDATE whether whiff-ace-suppression actually produces unders at a
-// Wilson-floored rate. If the data says the vote is wrong, it gets reweighted or
-// pulled — same as any Lyrid signal. Vote is capped so it can NEVER outweigh
-// OWNS (+3) and is softened on the VERIFIED rarely-K hits cohort.
+// DISCIPLINE: every threshold/baseline here is UNVALIDATED and stamped on logged
+// picks (_pitcherArchetype / _stuffScore / _veloDelta / _archetypeVote) so the
+// backup grading pass can VALIDATE whether whiff-ace-suppression actually
+// produces unders at a Wilson-floored rate. Wrong → reweighted or pulled, same
+// as any Lyrid signal. Vote is capped so it can NEVER outweigh OWNS (+3) and is
+// softened on the VERIFIED rarely-K hits cohort.
 // ============================================================================
 
-// League-average baselines — APPROXIMATE 2025-26, UNVALIDATED. Refresh; do not
-// present as current. (Arsenal-level aggregates, not per-pitch-type velo means —
-// those live in §1 of the spec and belong to Tier 2.)
+// League-average arsenal baselines — APPROXIMATE 2025-26, UNVALIDATED. Refresh.
 const LEAGUE_AVG_WHIFF_PCT   = 24.5;  // ~ league arsenal whiff% (swing-and-miss)
 const LEAGUE_AVG_HARDHIT_PCT = 39.0;  // ~ league hard-hit% allowed
+
+// Per-pitch-type LEAGUE-AVERAGE velocity (mph), keyed by Savant pitch_type code.
+// APPROXIMATE 2025-26 (spec §1), UNVALIDATED — refresh, do NOT present as current.
+// Codes not listed → no velo-delta contribution (falls back to whiff-only).
+const LEAGUE_VELO = {
+  FF: 93.9, FA: 93.9, SI: 93.3, FT: 93.3, FC: 89.0,
+  SL: 85.0, ST: 82.0, SV: 83.5, CU: 79.5, KC: 81.5, CS: 74.0,
+  CH: 85.5, FS: 85.5, FO: 84.5, SC: 86.0, KN: 76.0
+};
+const VELO_DELTA_STUFF_W = 0.6;  // 1 mph over type-avg → +0.6 stuff (UNVALIDATED)
+const FB_CODES = new Set(['FF', 'FA', 'SI', 'FT', 'FC']);  // for headline FB velo
+function _veloDelta(p) {
+  const v = parseFloat(p && p.velo);
+  const base = LEAGUE_VELO[String(p && p.typeCode || '').toUpperCase()];
+  return (Number.isFinite(v) && Number.isFinite(base)) ? v - base : null;
+}
 
 // Archetype thresholds — UNVALIDATED, tune freely, stamped for the grading pass.
 const ARCH_WHIFF_HI   = LEAGUE_AVG_WHIFF_PCT + 3.5;   // ~28.0 → misses bats
 const ARCH_WHIFF_LO   = LEAGUE_AVG_WHIFF_PCT - 3.5;   // ~21.0 → below-avg whiff
 const ARCH_HARDHIT_HI = LEAGUE_AVG_HARDHIT_PCT + 3.0; // ~42.0 → gets squared up
-const ARCH_GB_USE_HI  = 40;                            // % arsenal that is SI/FS → GB-lean
+const ARCH_GB_USE_HI  = 40;                            // % arsenal SI/FS → GB-lean
+const ARCH_VELO_HI    = 1.5;                           // mph over type-avg → hard
+const ARCH_VELO_LO    = -1.5;                          // mph under type-avg → soft
 
-// Pitch-type codes that skew groundball (sinker + splitter). A usage-share proxy
-// for GB tendency, since per-pitch GB%/FB% is NOT in the current pull (that's a
-// Tier-2 Statcast add). Explicitly a PROXY — do not treat as a measured GB rate.
-const GB_PITCH_CODES = new Set(['SI', 'FS', 'SP']);   // sinker, split-finger
+// Sinker + splitter usage proxy for GB tendency (per-pitch GB% is not pulled).
+const GB_PITCH_CODES = new Set(['SI', 'FS', 'SP']);
 function _isGbPitch(p) {
   const c = String(p.typeCode || p.type_code || '').toUpperCase();
   if (GB_PITCH_CODES.has(c)) return true;
@@ -7248,10 +7263,9 @@ function _isGbPitch(p) {
   return n.includes('sinker') || n.includes('split');
 }
 
-// Classify a pitcher into ONE headline archetype from the arsenal aggregate +
-// K%/BB%. Returns null when there is not enough to say anything (→ no chip, no
-// vote — the spec's "fall back rather than produce garbage" rule).
-//   arsenal     : array from s.pitcherArsenal (type/typeCode/usage/whiffPct/hardHitPct/...)
+// Classify a pitcher into ONE headline archetype. Returns null when there is not
+// enough to say anything (→ no chip, no vote — "fall back rather than garbage").
+//   arsenal     : s.pitcherArsenal (type/typeCode/usage/whiffPct/hardHitPct/velo)
 //   pitcherMeta : { kPct, bbPct } from platoonMeta.pitcher (optional)
 function computePitcherArchetype(arsenal, pitcherMeta) {
   const arr = Array.isArray(arsenal) ? arsenal.filter(Boolean) : [];
@@ -7259,9 +7273,10 @@ function computePitcherArchetype(arsenal, pitcherMeta) {
   const bb = pitcherMeta ? parseFloat(pitcherMeta.bbPct) : NaN;
   const hasK = Number.isFinite(k), hasBb = Number.isFinite(bb);
 
-  // Usage-weighted whiff / hard-hit across the arsenal. Usage may be a string
-  // like "34.2"; fall back to equal weight if usage is missing everywhere.
+  // Usage-weighted whiff / hard-hit / velo-delta across the arsenal. Usage may
+  // be a string like "34.2"; fall back to equal weight if usage is absent.
   let wSum = 0, whiffNum = 0, whiffW = 0, hhNum = 0, hhW = 0, gbUse = 0;
+  let veloNum = 0, veloW = 0, fbVelo = null, fbDelta = null, fbUse = -1;
   for (const p of arr) {
     const u = parseFloat(p.usage ?? p.pitcherUsage);
     const w = Number.isFinite(u) ? u : 1;
@@ -7271,20 +7286,29 @@ function computePitcherArchetype(arsenal, pitcherMeta) {
     const hh = parseFloat(p.hardHitPct ?? p.hard_hit_percent);
     if (Number.isFinite(hh)) { hhNum += hh * w; hhW += w; }
     if (_isGbPitch(p)) gbUse += Number.isFinite(u) ? u : 0;
+    // TIER 2 velo
+    const vd = _veloDelta(p);
+    if (vd != null) {
+      veloNum += vd * w; veloW += w;
+      const code = String(p.typeCode || '').toUpperCase();
+      const uu = Number.isFinite(u) ? u : 0;
+      if (FB_CODES.has(code) && uu > fbUse) { fbUse = uu; fbVelo = parseFloat(p.velo); fbDelta = +vd.toFixed(1); }
+    }
   }
-  const wWhiff   = whiffW > 0 ? whiffNum / whiffW : null;
-  const wHardHit = hhW   > 0 ? hhNum   / hhW   : null;
-  const gbShare  = wSum  > 0 ? gbUse : null;   // usage points on SI/FS (0–100-ish)
+  const wWhiff    = whiffW > 0 ? whiffNum / whiffW : null;
+  const wHardHit  = hhW    > 0 ? hhNum   / hhW   : null;
+  const gbShare   = wSum   > 0 ? gbUse : null;
+  const veloDelta = veloW  > 0 ? +(veloNum / veloW).toFixed(1) : null;   // usage-wtd mph vs league
 
-  // Nothing to classify on: no arsenal contact signal AND no K/BB.
-  if (wWhiff == null && wHardHit == null && !hasK && !hasBb) return null;
+  if (wWhiff == null && wHardHit == null && veloDelta == null && !hasK && !hasBb) return null;
 
-  // "Stuff" proxy — Tier 1 is whiff-delta only (velo delta folds in at Tier 2).
-  const stuffScore = wWhiff != null ? +(wWhiff - LEAGUE_AVG_WHIFF_PCT).toFixed(1) : null;
+  // "Stuff" proxy = whiff delta + velo delta (Tier 2). Either may be absent.
+  const whiffComp = wWhiff != null ? (wWhiff - LEAGUE_AVG_WHIFF_PCT) : 0;
+  const veloComp  = veloDelta != null ? veloDelta * VELO_DELTA_STUFF_W : 0;
+  const stuffScore = (wWhiff != null || veloDelta != null) ? +(whiffComp + veloComp).toFixed(1) : null;
 
-  // --- Run-environment read: K-ace vs ERA-buffet (BB folded in; HBP NOT in the
-  //     data yet — the "walks" prop is BB+HBP but pitcherMeta.bbPct is BB only.
-  //     Commented so Tier 2 can add HBP when the Statcast pull lands). ---
+  // Run-environment: K-ace vs ERA-buffet. BB folded in; HBP NOT in the data yet
+  // (the "walks" prop is BB+HBP but pitcherMeta.bbPct is BB only — Tier-2+ add).
   let runEnv = 'neutral', runEnvLabel = '';
   const wild = hasBb && bb >= LEAGUE_AVG_BB_PCT + 2.5;
   const cleanBb = hasBb && bb <= LEAGUE_AVG_BB_PCT + 0.5;
@@ -7294,37 +7318,43 @@ function computePitcherArchetype(arsenal, pitcherMeta) {
   else if (highK && cleanBb) { runEnv = 'k-ace'; runEnvLabel = `K-ace — ${k.toFixed(0)}% K, ${hasBb ? bb.toFixed(0) + '% BB' : 'clean'}`; }
   else if (lowK) { runEnv = 'hittable'; runEnvLabel = `hittable — ${k.toFixed(0)}% K`; }
 
-  // --- Headline archetype (priority order). Thresholds UNVALIDATED. ---
+  // Headline archetype (priority order). Velo tips WHIFF-ACE / CONTACT-BUFFET at
+  // the margins per the spec (hard = suppress, soft = produce). UNVALIDATED.
   let key = 'balanced', label = 'BALANCED', emoji = '➖';
   const whiffHi = wWhiff != null && wWhiff >= ARCH_WHIFF_HI;
   const whiffLo = wWhiff != null && wWhiff <= ARCH_WHIFF_LO;
   const hhHi    = wHardHit != null && wHardHit >= ARCH_HARDHIT_HI;
   const gbHi    = gbShare != null && gbShare >= ARCH_GB_USE_HI;
+  const veloHard = veloDelta != null && veloDelta >= ARCH_VELO_HI;
+  const veloSoft = veloDelta != null && veloDelta <= ARCH_VELO_LO;
 
-  if (whiffHi && !wild) {
+  if ((whiffHi || (veloHard && wWhiff != null && wWhiff >= LEAGUE_AVG_WHIFF_PCT)) && !wild) {
     key = 'whiff-ace'; label = 'WHIFF-ACE'; emoji = '⚡';
   } else if (gbHi && !hhHi) {
     key = 'groundball'; label = 'GROUNDBALL'; emoji = '⛰';
-  } else if ((whiffLo || lowK) && (hhHi || (wHardHit != null && wHardHit >= LEAGUE_AVG_HARDHIT_PCT))) {
+  } else if ((whiffLo || lowK || veloSoft) && (hhHi || (wHardHit != null && wHardHit >= LEAGUE_AVG_HARDHIT_PCT))) {
     key = 'contact-buffet'; label = 'CONTACT BUFFET'; emoji = '🍽';
   } else if (hhHi) {
     key = 'hard-hit-prone'; label = 'HARD-HIT PRONE'; emoji = '💥';
   } else if (whiffHi && wild) {
-    key = 'whiff-ace'; label = 'WHIFF-ACE'; emoji = '⚡';   // wild whiff-ace (see runEnv)
+    key = 'whiff-ace'; label = 'WHIFF-ACE'; emoji = '⚡';   // wild whiff-ace
   }
 
-  // Chip headline pieces
   const parts = [];
-  if (wWhiff   != null) parts.push(`${wWhiff.toFixed(0)}% whiff (${stuffScore >= 0 ? '+' : ''}${stuffScore} vs avg)`);
+  if (fbVelo != null)   parts.push(`${fbVelo.toFixed(1)} FB (${fbDelta >= 0 ? '+' : ''}${fbDelta} vs avg)`);
+  if (wWhiff != null)   parts.push(`${wWhiff.toFixed(0)}% whiff`);
+  if (veloDelta != null && fbVelo == null) parts.push(`velo ${veloDelta >= 0 ? '+' : ''}${veloDelta} vs avg`);
   if (wHardHit != null) parts.push(`${wHardHit.toFixed(0)}% hard-hit`);
-  if (gbShare  != null && gbShare > 0) parts.push(`${gbShare.toFixed(0)}% SI/FS usage (GB proxy)`);
+  if (gbShare != null && gbShare > 0) parts.push(`${gbShare.toFixed(0)}% SI/FS usage (GB proxy)`);
   const detail = `${label}${runEnvLabel ? ' · ' + runEnvLabel : ''}` +
     (parts.length ? ` — ${parts.join(', ')}` : '') +
-    ' · UNVALIDATED (stamped for grading); pitch velocity is a Tier-2 add (not in current data).';
+    ` · stuff ${stuffScore != null ? (stuffScore >= 0 ? '+' : '') + stuffScore : 'n/a'}` +
+    ` · UNVALIDATED (stamped for grading)${veloDelta == null ? '; velo unavailable — whiff-only read' : ''}.`;
 
   return {
     key, label, emoji,
     wWhiff, wHardHit, gbShare, stuffScore,
+    veloDelta, fbVelo, fbDelta,
     runEnv, runEnvLabel,
     kPct: hasK ? k : null, bbPct: hasBb ? bb : null,
     detail, unvalidated: true
@@ -7333,23 +7363,26 @@ function computePitcherArchetype(arsenal, pitcherMeta) {
 
 // Directional vote for the unified engine, from the HITTER's perspective on
 // their prop. Capped at weight 2 (can never outweigh OWNS +3). Returns null for
-// no-lean. propType: the hitter's best-prop type (hits / total_bases / home_runs
-// / hrr / runs / rbi ...). isVerifiedOver: soften on the crown-jewel rarely-K
-// cohort — weigh, don't veto (spec discipline).
+// no-lean. propType: the hitter's best-prop type. isVerifiedOver: soften on the
+// crown-jewel rarely-K cohort — weigh, don't veto.
 function archetypeVote(arch, propType, isVerifiedOver) {
   if (!arch || arch.key === 'balanced') return null;
   const t = String(propType || '').toLowerCase();
   const isPower = /hr|home_run|homerun|total_bases|tb|slug|extra/.test(t);
   const isHits  = /hit|single/.test(t) && !isPower;
+  // Velo phrase for the banner label (Tier 2 colour when available).
+  const veloTag = arch.veloDelta == null ? '' :
+    arch.veloDelta >= ARCH_VELO_HI ? ', above-avg velo' :
+    arch.veloDelta <= ARCH_VELO_LO ? ', below-avg velo' : '';
 
   let dir = 0, weight = 0, label = '';
   if (arch.key === 'whiff-ace') {
-    dir = -1; weight = 2; label = `Whiff-ace, misses bats — suppression${arch.runEnv === 'wild' ? ' (but wild)' : ''}`;
+    dir = -1; weight = 2; label = `Whiff-ace${veloTag} — suppression${arch.runEnv === 'wild' ? ' (but wild)' : ''}`;
     if (arch.runEnv === 'wild') weight = 1;              // walks the park → weaker under
   } else if (arch.key === 'contact-buffet') {
-    dir = +1; weight = 2; label = 'Contact buffet — produce';
+    dir = +1; weight = 2; label = `Contact buffet${veloTag} — produce`;
   } else if (arch.key === 'hard-hit-prone') {
-    dir = +1; weight = 2; label = 'Hard-hit prone — produce';
+    dir = +1; weight = 2; label = `Hard-hit prone${veloTag} — produce`;
     if (!isPower && !isHits) weight = 1;
   } else if (arch.key === 'groundball') {
     // USER DECISION: under ONLY for power/HR; NEUTRAL on hits (grounders still
@@ -7383,10 +7416,13 @@ function buildArchetypeChip(sideData) {
     'contact-buffet': { color: '#e0a050', bg: 'rgba(224,160,80,0.14)',  border: 'rgba(224,160,80,0.4)' },
     'hard-hit-prone': { color: '#e07a70', bg: 'rgba(224,120,110,0.14)', border: 'rgba(224,120,110,0.4)' }
   }[arch.key] || { color: '#9fb4d4', bg: 'rgba(120,140,180,0.12)', border: 'var(--line)' };
-  const veloTxt = arch.wWhiff != null ? ` · ${arch.wWhiff.toFixed(0)}% whiff (${arch.stuffScore >= 0 ? '+' : ''}${arch.stuffScore})` : '';
+  // Prefer the spec's "95.1 FB (+1.2)" headline when velo is present; else whiff.
+  const headline = arch.fbVelo != null
+    ? ` · ${arch.fbVelo.toFixed(1)} FB (${arch.fbDelta >= 0 ? '+' : ''}${arch.fbDelta})`
+    : (arch.wWhiff != null ? ` · ${arch.wWhiff.toFixed(0)}% whiff` : '');
   const runTxt = arch.runEnvLabel ? ` · ${arch.runEnv === 'k-ace' ? 'K-ace' : arch.runEnv === 'wild' ? 'wild' : 'hittable'}` : '';
   return `<div class="archetype-chip" title="${esc(arch.detail)}" style="display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;letter-spacing:0.04em;padding:3px 9px;border-radius:100px;background:${palette.bg};border:1px solid ${palette.border};color:${palette.color};margin:4px 0 0">
-    ${arch.emoji} ${arch.label}${veloTxt}${runTxt}
+    ${arch.emoji} ${arch.label}${headline}${runTxt}
   </div>`;
 }
 
@@ -7679,19 +7715,18 @@ function computeUnifiedSignal(m, s, data) {
   if (bestRec && bestRec._verifiedCohort && !bestRec._kTrapVeto) add(+1, 2, 'VERIFIED cohort (72% hits-over)');
   if (bestRec && bestRec._kTrapVeto) add(-1, 2, 'Arsenal K-trap (contact profile at risk)');
 
-  // --- Pitcher ARCHETYPE vote (foundational, Tier 1 — velo/whiff read) ---
-  // From the arsenal aggregate + K%/BB%. Capped at weight 2 so it can NEVER
-  // outweigh OWNS (+3); softened on the VERIFIED rarely-K hits cohort; and if an
-  // OWNS vote already sits on the OPPOSING side, dropped to 1 so it cannot
-  // silently cancel real head-to-head history. Stamped for the grading pass.
+  // --- Pitcher ARCHETYPE vote (foundational — velo/whiff read) ---
+  // From the arsenal aggregate + velo-vs-league + K%/BB%. Capped at weight 2 so
+  // it can NEVER outweigh OWNS (+3); softened on the VERIFIED rarely-K hits
+  // cohort; and if an OWNS vote already sits on the OPPOSING side, dropped to 1
+  // so it cannot silently cancel real head-to-head history. Stamped for grading.
   try {
     const arch = computePitcherArchetype(s && s.pitcherArsenal, pitcherMeta);
     if (arch && arch.key !== 'balanced') {
       const isVerifiedOver = !!(bestRec && bestRec._verifiedCohort && !bestRec._kTrapVeto);
       const av = archetypeVote(arch, bestRec && bestRec.type, isVerifiedOver);
       if (av) {
-        // OWNS guard: don't let a fresh archetype vote silently override OWNS.
-        const ownsOver  = !!(m.vsPitcher && m.vsPitcher.owns);            // hitter owns → over side
+        const ownsOver  = !!(m.vsPitcher && m.vsPitcher.owns);              // hitter owns → over side
         const ownsUnder = !!(s && s.pitcherVsTeam && s.pitcherVsTeam.owns); // pitcher owns → under side
         const opposesOwns = (av.dir > 0 && ownsUnder) || (av.dir < 0 && ownsOver);
         const w = opposesOwns ? Math.min(av.weight, 1) : av.weight;
@@ -9440,9 +9475,15 @@ function renderAnalysis(data) {
     const s = data[key];
     if (!s || !s.pitcher) return '';
 
-    const arsenalHtml = (s.pitcherArsenal || []).slice(0, 5).map(p =>
-      `<span class="pitch-chip">${p.type}${p.velo ? ' '+p.velo : ''}<span class="pct">${p.usage?p.usage+'%':''}</span></span>`
-    ).join('');
+    const arsenalHtml = (s.pitcherArsenal || []).slice(0, 5).map(p => {
+      // TIER 2: show velo (mph) + delta vs league for this pitch type, next to
+      // usage% — "who's the most dangerous vs who's suppressed", per-pitch.
+      const _vd = _veloDelta(p);
+      const _veloTxt = (p.velo != null && p.velo !== '')
+        ? ` ${parseFloat(p.velo).toFixed(1)}${_vd != null ? ` (${_vd >= 0 ? '+' : ''}${_vd.toFixed(1)})` : ''}`
+        : '';
+      return `<span class="pitch-chip">${p.type}${_veloTxt}<span class="pct">${p.usage?p.usage+'%':''}</span></span>`;
+    }).join('');
 
     // Determine opposing team for tag context
     const isAwayHittingSide = key === 'awayVsHome';
@@ -13878,13 +13919,13 @@ function logBestBets(data) {
           } catch (_) { return { _convergenceTier: null, _unifiedCall: null, _unifiedTier: null }; }
         })(),
         // ====================================================================
-        // PITCHER ARCHETYPE STAMP (Tier 1). STAMP-DON'T-REWEIGHT: the archetype
-        // votes now (user's call — foundational), but stamping the read on every
-        // logged pick lets the backup grading pass VALIDATE whether whiff-ace-
+        // PITCHER ARCHETYPE STAMP. STAMP-DON'T-REWEIGHT: the archetype votes now
+        // (user's call — foundational), but stamping the read on every logged
+        // pick lets the backup grading pass VALIDATE whether whiff-ace-
         // suppression actually produces unders (and contact-buffet produces
-        // overs) at a Wilson-floored rate. If the forward log says the vote is
-        // wrong, it gets reweighted or pulled — same discipline as any signal.
-        // Velo delta is null until the Tier-2 Statcast pull lands.
+        // overs) at a Wilson-floored rate. Wrong → reweighted or pulled. Tier 2
+        // velo delta (_veloDelta / _archetypeFbVelo) is now populated when the
+        // pitch-arsenals velo pull succeeded; null when it wasn't available.
         // ====================================================================
         ...(function () {
           try {
@@ -13895,11 +13936,12 @@ function logBestBets(data) {
             return {
               _pitcherArchetype: _arch.key,
               _archetypeRunEnv: _arch.runEnv,          // k-ace / wild / hittable / neutral
-              _stuffScore: _arch.stuffScore,           // whiff-delta proxy (velo delta = Tier 2)
+              _stuffScore: _arch.stuffScore,           // whiff delta + velo delta
+              _veloDelta: _arch.veloDelta,             // usage-wtd mph vs league (Tier 2), or null
+              _archetypeFbVelo: _arch.fbVelo,          // headline fastball mph, or null
               _archetypeWhiff: _arch.wWhiff,
               _archetypeHardHit: _arch.wHardHit,
               _archetypeGbShare: _arch.gbShare,
-              _veloDelta: null,                        // Tier 2 — not in current data
               _archetypeVoteDir: _av ? _av.dir : 0,    // -1 under / +1 over / 0 none
               _archetypeVoteWeight: _av ? _av.weight : 0,
               _archetypeVoteLabel: _av ? _av.label : null,
