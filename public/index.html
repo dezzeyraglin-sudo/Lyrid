@@ -7378,9 +7378,12 @@ function computeHitterMatchup(m, s) {
   const barrel = _num(ss.barrelPct), ev = _num(ss.avgEV), hh = _num(ss.hardHitPct);
   const xw = _num(ss.xwoba), xslg = _num(ss.xslg), k = _num(ss.kPct);
   const ld = _num(ss.ldPct), fb = _num(ss.fbPct), pull = _num(ss.pullPct), la = _num(ss.launchAngle);
-  const armFeeds = arch && (arch.key === 'contact-buffet' || arch.key === 'hard-hit-prone' || arch.runEnv === 'hittable' || (arch.veloDelta != null && arch.veloDelta <= ARCH_VELO_LO));
+  // A whiff-ace is NEVER a "hittable/feeds" arm, even if its breaking balls
+  // run below their pitch-type velo average (that dragged Sale's usage-wtd velo
+  // delta negative and mislabeled him "soft" in testing). Gate on the archetype.
+  const armFeeds = arch && arch.key !== 'whiff-ace' && (arch.key === 'contact-buffet' || arch.key === 'hard-hit-prone' || arch.runEnv === 'hittable' || (arch.veloDelta != null && arch.veloDelta <= ARCH_VELO_LO));
   const armWhiffAce = arch && arch.key === 'whiff-ace';
-  const armSoftVelo = arch && arch.veloDelta != null && arch.veloDelta <= ARCH_VELO_LO;
+  const armSoftVelo = arch && arch.key !== 'whiff-ace' && arch.veloDelta != null && arch.veloDelta <= ARCH_VELO_LO;
   const hrDrivers = [];
   if (barrel != null && barrel >= 10) hrDrivers.push(`${barrel.toFixed(0)}% barrel`);
   if (ev != null && ev >= 91)         hrDrivers.push(`${ev.toFixed(0)} mph EV`);
