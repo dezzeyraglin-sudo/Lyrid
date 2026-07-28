@@ -982,7 +982,12 @@ export default async function handler(req, res) {
             popupPct: overall.popup_percent?.value || null,
             sweetSpotPct: overall.sweet_spot_percent?.value || null,
             pullPct: overall.pull_percent?.value || null,
-            oppoPct: overall.oppo_percent?.value || null
+            oppoPct: overall.oppo_percent?.value || null,
+            // Tier 3 QUALITY-OF-CONTACT adds — power (xslg) + launch profile
+            // for the HR / multi-hit matchup banner. Null when Savant omits them.
+            xslg: overall.xslg?.value || null,
+            xba: overall.xba?.value || null,
+            launchAngle: overall.launch_angle?.value || null
           },
           // HR Chance scoring (v2 — EMPIRICALLY-CALIBRATED, see _lib/hrEmpirical.js)
           // Replaces v1's hand-tuned integer scoring with multipliers grounded in

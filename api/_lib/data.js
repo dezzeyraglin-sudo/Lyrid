@@ -3,7 +3,7 @@
 // This avoids the Vercel "function calling function" 404 issue.
 
 import { getAbbr } from '../_data/teams.js';
-import { fetchSavantCSV, arsenalURL, expectedStatsURL } from './savant.js';
+import { fetchSavantCSV, arsenalURL, arsenalVeloURL, expectedStatsURL } from './savant.js';
 
 // PHASE 1 OF DAMAGE QUALITY SYSTEM (May 9, 2026)
 //
@@ -25,6 +25,7 @@ import { fetchSavantCSV, arsenalURL, expectedStatsURL } from './savant.js';
 const CUSTOM_URL = (season) =>
   `https://baseballsavant.mlb.com/leaderboard/custom?year=${season}&type=batter&filter=&min=10&selections=` +
   `exit_velocity_avg%2C` +
+  `launch_angle_avg%2C` +
   `brl_percent%2C` +
   `hard_hit_percent%2C` +
   `k_percent%2C` +
@@ -120,11 +121,29 @@ export async function getProbables(date) {
 }
 
 // Get a pitcher's arsenal
+//
+// TIER 2 (PITCHER VELOCITY): the pitch-arsenal-stats leaderboard does NOT carry
+// pitch velocity. We ALSO fetch pitch-arsenals?type=avg_speed (wide format, one
+// <code>_avg_speed column per pitch type) in parallel and merge raw avg velocity
+// (mph) onto each pitch row as `velo`. Velo failure is soft — `velo` is null and
+// the archetype falls back to whiff-only. Never fabricated. The velo-vs-league
+// delta is computed downstream in index.html. Matched pair: deploy data.js +
+// savant.js before analyze.js.
 export async function getPitcherArsenal(mlbam, season) {
-  const rows = await fetchSavantCSV(arsenalURL(season, 'pitcher'));
   const pid = String(mlbam).trim();
+  const [rows, veloRows] = await Promise.all([
+    fetchSavantCSV(arsenalURL(season, 'pitcher')),
+    fetchSavantCSV(arsenalVeloURL(season)).catch(() => [])
+  ]);
+  const veloRow = veloRows.find(r => String(r.pitcher || r.player_id || '').trim() === pid) || null;
+  const veloFor = (typeCode) => {
+    if (!veloRow || !typeCode) return null;
+    const col = `${String(typeCode).toLowerCase()}_avg_speed`;
+    const v = veloRow[col];
+    const n = v != null && v !== '' ? parseFloat(v) : NaN;
+    return Number.isFinite(n) ? +n.toFixed(1) : null;
+  };
   const myRows = rows.filter(r => String(r.player_id).trim() === pid);
-
   return myRows.map(r => ({
     type: r.pitch_name || r.pitch_type || '',
     typeCode: r.pitch_type || '',
@@ -135,6 +154,7 @@ export async function getPitcherArsenal(mlbam, season) {
     ba: r.ba ? parseFloat(r.ba).toFixed(3) : null,
     slg: r.slg ? parseFloat(r.slg).toFixed(3) : null,
     hardHitPct: r.hard_hit_percent ? parseFloat(r.hard_hit_percent).toFixed(1) : null,
+    velo: veloFor(r.pitch_type),
     pitches: parseInt(r.pitches) || 0
   })).filter(p => p.type && p.pitches > 0)
     .sort((a, b) => parseFloat(b.usage || 0) - parseFloat(a.usage || 0));
@@ -398,6 +418,8 @@ export async function getHitterStats(mlbam, season) {
   const pullPct = parsePctField(custRow, 'pull_percent');
   const straightawayPct = parsePctField(custRow, 'straightaway_percent', 'straight_percent');
   const oppoPct = parsePctField(custRow, 'oppo_percent', 'opposite_percent');
+  // Tier 3: average launch angle — HR/multi-hit banner input. Null if absent.
+  const launchAngleAvg = (custRow.launch_angle_avg !== '' && custRow.launch_angle_avg != null && !isNaN(parseFloat(custRow.launch_angle_avg))) ? parseFloat(custRow.launch_angle_avg).toFixed(1) : null;
 
   // Phase 1 diagnostic: log once per process start whether the batted-ball
   // columns are populating. If GB/FB/LD all return null for a hitter that
@@ -430,7 +452,8 @@ export async function getHitterStats(mlbam, season) {
       sweet_spot_percent: { value: sweetSpotPct },
       pull_percent: { value: pullPct },
       straightaway_percent: { value: straightawayPct },
-      oppo_percent: { value: oppoPct }
+      oppo_percent: { value: oppoPct },
+      launch_angle: { value: launchAngleAvg }
     },
     pitchTypes
   };
