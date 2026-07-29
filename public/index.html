@@ -3519,6 +3519,9 @@
       <label class="pm-field">Sport
         <select id="pm-sport"><option value="all">All</option><option value="mlb">MLB</option><option value="wnba">WNBA</option></select>
       </label>
+      <label class="pm-field">Type
+        <select id="pm-type"><option value="all">All</option><option value="hitters">Hitters</option><option value="pitchers">Pitchers</option></select>
+      </label>
       <label class="pm-toggle"><input type="checkbox" id="pm-distinct-teams"> Different teams</label>
       <label class="pm-toggle"><input type="checkbox" id="pm-onegame" checked> One game per leg</label>
       <label class="pm-toggle"><input type="checkbox" id="pm-standardonly" checked> Standard lines only</label>
@@ -21794,15 +21797,19 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       build();
     }
     function constraints() {
-      var sp = v('pm-sport');
+      var sp = v('pm-sport'), tp = v('pm-type');
       return { minLegs: parseInt(v('pm-minlegs') || '2', 10), maxLegs: parseInt(v('pm-maxlegs') || '4', 10),
         distinctTeams: bb('pm-distinct-teams'), oneGamePerLeg: bb('pm-onegame'), standardOnly: bb('pm-standardonly'),
-        _sport: (sp && sp !== 'all') ? sp : null };
+        _sport: (sp && sp !== 'all') ? sp : null, _type: (tp && tp !== 'all') ? tp : null };
     }
     function build() {
       if (!window.LyridParlay || !el('pm-result')) return;
       var k = constraints(), pool = allCands();
       if (k._sport) pool = pool.filter(function (c) { return c.sport === k._sport; });
+      if (k._type) {
+        var _pm = function (c) { return c.market === 'strikeouts' || c.market === 'outs'; };
+        pool = pool.filter(function (c) { return k._type === 'pitchers' ? _pm(c) : !_pm(c); });
+      }
       S.last = window.LyridParlay.buildParlay(pool, k);
       var conviction = 'ok';
       try { conviction = window.LyridParlay.slateConviction(pool); } catch (_) {}
@@ -21840,7 +21847,9 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }
     function legHTML(l) {
       var pct = Math.round((l.cashRate || 0) * 100), arrow = l.side === 'over' ? '&#8593;' : '&#8595;', call = l.side === 'over' ? 'MORE' : 'LESS';
-      return '<div class="pm-leg"><div class="pm-leg-top"><span class="pm-leg-name">' + l.player + '</span>' +
+      var isPitcher = (l.market === 'strikeouts' || l.market === 'outs');
+      var pTag = isPitcher ? '<span class="pm-ptag" style="margin-left:6px;font-size:8.5px;font-weight:800;letter-spacing:0.05em;padding:1px 6px;border-radius:100px;background:rgba(120,140,180,0.18);border:1px solid rgba(120,140,180,0.5);color:#9fb4d4;vertical-align:middle">⚾ PITCHER</span>' : '';
+      return '<div class="pm-leg' + (isPitcher ? ' pm-leg-pitcher' : '') + '"><div class="pm-leg-top"><span class="pm-leg-name">' + l.player + pTag + '</span>' +
         '<span class="pm-leg-game">' + (l.team || '') + ' &middot; ' + (l.sport || '').toUpperCase() + '</span></div>' +
         '<div class="pm-leg-call"><span class="pm-arrow">' + arrow + '</span><span class="pm-call">' + call + '</span>' +
         '<span class="pm-stat">' + l.line + ' ' + l.market + '</span><span class="pm-pct">' + pct + '%</span></div>' +
@@ -21889,7 +21898,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       }).catch(function (e) { if (msg) msg.textContent = 'Save error: ' + ((e && e.message) || e); });
     }
     function wire() {
-      ['pm-minlegs', 'pm-maxlegs', 'pm-sport', 'pm-distinct-teams', 'pm-onegame', 'pm-standardonly'].forEach(function (id) {
+      ['pm-minlegs', 'pm-maxlegs', 'pm-sport', 'pm-type', 'pm-distinct-teams', 'pm-onegame', 'pm-standardonly'].forEach(function (id) {
         var e = el(id); if (e) e.addEventListener('change', build);
       });
       var btn = el('pm-build'); if (btn) btn.addEventListener('click', build);
