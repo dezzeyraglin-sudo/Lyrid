@@ -7531,24 +7531,43 @@ function computeHrrProjection(m, s) {
   const eRuns = expPA * pReach * SCORE_RATE * obpBehind * teamF + eHR * 0.70;   // HR self-run correction
   const eRbi  = expPA * RBI_RATE * powF * obpAhead * teamF * archMult + eHR * 0.65;
   const hrr = +(eHits + eRuns + eRbi).toFixed(2);
+  const _mu = Math.max(0, hrr);
+  const pOver = +Math.max(0, Math.min(1, 1 - Math.exp(-_mu) * (1 + _mu))).toFixed(3);  // modeled P(H+R+RBI>=2), Poisson(mu)
   const line = 1.5;
   const call = hrr >= line + 0.15 ? 'OVER' : hrr <= line - 0.15 ? 'UNDER' : 'PASS';
   return {
     hrr, eHits: +eHits.toFixed(2), eRuns: +eRuns.toFixed(2), eRbi: +eRbi.toFixed(2), eHR: +eHR.toFixed(3),
     expPA: +expPA.toFixed(1), archKey: arch ? arch.key : null, archMult: +archMult.toFixed(3),
-    line, call, edge: +(hrr - line).toFixed(2), modeled: true, unvalidated: true
+    line, call, edge: +(hrr - line).toFixed(2), pOver, modeled: true, unvalidated: true
   };
 }
 
 function buildHrrProjChip(m, s) {
   let r = null; try { r = computeHrrProjection(m, s); } catch (_) { return ''; }
   if (!r) return '';
-  const col = r.call === 'OVER' ? '#7fb08a' : r.call === 'UNDER' ? '#e0a050' : '#9fb4d4';
-  const detail = `Projected H+R+RBI ${r.hrr} vs line 1.5 — H ${r.eHits} + R ${r.eRuns} + RBI ${r.eRbi} over ${r.expPA} PA` +
-    (r.archKey ? ` · opposing arm ${r.archKey} (contact ×${r.archMult})` : '') +
-    `. MODELED / UNVALIDATED — stamped for grading, a projection not a hit rate.`;
-  return `<div class="hrr-proj-chip" title="${esc(detail)}" style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:0.02em;margin:6px 12px 0;padding:3px 9px;border-radius:100px;background:rgba(120,140,180,0.10);border:1px solid ${col}55;color:${col}">
-    proj H+R+RBI <b style="font-size:11.5px">${r.hrr.toFixed(1)}</b> <span style="opacity:.85">${r.call} 1.5 (${r.edge >= 0 ? '+' : ''}${r.edge})</span>
+  const over = r.call === 'OVER', under = r.call === 'UNDER';
+  const col = over ? '#7fb08a' : under ? '#e0a050' : '#9fb4d4';
+  const bg  = over ? 'rgba(120,180,138,0.10)' : under ? 'rgba(224,160,80,0.10)' : 'rgba(120,140,180,0.07)';
+  const ae = Math.abs(r.edge);
+  const conf = ae >= 0.8 ? 'STRONG' : ae >= 0.4 ? 'SOLID' : ae >= 0.15 ? 'LEAN' : 'PASS';
+  const lh = Math.round(r.eHits), lr = Math.round(r.eRuns), lri = Math.round(r.eRbi);
+  const likely = `${lh} hit${lh===1?'':'s'} \u00b7 ${lr} run${lr===1?'':'s'} \u00b7 ${lri} RBI`;
+  const archTag = r.archKey ? ({ 'whiff-ace':'\u26a1 whiff-ace','groundball':'\u26f0 groundball','contact-buffet':'\ud83c\udf7d contact buffet','hard-hit-prone':'\ud83d\udca5 hard-hit prone' }[r.archKey] || r.archKey) : '';
+  const detail = `Projected H+R+RBI ${r.hrr} vs line 1.5. Expected: ${r.eHits} hits, ${r.eRuns} runs, ${r.eRbi} RBI over ${r.expPA} PA${r.archKey ? ` \u00b7 opposing arm ${r.archKey} (contact \u00d7${r.archMult})` : ''}. MODELED / UNVALIDATED \u2014 a projection, not a hit rate; stamped for grading.`;
+  const mx = Math.max(0.6, r.eHits, r.eRuns, r.eRbi);
+  const bar = (v, c) => `<span style="display:inline-block;height:5px;width:${Math.min(100, Math.max(4, v / mx * 100)).toFixed(0)}%;background:${c};border-radius:3px"></span>`;
+  return `<div class="hrr-proj-card" title="${esc(detail)}" style="margin:6px 12px 0;padding:8px 11px;border-radius:9px;background:${bg};border:1px solid ${col}44">
+    <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+      <span style="font-size:9px;font-weight:800;letter-spacing:0.06em;color:var(--dim)">\ud83d\udcca PROJ H+R+RBI</span>
+      <span style="font-size:16px;font-weight:900;color:var(--ink);line-height:1">${r.hrr.toFixed(1)}</span>
+      <span style="font-size:9.5px;font-weight:900;letter-spacing:0.04em;padding:2px 8px;border-radius:100px;background:${col}22;border:1px solid ${col}66;color:${col}">${r.call} 1.5 \u00b7 ${conf} \u00b7 ~${Math.round((r.call==='UNDER'?(1-r.pOver):r.pOver)*100)}%</span>
+    </div>
+    <div style="display:grid;grid-template-columns:auto minmax(60px,120px);gap:3px 8px;align-items:center;margin-top:6px;font-size:10px;color:var(--dim)">
+      <span>Hits <b style="color:var(--ink)">${r.eHits.toFixed(1)}</b></span><span>${bar(r.eHits,'#7fb08a')}</span>
+      <span>Runs <b style="color:var(--ink)">${r.eRuns.toFixed(1)}</b></span><span>${bar(r.eRuns,'#6ea0d0')}</span>
+      <span>RBI <b style="color:var(--ink)">${r.eRbi.toFixed(1)}</b></span><span>${bar(r.eRbi,'#c9a0e0')}</span>
+    </div>
+    <div style="font-size:9.5px;color:var(--dim);margin-top:5px">Most likely: <b style="color:var(--ink)">${likely}</b>${archTag ? ` \u00b7 vs ${archTag}` : ''} \u00b7 <span style="opacity:.7">unvalidated</span></div>
   </div>`;
 }
 
@@ -8598,6 +8617,9 @@ function gatherCleanestEdges(date) {
             _convergence: (function () {
               try { return computeConvergence(m, side, data); } catch (_) { return null; }
             })(),
+            _hrrProj: (function () {
+              try { return computeHrrProjection(m, side); } catch (_) { return null; }
+            })(),
           });
         });
       });
@@ -8659,6 +8681,25 @@ function gatherCleanestEdges(date) {
       plain='A fade — bet the under, but size down. Thinner edge than the platinum plays above.';
       lineWarn = true;
       evidence=[['Edge type', 'Bullpen fade (soft)'], ['Hit rate (live)', '59% \u00b7 22 graded'], ['Best price', '+EV \u2212110, thin PP']];
+    } else if (p._hrrProj && p._hrrProj.call !== 'PASS' && Math.abs(p._hrrProj.edge) >= 0.4) {
+      // (2026-07-28) H+R+RBI PROJECTION edge. The model's numeric over/under on
+      // the 1.5 line, for hitters carrying no validated tier. UNVALIDATED, so it
+      // ranks in a band BELOW every validated cohort (can't leap a verified /
+      // platinum / gold play) and is tagged MODEL. P(over) is modeled (Poisson)
+      // until the grading log calibrates it — see renderHrrProjRecord().
+      const hp = p._hrrProj;
+      const isOver = hp.call === 'OVER';
+      kind = isOver ? 'over' : 'fade'; dir = isOver ? 'more' : 'less';
+      verb = isOver ? 'Bet More' : 'Bet Less'; tier = 'PROJ';
+      prop = '1.5 Hits + Runs + RBIs';
+      wr = Math.round((isOver ? hp.pOver : (1 - hp.pOver)) * 100);
+      rank = 48 + Math.min(16, Math.round(Math.abs(hp.edge) * 12));   // ~48-64, below GOLD (72)
+      tone = isOver ? 'go' : 'fade';
+      edgeType = 'H+R+RBI projection (model)';
+      plain = `Model projects ${hp.hrr.toFixed(1)} H+R+RBI (${hp.eHits.toFixed(1)}H \\u00b7 ${hp.eRuns.toFixed(1)}R \\u00b7 ${hp.eRbi.toFixed(1)}RBI) \\u2014 take the ${isOver ? 'OVER' : 'UNDER'} 1.5. Modeled projection, not a validated hit rate.`;
+      lineWarn = true;
+      evidence = [['Projected H+R+RBI', hp.hrr.toFixed(1)], ['Model P(' + (isOver ? 'over' : 'under') + ')', wr + '% \\u00b7 modeled'], ['Note', 'UNVALIDATED \\u2014 stamped, calibrating']];
+      ctxChips.push('\\ud83d\\udcca HRR PROJ ' + hp.hrr.toFixed(1));
     } else {
       // (Drop #40) HARD-HIT "watch" excluded — cooling-off notes, not bets.
       continue;
@@ -13480,7 +13521,51 @@ function renderBreakdown() {
     }).join('')}
     ${renderGhostBreakdown()}
     ${renderHrrFadeRecord()}
+    ${renderHrrProjRecord()}
   `;
+}
+
+// (2026-07-28) HRR PROJECTION — CALIBRATION RECORD. Buckets graded picks by their
+// projected H+R+RBI total and shows the ACTUAL over-1.5 rate vs the modeled P(over)
+// (Poisson). This is how the modeled % becomes a real, calibrated hit rate as the
+// forward log fills in. Reads _hrrProj (projection) + _hrrActual (real H+R+RBI,
+// stamped by the grader).
+function renderHrrProjRecord() {
+  const wl = (w, n) => { if (!n) return 0; const z=1.96, p=w/n, den=1+z*z/n, c=p+z*z/(2*n), s=z*Math.sqrt(p*(1-p)/n + z*z/(4*n*n)); return (c-s)/den; };
+  const modeledPOver = (mu) => Math.max(0, Math.min(1, 1 - Math.exp(-mu) * (1 + mu)));
+  const buckets = [
+    { label: '< 1.4 (under-lean)', lo: -1, hi: 1.4, w: 0, n: 0, mu: 0 },
+    { label: '1.4 – 1.8 (toss-up)', lo: 1.4, hi: 1.8, w: 0, n: 0, mu: 0 },
+    { label: '1.8 – 2.2 (over-lean)', lo: 1.8, hi: 2.2, w: 0, n: 0, mu: 0 },
+    { label: '> 2.2 (strong over)', lo: 2.2, hi: 99, w: 0, n: 0, mu: 0 }
+  ];
+  let total = 0;
+  Object.values(state.bestBetHistory || {}).forEach(day => {
+    const items = Array.isArray(day) ? day : Object.values(day || {});
+    items.forEach(p => {
+      if (!p || !p.graded || !Number.isFinite(p._hrrProj) || !Number.isFinite(p._hrrActual)) return;
+      const b = buckets.find(x => p._hrrProj > x.lo && p._hrrProj <= x.hi);
+      if (!b) return;
+      b.n += 1; b.mu += p._hrrProj;
+      if (p._hrrActual >= 2) b.w += 1;   // actually cleared 1.5 (over hit)
+      total += 1;
+    });
+  });
+  if (total === 0) {
+    return `<h2 style="margin-top:20px">HRR PROJECTION · CALIBRATION</h2>
+      <div class="empty" style="padding:16px"><div>No graded H+R+RBI projections yet. Once picks with a projection grade, each total bucket's ACTUAL over-1.5 rate is compared here to the modeled P(over) — that's how the % gets calibrated.</div></div>`;
+  }
+  const rows = buckets.map(b => {
+    if (!b.n) return `<div class="breakdown-row"><div><div style="font-weight:700">${b.label}</div><div style="font-size:11px;color:var(--dim)">no graded picks yet</div></div><div class="bd-stats"><div class="bd-pct neutral">—</div></div></div>`;
+    const act = b.w / b.n, lo = wl(b.w, b.n), model = modeledPOver(b.mu / b.n);
+    const cls = act >= 0.55 ? 'hot' : act <= 0.45 ? 'cold' : 'neutral';
+    return `<div class="breakdown-row"><div><div style="font-weight:700">${b.label}</div>
+      <div style="font-size:11px;color:var(--dim)">${b.w}-${b.n - b.w} over 1.5 · Wilson lo ${(lo*100).toFixed(0)}% · modeled ${(model*100).toFixed(0)}%</div></div>
+      <div class="bd-stats"><div class="bd-pct ${cls}">${(act*100).toFixed(0)}%</div></div></div>`;
+  }).join('');
+  return `<h2 style="margin-top:20px">HRR PROJECTION · CALIBRATION <span style="font-size:11px;color:var(--dim)">${total} graded</span></h2>
+    <div style="font-size:11px;color:var(--dim);margin-bottom:8px">Actual over-1.5 rate by projected total vs the modeled P(over). When these line up (and n is adequate), the model % is calibrated — trust it; where they diverge, the projection needs a nudge.</div>
+    ${rows}`;
 }
 
 // (2026-07-28) HRR FADE — LIVE RECORD. Replaces the old hardcoded 62%/n=58 with
@@ -14816,6 +14901,19 @@ async function gradeAllBestBets(opts = {}) {
         }
         entry.line = data.line;
         entry.fantasyScore = data.fantasyScore;
+        // (2026-07-28) Capture actual H+R+RBI to calibrate the HRR projection's
+        // modeled P(over). data.line carries the batter's real game line.
+        try {
+          const _L = data.line || {};
+          const _H  = Number(_L.H ?? _L.hits ?? _L.h);
+          const _R  = Number(_L.R ?? _L.runs ?? _L.r);
+          const _RB = Number(_L.RBI ?? _L.rbi);
+          if ([_H, _R, _RB].every(Number.isFinite)) {
+            entry._hrrActual = _H + _R + _RB;
+            if (entry._hrrCall === 'OVER') entry._hrrCallHit = entry._hrrActual >= 2 ? 1 : 0;
+            else if (entry._hrrCall === 'UNDER') entry._hrrCallHit = entry._hrrActual <= 1 ? 1 : 0;
+          }
+        } catch (_) {}
         // Grade using the propKey
         if (data.outcomes && entry.propKey in data.outcomes) {
           entry.result = data.outcomes[entry.propKey] ? 'win' : 'loss';
