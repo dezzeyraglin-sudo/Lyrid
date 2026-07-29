@@ -21500,7 +21500,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   // TIER_RANK extended for the LIVE boards: MLB emits VERIFIED/PLATINUM/
   // SHARP/GOLD; WNBA emits GUARANTEED/PLATINUM/GOLD/LEAN. The spec's
   // table only had VERIFIED/PLATINUM/GOLD/WATCH/NONE.
-  var TIER_RANK = { VERIFIED: 3, GUARANTEED: 3, PLATINUM: 2, SHARP: 2, GOLD: 1, LEAN: 0, WATCH: 0, NONE: -1 };
+  var TIER_RANK = { VERIFIED: 3, GUARANTEED: 3, PLATINUM: 2, SHARP: 2, GOLD: 1, PITCHER: 1, LEAN: 0, PROJ: 0, WATCH: 0, NONE: -1 };
   var SPORT_BAR = { mlb: 0.62, wnba: 0.70, cs2: 0.57 };
 
   function isBettable(c, o) {
@@ -21513,9 +21513,10 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (f.started || f.bookProhibited) return false;
     if (c.side === 'under' && f.highScoringGame) return false;
     // v2 (judgment layer) — MLB-only fade-environment + opposing-SP gates
-    if (c.sport === 'mlb' && c.side === 'under' && c.gameLean === 'over') return false;                              // no fades in over-leaning games
-    if (c.sport === 'mlb' && c.side === 'under' && c.gameLean !== 'under' && !c.pitcherFriendlyPark) return false;   // neutral games need a pitcher park
-    if (c.sport === 'mlb' && c.side === 'under' && c.opposingPitcherWildOrShort) return false;                       // wild/short SP = produce spot, not a fade
+    var _isPitcherMkt = (c.market === 'strikeouts' || c.market === 'outs');   // pitcher K/outs unders are NOT hitter fades
+    if (c.sport === 'mlb' && c.side === 'under' && !_isPitcherMkt && c.gameLean === 'over') return false;                              // no fades in over-leaning games
+    if (c.sport === 'mlb' && c.side === 'under' && !_isPitcherMkt && c.gameLean !== 'under' && !c.pitcherFriendlyPark) return false;   // neutral games need a pitcher park
+    if (c.sport === 'mlb' && c.side === 'under' && !_isPitcherMkt && c.opposingPitcherWildOrShort) return false;                       // wild/short SP = produce spot, not a fade
     if (f.lineStatus === 'goblin' || f.lineStatus === 'demon') return false;
     if (f.lineStatus === 'shaded' || f.lineStatus === 'wrongline') return false;   // (Card spec G)
     if (o.standardOnly && f.lineStatus !== 'standard') return false;
@@ -21904,9 +21905,75 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   })();
   window.LyridParlayUI = UI;
 
+  // ---- MLB PITCHER PROPS -> parlay candidates (2026-07-28) ----
+  // Uses the DraftKings line already fetched into pitcherProps.bookLines and the
+  // archetype-adjusted projection in pitcherProps.projection. Strikeouts + outs
+  // are the markets with real book lines. Cash rate = modeled P(hit the called
+  // side): Poisson for Ks, normal approx for outs — so only genuine edges clear
+  // the 0.62 parlay bar. Capped at 0.68 so a pitcher projection can't outrank a
+  // VERIFIED hitter cohort. Tier 'PITCHER' ranks at GOLD level (passes minTier).
+  function _poverPois(mean, line) {
+    var thr = Math.floor(line) + 1, cdf = 0, term = Math.exp(-mean);
+    for (var x = 0; x < thr; x++) { cdf += term; term *= mean / (x + 1); }
+    return Math.max(0, Math.min(1, 1 - cdf));
+  }
+  function _poverNorm(mean, line, sd) {
+    var z = (mean - line) / (sd || 2.6);
+    var t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2);
+    var p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+    return Math.max(0, Math.min(1, z > 0 ? 1 - p : p));
+  }
+  function _pfLine(v) {
+    if (v == null) return NaN;
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') return parseFloat(v);
+    return parseFloat(v.line != null ? v.line : v.point != null ? v.point : v.value != null ? v.value : v.number);
+  }
+  function mlbPitcherCandidates(date) {
+    var out = [];
+    try {
+      Object.keys(analysisCache || {}).forEach(function (key) {
+        var data = analysisCache[key];
+        if (!data || !data.gamePk) return;
+        if (data.gameDate && date && data.gameDate !== date) return;
+        ['awayVsHome', 'homeVsAway'].forEach(function (sideKey) {
+          var side = data[sideKey];
+          if (!side || !side.pitcher || !side.pitcherProps) return;
+          var pp = side.pitcherProps, book = pp.bookLines || {}, proj = pp.projection || {};
+          var pName = side.pitcher.name, pId = side.pitcher.id || null;
+          // awayVsHome = away team HITS vs the HOME pitcher -> pitcher is HOME.
+          var pTeam = (sideKey === 'awayVsHome') ? (data.homeTeam && (data.homeTeam.abbreviation || data.homeTeam)) : (data.awayTeam && (data.awayTeam.abbreviation || data.awayTeam));
+          var oTeam = (sideKey === 'awayVsHome') ? (data.awayTeam && (data.awayTeam.abbreviation || data.awayTeam)) : (data.homeTeam && (data.homeTeam.abbreviation || data.homeTeam));
+          [['strikeouts', 'ks', 'K'], ['outs', 'outs', 'outs']].forEach(function (mk) {
+            var market = mk[0], lk = mk[1], unit = mk[2];
+            var line = _pfLine(book[lk]), projv = parseFloat(proj[lk]);
+            if (!isFinite(line) || !isFinite(projv)) return;   // need the real DK line + a projection
+            var pOver = (market === 'strikeouts') ? _poverPois(projv, line) : _poverNorm(projv, line, 2.6);
+            var lean = (pOver >= 0.5) ? 'over' : 'under';
+            var cashRate = Math.min(0.68, lean === 'over' ? pOver : (1 - pOver));
+            if (cashRate < 0.62) return;                        // below the parlay bar -> not a leg
+            out.push({
+              id: ['mlb', date, data.gamePk, pName, market, lean].join(':'),
+              sport: 'mlb', date: date, gameId: String(data.gamePk || ''),
+              team: pTeam || '', opponent: oTeam || '', player: pName, playerId: pId,
+              market: market, side: lean, line: line,
+              tier: 'PITCHER', cashRate: cashRate, edgeType: 'pitcher ' + market + ' projection', sampleN: null,
+              form: 'neutral', matchupContext: [(market === 'strikeouts' ? 'K proj ' : 'Outs proj ') + projv.toFixed(1) + ' vs ' + line],
+              why: 'Model projects ' + projv.toFixed(1) + ' ' + unit + ' vs the DraftKings ' + line + ' line — take the ' + lean.toUpperCase() + '. Line auto-fetched; archetype-adjusted projection.',
+              gameLean: null, pitcherFriendlyPark: false, opposingPitcherWildOrShort: false,
+              projection: projv,
+              flags: { antiCalibrated: false, highScoringGame: false, started: false, bookProhibited: false, lineStatus: 'standard' }
+            });
+          });
+        });
+      });
+    } catch (_) {}
+    return out;
+  }
+
   // ---- Bridge: boards push here after they render ----
   window.LyridParlayBridge = {
-    pushMlb: function (edges, date) { try { UI.setSportCandidates('mlb', mlbToCandidates(edges, date || todayISO())); } catch (_) {} },
+    pushMlb: function (edges, date) { try { var d = date || todayISO(); UI.setSportCandidates('mlb', mlbToCandidates(edges, d).concat(mlbPitcherCandidates(d))); } catch (_) {} },
     pushWnba: function (ranked, data) { try { UI.setSportCandidates('wnba', wnbaToCandidates(ranked, data)); } catch (_) {} },
     toCandidates: function (edges, date) { return mlbToCandidates(edges, date || todayISO()); }
   };
