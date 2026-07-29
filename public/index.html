@@ -10298,6 +10298,14 @@ function renderAnalysis(data) {
           <span>LINEUP CONFIRMED</span>
         </div>`;
       }
+      if (lm.source === 'preliminary') {
+        const _ph = (lm.phantom && lm.phantom.length) ? ' — off-roster: ' + lm.phantom.join(', ') : '';
+        return `<div class="lineup-confirm projected" title="STALE / PRELIMINARY lineup${_ph}. MLB's boxscore batting order during the Preview state can carry a preliminary or carryover card with players who aren't actually starting (or aren't on the active roster). This is NOT a confirmed lineup — do not bet these names until you verify the real card ~30 min before first pitch.${lm.gameStatus ? '&#10;&#10;Game status: ' + lm.gameStatus : ''}">
+          <span class="lineup-confirm-icon">⚠</span>
+          <span>LINEUP PRELIMINARY · STALE CARD</span>
+          <span class="lineup-confirm-detail">off-roster starters — verify</span>
+        </div>`;
+      }
       if (lm.source === 'projected') {
         return `<div class="lineup-confirm projected" title="No official lineup posted yet — using the team's active roster. Verify the actual batting order ~30 minutes before first pitch.&#10;&#10;Risk: injured players (Murakami-type hamstring scratches), platoon swaps, late changes are not reflected here.${lm.gameStatus ? '&#10;&#10;Game status: ' + lm.gameStatus : ''}">
           <span class="lineup-confirm-icon">⚠</span>

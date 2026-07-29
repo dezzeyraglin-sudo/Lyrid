@@ -261,6 +261,7 @@ export async function getLineup(teamId, gamePk, side) {
   // 'unknown' = no data, edge case
   // Surfaces in UI as confirmation chip so user knows when to manually verify.
   let lineupSource = 'unknown';
+  let phantomStarters = null;   // (2026-07-28) off-roster starters => stale Preview card
   const fetchedAt = Date.now();
 
   if (gamePk) {
@@ -291,6 +292,27 @@ export async function getLineup(teamId, gamePk, side) {
               });
             }
           }
+          // (2026-07-28) STALE-LINEUP GUARD. MLB populates boxscore.battingOrder
+          // during the Preview state, and it can carry a PRELIMINARY / carryover
+          // card with players who aren't actually starting — or aren't even on
+          // the active roster. Trusting any non-empty battingOrder as 'official'
+          // produced a phantom "LINEUP CONFIRMED": Griffin Conine got flagged an
+          // ELITE HR play on 7/28 despite never being on the roster or in the
+          // game. Cross-check every starter against the active roster; if any are
+          // off-roster the card is stale — downgrade to 'preliminary' so the UI
+          // warns instead of claiming confirmed.
+          try {
+            const _rrq = await fetch(`https://statsapi.mlb.com/api/v1/teams/${teamId}/roster?rosterType=active`, { signal: AbortSignal.timeout(5000) });
+            if (_rrq.ok) {
+              const _rrd = await _rrq.json();
+              const _activeIds = new Set((_rrd.roster || []).map(rp => String(rp.person?.id)));
+              const _phantom = hitters.filter(h => !_activeIds.has(String(h.id))).map(h => h.name);
+              if (_phantom.length > 0) {
+                lineupSource = 'preliminary';
+                phantomStarters = _phantom;
+              }
+            }
+          } catch (_) {}
         }
       }
     } catch (_) {}
@@ -337,7 +359,7 @@ export async function getLineup(teamId, gamePk, side) {
 
   // (Drop #4) Attach metadata as non-enumerable property
   Object.defineProperty(hitters, '_lineupMeta', {
-    value: { source: lineupSource, fetchedAt },
+    value: { source: lineupSource, fetchedAt, phantom: phantomStarters },
     enumerable: false,
     writable: true
   });
