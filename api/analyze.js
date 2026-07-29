@@ -1589,8 +1589,16 @@ export default async function handler(req, res) {
         const _wWhiff = _whiffW>0 ? _whiffNum/_whiffW : null;
         const _veloDelta = _veloW>0 ? +(_veloNum/_veloW).toFixed(1) : null;
         if (_wWhiff != null && pitcherProps) {
-          const _stuff = (_wWhiff - 24.5) + (_veloDelta != null ? _veloDelta*0.6 : 0);
-          const _kFactor = Math.min(1.08, Math.max(0.92, +(1 + _stuff*0.010).toFixed(3)));
+          // FULLY IMPLEMENTED (2026-07-28): whiff is the direct K driver, velo the
+          // secondary stuff signal (Tier-2 data). Widened from the initial +/-8%
+          // nudge to a first-class +/-12% component after the 7/28 slate validated
+          // the direction (Lugo 2K under, Nola 4K under, Williams 12K over). The
+          // opposing lineup's K-resistance is the CO-driver and already lives in
+          // buildPitcherProps' lineup-vs-arsenal number; this is the pitcher-stuff
+          // overlay on top. Stamped + easy to retune from the grading log.
+          const _whiffDelta = _wWhiff - 24.5;
+          const _stuff = _whiffDelta + (_veloDelta != null ? _veloDelta*0.6 : 0);
+          const _kFactor = Math.min(1.12, Math.max(0.88, +(1 + _whiffDelta*0.012 + (_veloDelta != null ? _veloDelta*0.007 : 0)).toFixed(3)));
           if (_kFactor !== 1) {
             const _stamp = { factor:_kFactor, stuffScore:+_stuff.toFixed(1), wWhiff:+_wWhiff.toFixed(1), veloDelta:_veloDelta, live:true, unvalidated:true };
             if (pitcherProps.projection && Number.isFinite(parseFloat(pitcherProps.projection.ks))) {
