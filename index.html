@@ -3526,6 +3526,7 @@
       <label class="pm-toggle"><input type="checkbox" id="pm-onegame" checked> One game per leg</label>
       <label class="pm-toggle"><input type="checkbox" id="pm-standardonly" checked> Standard lines only</label>
       <button id="pm-build" class="pm-btn">Build ticket</button>
+      <button id="pm-pitchers-preset" class="pm-btn" style="background:rgba(120,140,180,0.15);border:1px solid rgba(120,140,180,0.5);color:#9fb4d4">⚾ Pitchers only</button>
     </div>
     <div id="pm-result"></div>
   </section>
@@ -21583,6 +21584,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       legs: legs.map(function (l) {
         return { id: l.id, sport: l.sport, player: l.player, team: l.team, gameId: l.gameId,
                  date: l.date, market: l.market, side: l.side, line: l.line, tier: l.tier, cashRate: l.cashRate,
+                 projection: (l.projection != null ? l.projection : null),
                  lineStatus: (l.flags || {}).lineStatus || 'unknown', why: l.why };
       }),
       note: correlated ? 'Single-game correlated (SGP) — NOT diversified. One bad game sinks all legs.'
@@ -21852,7 +21854,9 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       return '<div class="pm-leg' + (isPitcher ? ' pm-leg-pitcher' : '') + '"><div class="pm-leg-top"><span class="pm-leg-name">' + l.player + pTag + '</span>' +
         '<span class="pm-leg-game">' + (l.team || '') + ' &middot; ' + (l.sport || '').toUpperCase() + '</span></div>' +
         '<div class="pm-leg-call"><span class="pm-arrow">' + arrow + '</span><span class="pm-call">' + call + '</span>' +
-        '<span class="pm-stat">' + l.line + ' ' + l.market + '</span><span class="pm-pct">' + pct + '%</span></div>' +
+        '<span class="pm-stat">' + l.line + ' ' + l.market + '</span><span class="pm-pct">' + pct + '%</span>' +
+        ((typeof l.projection === 'number' && isFinite(l.projection)) ? '<span class="pm-proj" style="font-size:9px;color:var(--dim);margin-left:6px">proj ' + l.projection.toFixed(1) + ' vs ' + l.line + '</span>' : '') +
+        '</div>' +
         '<div class="pm-leg-foot"><span class="pm-tier pm-' + String(l.tier || '').toLowerCase() + '">' + (l.tier || '') + '</span>' +
         '<span class="pm-linechip" data-pm-id="' + l.id + '">' + chipHTML(l.lineStatus || 'unknown') + '</span></div>' +
         '<div class="pm-why">' + (l.why || '') + '</div></div>';
@@ -21902,6 +21906,13 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         var e = el(id); if (e) e.addEventListener('change', build);
       });
       var btn = el('pm-build'); if (btn) btn.addEventListener('click', build);
+      var pbtn = el('pm-pitchers-preset');
+      if (pbtn) pbtn.addEventListener('click', function () {
+        var sel = el('pm-type');
+        if (sel) sel.value = (sel.value === 'pitchers') ? 'all' : 'pitchers';
+        pbtn.classList.toggle('active', !!sel && sel.value === 'pitchers');
+        build();
+      });
       var box = el('pm-result');
       if (box) box.addEventListener('click', function (ev) {
         var chip = ev.target.closest ? ev.target.closest('.pm-linechip') : null;
