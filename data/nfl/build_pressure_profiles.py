@@ -92,7 +92,19 @@ def upsert(df,table,conflict):
     # an integer column, so send them as ints. All other numerics stay floats.
     int_cols = {'attempts','times_sacked','times_pressured','times_blitzed','times_hurried',
                 'dropbacks','sacks_allowed','hits_allowed','sacks','hits','plays','season'}
-    rows=df.where(pd.notna(df),None).to_dict('records')
+    int_cols={'attempts','times_sacked','times_pressured','times_blitzed','times_hurried','dropbacks','sacks_allowed','hits_allowed','sacks','hits','plays','season'}
+    import math as _m
+    def _ci(v,as_int=False):
+        try:
+            f=float(v)
+        except (TypeError,ValueError):
+            return v
+        if not _m.isfinite(f): return None
+        return int(round(f)) if as_int else f
+    _rows=df.where(pd.notna(df),None).to_dict('records')
+    rows=[{k:(None if vv is None else _ci(vv,as_int=(k in int_cols))) for k,vv in r.items()} for r in _rows]
+    import json as _json
+    _body=_json.dumps(rows,allow_nan=False)
     rows=[{k: clean(v, as_int=(k in int_cols)) for k,v in row.items()} for row in rows]
 
     # serialize ourselves with allow_nan=False so any straggler surfaces loudly
