@@ -75,7 +75,8 @@ def upsert(df,table,conflict):
     key=os.environ['SUPABASE_SERVICE_KEY']
     h={'apikey':key,'Authorization':f'Bearer {key}','Content-Type':'application/json',
        'Prefer':'resolution=merge-duplicates,return=minimal'}
-    rows=df.where(pd.notna(df),None).to_dict('records')
+    clean = df.replace([float('inf'), float('-inf')], pd.NA)
+    rows=clean.where(pd.notna(clean),None).to_dict('records')
     r=requests.post(url+f'?on_conflict={conflict}',headers=h,json=rows,timeout=60)
     print(f"  {table}: {r.status_code} ({len(rows)} rows)")
 
