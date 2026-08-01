@@ -268,7 +268,7 @@ async function loadBaselines(lines) {
     } catch (_) { rows = []; }
     for (const r of rows) {
       const fj = r.feature_json || {};
-      const outcome = Number(fj.trailing_yards);
+      const outcome = Number(fj.outcome_yards ?? fj.trailing_yards);
       if (!Number.isFinite(outcome)) continue;
       compPoolByPos[pos].push({
         position: pos,
