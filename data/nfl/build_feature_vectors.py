@@ -67,19 +67,28 @@ def build(seasons):
     pg['tr_carries'] = trailing(pg, 'carries') if 'carries' in pg else np.nan
 
     out = []
+    # explicit per-family column maps — no string-slicing that silently misses
+    # (the old fam.split()[:4] produced 'rece' and missed tr_rec entirely).
+    YARDS_COL = {'receiving_yards': 'tr_rec', 'rushing_yards': 'tr_rush', 'passing_yards': 'tr_pass'}
     for fam, col in PROP_COLS.items():
         sub = pg[pg[col].notna()].copy()
-        # only rows where the player had a real role in that family
-        if fam == 'receiving_yards': sub = sub[sub['tr_rec'].notna()]
-        elif fam == 'rushing_yards': sub = sub[sub['tr_rush'].notna()]
-        else: sub = sub[sub['tr_pass'].notna()]
+        yc = YARDS_COL[fam]
+        sub = sub[sub[yc].notna()]  # player had a real trailing role in THIS family
         for _, r in sub.iterrows():
+            # volume floor: family-appropriate, clamped so a thin sample can't
+            # produce an impossible score like -3.83.
+            if fam == 'receiving_yards':
+                vf = _z(r.get('tr_tshare'), 0.14, 0.07)
+            elif fam == 'rushing_yards':
+                vf = _z(r.get('tr_carries'), 12, 6)
+            else:
+                vf = _z(r.get('tr_pass'), 230, 60)
+            if vf is not None:
+                vf = max(-3.0, min(3.0, vf))
             feat = {
-                'volume_floor': _z(r.get('tr_tshare'), 0.14, 0.07) if fam=='receiving_yards'
-                                else _z(r.get('tr_carries'), 12, 6) if fam=='rushing_yards'
-                                else _z(r.get('tr_pass'), 230, 60),
-                'recent_form': _z(r.get(f'tr_{fam.split("_")[0][:4]}'), None, None),
-                'trailing_yards': r.get(f'tr_{"rec" if fam=="receiving_yards" else "rush" if fam=="rushing_yards" else "pass"}'),
+                'volume_floor': vf,
+                'recent_form': _z(r.get(yc), None, None),  # trailing yards in THIS family
+                'trailing_yards': r.get(yc),               # outcome basis, same family
             }
             outcome = float(r[col])
             out.append({
