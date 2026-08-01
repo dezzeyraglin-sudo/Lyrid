@@ -177,7 +177,7 @@ export default async function handler(req, res) {
     date,
     count: picks.length,
     picks,
-    diagnostics: { unmappedStatTypes: getUnmappedStats(), propFamilies: Array.from(new Set(lines.map(l => l.prop_type))) },
+    diagnostics: { unmappedStatTypes: getUnmappedStats(), propFamilies: Array.from(new Set(lines.map(l => l.prop_type))), baselineResolved: baselineReady ? Object.keys(featureByPlayer || {}).length : 0 },
     note: baselineReady ? undefined : 'Showing PrizePicks lines. Tier analysis activates once the nflverse baseline is loaded.',
   });
 }
@@ -205,57 +205,77 @@ async function loadBaselines(lines) {
     if (!r.ok) throw new Error(`supabase ${r.status} on ${path}`);
     return r.json();
   };
+  const enc = s => encodeURIComponent(String(s));
 
-  // ---- Layer 1: the comp pool, grouped by position group ----
-  const poolRows = [];
-  for (let start = 0; ; start += 1000) {
-    const chunk = await fetch(`${base}/rest/v1/nfl_feature_vectors?select=player_key,season,week,prop_type,volume_floor_score,feature_json`, {
-      headers: { ...headers, 'Range-Unit': 'items', Range: `${start}-${start + 999}` },
-    }).then(r => r.ok ? r.json() : []);
-    if (!chunk.length) break;
-    poolRows.push(...chunk);
-    if (chunk.length < 1000) break;
+  // ---- resolve PrizePicks names -> nflverse GSIS ids ----
+  // PrizePicks gives display names ("Sam Darnold"); the feature/pool tables key on
+  // GSIS id ("00-0023459"). Without this resolution the join matches nothing and
+  // every card falls back to "baseline pending" (which is the bug this fixes).
+  const names = [...new Set(lines.map(l => l.player_name).filter(Boolean))];
+  const nameToKey = {};
+  if (names.length) {
+    const orExpr = names.map(n => `player_name.eq.${enc(n)}`).join(',');
+    let idRows = [];
+    try {
+      idRows = await q(`nfl_player_games?or=(${orExpr})&select=player_key,player_name&limit=2000`);
+    } catch (_) { idRows = []; }
+    for (const r of idRows) if (!nameToKey[r.player_name]) nameToKey[r.player_name] = r.player_key;
   }
-  if (!poolRows.length) return null; // pool not built yet -> LINES mode
+  const slateKeys = [...new Set(Object.values(nameToKey))];
+  if (!slateKeys.length) return null; // no slate player resolves -> LINES mode
+
+  // ---- Layer 2: pull ONLY the slate players' feature rows (fast, targeted) ----
+  const inKeys = slateKeys.map(k => `"${String(k).replace(/"/g, '')}"`).join(',');
+  let feats = [];
+  try {
+    feats = await q(`nfl_feature_vectors?player_key=in.(${inKeys})&order=season.desc,week.desc&select=player_key,prop_type,volume_floor_score,feature_json`);
+  } catch (_) { feats = []; }
 
   const FAM_TO_POS = { passing_yards: 'QB', rushing_yards: 'RB', receiving_yards: 'WR' };
-  const compPoolByPos = { QB: [], RB: [], WR: [], TE: [] };
-  for (const r of poolRows) {
+  const featureByKey = {};
+  for (const r of feats) {
+    if (featureByKey[r.player_key]) continue; // first = most recent
     const fj = r.feature_json || {};
-    const pos = FAM_TO_POS[r.prop_type] || 'WR';
-    const outcome = Number(fj.trailing_yards);
-    if (!Number.isFinite(outcome)) continue;
-    compPoolByPos[pos].push({
-      position: pos,
+    featureByKey[r.player_key] = {
+      position: FAM_TO_POS[r.prop_type] || 'WR',
       features: { volume_floor: num(r.volume_floor_score), recent_form: num(fj.recent_form) },
-      outcome,
-    });
+      volume: { volume_floor_score: num(r.volume_floor_score) },
+      script: { risk: 0, flag: false, reasons: [] },
+      extraNudges: 0,
+      outlook: null,
+    };
   }
-  compPoolByPos.TE = compPoolByPos.WR; // receiving pool serves TE too (same family)
-
-  // ---- Layer 2: latest trailing features for tonight's slate players ----
-  const keys = [...new Set(lines.map(l => l.player_key || l.player_name).filter(Boolean))];
+  // expose by the player_key the endpoint uses (the PP name), via the resolution map
   const featureByPlayer = {};
-  if (keys.length) {
-    const inList = keys.map(k => `"${String(k).replace(/"/g, '')}"`).join(',');
-    let latest = [];
+  for (const [name, gsis] of Object.entries(nameToKey)) {
+    if (featureByKey[gsis]) featureByPlayer[name] = featureByKey[gsis];
+  }
+  if (!Object.keys(featureByPlayer).length) return null; // resolved but no features -> LINES
+
+  // ---- Layer 1: comp pool, fetched PER POSITION with a bounded sample ----
+  // Instead of dragging all ~68k rows into a serverless function on every request,
+  // pull a capped, recent sample per family. kNN needs a few hundred neighbors, not
+  // the whole history — this keeps the endpoint fast and inside the function limit.
+  const compPoolByPos = { QB: [], RB: [], WR: [], TE: [] };
+  const FAMILIES = [['passing_yards', 'QB'], ['rushing_yards', 'RB'], ['receiving_yards', 'WR']];
+  for (const [fam, pos] of FAMILIES) {
+    let rows = [];
     try {
-      latest = await q(`nfl_feature_vectors?player_key=in.(${inList})&order=season.desc,week.desc&select=player_key,prop_type,volume_floor_score,feature_json`);
-    } catch (_) { latest = []; }
-    for (const r of latest) {
-      const k = r.player_key;
-      if (featureByPlayer[k]) continue; // first = most recent
+      rows = await q(`nfl_feature_vectors?prop_type=eq.${fam}&order=season.desc,week.desc&select=volume_floor_score,feature_json&limit=4000`);
+    } catch (_) { rows = []; }
+    for (const r of rows) {
       const fj = r.feature_json || {};
-      featureByPlayer[k] = {
-        position: FAM_TO_POS[r.prop_type] || 'WR',
+      const outcome = Number(fj.trailing_yards);
+      if (!Number.isFinite(outcome)) continue;
+      compPoolByPos[pos].push({
+        position: pos,
         features: { volume_floor: num(r.volume_floor_score), recent_form: num(fj.recent_form) },
-        volume: { volume_floor_score: num(r.volume_floor_score) },
-        script: { risk: 0, flag: false, reasons: [] },
-        extraNudges: 0,
-        outlook: null,
-      };
+        outcome,
+      });
     }
   }
+  compPoolByPos.TE = compPoolByPos.WR;
+  if (!compPoolByPos.QB.length && !compPoolByPos.RB.length && !compPoolByPos.WR.length) return null;
 
   return { ready: true, compPoolByPos, featureByPlayer };
 }
