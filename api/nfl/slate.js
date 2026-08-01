@@ -195,7 +195,10 @@ export default async function handler(req, res) {
 // empty — so the tab degrades gracefully instead of erroring.
 async function loadBaselines(lines) {
   const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    || process.env.SUPABASE_SERVICE_KEY
+    || process.env.SUPABASE_SECRET_KEY
+    || process.env.SUPABASE_ANON_KEY;
   if (!url || !key) return null;
 
   const base = url.replace(/\/$/, '');
