@@ -140,9 +140,15 @@ export default async function handler(req, res) {
       return { ...base, verdict: pendingVerdict(l.line, 'higher') };
     }
 
-    // FULL mode: comp projection -> classifier
+    // FULL mode: comp projection -> classifier.
+    // A player with no historical feature row (rookie, role change) can't be
+    // projected — fall back to a lines-only card rather than crash.
     const feat = featureByPlayer[base.player_key];
-    const pool = compPoolByPos[feat && feat.position] || [];
+    if (!feat) {
+      return { ...base, verdict: pendingVerdict(l.line, 'higher'),
+        note: 'no historical baseline for this player yet' };
+    }
+    const pool = compPoolByPos[feat.position] || [];
     const comp = compProject({
       target: { position: feat.position, propFamily: l.prop_type, features: feat.features },
       pool, line: l.line,
@@ -176,17 +182,82 @@ export default async function handler(req, res) {
   });
 }
 
-// ---- optional baseline loader (Supabase). Returns null until wired to your data. ----
-// Fill this in after running the nflverse ingest: query nfl_feature_vectors for the
-// players in `lines`, and nfl_player_games for the position comp pools. Until then it
-// returns null and the endpoint runs in LINES mode (shows games + PP lines, no tiers).
-async function loadBaselines(/* lines */) {
+// ---- baseline loader (Supabase) — the BOTH-layer design ----
+// Layer 1 (depth): nfl_feature_vectors is the precomputed comp POOL — every
+//   historical player-game as a standardized vector + realized outcome. Built
+//   offline by data/nfl/build_feature_vectors.py. This is what kNN searches.
+// Layer 2 (freshness): for the players on TONIGHT'S slate we read their latest
+//   trailing feature row so the target vector reflects current form; the live
+//   matchup/injury/env nudges are layered on in the endpoint from the current
+//   request. Deep pool + live target = maximum coverage and maximum edge.
+//
+// Returns null (LINES mode) only if Supabase isn't configured or the pool is
+// empty — so the tab degrades gracefully instead of erroring.
+async function loadBaselines(lines) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
   if (!url || !key) return null;
-  // TODO: fetch feature vectors + comp pools from Supabase REST and shape into
-  //   { ready:true, featureByPlayer:{[player_key]:{position,features,volume,script,extraNudges,outlook}},
-  //     compPoolByPos:{QB:[...],RB:[...],WR:[...],TE:[...]} }
-  // Return null while not yet populated so we degrade to LINES mode.
-  return null;
+
+  const base = url.replace(/\/$/, '');
+  const headers = { apikey: key, Authorization: `Bearer ${key}` };
+  const q = async (path) => {
+    const r = await fetch(`${base}/rest/v1/${path}`, { headers });
+    if (!r.ok) throw new Error(`supabase ${r.status} on ${path}`);
+    return r.json();
+  };
+
+  // ---- Layer 1: the comp pool, grouped by position group ----
+  const poolRows = [];
+  for (let start = 0; ; start += 1000) {
+    const chunk = await fetch(`${base}/rest/v1/nfl_feature_vectors?select=player_key,season,week,prop_type,volume_floor_score,feature_json`, {
+      headers: { ...headers, 'Range-Unit': 'items', Range: `${start}-${start + 999}` },
+    }).then(r => r.ok ? r.json() : []);
+    if (!chunk.length) break;
+    poolRows.push(...chunk);
+    if (chunk.length < 1000) break;
+  }
+  if (!poolRows.length) return null; // pool not built yet -> LINES mode
+
+  const FAM_TO_POS = { passing_yards: 'QB', rushing_yards: 'RB', receiving_yards: 'WR' };
+  const compPoolByPos = { QB: [], RB: [], WR: [], TE: [] };
+  for (const r of poolRows) {
+    const fj = r.feature_json || {};
+    const pos = FAM_TO_POS[r.prop_type] || 'WR';
+    const outcome = Number(fj.trailing_yards);
+    if (!Number.isFinite(outcome)) continue;
+    compPoolByPos[pos].push({
+      position: pos,
+      features: { volume_floor: num(r.volume_floor_score), recent_form: num(fj.recent_form) },
+      outcome,
+    });
+  }
+  compPoolByPos.TE = compPoolByPos.WR; // receiving pool serves TE too (same family)
+
+  // ---- Layer 2: latest trailing features for tonight's slate players ----
+  const keys = [...new Set(lines.map(l => l.player_key || l.player_name).filter(Boolean))];
+  const featureByPlayer = {};
+  if (keys.length) {
+    const inList = keys.map(k => `"${String(k).replace(/"/g, '')}"`).join(',');
+    let latest = [];
+    try {
+      latest = await q(`nfl_feature_vectors?player_key=in.(${inList})&order=season.desc,week.desc&select=player_key,prop_type,volume_floor_score,feature_json`);
+    } catch (_) { latest = []; }
+    for (const r of latest) {
+      const k = r.player_key;
+      if (featureByPlayer[k]) continue; // first = most recent
+      const fj = r.feature_json || {};
+      featureByPlayer[k] = {
+        position: FAM_TO_POS[r.prop_type] || 'WR',
+        features: { volume_floor: num(r.volume_floor_score), recent_form: num(fj.recent_form) },
+        volume: { volume_floor_score: num(r.volume_floor_score) },
+        script: { risk: 0, flag: false, reasons: [] },
+        extraNudges: 0,
+        outlook: null,
+      };
+    }
+  }
+
+  return { ready: true, compPoolByPos, featureByPlayer };
 }
+
+function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
