@@ -71,12 +71,19 @@ def build_team(season):
     return m.round(4)
 
 def upsert(df,table,conflict):
+    import math
     url=os.environ['SUPABASE_URL'].rstrip('/')+f'/rest/v1/{table}'
     key=os.environ['SUPABASE_SERVICE_KEY']
-    h={'apikey':key,'Authorization':f'Bearer {key}','Content-Type':'application/json',
+    h={'apikey':key,'Authorization':f'Bearer {key}',
+       'Content-Type':'application/json',
        'Prefer':'resolution=merge-duplicates,return=minimal'}
-    clean = df.replace([float('inf'), float('-inf')], pd.NA)
-    rows=clean.where(pd.notna(clean),None).to_dict('records')
+    rows=df.where(pd.notna(df),None).to_dict('records')
+    # bulletproof: walk every value and null out any non-finite float,
+    # regardless of column dtype (df.replace can miss inf in object columns).
+    for row in rows:
+        for k,v in row.items():
+            if isinstance(v,float) and not math.isfinite(v):
+                row[k]=None
     r=requests.post(url+f'?on_conflict={conflict}',headers=h,json=rows,timeout=60)
     print(f"  {table}: {r.status_code} ({len(rows)} rows)")
 
