@@ -71,21 +71,36 @@ def build_team(season):
     return m.round(4)
 
 def upsert(df,table,conflict):
-    import math
+    import math, json
+    import numpy as np
     url=os.environ['SUPABASE_URL'].rstrip('/')+f'/rest/v1/{table}'
     key=os.environ['SUPABASE_SERVICE_KEY']
     h={'apikey':key,'Authorization':f'Bearer {key}',
        'Content-Type':'application/json',
        'Prefer':'resolution=merge-duplicates,return=minimal'}
+    def clean(v, as_int=False):
+        if v is None: return None
+        if isinstance(v,(np.floating,float)):
+            f=float(v)
+            if not math.isfinite(f): return None
+            return int(round(f)) if as_int else f
+        if isinstance(v,(np.integer,)): return int(v)
+        if isinstance(v,(np.bool_,)): return bool(v)
+        if isinstance(v,float) and not math.isfinite(v): return None
+        return v
+    # these columns map to integer DB columns — a value like 101.0 is rejected by
+    # an integer column, so send them as ints. All other numerics stay floats.
+    int_cols = {'attempts','times_sacked','times_pressured','times_blitzed','times_hurried',
+                'dropbacks','sacks_allowed','hits_allowed','sacks','hits','plays','season'}
     rows=df.where(pd.notna(df),None).to_dict('records')
-    # bulletproof: walk every value and null out any non-finite float,
-    # regardless of column dtype (df.replace can miss inf in object columns).
-    for row in rows:
-        for k,v in row.items():
-            if isinstance(v,float) and not math.isfinite(v):
-                row[k]=None
-    r=requests.post(url+f'?on_conflict={conflict}',headers=h,json=rows,timeout=60)
+    rows=[{k: clean(v, as_int=(k in int_cols)) for k,v in row.items()} for row in rows]
+
+    # serialize ourselves with allow_nan=False so any straggler surfaces loudly
+    # here instead of deep in requests; then send the pre-built body.
+    body=json.dumps(rows, allow_nan=False)
+    r=requests.post(url+f'?on_conflict={conflict}',headers=h,data=body,timeout=60)
     print(f"  {table}: {r.status_code} ({len(rows)} rows)")
+    if r.status_code>=300: print("   ",r.text[:200])
 
 if __name__=='__main__':
     ap=argparse.ArgumentParser(); ap.add_argument('--seasons',nargs='+',type=int,required=True)
