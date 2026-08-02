@@ -255,26 +255,34 @@ async function loadBaselines(lines) {
   }
   if (!Object.keys(featureByPlayer).length) return null; // resolved but no features -> LINES
 
-  // ---- Layer 1: comp pool, fetched PER POSITION with a bounded sample ----
-  // Instead of dragging all ~68k rows into a serverless function on every request,
-  // pull a capped, recent sample per family. kNN needs a few hundred neighbors, not
-  // the whole history — this keeps the endpoint fast and inside the function limit.
+  // ---- Layer 1: comp pool — the COMPLETE set per family, deterministically ----
+  // A capped, unordered LIMIT made the pool a different random 4000 rows each
+  // request (Postgres returns ties in arbitrary order across Vercel instances), so
+  // the same player's median swung between real and 0 run to run. Page the FULL
+  // family pool with a stable order (player_key,season,week) so every request uses
+  // the identical, complete comp set — deterministic and correct.
   const compPoolByPos = { QB: [], RB: [], WR: [], TE: [] };
   const FAMILIES = [['passing_yards', 'QB'], ['rushing_yards', 'RB'], ['receiving_yards', 'WR']];
   for (const [fam, pos] of FAMILIES) {
-    let rows = [];
-    try {
-      rows = await q(`nfl_feature_vectors?prop_type=eq.${fam}&order=season.desc,week.desc&select=volume_floor_score,feature_json&limit=4000`);
-    } catch (_) { rows = []; }
-    for (const r of rows) {
-      const fj = r.feature_json || {};
-      const outcome = Number(fj.outcome_yards ?? fj.trailing_yards);
-      if (!Number.isFinite(outcome)) continue;
-      compPoolByPos[pos].push({
-        position: pos,
-        features: { volume_floor: num(r.volume_floor_score), recent_form: num(fj.recent_form) },
-        outcome,
-      });
+    for (let start = 0; start < 60000; start += 1000) {
+      let chunk = [];
+      try {
+        chunk = await fetch(`${base}/rest/v1/nfl_feature_vectors?prop_type=eq.${fam}&order=player_key.asc,season.asc,week.asc&select=volume_floor_score,feature_json`, {
+          headers: { ...headers, 'Range-Unit': 'items', Range: `${start}-${start + 999}` },
+        }).then(r => r.ok ? r.json() : []);
+      } catch (_) { chunk = []; }
+      if (!chunk.length) break;
+      for (const r of chunk) {
+        const fj = r.feature_json || {};
+        const outcome = Number(fj.outcome_yards ?? fj.trailing_yards);
+        if (!Number.isFinite(outcome)) continue;
+        compPoolByPos[pos].push({
+          position: pos,
+          features: { volume_floor: num(r.volume_floor_score), recent_form: num(fj.recent_form) },
+          outcome,
+        });
+      }
+      if (chunk.length < 1000) break;
     }
   }
   compPoolByPos.TE = compPoolByPos.WR;

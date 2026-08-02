@@ -76,11 +76,18 @@ def build(seasons):
         sub = sub[sub[yc].notna()]  # player had a real trailing role in THIS family
         for _, r in sub.iterrows():
             # volume floor: family-appropriate, clamped so a thin sample can't
-            # produce an impossible score like -3.83.
+            # produce an impossible score. FALLBACK: if target share is missing
+            # (new team, sparse trailing window), derive the floor from trailing
+            # receiving yards so a real receiver isn't pinned at the clamp and
+            # collapsed to a degenerate vector.
             if fam == 'receiving_yards':
                 vf = _z(r.get('tr_tshare'), 0.14, 0.07)
+                if vf is None:
+                    vf = _z(r.get('tr_rec'), 45, 30)  # yards-based fallback
             elif fam == 'rushing_yards':
                 vf = _z(r.get('tr_carries'), 12, 6)
+                if vf is None:
+                    vf = _z(r.get('tr_rush'), 40, 30)
             else:
                 vf = _z(r.get('tr_pass'), 230, 60)
             if vf is not None:
