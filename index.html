@@ -3380,6 +3380,15 @@
 .nfl-outlook-tag.neutral{background:var(--surface-muted);color:var(--text-secondary)}
 .nfl-blocked-note{background:var(--data-warning-surface);color:var(--data-warning);font-size:var(--size-caption);padding:var(--space-2) var(--space-3);border-radius:var(--radius-sm);margin-top:var(--space-3)}
 .nfl-provisional{font-size:var(--size-caption);color:var(--text-muted);margin-top:var(--space-3);font-style:italic}
+.nfl-pick-team { font-size: 12.5px; color: var(--text-secondary); font-weight: 500; margin-top: 2px; }
+.nfl-summary { background: var(--brand-tint, #f5f8fc); border-left: 3px solid var(--brand-primary, #2d5a8a); padding: 12px 14px; border-radius: 8px; font-size: 13.5px; line-height: 1.55; color: var(--text-primary); margin: 14px 0; }
+.nfl-driver-row { display: flex; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--border-hairline); font-size: 13px; line-height: 1.5; }
+.nfl-driver-ic { flex-shrink: 0; width: 17px; height: 17px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; margin-top: 1px; }
+.nfl-driver-ic.pos { background: #e3f2e8; color: #2d7a4a; }
+.nfl-driver-ic.neg { background: #fbe9e9; color: #c0392b; }
+.nfl-driver-ic.neu { background: #eef0f2; color: #5a7a9a; }
+.nfl-driver-label { font-weight: 600; color: var(--text-primary); }
+.nfl-driver-text { color: var(--text-secondary); }
 /* ===== END NFL CSS ===== */
 </style>
 
@@ -22763,40 +22772,46 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var dir = v.pick === 'higher' ? 'higher' : 'lower';
     var pOver = (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver) || 0;
     var f = v.filters || {};
-
+    var card = item.card || {};
+    function esc(x){ return String(x==null?'':x).replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}); }
+    var ctxBits = [];
+    if (item.team) ctxBits.push(esc(item.team));
+    if (item.position) ctxBits.push(esc(item.position));
+    if (item.opponent) ctxBits.push(esc(item.opponent));
+    var ctxLine = ctxBits.length ? '<div class="nfl-pick-team">' + ctxBits.join(' \u00b7 ') + '</div>' : '';
     function filterRow(label, pass) {
       return '<div class="nfl-filter-row">' +
         '<span class="nfl-filter-check ' + (pass ? 'pass' : 'fail') + '">' + (pass ? '\u2713' : '\u2715') + '</span>' +
         '<span class="nfl-filter-label">' + label + '</span></div>';
     }
     var filters = filterRow('Soft line', f.softLine) + filterRow('Volume-secure', f.volumeSecure) + filterRow('Script-clear', f.scriptClear);
-    var reasons = (v.reasons || []).map(function (r) { return '<div class="nfl-filter-detail">\u00b7 ' + r + '</div>'; }).join('');
-    var blocked = (v.blocked && v.blocked.length) ? '<div class="nfl-blocked-note">Blocked: ' + v.blocked[0] + '</div>' : '';
-
-    var outlookHTML = '';
-    if (item.outlook) {
-      var drivers = (item.outlook.drivers || []).slice(0, 4).map(function (d) {
-        return '<div class="nfl-driver"><span class="nfl-driver-dir ' + (d.dir === '+' ? 'pos' : 'neg') + '">' +
-          (d.dir === '+' ? '\u25b2' : '\u25bc') + ' ' + Math.abs(d.w).toFixed(2) + '</span>' +
-          '<span class="nfl-driver-text">' + d.f + '</span></div>';
+    var blocked = (v.blocked && v.blocked.length) ? '<div class="nfl-blocked-note">Blocked: ' + esc(v.blocked[0]) + '</div>' : '';
+    var summaryHTML = card.summary ? '<div class="nfl-summary">' + esc(card.summary) + '</div>' : '';
+    var driversHTML = '';
+    if (card.explanations && card.explanations.length) {
+      var rows = card.explanations.slice(0, 8).map(function (e) {
+        var cls = e.dir === '+' ? 'pos' : (e.dir === '-' ? 'neg' : 'neu');
+        var icon = e.dir === '+' ? '\u25b2' : (e.dir === '-' ? '\u25bc' : '\u25cf');
+        return '<div class="nfl-driver-row">' +
+          '<span class="nfl-driver-ic ' + cls + '">' + icon + '</span>' +
+          '<span class="nfl-driver-body"><span class="nfl-driver-label">' + esc(e.label) + '</span> ' +
+          '<span class="nfl-driver-text">' + esc(e.text) + '</span></span></div>';
       }).join('');
-      outlookHTML = '<div class="nfl-section-eyebrow">QB Outlook</div>' +
-        '<span class="nfl-outlook-tag ' + item.outlook.outlook + '">' + item.outlook.outlook + '</span>' + drivers;
+      driversHTML = '<div class="nfl-section-eyebrow">Why \u2014 ranked drivers</div>' + rows;
     }
-
-    // NO-PLAY refinement: desaturate the verdict row so a blocked pick never reads as a rec
     var verdictRow = '<div class="nfl-verdict' + (noPlay ? ' noplay' : '') + '">' +
       '<span class="nfl-dir ' + dir + (noPlay ? ' muted' : '') + '">' + (dir === 'higher' ? 'Higher' : 'Lower') + '</span>' +
       '<span class="nfl-prob">' + Math.round(pOver * 100) + '%</span>' +
       '<span class="nfl-prob-label">model P(over)</span></div>';
-
+    var body = driversHTML
+      ? (summaryHTML + '<div class="nfl-section-eyebrow">Three-Filter Check</div>' + filters + blocked + driversHTML)
+      : ('<div class="nfl-section-eyebrow">Three-Filter Check</div>' + filters + blocked);
     return '<div class="nfl-pick-card">' +
       '<div class="nfl-pick-head"><div>' +
-        '<div class="nfl-pick-player">' + (item.player || '') + '</div>' +
-        '<div class="nfl-pick-prop">' + (item.propLabel || '') + ' <span class="nfl-line-val">' + v.line + '</span></div>' +
+        '<div class="nfl-pick-player">' + esc(item.player || '') + '</div>' + ctxLine +
+        '<div class="nfl-pick-prop">' + esc(item.propLabel || '') + ' <span class="nfl-line-val">' + v.line + '</span></div>' +
       '</div><span class="nfl-tier-badge ' + TIER_CLASS[tier] + '">' + (noPlay ? 'No Play' : tier) + '</span></div>' +
-      verdictRow +
-      '<div class="nfl-section-eyebrow">Three-Filter Check</div>' + filters + reasons + blocked + outlookHTML +
+      verdictRow + body +
       '<div class="nfl-provisional">Provisional \u2014 tiers calibrate against backtest before badges go live.</div>' +
     '</div>';
   }

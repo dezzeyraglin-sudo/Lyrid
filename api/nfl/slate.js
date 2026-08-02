@@ -20,6 +20,7 @@
 import { parsePrizePicks, normalizeLines, getUnmappedStats, clearUnmappedStats } from '../../lib/nfl/nflLineAdapters.js';
 import { classifyProp } from '../../lib/nfl/nflClassify.js';
 import { compProject } from '../../lib/nfl/nflCompEngine.js';
+import { buildCard } from '../../lib/nfl/nflCardSummary.js';
 
 const PP_URL = 'https://partner-api.prizepicks.com/projections?league_id=9&per_page=1000';
 const PROP_LABEL = {
@@ -133,6 +134,9 @@ export default async function handler(req, res) {
     const base = {
       player: l.player_name,
       player_key: l.player_key || l.player_name,
+      team: l.team || null,
+      position: l.position || null,
+      opponent: l.opponent || null,
       propLabel,
     };
 
@@ -162,7 +166,22 @@ export default async function handler(req, res) {
       extraNudges: feat.extraNudges || 0,
       pick: 'higher',
     });
-    return { ...base, verdict, outlook: feat.outlook };
+
+    // Build the informative card: a plain-language summary + ranked, data-cited
+    // drivers so people can make an informed decision instead of reading a bare
+    // pass/fail. Assembled from what the engine actually computed for this prop.
+    const analysisLike = {
+      player: base.player, propFamily: l.prop_type, line: l.line, comp,
+      verdict,
+      signals: { volume: feat.volume, script: feat.script },
+      narrative: feat.narrative || null,
+      revenge: null,
+      dataCompleteness: feat.dataCompleteness ?? null,
+    };
+    let card = null;
+    try { card = buildCard(analysisLike); } catch (_) { card = null; }
+
+    return { ...base, verdict, outlook: feat.outlook, comp, card };
   });
 
   // sort: qualifying tiers first, then by line-softness/edge
