@@ -88,7 +88,8 @@ def build(seasons):
             feat = {
                 'volume_floor': vf,
                 'recent_form': _z(r.get(yc), None, None),  # trailing yards in THIS family
-                'trailing_yards': r.get(yc),               # outcome basis, same family
+                'trailing_yards': r.get(yc),               # pre-game form (a FEATURE)
+                'outcome_yards': float(r[col]),            # ACTUAL game result (the label kNN pools)
             }
             outcome = float(r[col])
             out.append({
