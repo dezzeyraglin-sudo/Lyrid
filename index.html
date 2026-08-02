@@ -20739,9 +20739,6 @@ async function autoGradeOnAppOpen() {
   #cs2-panel .cs2-uncovered>summary:hover{color:var(--ink)}
   #cs2-panel .cs2-uncovered-list{margin-top:6px;opacity:0.6}
   #cs2-panel .cs2-pcard{background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-2)}
-  #cs2-panel .cs2-auto-badge{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:var(--radius-pill, 999px);background:var(--brand-primary);color:#fff;font-family:var(--font-sans);font-size:9px;font-weight:700;letter-spacing:0.05em;vertical-align:middle}
-  #cs2-panel .cs2-why{margin:8px 0 4px;padding:9px 12px;border-radius:var(--radius-sm, 8px);background:var(--surface-subtle, rgba(0,0,0,0.03));border-left:2.5px solid var(--brand-primary);font-size:12.5px;line-height:1.5;color:var(--text-secondary, #555)}
-  #cs2-panel .cs2-why b{color:var(--ink)}
   #cs2-panel .cs2-pcard-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
   #cs2-panel .cs2-nick{font-family:var(--font-sans);font-weight:500;font-size:var(--size-body-sm);color:var(--text-primary)}
   #cs2-panel .cs2-role{font-size:10px;color:var(--text-secondary)}
@@ -20775,7 +20772,7 @@ async function autoGradeOnAppOpen() {
 </style>
 <script>
 (function () {
-  const state = { raw: null, selectedMatchId: null, loaded: false, lines: {}, lineKeys: {}, lineP: {}, autoLines: {} };
+  const state = { raw: null, selectedMatchId: null, loaded: false, lines: {}, lineKeys: {}, lineP: {} };
   try { state.lines = JSON.parse(localStorage.getItem('lyrid_cs2_lines') || '{}') || {}; } catch (_) { state.lines = {}; }
   window._cs2State = state;
 
@@ -20996,18 +20993,8 @@ async function autoGradeOnAppOpen() {
         ${rr.teamA && rr.teamB ? `<div class="cs2-rr-splits">${esc(m.teamA)} — pistol ${rr.teamA.pistol}% · CT ${rr.teamA.ct}% · T ${rr.teamA.t}% &nbsp;|&nbsp; ${esc(m.teamB)} — pistol ${rr.teamB.pistol}% · CT ${rr.teamB.ct}% · T ${rr.teamB.t}%</div>` : ''}
         ${rr.teamA && rr.teamB && rr.teamA.openingWin != null ? `<div class="cs2-rr-splits">${esc(m.teamA)} — opening ${rr.teamA.openingWin}% · trade ${rr.teamA.tradeRatio} · eco ${rr.teamA.ecoWin}% · streak ${rr.teamA.snowball} &nbsp;|&nbsp; ${esc(m.teamB)} — opening ${rr.teamB.openingWin}% · trade ${rr.teamB.tradeRatio} · eco ${rr.teamB.ecoWin}% · streak ${rr.teamB.snowball}</div>` : ''}
       </div>`;
-    const _gap = vol.gap ?? 0;
-    const teamCtx = {};
-    for (const t in byTeam) {
-      const isA = t === m.teamA;
-      const myRank = isA ? m.rankA : m.rankB, oppRank = isA ? m.rankB : m.rankA;
-      const favored = (myRank != null && oppRank != null) ? myRank < oppRank : null;
-      teamCtx[t] = { erounds: vol.erounds, gap: _gap, favored,
-        oppWeaker: (myRank != null && oppRank != null) && oppRank > myRank + 6,
-        oppStronger: (myRank != null && oppRank != null) && oppRank < myRank - 6 };
-    }
     const teamsHtml = Object.keys(byTeam).map(t =>
-      `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(p => renderCs2PlayerCard(p, m.matchId, m.windowLabel, teamCtx[t])).join('')}`).join('');
+      `<div class="cs2-team-eyebrow">${esc(t)}</div>${byTeam[t].map(p => renderCs2PlayerCard(p, m.matchId, m.windowLabel)).join('')}`).join('');
 
     // Lopsided-matchup caution. Validated on 826 maps: ranking gap only weakly
     // predicts blowouts (corr +0.06), but at a big mismatch (points-gap ≥ ~16 or
@@ -21042,7 +21029,6 @@ async function autoGradeOnAppOpen() {
       </div>`;
     container.innerHTML = header + blowoutBanner + roundReadHtml + teamsHtml +
       `<div class="cs2-foot">Reads cover Maps 1+2 kills only, and aren't yet weighed against the live Underdog line — use as a watchlist, not locks.</div>`;
-    try { cs2FillLines(matchId); } catch (_) {}
     // Bring the read into view. The games list above can be long, so without this
     // the analysis renders far below the fold and a click looks like it did nothing.
     try { if (scroll) container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
@@ -21123,83 +21109,7 @@ async function autoGradeOnAppOpen() {
     if (el && p) el.innerHTML = cs2RenderLineResult(p, val);
   };
 
-  const CS2_LINES = {
-    ok: false, loaded: false, loading: null, byName: {},
-    key(n) { const s = String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim(); return s.includes(' ') ? s.split(' ').pop() : s; },
-    async load(force) {
-      if (this.loaded && !force) return this;
-      if (this.loading) return this.loading;
-      this.loading = (async () => {
-        try { const r = await fetch('/api/cs2/lines', { cache: 'no-store' }); const j = await r.json();
-          if (j && j.ok && j.players) { this.ok = true; this.byName = j.players; } else { this.ok = false; }
-        } catch (_) { this.ok = false; }
-        this.loaded = true; this.loading = null; return this;
-      })();
-      return this.loading;
-    }
-  };
-
-  window.cs2FillLines = async function (matchId) {
-    const store = await CS2_LINES.load();
-    if (!store.ok) return;
-    const data = state.raw; const m = (data.matches || []).find(x => String(x.matchId) === String(matchId));
-    if (!m || !m.players) return;
-    for (const p of m.players) {
-      const rec = store.byName[CS2_LINES.key(p.nick)];
-      if (!rec) continue;
-      for (const [statKey, slot] of [['kills', 'kills'], ['hs', 'hs']]) {
-        const val = rec[slot] && rec[slot].line;
-        if (val == null) continue;
-        const key = `${matchId}|${p.nick}|${statKey}`;
-        if (state.lines[key] != null) continue;
-        state.autoLines[key] = { line: val, source: rec[slot].source, oddsType: rec[slot].oddsType };
-        const sid = 'cs2_' + key.replace(/[^A-Za-z0-9]/g, '_');
-        const inp = document.getElementById('in_' + sid);
-        if (inp && (inp.value === '' || inp.value == null)) inp.value = val;
-        const resEl = document.getElementById('lr_' + sid); const proj = state.lineP[sid];
-        if (resEl && proj) {
-          const src = rec[slot].source === 'underdog' ? 'UD' : 'PP';
-          const alt = rec[slot].oddsType && rec[slot].oddsType !== 'standard' ? ' ' + esc(rec[slot].oddsType) : '';
-          resEl.innerHTML = cs2RenderLineResult(proj, val) + ` <span class="cs2-auto-badge" title="auto-filled from ${esc(rec[slot].source)}">${src}${alt}</span>`;
-        }
-      }
-    }
-  };
-
-  // Synthesize a plain-English "why over/under" from the signals the engine already
-  // computes. Picks the 2-3 most salient factors, orients them, and composes a line.
-  function cs2WhyRead(p, ctx) {
-    ctx = ctx || {};
-    const R = [];
-    if (p.role === 'Support/IGL') R.push({ dir: 'under', pri: 8, txt: 'support/IGL — kills bleed into utility and assists, not frags' });
-    if (p.kpr != null && p.kpr >= 0.78) R.push({ dir: 'over', pri: 6, txt: `high fragger (${p.kpr} KPR) — carries kill volume` });
-    if (p.kpr != null && p.kpr <= 0.58 && p.role !== 'Support/IGL') R.push({ dir: 'under', pri: 5, txt: `low frag output (${p.kpr} KPR) — rarely piles up kills` });
-    if (p.openingWin != null && p.openingWin >= 55) R.push({ dir: 'over', pri: 7, txt: `wins his openings (${p.openingWin}%) — survives to multi-frag` });
-    if (p.openingWin != null && p.openingWin <= 44) R.push({ dir: 'under', pri: 7, txt: `loses openings (${p.openingWin}%) — dies early, ceiling capped` });
-    if (p.survival != null && p.survival <= 28) R.push({ dir: 'under', pri: 6, txt: `dies a lot (survives only ${p.survival}%) — outgunned, trades kills away` });
-    if (p.deathsPerMap != null && p.deathsPerMap >= 20) R.push({ dir: 'under', pri: 4, txt: `${p.deathsPerMap} deaths/map — high-risk, passive value` });
-    if (p.clutchPerMap != null && p.clutchPerMap >= 0.6) R.push({ dir: 'over', pri: 5, txt: `clutch threat (${p.clutchPerMap}/map) — fat right tail, ceiling live` });
-    if (p.adr != null && p.adr >= 80 && p.kpr != null && p.kpr < 0.62) R.push({ dir: 'under', pri: 4, txt: `damage without frags (ADR ${p.adr}) — impact doesn't convert to kills` });
-    if (p.adr != null && p.adr < 70 && p.kpr != null && p.kpr >= 0.70) R.push({ dir: 'over', pri: 3, txt: `kills outrun his damage — cleanup-dependent, spiky` });
-    if (p.formDelta != null && p.formDelta >= 0.12) R.push({ dir: 'over', pri: 6, txt: `heating up (KPR +${p.formDelta}) — season avg understates` });
-    if (p.formDelta != null && p.formDelta <= -0.12) R.push({ dir: 'under', pri: 6, txt: `cooling off (KPR ${p.formDelta}) — season avg overstates` });
-    if (p.mapFitPct != null && p.mapFitPct >= 8) R.push({ dir: 'over', pri: 4, txt: `strong on the expected maps (+${p.mapFitPct}%)` });
-    if (p.mapFitPct != null && p.mapFitPct <= -8) R.push({ dir: 'under', pri: 4, txt: `weak on the expected maps (${p.mapFitPct}%)` });
-    if (ctx.oppWeaker && p.kprWeak != null && p.kprStrong != null && p.kprWeak > p.kprStrong + 0.04) R.push({ dir: 'over', pri: 6, txt: `feasts on weaker sides (${p.kprWeak} KPR vs weak) — this opponent qualifies` });
-    if (ctx.oppStronger && p.kprStrong != null && p.kprWeak != null && p.kprStrong < p.kprWeak - 0.04) R.push({ dir: 'under', pri: 6, txt: `fades against stronger sides (${p.kprStrong} KPR vs strong) — this opponent qualifies` });
-    if (ctx.erounds != null && ctx.erounds >= 24) R.push({ dir: 'over', pri: 5, txt: 'even matchup, long maps projected — volume runs high for both sides' });
-    if (ctx.gap != null && ctx.gap >= 16 && ctx.favored === false) R.push({ dir: 'under', pri: 6, txt: 'heavy underdog — a fast, one-sided map caps his volume' });
-    if (ctx.gap != null && ctx.gap >= 16 && ctx.favored === true) R.push({ dir: 'over', pri: 3, txt: 'heavy favorite — could stomp for a big number, but a fast map is the risk' });
-    if (!R.length) return '';
-    R.sort((a, b) => b.pri - a.pri);
-    const top = R.slice(0, 3);
-    const over = top.filter((r) => r.dir === 'over').reduce((s, r) => s + r.pri, 0);
-    const under = top.filter((r) => r.dir === 'under').reduce((s, r) => s + r.pri, 0);
-    const lean = over === under ? 'mixed signals' : over > under ? 'leans over' : 'leans under';
-    return `${top.map((r) => r.txt).join('; ')} → <b>${lean}</b>`;
-  }
-
-  function renderCs2PlayerCard(p, matchId, windowLabel = 'Maps 1+2', ctx) {
+  function renderCs2PlayerCard(p, matchId, windowLabel = 'Maps 1+2') {
     const mf = p.mapFitPct == null ? 'n/a' : (p.mapFitPct >= 0 ? '+' : '') + p.mapFitPct + '%';
     const thin = p.thin ? `<span class="cs2-thin">THIN n=${p.n}</span>` : '';
     const st = (v, k) => `<span class="cs2-stat">${v}<span class="k">${k}</span></span>`;
@@ -21209,15 +21119,12 @@ async function autoGradeOnAppOpen() {
       const key = `${matchId}|${p.nick}|${statKey}`;
       const sid = 'cs2_' + key.replace(/[^A-Za-z0-9]/g, '_');
       state.lineKeys[sid] = key; state.lineP[sid] = proj;
-      const auto = state.autoLines[key];
-      const cur = state.lines[key] != null ? state.lines[key] : (auto != null ? auto.line : '');
-      const badge = (state.lines[key] == null && auto != null)
-        ? ` <span class="cs2-auto-badge" title="auto-filled from ${esc(auto.source)}">${auto.source === 'underdog' ? 'UD' : 'PP'}${auto.oddsType && auto.oddsType !== 'standard' ? ' ' + esc(auto.oddsType) : ''}</span>` : '';
+      const cur = state.lines[key] == null ? '' : state.lines[key];
       return `
         <div class="cs2-line-row">
           <span class="cs2-line-label">${esc(label)}</span>
-          <input id="in_${sid}" class="cs2-line-input" type="number" step="0.5" inputmode="decimal" value="${esc(cur)}" placeholder="—" oninput="cs2SetLine('${sid}', this.value)">
-          <span class="cs2-line-res" id="lr_${sid}">${cs2RenderLineResult(proj, cur)}${badge}</span>
+          <input class="cs2-line-input" type="number" step="0.5" inputmode="decimal" value="${esc(cur)}" placeholder="—" oninput="cs2SetLine('${sid}', this.value)">
+          <span class="cs2-line-res" id="lr_${sid}">${cs2RenderLineResult(proj, cur)}</span>
         </div>`;
     };
     const oppAdj = (p.kprStrong == null || p.kprWeak == null) ? '' : `
@@ -21258,7 +21165,6 @@ async function autoGradeOnAppOpen() {
           <span class="cs2-range-val">${p.ceiling}<span class="k">ceiling</span></span>
           <span class="cs2-mapfit">map-fit ${mf}</span>
         </div>
-        ${(() => { const w = cs2WhyRead(p, ctx); return w ? `<div class="cs2-why">${w}</div>` : ''; })()}
         <div class="cs2-prop">prop: ${esc(p.propType)}</div>
         ${mkRow('kills', 'Kills line', { median: p.median, floor: p.floor, ceiling: p.ceiling })}
         ${mkRow('hs', 'HS line', { median: p.hsMedian, floor: p.hsFloor, ceiling: p.hsCeiling })}
