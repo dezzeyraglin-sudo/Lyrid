@@ -70,10 +70,17 @@ def build(seasons):
     # explicit per-family column maps — no string-slicing that silently misses
     # (the old fam.split()[:4] produced 'rece' and missed tr_rec entirely).
     YARDS_COL = {'receiving_yards': 'tr_rec', 'rushing_yards': 'tr_rush', 'passing_yards': 'tr_pass'}
+    # A player must actually PARTICIPATE in a family to get a vector there. Filtering
+    # on .notna() was wrong: a WR's trailing passing yards is 0.0 (not null), so every
+    # receiver got ~60 all-zero passing vectors that polluted the QB pool AND left the
+    # receiver's real receiving prop searching a pool full of his own zeros. Require a
+    # meaningful trailing value per family instead.
+    MIN_TRAIL = {'receiving_yards': 5.0, 'rushing_yards': 5.0, 'passing_yards': 50.0}
     for fam, col in PROP_COLS.items():
-        sub = pg[pg[col].notna()].copy()
         yc = YARDS_COL[fam]
-        sub = sub[sub[yc].notna()]  # player had a real trailing role in THIS family
+        thr = MIN_TRAIL[fam]
+        sub = pg[pg[col].notna()].copy()
+        sub = sub[sub[yc].notna() & (sub[yc] >= thr)]  # real role in THIS family
         for _, r in sub.iterrows():
             # volume floor: family-appropriate, clamped so a thin sample can't
             # produce an impossible score. FALLBACK: if target share is missing
