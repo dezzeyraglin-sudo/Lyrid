@@ -165,17 +165,23 @@ export default async function handler(req, res) {
 function buildCtx(E, l, base) {
   const gsis = E.nameToKey[l.player_name];
   if (!gsis) return null;
-  const fb = E.featByKey[gsis];
-  if (!fb) return null;
-
   const fam = l.prop_type;
-  const position = fb.position || E.posByKey[gsis] || FAM_TO_POS[fam] || 'WR';
+  const perFam = E.featByKeyFam[gsis];
+  const famRow = perFam && perFam[fam];
+  if (!famRow) return null; // no baseline for THIS family -> pending (honest, not a wrong pool)
+
+  // poolPos = which family-partitioned comp pool to search (passing→QB pool,
+  // rushing→RB pool, receiving→WR pool). rosterPos = the player's actual position,
+  // used for receiverType/archetype (a QB's rushing prop searches the RB pool but
+  // is NOT a running back).
+  const poolPos = FAM_TO_POS[fam] || 'WR';
+  const rosterPos = E.posByKey[gsis] || E.posByName[l.player_name] || poolPos;
   const team = base.team, opp = base.opponent;
   const od = team ? E.oddsByTeam[team] : null;
 
   // receiverType (approx; slot-rate data would refine WR into deep/possession)
-  const receiverType = position === 'RB' ? 'RB' : position === 'TE' ? 'TE'
-    : position === 'WR' ? 'deep_WR' : null;
+  const receiverType = rosterPos === 'RB' ? 'RB' : rosterPos === 'TE' ? 'TE'
+    : rosterPos === 'WR' ? 'deep_WR' : null;
 
   // QB pressure profile: the player himself for a QB prop, else his team's QB
   const qbKey = fam === 'passing_yards' ? gsis : (team ? E.teamQbKey[team] : null);
@@ -188,7 +194,8 @@ function buildCtx(E, l, base) {
 
   return {
     player: base.player, propFamily: fam, line: l.line, structure: 'standard_3', pick: 'higher',
-    position,
+    position: poolPos,  // compProject target.position must match the pool rows' label
+    injuryPlayerProfile: { position: rosterPos },
     // volume + archetype
     trailingGames: E.trailingByKey[gsis] || null,
     seasonTotals: E.seasonByKey[gsis] || null,
@@ -206,7 +213,7 @@ function buildCtx(E, l, base) {
     qb: qbCpoe != null ? { cpoe: qbCpoe } : null,
     // efficiency leakage
     teamPenalty: team ? E.penByTeam[team] || null : null,
-    resilience: rq && rq.rec_cpoe != null ? { recCpoe: Number(rq.rec_cpoe), position, targets: fb.recentTargets ?? 40 } : null,
+    resilience: rq && rq.rec_cpoe != null ? { recCpoe: Number(rq.rec_cpoe), position: rosterPos, targets: famRow.recentTargets ?? 40 } : null,
     snap: rq && rq.offense_pct_mean != null ? { offense_pct_mean: Number(rq.offense_pct_mean), offense_pct_sd: Number(rq.offense_pct_sd) } : null,
     // script + environment
     spread: od ? od.spread : null,
@@ -214,8 +221,8 @@ function buildCtx(E, l, base) {
     homeTeam: team ? E.homeByTeam[team] || null : null,
     weather: null, roofStatus: null,
     // comp
-    compPool: E.compPoolByPos[position] || [],
-    features: fb.features,
+    compPool: E.compPoolByPos[poolPos] || [],
+    features: famRow.features,
     // availability gate (kills OUT players)
     availability: E.availability || null,
     // opponent context
@@ -340,17 +347,23 @@ async function loadEngineData(lines, date, fetchAvailability) {
 
   // ---- feature rows for the slate players (target features; position) ----
   const feats = await qSafe(`nfl_feature_vectors?player_key=in.(${inList(slateKeys)})&order=season.desc,week.desc&select=player_key,prop_type,volume_floor_score,feature_json`);
-  const featByKey = {};
+  // Keep the most-recent row PER (player, family). A QB has both passing and
+  // rushing vectors; his passing prop must search the passing pool with his
+  // passing features, his rushing prop the rushing pool — not one shared row.
+  const featByKeyFam = {};   // player_key -> { prop_type -> { features, recentTargets } }
+  const featByKey = {};      // player_key -> any row (for the resolved-count diagnostic only)
   for (const r of feats) {
-    if (featByKey[r.player_key]) continue;
+    const fam = r.prop_type;
+    const perFam = (featByKeyFam[r.player_key] ||= {});
+    if (perFam[fam]) continue; // first = most recent for THIS family
     const fj = r.feature_json || {};
-    featByKey[r.player_key] = {
-      position: FAM_TO_POS[r.prop_type] || posByKey[r.player_key] || 'WR',
+    perFam[fam] = {
       features: { volume_floor: num(r.volume_floor_score), recent_form: num(fj.recent_form) },
       recentTargets: recentTargetsByKey[r.player_key] ?? null,
     };
+    if (!featByKey[r.player_key]) featByKey[r.player_key] = perFam[fam];
   }
-  if (!Object.keys(featByKey).length) return null;
+  if (!Object.keys(featByKeyFam).length) return null;
 
   // ---- aggregate tables (scoped), plus player-level pressure/quality ----
   const [tendRows, covRows, supRows, schemeRows, penRows, teamPressRows, recQualRows, qbPressRows] = await Promise.all([
@@ -412,7 +425,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
   return {
     ready: true, season: latestSeason || null,
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
-    trailingByKey, seasonByKey, featByKey, recQualByKey, qbPressByKey,
+    trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability,
     tendByTeam, supByTeam, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     compPoolByPos,
