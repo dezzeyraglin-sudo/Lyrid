@@ -182,6 +182,7 @@ function buildCtx(E, l, base) {
   // receiverType (approx; slot-rate data would refine WR into deep/possession)
   const receiverType = rosterPos === 'RB' ? 'RB' : rosterPos === 'TE' ? 'TE'
     : rosterPos === 'WR' ? 'deep_WR' : null;
+  const posGroup = rosterPos === 'RB' ? 'RB' : (rosterPos === 'TE' ? 'TE' : 'WR');
 
   // QB pressure profile: the player himself for a QB prop, else his team's QB
   const qbKey = fam === 'passing_yards' ? gsis : (team ? E.teamQbKey[team] : null);
@@ -223,6 +224,10 @@ function buildCtx(E, l, base) {
     // comp
     compPool: E.compPoolByPos[poolPos] || [],
     features: famRow.features,
+    // explosive / chunk-play inputs
+    receiverExpl: fam === 'receiving_yards' ? (E.recExplByKey[gsis] || null) : null,
+    qbDeep: qbKey ? (E.qbDeepByKey[qbKey] || null) : null,
+    oppExplAllowed: opp ? ((E.explByTeam[opp] && E.explByTeam[opp][posGroup]) || null) : null,
     // availability gate (kills OUT players)
     availability: E.availability || null,
     // opponent context
@@ -399,6 +404,35 @@ async function loadEngineData(lines, date, fetchAvailability) {
   const coverageByTeam = {};
   for (const r of covRows) { const t = r.team_abbr; (coverageByTeam[t] ||= {}); if (!coverageByTeam[t][r.pos_group]) coverageByTeam[t][r.pos_group] = { yards_per_target: num(r.yards_per_target), catch_rate_allowed: num(r.catch_rate_allowed) }; }
 
+  // ---- explosive / chunk-play tables ----
+  const [recExplRows, qbDeepRows, defExplRows] = await Promise.all([
+    qSafe(`nfl_receiver_explosive?player_key=in.(${inList(slateKeys)})&order=season.desc&select=player_key,pos_group,adot,deep_target_rate,explosive_catch_rate,breakaway_rate,yprc,explosiveness_score`),
+    qSafe(`nfl_qb_deepball?player_key=in.(${inList([...new Set([...slateKeys, ...qbKeys])])})&order=season.desc&select=player_key,adot,deep_att_rate,deep_comp_pct,deep_ypa,deepball_score,deep_connect_score`),
+    qSafe(`nfl_defense_explosive_allowed?select=team_abbr,season,pos_group,deep_target_rate_allowed,explosive_catch_rate_allowed&order=season.desc${teamFilter}`),
+  ]);
+  const recExplByKey = firstBy(recExplRows, r => r.player_key);
+  const qbDeepByKey = firstBy(qbDeepRows, r => r.player_key);
+  // defense explosive-allowed, with a league z per pos_group on explosive_catch_rate_allowed
+  // (the matchup amplifier the tail model reads as oppAllowed._z)
+  const explByTeam = {};
+  {
+    const byPos = { WR: [], TE: [], RB: [] };
+    for (const r of defExplRows) if (byPos[r.pos_group]) byPos[r.pos_group].push(num(r.explosive_catch_rate_allowed));
+    const stat = arr => { const xs = arr.filter(Number.isFinite); if (xs.length < 4) return null; const m = xs.reduce((a, x) => a + x, 0) / xs.length; const sd = Math.sqrt(xs.reduce((a, x) => a + (x - m) ** 2, 0) / xs.length) || 1; return { m, sd }; };
+    const st = { WR: stat(byPos.WR), TE: stat(byPos.TE), RB: stat(byPos.RB) };
+    for (const r of defExplRows) {
+      const t = r.team_abbr; (explByTeam[t] ||= {});
+      if (!explByTeam[t][r.pos_group]) {
+        const s = st[r.pos_group]; const v = num(r.explosive_catch_rate_allowed);
+        explByTeam[t][r.pos_group] = {
+          explosive_catch_rate_allowed: v,
+          deep_target_rate_allowed: num(r.deep_target_rate_allowed),
+          _z: (s && v != null) ? +(((v - s.m) / s.sd)).toFixed(3) : null,
+        };
+      }
+    }
+  }
+
   // ---- comp pool (deterministic full paging; 2D features + realized outcome) ----
   const compPoolByPos = { QB: [], RB: [], WR: [], TE: [] };
   for (const [fam, pos] of [['passing_yards', 'QB'], ['rushing_yards', 'RB'], ['receiving_yards', 'WR']]) {
@@ -428,6 +462,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability,
     tendByTeam, supByTeam, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };
 }
