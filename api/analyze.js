@@ -409,7 +409,7 @@ export default async function handler(req, res) {
         getPitcherHomeRoadSplits(s.pitcher.id, season).catch(() => ({ home: null, road: null })),
         // Recent starts — last 3 starts with IP/K/BB/ER. Used for form trend display
         // and to inform Outs projection (already in role data, but explicit history adds context).
-        getPitcherRecentStarts(s.pitcher.id, season, 3).catch(() => []),
+        getPitcherRecentStarts(s.pitcher.id, season, 5).catch(() => []),
         // PITCHER NOVELTY (May 9, 2026): career stats for novelty detection.
         // Lineups facing rookies/recent-callups have no MLB tape on the arsenal,
         // get dominated first time through. The Yesavage failure mode.
@@ -1617,6 +1617,45 @@ export default async function handler(req, res) {
         }
       } catch (_) {}
 
+      // RECENT-FORM PITCHER OVERLAY (2026-08-07, window 5 starts): the archetype/K read
+      // above is driven entirely by SEASON arsenal + career novelty — it is blind to a
+      // pitcher who has been declining his last several starts, which is exactly why
+      // season-strong "under/suppress" reads busted on slumping arms. Symmetric to the
+      // hitter formMultiplier: fold the last-5-starts K/9 trend into the K projection
+      // (30% weight, +/-12% cap) and stamp a shelled/surging signal the client uses to
+      // demote suppression/UNDER reads. A 5-start window smooths one-off blowups so the
+      // read tracks a genuine trend, not a single rough night. recentStarts is fetched
+      // above (display) — now it also drives the read. Requires >=3 starts to fire.
+      try {
+        const _rs = Array.isArray(recentStarts) ? recentStarts.filter(g => g && parseFloat(g.ip) > 0) : [];
+        if (_rs.length >= 3 && pitcherProps) {
+          const _ip = _rs.reduce((a, g) => a + parseFloat(g.ip), 0);
+          const _k  = _rs.reduce((a, g) => a + (g.k  || 0), 0);
+          const _er = _rs.reduce((a, g) => a + (g.er || 0), 0);
+          const _h  = _rs.reduce((a, g) => a + (g.hits || 0), 0);
+          const recentK9  = _ip > 0 ? +(9 * _k  / _ip).toFixed(2) : null;
+          const recentEra = _ip > 0 ? +(9 * _er / _ip).toFixed(2) : null;
+          const recentH9  = _ip > 0 ? +(9 * _h  / _ip).toFixed(2) : null;
+          const shelled = (recentEra != null && recentEra >= 5.5) || (recentH9 != null && recentH9 >= 11);
+          const surging = (recentK9 != null && recentK9 >= 10.5) && (recentEra == null || recentEra <= 3.5);
+          let _rkFactor = 1;
+          if (recentK9 != null) _rkFactor = Math.min(1.12, Math.max(0.88, +(1 + 0.30 * (recentK9 / 8.5 - 1)).toFixed(3)));
+          const _rfStamp = { recentK9, recentEra, recentH9, shelled, surging, factor: _rkFactor, starts: _rs.length, live: true, unvalidated: true };
+          if (_rkFactor !== 1 && pitcherProps.projection && Number.isFinite(parseFloat(pitcherProps.projection.ks))) {
+            _rfStamp.ksBefore = +parseFloat(pitcherProps.projection.ks).toFixed(2);
+            pitcherProps.projection.ks = +(parseFloat(pitcherProps.projection.ks) * _rkFactor).toFixed(2);
+            _rfStamp.ksAfter = pitcherProps.projection.ks;
+            for (const _rec of (pitcherProps.recommendations || [])) {
+              if (_rec.type === 'strikeouts' && Number.isFinite(parseFloat(_rec.projection))) {
+                _rec.projection = +(parseFloat(_rec.projection) * _rkFactor).toFixed(2);
+                _rec._recentFormK = _rfStamp;
+              }
+            }
+          }
+          pitcherProps._recentForm = _rfStamp;
+        }
+      } catch (_) {}
+
       // Top 3 HR projections regardless of tier — used for diagnostic display so
       // the user can see what the model is *almost* badging. Pulls from the same
       // empirical computation that gates the actual badge — never affects the badge.
@@ -1673,6 +1712,7 @@ export default async function handler(req, res) {
           lineupMeta: (lineup && lineup._lineupMeta) ? {
             source: lineup._lineupMeta.source,
             fetchedAt: lineup._lineupMeta.fetchedAt,
+            phantom: lineup._lineupMeta.phantom || null,
             gameTime: game.gameTime || null,
             gameStatus: game.status || null
           } : null,
