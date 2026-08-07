@@ -7591,6 +7591,36 @@ function buildHrrProjChip(m, s) {
 // arm, owns the pitcher, hot form). Under: why he goes quiet (whiff-ace erases
 // contact, arm owns the lineup, cold bat, no answer for the arsenal).
 // ============================================================================
+// ============================================================================
+// VERIFIED HHR-OVER PROSPECT (2026-08). Fires ONLY for the batter types the
+// judgment card trusts: rarely-K contact bats in soft matchups, or R-hitters
+// with an elite pitch-type edge — and NOT k-trapped. For those, a hit is
+// ~67-72% and it usually brings a run/RBI, so P(H+R+RBI>=2) sits well above the
+// 44% raw HRR market. Returns null for everyone else — the HHR parlay cohort
+// sources ONLY these top prospects. Boosts are UNVALIDATED estimates; the
+// verified-HHR grader (added separately) will self-tune them from results.
+// ============================================================================
+function computeVerifiedHrrProb(m, s) {
+  var cohort = m && m._verifiedCohort;
+  if (!cohort || m._kTrapVeto) return null;                 // top prospects only
+  var r = null; try { r = computeHrrProjection(m, s); } catch (_) {}
+  if (!r) return null;
+  var boost = cohort === 'rarely-k-hits' ? 1.10 : 1.07;     // verified convert hits->production better
+  var prob = Math.max(0, Math.min(0.82, r.pOver * boost));
+  var fires = cohort === 'rarely-k-hits'
+    ? 'Rarely strikes out in a soft matchup — puts it in play ~' + Math.round((m._verifiedWR || 0.72) * 100) + '% and the hit usually scores or drives in'
+    : 'Elite pitch-type edge (R-hitter) — squares up exactly what this arm throws';
+  return { prob: +prob.toFixed(3), cohort: cohort, verifiedWR: m._verifiedWR || null,
+           hrr: r.hrr, eHits: r.eHits, eRuns: r.eRuns, eRbi: r.eRbi, fires: fires,
+           label: cohort === 'rarely-k-hits' ? 'VERIFIED · rarely-K' : 'VERIFIED · elite PTE (R)' };
+}
+function buildVerifiedHhrBadge(m, s) {
+  var vp = null; try { vp = computeVerifiedHrrProb(m, s); } catch (_) {}
+  if (!vp) return '';
+  return '<div title="' + esc(vp.fires) + '" style="display:inline-flex;align-items:center;gap:6px;margin:6px 12px 0;padding:3px 10px;border-radius:100px;background:rgba(212,175,55,0.14);border:1px solid rgba(212,175,55,0.5);color:#d4af37;font-size:10px;font-weight:800">'
+    + '🎯 ' + Math.round(vp.prob * 100) + '% over 1.5 H+R+RBI · ' + vp.label + '</div>';
+}
+
 function buildHrrWhy(m, s, r) {
   try {
     var isOver = r.call === 'OVER';
@@ -10073,6 +10103,7 @@ function renderAnalysis(data) {
                   ${buildControlChip(m.platoonMeta && m.platoonMeta.pitcher)}
                   ${buildPAOutcomeChip(m.seasonStats, m.platoonMeta && m.platoonMeta.pitcher, (m.seasonStats && m.seasonStats.pa) || (m.platoonMeta && m.platoonMeta.pa) || m.hitterPa)}
                   ${buildHrrProjChip(m, s)}
+                  ${buildVerifiedHhrBadge(m, s)}
                   ${buildBvPChip(m.vsPitcher, s.pitcher && s.pitcher.name)}
                   ${_isFadeCard ? `<div style="padding:0">${buildGhostCard(m, data, 'fade')}</div>` : ''}
                   ${m._empUnderRec ? `<div style="padding:0">${buildLyridBestBanner(m._empUnderRec.backtestWR, m._empUnderRec.backtestN, { kind: 'compact', label: 'LYRID UNDER · ' + m._empUnderRec.propLabel, tooltip: m._empUnderRec.reasoningLines.join(' · ') })}</div>` : ''}
@@ -22008,23 +22039,22 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
           var seen = {};
           side.mismatches.forEach(function (m) {
             var nm = m.hitter || m.hitterName; if (!nm || seen[nm]) return; seen[nm] = 1;
-            var r; try { r = computeHrrProjection(m, side); } catch (_) { r = null; }
-            if (!r || r.call === 'PASS' || Math.abs(r.edge) < 0.35) return;
-            var isOver = r.call === 'OVER';
-            var pShown = isOver ? r.pOver : (1 - r.pOver);
-            var cash = Math.min(0.70, pShown);
-            if (cash < 0.62) return;   // parlay bar
+            // (2026-08) TOP-PROSPECTS ONLY. Source the HHR-over cohort from the
+            // verified batter types the judgment card trusts (rarely-K contact /
+            // elite-PTE R-hitters, not k-trapped) — NOT the raw 44% HRR market.
+            var vp = computeVerifiedHrrProb(m, side);
+            if (!vp || vp.prob < 0.55) return;               // strong-chance prospects only
             out.push({
-              id: ['mlb', date, data.gamePk, nm, 'hrr', isOver ? 'over' : 'under'].join(':'),
+              id: ['mlb', date, data.gamePk, nm, 'hrr', 'over'].join(':'),
               sport: 'mlb', date: date, gameId: String(data.gamePk || ''),
               team: hitTeam || '', opponent: oppTeam || '', player: nm, playerId: m.hitterId || null,
-              market: 'hrr', side: isOver ? 'over' : 'under', line: 1.5,
-              tier: 'HHR', cashRate: cash, edgeType: 'H+R+RBI projection (matchup)', sampleN: null,
+              market: 'hrr', side: 'over', line: 1.5,
+              tier: 'HHR', cashRate: vp.prob, edgeType: 'verified HHR-over prospect', sampleN: null,
               form: m.recentFormLabel || 'neutral',
-              matchupContext: ['proj ' + r.hrr.toFixed(1) + ' H+R+RBI'].concat(r.archKey ? ['vs ' + r.archKey] : []),
-              why: buildHrrWhy(m, side, r),
+              matchupContext: ['🎯 ' + Math.round(vp.prob * 100) + '% over 1.5 H+R+RBI', vp.label],
+              why: 'HHR OVER 1.5 — ' + Math.round(vp.prob * 100) + '% to clear. ' + vp.fires + '. Proj ' + vp.hrr.toFixed(1) + ' H+R+RBI (' + vp.eHits.toFixed(1) + 'H·' + vp.eRuns.toFixed(1) + 'R·' + vp.eRbi.toFixed(1) + 'RBI).',
               gameLean: gl, pitcherFriendlyPark: pfp, opposingPitcherWildOrShort: false,
-              projection: r.hrr,
+              projection: vp.hrr,
               flags: { antiCalibrated: false, highScoringGame: false, started: started, bookProhibited: (lk.homeAbbr === 'COL'), lineStatus: 'standard' }
             });
           });
