@@ -75,8 +75,13 @@ export async function getAllTeams() {
   }));
 }
 
-// ── Name → athlete-id map (iterate rosters once, cache upstream) ──────────────
+// ── Name → athlete-id map (iterate rosters once, memoized) ──────────────────
+// Called by both fetchWnbaPlayerSeasonLogs and the defense feed, so memoize it
+// in-process — otherwise every slate build re-fetches all 15 rosters 2–3×.
+let _idMapMemo = { at: 0, map: null };
+const _ID_MAP_TTL = 30 * 60 * 1000;
 export async function buildPlayerIdMap() {
+  if (_idMapMemo.map && (Date.now() - _idMapMemo.at) < _ID_MAP_TTL) return _idMapMemo.map;
   const teams = await getAllTeams();
   const map = {}; // normName → { id, team, position, displayName }
   await Promise.all(teams.map(async (t) => {
@@ -92,6 +97,7 @@ export async function buildPlayerIdMap() {
       };
     }
   }));
+  _idMapMemo = { at: Date.now(), map };
   return map;
 }
 
@@ -235,23 +241,24 @@ export async function fetchWnbaPlayerSeasonLogs(season, opts = {}) {
 }
 
 /**
- * Drop-in for bdlFeed.fetchWnbaSeasonGames(season).
- * Returns { games: [{ date, home, away, homeScore, awayScore, status }] } from the
- * ESPN scoreboard across the season window (used by buildEmpiricalTotals; it reads
- * g.date and scores). Walks day-by-day from the season opener to the slate date.
- * @param {number} season
- * @param {Object} [opts] { from?: 'YYYY-MM-DD', to?: 'YYYY-MM-DD' }
+ * Drop-in for bdlFeed.fetchWnbaSeasonGames(season). Memoized in-process.
+ * Returns { games: [{ date, home, away, homeScore, awayScore, status, total }] }.
  */
+let _seasonGamesMemo = { at: 0, key: '', data: null };
+const _SEASON_GAMES_TTL = 30 * 60 * 1000;
 export async function fetchWnbaSeasonGames(season, opts = {}) {
-  // WNBA season roughly mid-May → late-Sept; default to that window for the year.
   const from = opts.from ? new Date(opts.from) : new Date(`${season}-05-10`);
   const to = opts.to ? new Date(opts.to) : new Date();
+  const key = `${from.toISOString().slice(0,10)}:${to.toISOString().slice(0,10)}`;
+  if (_seasonGamesMemo.data && _seasonGamesMemo.key === key && (Date.now() - _seasonGamesMemo.at) < _SEASON_GAMES_TTL) {
+    return _seasonGamesMemo.data;
+  }
   const days = [];
   for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
     days.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`);
   }
   const all = [];
-  await mapLimit(days, 6, async (ymd) => {
+  await mapLimit(days, 8, async (ymd) => {
     const sb = await getScoreboard(ymd);
     for (const g of sb) all.push({
       date: g.date, home: g.home, away: g.away,
@@ -260,7 +267,9 @@ export async function fetchWnbaSeasonGames(season, opts = {}) {
     });
   });
   all.sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  return { games: all, _audit: { source: 'espn', days: days.length, games: all.length } };
+  const data = { games: all, _audit: { source: 'espn', days: days.length, games: all.length } };
+  _seasonGamesMemo = { at: Date.now(), key, data };
+  return data;
 }
 
 /**
