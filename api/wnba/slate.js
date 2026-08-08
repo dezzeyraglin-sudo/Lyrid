@@ -67,7 +67,7 @@ import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
 import { aggregateRecentForm, aggregateFromGames } from "../_lib/wnba/wnbaGameLog.js";
 import { getAllTeamStats } from "../_lib/wnba/wnbaTeamData.js";
 import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
-import { fetchWnbaProps, fetchWnbaSeasonGames, fetchWnbaPlayerSeasonLogs } from "../_lib/wnba/bdlFeed.js";
+import { fetchWnbaProps, fetchWnbaSeasonGames, fetchWnbaPlayerSeasonLogs } from "../_lib/wnba/wnbaFeedEspn.js";
 import { buildEmpiricalTotals } from "../_lib/wnba/wnbaEmpiricalTotals.js";
 import { evaluatePropSignal } from "../_lib/wnba/wnbaPropSignal.js";
 
