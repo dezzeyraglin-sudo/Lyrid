@@ -120,6 +120,30 @@ export default async function handler(req, res) {
         if (idA && idB) ewp = eloWinProb(E, idA, idB, q.surface || 'Hard');
       }
     } catch { /* rates-only fallback */ }
+
+    // CONTEXT LAYER: nudge the Elo win prob for what the career baseline can't see — recent FORM
+    // (and fatigue when workload data is present). Bounded ±6% so it informs, never overrides Elo.
+    // Form comes from the index `recent` block (last10Wins/last10Played); fatigue needs match dates
+    // we don't have on the free tier yet, so it stays 0 until the Basic history feed is wired.
+    let contextFactors = [];
+    try {
+      if (ewp != null) {
+        const { formScore, contextWinAdj } = await import('../../tennis/tennisContext.mjs');
+        const recA = playerA.recent || {}, recB = playerB.recent || {};
+        // build a pseudo recent-results list from last10 wins/played (newest-first not available,
+        // so approximate: a win-rate signal centered at 0). formScore on an even list ≈ win-rate*2-1.
+        const formA = recA.last10Played ? (recA.last10Wins / recA.last10Played) * 2 - 1 : 0;
+        const formB = recB.last10Played ? (recB.last10Wins / recB.last10Played) * 2 - 1 : 0;
+        const ctx = contextWinAdj({ formA, formB, fatigueA: 0, fatigueB: 0 });
+        if (ctx.adj !== 0) ewp = Math.max(0.05, Math.min(0.95, ewp + ctx.adj));
+        // relabel A/B factors to real names for the card
+        contextFactors = (ctx.factors || []).map((f) => ({
+          key: f.key,
+          text: f.text.replace(/\bA\b/, playerA.name.split(' ').pop()).replace(/\bB\b/, playerB.name.split(' ').pop()),
+          weight: f.weight,
+        }));
+      }
+    } catch { /* context is best-effort — never blocks the read */ }
     const read = buildMatchRead({
       playerA, playerB, eloWinProb: ewp,
       surface: q.surface || 'Hard',
@@ -166,6 +190,7 @@ export default async function handler(req, res) {
         matchFlow: read.matchFlow || null, closeGame: !!read.closeGame, deciderProb: read.deciderProb != null ? read.deciderProb : null,
         tiebreakProb: read.tiebreakProb != null ? read.tiebreakProb : null, expTiebreaks: read.expTiebreaks != null ? read.expTiebreaks : null,
         matchShape: read.matchShape || null,
+        contextFactors,   // form/fatigue nudges surfaced as extra 'why' factors
         bestPlay: read.bestPlay || null,
         surfWinA: wA ? wA.v : null, surfWinB: wB ? wB.v : null, surfNA: wA ? wA.n : 0, surfNB: wB ? wB.n : 0,
         formA: (typeof fA === 'number') ? fA : null, formB: (typeof fB === 'number') ? fB : null,
