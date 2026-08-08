@@ -92,43 +92,39 @@ function normalizeTeamAbbr(espnAbbr) {
 /**
  * Low-level ESPN fetch with timeout + retry.
  * Returns parsed JSON or null on failure.
+ *
+ * NOTE: uses Node's raw `https` module with a curl-style User-Agent, NOT the
+ * built-in fetch(). ESPN's WAF blocks undici (fetch) by TLS fingerprint no matter
+ * what User-Agent is sent — verified: fetch+Mozilla → 403, raw-https+curl → 200.
+ * This is the same client wnbaFeedEspn.js uses. Do not switch back to fetch().
  */
 async function fetchEspn(url, opts = {}) {
   const maxRetries = opts.maxRetries ?? 2;
   const timeoutMs = opts.timeoutMs ?? 8000;
+  const https = await import('node:https');
+
+  const once = () => new Promise((resolve) => {
+    const req = https.get(url, {
+      headers: { 'User-Agent': 'curl/8.5.0', 'Accept': 'application/json' },
+      timeout: timeoutMs,
+    }, (res) => {
+      if (res.statusCode === 404) { res.resume(); return resolve({ ok: false, notFound: true }); }
+      if (res.statusCode !== 200) { res.resume(); return resolve({ ok: false, status: res.statusCode }); }
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => { try { resolve({ ok: true, json: JSON.parse(data) }); } catch (e) { resolve({ ok: false, status: 'parse' }); } });
+    });
+    req.on('timeout', () => { req.destroy(new Error('timeout')); });
+    req.on('error', (e) => resolve({ ok: false, status: e.message }));
+  });
 
   let lastError = null;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-      const res = await fetch(url, {
-        method: "GET",
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "application/json"
-        },
-        signal: controller.signal
-      });
-      clearTimeout(timer);
-
-      if (res.status === 200) {
-        return await res.json();
-      }
-
-      // 404 = no data for this date — don't retry
-      if (res.status === 404) return null;
-
-      lastError = new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      lastError = err;
-    }
-
-    // Backoff before retry
-    if (attempt < maxRetries - 1) {
-      await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
-    }
+    const r = await once();
+    if (r.ok) return r.json;
+    if (r.notFound) return null;      // 404 = no data for this date — don't retry
+    lastError = new Error(`HTTP ${r.status}`);
+    if (attempt < maxRetries - 1) await new Promise(res => setTimeout(res, 300 * (attempt + 1)));
   }
 
   console.warn(`[wnbaSchedule] ESPN fetch failed after ${maxRetries} attempts:`, lastError?.message);
