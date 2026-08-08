@@ -40,6 +40,7 @@
 //     usage-based approximation (already in place from Session 3).
 
 import { fetchAndParseTable, fetchBbrefPage, unwrapCommentedTables, extractTableHtml, parseTableRows } from './bbrefClient.js';
+import { getCurrentRoster, normName } from './wnbaFeedEspn.js';
 
 // =============================================================
 // CORE FETCHERS
@@ -248,10 +249,33 @@ export async function getTopPlayersForTeam(teamAbbr, n = 4, season = 2026, marke
 
   // Filter team players. bbref might return tricode in TEAM_ABBREVIATION
   // (we normalize there) or in raw form — check both.
-  const teamPlayers = base.filter(p => {
+  let teamPlayers = base.filter(p => {
     const tabbr = String(p.TEAM_ABBREVIATION || '').toUpperCase();
     return tabbr === targetAbbr;
   });
+
+  // CURRENT-ROSTER GATE: bbref's season page is historical — a player who was
+  // waived/traded still appears because they logged games for the team. ESPN's
+  // roster is live, so drop anyone no longer on the current roster. Fail-OPEN:
+  // if the ESPN roster is unavailable or the name doesn't match, keep the player
+  // rather than risk blanking a valid one.
+  try {
+    const roster = await getCurrentRoster(targetAbbr);
+    if (roster && roster.size >= 6) {   // sane roster only; tiny set = fetch glitch
+      const before = teamPlayers.length;
+      teamPlayers = teamPlayers.filter(p => {
+        const nm = normName(p.PLAYER_NAME);
+        // keep if on the current roster; also keep if a lastname match exists
+        // (guards against "A.J." vs "Alysha" style display differences)
+        if (roster.has(nm)) return true;
+        const last = nm.split(' ').slice(-1)[0];
+        for (const r of roster) if (last && r.endsWith(' ' + last)) return true;
+        return false;
+      });
+      if (teamPlayers.length === 0) teamPlayers = base.filter(p =>
+        String(p.TEAM_ABBREVIATION || '').toUpperCase() === targetAbbr);   // safety: never blank a team
+    }
+  } catch { /* fail-open — keep bbref list as-is */ }
 
   if (teamPlayers.length === 0) {
     console.warn(`[wnbaPlayerData] No players found for team "${targetAbbr}"`);

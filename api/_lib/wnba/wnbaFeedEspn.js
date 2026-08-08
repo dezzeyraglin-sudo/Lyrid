@@ -192,6 +192,23 @@ export async function getBoxScore(eventId) {
 
 export { normName, madeAtt };
 
+// ── Current active roster (name-set) for one team ────────────────────────────
+// ESPN's /teams/{id}/roster reflects the LIVE roster — waived players drop off
+// immediately, unlike bbref's season page (which lists everyone who appeared).
+// Returns a Set of normalized names currently on the team. Accepts either the
+// ESPN abbr (LV) or the slate tricode (LVA). Memoized via buildPlayerIdMap.
+export async function getCurrentRoster(teamAbbr) {
+  const map = await buildPlayerIdMap();
+  const want = String(teamAbbr || '').toUpperCase();
+  const names = new Set();
+  for (const [nm, meta] of Object.entries(map)) {
+    const espn = String(meta.team || '').toUpperCase();
+    const slate = _INJ_TO_SLATE[espn] || espn;   // ESPN → slate tricode
+    if (espn === want || slate === want) names.add(nm);
+  }
+  return names;
+}
+
 // ── Injuries (JSON API — replaces the old fragile ESPN HTML scrape) ───────────
 // Returns the report shape injuryFeed.js/slate.js consume:
 //   { all:[{playerName,status,detail,teamAbbrev,position,source}],
