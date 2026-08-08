@@ -1,98 +1,117 @@
-// api/tennis/liveApi.mjs — Live Tennis API adapter (free tier: schedule + scores + players).
-// Base: https://api.livetennisapi.com/api/public/v1  ·  auth: Authorization: Bearer <LIVETENNISAPI key>
-// Free tier limits: 30 req/min, 100/day — so we CACHE aggressively and never hammer it.
+// api/tennis/liveApi.mjs — Live Tennis API adapter (FREE tier). Built to the documented v1 schema.
+// Base: https://api.livetennisapi.com/api/public/v1  ·  auth: Authorization: Bearer <key>
+// FREE endpoints used: /fixtures (upcoming board), /matches?status=live (in-play), /matches/{id}/score,
+// /players/{id}. Limits 30/min, 100/day → cache hard.
 //
-// Env var in Vercel: `livetennisapi` (the key value).
+// Env var in Vercel: `livetennisapi`.
 //
-// This REPLACES the flaky OddsPapi schedule with a clean board. It maps the API's match shape to the
-// exact object schedule.mjs already emits, so it's a drop-in. Serve stats for the engine still come
-// from the Sackmann index — this feed supplies fixtures/scores + the CONTEXT signals (recent form,
-// fatigue) that let us adjust a projection for what could shift a specific match.
+// KEY SCHEMA FACTS (from docs v1.3.1):
+//   - list endpoints return { data, meta }; single resources return the object directly
+//   - match object: { id, tournament, tour, surface (hard|clay|grass), format (BO3|BO5),
+//                     status, scheduled_time, players:{ p1:{name,...}, p2:{name,...} }, score }
+//   - score is player-major: sets=[p1,p2], games=[[p1 per-set],[p2 per-set]], points=["40","AD"]
+//   - tour vocabulary: atp|wta|challenger|itf|juniors
 
 const BASE = 'https://api.livetennisapi.com/api/public/v1';
 const KEY = () => process.env.livetennisapi || process.env.LIVETENNISAPI_KEY || '';
 
-// small in-memory cache so a board refresh doesn't burn the 100/day quota
 const CACHE = globalThis.__ltapiCache || (globalThis.__ltapiCache = new Map());
-const cached = async (key, ttlMs, fn) => {
-  const hit = CACHE.get(key);
-  if (hit && Date.now() - hit.t < ttlMs) return hit.v;
-  const v = await fn();
-  CACHE.set(key, { t: Date.now(), v });
-  return v;
+const cached = async (k, ttl, fn) => {
+  const hit = CACHE.get(k);
+  if (hit && Date.now() - hit.t < ttl) return hit.v;
+  const v = await fn(); CACHE.set(k, { t: Date.now(), v }); return v;
 };
 
-async function api(path, { ttlMs = 60000 } = {}) {
+async function api(path, ttl = 60000) {
   const key = KEY();
-  if (!key) throw new Error('livetennisapi key missing (set env var `livetennisapi`)');
-  return cached(`GET ${path}`, ttlMs, async () => {
-    const r = await fetch(`${BASE}${path}`, {
-      headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
-    });
-    if (r.status === 429) throw new Error('livetennisapi rate-limited (free tier: 100/day)');
-    if (r.status === 401) throw new Error('livetennisapi unauthorized — check the key');
+  if (!key) throw new Error('livetennisapi key missing (env `livetennisapi`)');
+  return cached(`GET ${path}`, ttl, async () => {
+    const r = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' } });
+    if (r.status === 429) throw new Error('livetennisapi rate-limited (100/day free)');
+    if (r.status === 401) throw new Error('livetennisapi unauthorized — check key');
+    if (r.status === 403) throw new Error('livetennisapi upgrade_required (paid endpoint)');
     if (!r.ok) throw new Error(`livetennisapi ${r.status}`);
     return r.json();
   });
 }
 
-// ---- shape helpers: the API nests players and uses string points; normalize to our schema ----
-const surfaceOf = (m) => {
-  const s = (m.surface || m.court || m.court_name || '').toString();
-  if (/clay/i.test(s)) return 'Clay';
-  if (/grass/i.test(s)) return 'Grass';
-  if (/carpet/i.test(s)) return 'Carpet';
-  if (/hard|indoor/i.test(s)) return 'Hard';
-  return s || 'Hard';
+const surfaceOf = (s) => {
+  const x = (s || '').toString().toLowerCase();
+  if (x.startsWith('clay')) return 'Clay';
+  if (x.startsWith('grass')) return 'Grass';
+  if (x.startsWith('carpet')) return 'Carpet';
+  if (x.startsWith('hard')) return 'Hard';
+  return s ? s[0].toUpperCase() + s.slice(1) : 'Hard';
 };
-const tourOf = (m) => {
-  const t = (m.tour || m.tour_name || m.category || '').toString().toUpperCase();
-  if (t.includes('WTA')) return 'WTA';
-  if (t.includes('ATP')) return 'ATP';
-  if (t.includes('ITF')) return 'ITF';
-  if (t.includes('CHALL')) return 'CH';
-  return t || '';
+const tourOf = (t) => {
+  const x = (t || '').toString().toLowerCase();
+  if (x === 'wta') return 'WTA';
+  if (x === 'atp') return 'ATP';
+  if (x === 'itf') return 'ITF';
+  if (x === 'challenger') return 'CH';
+  if (x.startsWith('juniors')) return 'ITF';
+  return (t || '').toString().toUpperCase();
 };
-const nameOf = (p) => (p && (p.name || p.full_name || p.player_name)) || '';
 
-// Map one API match → the object schedule.mjs already returns, so this is a drop-in board source.
+// map one documented match object → the shape the frontend controller expects
 export function mapMatch(m) {
-  const p1 = m.player_1 || m.p1 || m.home || {};
-  const p2 = m.player_2 || m.p2 || m.away || {};
+  const players = m.players || {};
+  const p1 = players.p1 || players.player_1 || {};
+  const p2 = players.p2 || players.player_2 || {};
   return {
-    matchId: String(m.match_id || m.id || m.fixture_id || ''),
-    playerA: nameOf(p1),
-    playerB: nameOf(p2),
-    startTime: m.start_time || m.scheduled || m.date || null,
-    surface: surfaceOf(m),
-    tour: tourOf(m),
-    tournament: m.tournament || m.tournament_name || m.event || '',
-    bestOf: (tourOf(m) === 'ATP' && /grand slam|australian|french|wimbledon|us open/i.test(m.tournament || '')) ? 5 : 3,
-    status: (m.status || '').toString().toLowerCase(),
+    matchId: String(m.id ?? m.match_id ?? ''),
+    playerA: p1.name || '',
+    playerB: p2.name || '',
+    playerAId: p1.id ?? null,
+    playerBId: p2.id ?? null,
+    startTime: m.scheduled_time || m.start_time || null,
+    surface: surfaceOf(m.surface),
+    tour: tourOf(m.tour),
+    tournament: m.tournament || '',
+    bestOf: (m.format === 'BO5') ? 5 : 3,
+    status: (m.status || '').toLowerCase(),
     source: 'livetennisapi',
   };
 }
 
-// GET /matches?status=live  (also used with ?status=upcoming for the board)
-export async function liveMatches(status = 'live') {
-  const j = await api(`/matches?status=${encodeURIComponent(status)}`, { ttlMs: 30000 });
-  const arr = Array.isArray(j) ? j : (j.data || j.matches || []);
-  return arr.map(mapMatch).filter((m) => m.playerA && m.playerB);
+const listData = (j) => (Array.isArray(j) ? j : (j && j.data) || []);
+
+// The BOARD: upcoming fixtures (the thing that was empty — /matches?status=live is only in-play NOW).
+export async function upcomingFixtures({ tour } = {}) {
+  const q = tour ? `?tour=${encodeURIComponent(tour)}` : '';
+  const j = await api(`/fixtures${q}`, 5 * 60000);
+  return listData(j).map(mapMatch).filter((m) => m.playerA && m.playerB);
 }
 
-// GET /matches/{id}/score — live score state (sets/games/points/server/tiebreak)
+// In-play matches right now
+export async function liveMatches({ tour } = {}) {
+  const q = `?status=live${tour ? `&tour=${encodeURIComponent(tour)}` : ''}`;
+  const j = await api(`/matches${q}`, 30000);
+  return listData(j).map(mapMatch).filter((m) => m.playerA && m.playerB);
+}
+
+// Board = live (in-play) + upcoming fixtures, deduped. This is what schedule.mjs calls.
+export async function board() {
+  const [live, up] = await Promise.all([
+    liveMatches().catch(() => []),
+    upcomingFixtures().catch(() => []),
+  ]);
+  const seen = new Set(); const out = [];
+  for (const m of [...live, ...up]) {
+    const k = m.matchId || `${m.playerA}|${m.playerB}`;
+    if (seen.has(k)) continue; seen.add(k); out.push(m);
+  }
+  return out;
+}
+
+// GET /matches/{id}/score — player-major score snapshot
 export async function matchScore(id) {
-  const j = await api(`/matches/${encodeURIComponent(id)}/score`, { ttlMs: 15000 });
-  return {
-    sets: j.sets || null, games: j.games || null, points: j.points || null,
-    server: j.server ?? null, isTiebreak: !!j.is_tiebreak,
-    winProbP1: j.win_probability_p1 ?? null, ts: j.timestamp || null,
-  };
+  const j = await api(`/matches/${encodeURIComponent(id)}/score`, 15000);
+  return { sets: j.sets || null, games: j.games || null, points: j.points || null,
+    server: j.server ?? null, isTiebreak: !!j.is_tiebreak, ts: j.timestamp || null };
 }
 
-// GET /players/{id} — bio, ranking, recent fixtures/results (the CONTEXT source)
-export async function player(id) {
-  return api(`/players/${encodeURIComponent(id)}`, { ttlMs: 3600000 });
-}
+// GET /players/{id} — bio + ranking + cached stats (context source)
+export async function player(id) { return api(`/players/${encodeURIComponent(id)}`, 3600000); }
 
-export default { liveMatches, matchScore, player, mapMatch };
+export default { board, liveMatches, upcomingFixtures, matchScore, player, mapMatch };

@@ -4,7 +4,7 @@
 //   3) OddsPapi (ODDSPAPI_KEY, quota-limited fallback)
 // Returns matches[] in the shape the frontend controller expects. 30-min in-memory cache.
 
-import { liveMatches } from './liveApi.mjs';
+import { board } from './liveApi.mjs';
 
 const CACHE = globalThis.__schedCache || (globalThis.__schedCache = { t: 0, v: null });
 const CACHE_MS = 30 * 60 * 1000;
@@ -51,15 +51,11 @@ export default async function handler(req, res) {
     let matches = [];
     let source = 'none';
 
-    // 1) Live Tennis API — primary. Pull upcoming + live and merge.
+    // 1) Live Tennis API — primary. board() = live in-play + upcoming fixtures.
     try {
-      const [up, live] = await Promise.all([
-        liveMatches('upcoming').catch(() => []),
-        liveMatches('live').catch(() => []),
-      ]);
-      const merged = [...live, ...up];
-      if (merged.length) { matches = merged; source = 'livetennisapi'; }
-    } catch (e) { /* fall through */ }
+      const b = await board();
+      if (b.length) { matches = b; source = 'livetennisapi'; }
+    } catch (e) { /* fall through to api-tennis */ }
 
     // 2) api-tennis.com fallback
     if (!matches.length) {
