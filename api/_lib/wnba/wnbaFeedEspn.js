@@ -192,6 +192,52 @@ export async function getBoxScore(eventId) {
 
 export { normName, madeAtt };
 
+// ── Injuries (JSON API — replaces the old fragile ESPN HTML scrape) ───────────
+// Returns the report shape injuryFeed.js/slate.js consume:
+//   { all:[{playerName,status,detail,teamAbbrev,position,source}],
+//     byName:{normName:entry}, byTeamAbbrev:{ABBR:[entry]}, _audit }
+const _INJ_TO_SLATE = {
+  ATL: 'ATL', CHI: 'CHI', CON: 'CON', DAL: 'DAL', GS: 'GSV', IND: 'IND',
+  LA: 'LAS', LV: 'LVA', MIN: 'MIN', NY: 'NYL', PHX: 'PHX', POR: 'POR',
+  SEA: 'SEA', TOR: 'TOR', WSH: 'WAS',
+};
+function _mapInjStatus(typeName, statusText) {
+  const t = String(typeName || '').toUpperCase();
+  if (t.includes('OUT')) return 'OUT';
+  if (t.includes('DOUBTFUL')) return 'DOUBTFUL';
+  if (t.includes('QUESTIONABLE')) return 'QUESTIONABLE';
+  if (t.includes('DAY_TO_DAY') || t.includes('GTD') || t.includes('GAME_TIME')) return 'GTD';
+  const s = String(statusText || '').toUpperCase();
+  if (s.includes('OUT')) return 'OUT';
+  if (s.includes('DOUBT')) return 'DOUBTFUL';
+  if (s.includes('QUESTION')) return 'QUESTIONABLE';
+  if (s.includes('DAY') || s.includes('GAME-TIME') || s.includes('GTD')) return 'GTD';
+  return s || 'UNKNOWN';
+}
+export async function getInjuries() {
+  const d = await getJson(`${SITE}/injuries`);
+  const groups = d?.injuries || [];
+  const all = [], byName = {}, byTeamAbbrev = {};
+  for (const grp of groups) {
+    for (const it of (grp.injuries || [])) {
+      const ath = it.athlete || {};
+      const playerName = ath.displayName || `${ath.firstName || ''} ${ath.lastName || ''}`.trim();
+      if (!playerName) continue;
+      const espnAbbr = String(ath.team?.abbreviation || '').toUpperCase();
+      const teamAbbrev = _INJ_TO_SLATE[espnAbbr] || espnAbbr || null;
+      const status = _mapInjStatus(it.type?.name, it.status);
+      const detail = it.details?.type || it.shortComment || it.type?.description || null;
+      const entry = { playerName, status, detail, teamAbbrev,
+        position: ath.position?.abbreviation || null, source: 'espn' };
+      all.push(entry);
+      byName[normName(playerName)] = entry;
+      if (teamAbbrev) (byTeamAbbrev[teamAbbrev] = byTeamAbbrev[teamAbbrev] || []).push(entry);
+    }
+  }
+  return { all, byName, byTeamAbbrev,
+    _audit: { source: 'espn', teams: groups.length, count: all.length, fetchedAt: new Date().toISOString() } };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DROP-IN ADAPTERS — same signatures/shapes as bdlFeed.js so slate.js only needs
 // its import line changed. ESPN provides STATS, not betting lines, so the props

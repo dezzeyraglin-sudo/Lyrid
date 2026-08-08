@@ -1,45 +1,42 @@
 // api/_lib/basketball/injuryFeed.js
 //
-// WNBA INJURY FEED — BALLDONTLIE ONLY (rewritten June 2, 2026)
+// WNBA INJURY FEED — ESPN JSON API (rewritten Aug 2026)
 //
-// ESPN has been REMOVED entirely. ESPN's injury page is unreliable from Vercel
-// (datacenter-IP blocking + frequent page-structure changes that made the
-// __espnfitt__ parse throw), and a thrown fetch silently nulled the whole
-// report — so every ruled-out player showed as active. BallDontLie is the sole
-// source now: it's the paid, working feed and the key is already configured.
+// Migrated off BallDontLie. The earlier ESPN removal was because the old code
+// SCRAPED ESPN's injury HTML page (__espnfitt__ blob), which was fragile and
+// threw on structure changes. This uses ESPN's structured JSON injuries endpoint
+// instead (site.api.espn.com/.../wnba/injuries) via the shared raw-https client
+// in wnbaFeedEspn.js — reliable, keyless, and not IP-blocked like stats.wnba.com.
 //
-// The export name `fetchEspnWnbaInjuries` is intentionally UNCHANGED so slate.js
-// (which imports that name) needs no edit. It now returns BDL data in the report
-// shape the slate consumes:
+// The export name `fetchEspnWnbaInjuries` is unchanged so slate.js needs no edit.
+// Report shape consumed by the slate:
 //   { fetchedAt, source, all:[{playerName,status,detail,teamAbbrev,source}],
 //     byName:{normName: entry}, byPlayerId:{}, byTeamAbbrev:{ABBR:[entry]} }
 //
 // FAIL-SAFE: never throws. On any failure returns a valid empty report (all
-// players AVAILABLE) so the slate runs — but unlike the old ESPN feed, the empty
-// case is now the rare exception, not the silent default.
+// players AVAILABLE) so the slate still runs.
 
-import { fetchWnbaInjuries } from '../wnba/bdlFeed.js';
+import { getInjuries } from '../wnba/wnbaFeedEspn.js';
 
 /**
- * Fetch the WNBA injury report from BallDontLie. Name kept for slate import
- * compatibility. Always resolves; never throws.
+ * Fetch the WNBA injury report from ESPN's JSON API. Always resolves; never throws.
  */
 export async function fetchEspnWnbaInjuries(opts = {}) {
   const report = {
     fetchedAt: new Date().toISOString(),
-    source: 'balldontlie',
+    source: 'espn',
     all: [],
     byName: {},
-    byPlayerId: {},       // unused for BDL (name-keyed), kept for shape compatibility
+    byPlayerId: {},       // ESPN report is name-keyed; kept for shape compatibility
     byTeamAbbrev: {},
     _audit: null,
   };
   try {
-    const bdl = await fetchWnbaInjuries(opts);
-    report.all = bdl.all || [];
-    report.byName = bdl.byName || {};
-    report.byTeamAbbrev = bdl.byTeamAbbrev || {};
-    report._audit = bdl._audit || null;
+    const inj = await getInjuries(opts);
+    report.all = inj.all || [];
+    report.byName = inj.byName || {};
+    report.byTeamAbbrev = inj.byTeamAbbrev || {};
+    report._audit = inj._audit || null;
   } catch (err) {
     report._audit = { error: err.message };
   }
@@ -48,7 +45,7 @@ export async function fetchEspnWnbaInjuries(opts = {}) {
 
 // Legacy parse export retained as a no-op-safe stub in case anything imports it.
 export function parseEspnInjuriesPayload() {
-  return { fetchedAt: new Date().toISOString(), source: 'removed', all: [], byName: {}, byPlayerId: {}, byTeamAbbrev: {} };
+  return { fetchedAt: new Date().toISOString(), source: 'espn', all: [], byName: {}, byPlayerId: {}, byTeamAbbrev: {} };
 }
 
 export default fetchEspnWnbaInjuries;
