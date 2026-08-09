@@ -5019,52 +5019,13 @@ function applyVerifiedCohortBadges(propRecs, hitterContext) {
 // projection (a rigged benchmark). Returns the side to bet on the
 // game total at a standard ~8.5 line.
 // ====================================================================
+// (2026-08-09) RETIRED — INVERSE-TOTAL "fade the projection" engine. Backfilling the
+// actual finals (statsapi) against the 2026-08 audit graded this signal at 48% (n=21):
+// dead, no edge. It is retired, not trusted. Every consumer is null-guarded, so returning
+// null cleanly removes the TOTALS-LEAN badge, the digest "Game Total" plays, the direction
+// guardrail, and the _inverseTotal* audit stamps. The raw projTotal projection is untouched
+// — we simply no longer bet the inversion. (classifyInverseMarketSignal is also retired below.)
 function classifyInverseTotalSignal(projTotal) {
-  if (typeof projTotal !== 'number' || !isFinite(projTotal)) return null;
-
-  // GOLD OVER — the workhorse band (n=95, 62%, Wilson lo 52%)
-  if (projTotal >= 6.5 && projTotal < 8.0) {
-    return {
-      tier: 'gold', side: 'OVER',
-      reasoning: 'Model projects mid-low (6.5-8.0). These games average ~9.7 actual runs — the model systematically under-projects this band. Largest, most stable cohort.',
-      backtestWR: 0.62, backtestN: 95, wilsonLow: 0.52, wilsonHigh: 0.71,
-      thirds: '58/74/55', avgActual: 9.7
-    };
-  }
-
-  // PLATINUM OVER — extreme low (n=27, 59%) tighter edge, fewer games
-  if (projTotal < 6.5) {
-    return {
-      tier: 'gold', side: 'OVER',
-      reasoning: 'Model projects very low (<6.5) but these games average 10.2 actual runs — the strongest under-projection error in the data.',
-      backtestWR: 0.59, backtestN: 27, wilsonLow: 0.41, wilsonHigh: 0.75,
-      thirds: '56/89/33', avgActual: 10.2
-    };
-  }
-
-  // 8.0-8.5: model is ACCURATE here — no inversion edge. No signal.
-  if (projTotal >= 8.0 && projTotal < 9.0) return null;
-
-  // GOLD UNDER — the genuine inversion window (9.0-10.5)
-  if (projTotal >= 9.0 && projTotal < 10.5) {
-    return {
-      tier: 'gold', side: 'UNDER',
-      reasoning: 'Model projects high (9.0-10.5) and these games land low (~7.3 avg). This is the one window where the projection is reliably inverted.',
-      backtestWR: 0.67, backtestN: 55, wilsonLow: 0.54, wilsonHigh: 0.78,
-      thirds: '55/72/73', avgActual: 7.3
-    };
-  }
-
-  // PLATINUM OVER — the extreme where inversion BREAKS (≥10.5, 71%)
-  if (projTotal >= 10.5) {
-    return {
-      tier: 'platinum', side: 'OVER',
-      reasoning: 'Model projects extreme-high (≥10.5). Unlike the 9-10.5 window, these genuinely score: 71% land OVER 8.5. The inversion does not extend to the tail — these are real shootout signals.',
-      backtestWR: 0.71, backtestN: 24, wilsonLow: 0.51, wilsonHigh: 0.85,
-      thirds: '75/62/75', avgActual: 10.25
-    };
-  }
-
   return null;
 }
 
@@ -5138,30 +5099,13 @@ function analyzeAltTotalLine(projTotal, altLine) {
   };
 }
 
+// (2026-08-09) RETIRED — INVERSE-MARKET "fade the gap" engine. Its only live tier
+// (PLATINUM UNDER when the model projects >=2.5 over market) shipped on n=3 from a single
+// pre-recalibration day and was never re-validated (0 graded in the 2026-08 audit).
+// Retired on the same discipline as inverse-total: returning null removes the INVERSE-
+// MARKET badge and its forced UNDER game-lean (Best Slip), while the neutral model-vs-
+// market gap display and the raw projection stay. Re-enable only behind a graded sample.
 function classifyInverseMarketSignal(projTotal, marketTotal) {
-  if (typeof projTotal !== 'number' || !isFinite(projTotal)) return null;
-  if (typeof marketTotal !== 'number' || !isFinite(marketTotal)) return null;
-
-  const gap = projTotal - marketTotal;
-
-  // PLATINUM UNDER: model OVER market by ≥ 2.5 → bet UNDER market line
-  if (gap >= 2.5) {
-    return {
-      tier: 'platinum',
-      side: 'UNDER',
-      gap: gap,
-      reasoning: 'Model projects ≥2.5 runs HIGHER than market line. Historical audit: when model strongly disagrees OVER, market is more accurate and game lands UNDER.',
-      backtestWR: 1.000,
-      backtestN: 3,
-      wilsonLow: 0.44,
-      wilsonHigh: 1.00,
-      sampleWarning: 'n=3 ALL from May 22 (pre-recalibration). True WR could be 44-100%. Treat as observational signal; size bets conservatively.'
-    };
-  }
-
-  // No other tiers ship in Drop #26. GOLD-equivalent cohort (gap 1.0-2.5)
-  // audited at 43% — actively losing. UNDER-direction (mkt > model) has
-  // n=3 — too small to classify. Both will be revisited after more data.
   return null;
 }
 
@@ -7414,7 +7358,7 @@ function buildArchetypeChip(sideData) {
 // HR prior. Thresholds UNVALIDATED + stamped for grading.
 // ============================================================================
 function _num(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : null; }
-function computeHitterMatchup(m, s) {
+function computeHitterMatchup(m, s, data) {
   const ss = m && m.seasonStats;
   if (!ss) return null;
   let arch = null; try { arch = computePitcherArchetype(s && s.pitcherArsenal, m.platoonMeta && m.platoonMeta.pitcher); } catch (_) {}
@@ -7434,6 +7378,23 @@ function computeHitterMatchup(m, s) {
   const _rf = s && s.pitcherProps && s.pitcherProps._recentForm;
   const armShelled = !!(_rf && _rf.shelled);
   const effWhiffAce = armWhiffAce && !armShelled;
+  const armHardHitProne = arch && arch.key === 'hard-hit-prone';
+  const _badArm = arch && (arch.key === 'whiff-ace' || arch.key === 'contact-buffet');
+  // (2026-08-09 backup) WEATHER on the batter read. data.weather carries the same wind/
+  // temp the under-fade already uses. Wind OUT / heat (>=85F) boosts HR/HRR; wind IN /
+  // cold (<60F) suppresses. Symmetric, folded into the scores and shown as a chip.
+  let _wxDir = 0, _wxMult = 1, _wxLabel = '';
+  try {
+    const _wx = (data && (data.weather || (data.context && data.context.weather))) || null;
+    if (_wx) {
+      const _wc = String((_wx.windRelative && _wx.windRelative.category) || _wx.windCategory || '').toUpperCase();
+      const _tf = (typeof _wx.tempF === 'number') ? _wx.tempF : (typeof _wx.temperature === 'number') ? _wx.temperature : null;
+      const _out = /OUT_TO/.test(_wc), _in = /IN_FROM/.test(_wc);
+      const _hot = _tf != null && _tf >= 85, _cold = _tf != null && _tf < 60;
+      if (_out || _hot) { _wxDir = 1; _wxMult = 1 + 0.06 * ((_out?1:0) + (_hot?1:0)); _wxLabel = [_out ? 'wind out' : '', _hot ? Math.round(_tf) + '\u00b0 heat' : ''].filter(Boolean).join(' + '); }
+      else if (_in || _cold) { _wxDir = -1; _wxMult = 1 - 0.06 * ((_in?1:0) + (_cold?1:0)); _wxLabel = [_in ? 'wind in' : '', _cold ? Math.round(_tf) + '\u00b0 cold' : ''].filter(Boolean).join(' + '); }
+    }
+  } catch (_) {}
   const hrDrivers = [];
   if (barrel != null && barrel >= 10) hrDrivers.push(`${barrel.toFixed(0)}% barrel`);
   if (ev != null && ev >= 91)         hrDrivers.push(`${ev.toFixed(0)} mph EV`);
@@ -7442,11 +7403,13 @@ function computeHitterMatchup(m, s) {
   if (la != null && la >= 12 && la <= 28) hrDrivers.push(`${la.toFixed(0)}° launch`);
   else if (fb != null && fb >= 38)    hrDrivers.push(`${fb.toFixed(0)}% FB`);
   if (armFeeds)                       hrDrivers.push('hittable arm');
+  if (armHardHitProne)                hrDrivers.push('hard-hit-prone arm \u2014 top produce spot');
+  if (_wxDir > 0 && _wxLabel)         hrDrivers.push('weather: ' + _wxLabel);
   if (armShelled)                     hrDrivers.push(_rf.recentEra != null ? `arm shelled (L${_rf.starts}: ${_rf.recentEra} ERA)` : 'arm shelled recently');
   const hcTier = hc ? (hc.tierPerGame || hc.tier || '') : '';
   const hcHot = /elite|strong/i.test(String(hcTier));
   if (hcHot) hrDrivers.push('HR model ' + String(hcTier).toUpperCase());
-  let hrScore = hrDrivers.length - (effWhiffAce ? 1 : 0);
+  let hrScore = hrDrivers.length - (effWhiffAce ? 1 : 0) + (armHardHitProne ? 1 : 0) + (_wxDir > 0 ? 1 : 0) - (_wxDir < 0 ? 1 : 0);
   if (hcHot) hrScore += 1;
   const mhDrivers = [];
   if (xw != null && xw >= 0.340) mhDrivers.push(`.${Math.round(xw*1000)} xwOBA`);
@@ -7455,14 +7418,31 @@ function computeHitterMatchup(m, s) {
   if (ld != null && ld >= 24)    mhDrivers.push(`${ld.toFixed(0)}% line drives`);
   if (k  != null && k  <= 18)    mhDrivers.push(`${k.toFixed(0)}% K (rarely misses)`);
   if (armFeeds || armSoftVelo)   mhDrivers.push('soft/hittable arm');
+  if (armHardHitProne)           mhDrivers.push('hard-hit-prone arm');
   if (armShelled)                mhDrivers.push('arm shelled recently');
-  let mhScore = mhDrivers.length - (effWhiffAce ? 1 : 0);
+  let mhScore = mhDrivers.length - (effWhiffAce ? 1 : 0) + (armHardHitProne ? 1 : 0);
   const supDrivers = [];
   if (ev != null && ev <= 87) supDrivers.push(`${ev.toFixed(0)} mph EV (weak)`);
   if (k  != null && k  >= 27) supDrivers.push(`${k.toFixed(0)}% K`);
   if (effWhiffAce)            supDrivers.push('vs whiff-ace');
+  if (_wxDir < 0 && _wxLabel) supDrivers.push('weather suppresses (' + _wxLabel + ')');
   if (xw != null && xw <= 0.290) supDrivers.push(`.${Math.round(xw*1000)} xwOBA (low)`);
   const supScore = supDrivers.length;
+  // (2026-08-09 backup) HRR-OVER conviction gate. KEPT cohort 62% (n=45) vs 36% dropped.
+  // Fires on hard-hit-prone OR (unified GOOD and arm not whiff/contact), not weather-suppressed.
+  let _uTier = null; try { if (data) { const _u = computeUnifiedSignal(m, s, data); _uTier = _u && _u.tier; } } catch (_) {}
+  const _uGood = _uTier === 'GOLD' || _uTier === 'PLATINUM' || _uTier === 'SILVER';
+  let hrrConviction = null;
+  if ((armHardHitProne || (_uGood && !_badArm)) && _wxDir >= 0) {
+    let wr = armHardHitProne ? 0.72 : 0.62;
+    if (_uTier === 'GOLD' || _uTier === 'PLATINUM') wr = Math.max(wr, 0.66);
+    if (_wxDir > 0) wr = Math.min(0.80, wr + 0.03);
+    if (String((m.recentFormLabel || (m.recentForm && m.recentForm.label) || '')).toUpperCase() === 'COLD') wr -= 0.04;
+    hrrConviction = { fires: true, wr: +wr.toFixed(2), hardHitProne: !!armHardHitProne, unifiedTier: _uTier || null, weather: _wxLabel || null,
+      why: [armHardHitProne ? 'hard-hit-prone arm (78% HRR)' : null,
+            (_uGood && !_badArm) ? ('unified ' + _uTier + ' \u00b7 arm not whiff/contact') : null,
+            _wxDir > 0 ? ('weather boost: ' + _wxLabel) : null].filter(Boolean).join(' \u00b7 ') };
+  }
   const danger = Math.max(hrScore, mhScore);
   let level = null, label = '', emoji = '', drivers = [], sub = '';
   if (supScore >= 2 && danger <= 1) {
@@ -7475,12 +7455,13 @@ function computeHitterMatchup(m, s) {
     level = 'multihit'; emoji = '🔥'; label = 'MULTI-HIT';
     drivers = mhDrivers; sub = 'Squares it up vs this arm — great for HITS & HRR overs';
   } else {
-    return { level: null, hrScore, mhScore, supScore, hrrLean: 0, arch: arch ? arch.key : null };
+    return { level: null, hrScore, mhScore, supScore, hrrLean: 0, arch: arch ? arch.key : null, hrrConviction, weather: { dir: _wxDir, label: _wxLabel }, armHardHitProne };
   }
   return {
     level, label, emoji, drivers, sub,
     hrrLean: level === 'suppressed' ? -1 : 1,
     hrScore, mhScore, supScore, arch: arch ? arch.key : null,
+    hrrConviction, weather: { dir: _wxDir, label: _wxLabel }, armHardHitProne,
     detail: `${label} — ${drivers.join(', ')} · ${sub} · UNVALIDATED (stamped for grading)`
   };
 }
@@ -7578,6 +7559,21 @@ function computeHrrProjection(m, s) {
   };
 }
 
+function buildHrrConvictionBadge(m, s, data) {
+  let r = null; try { r = computeHitterMatchup(m, s, data); } catch (_) { return ''; }
+  if (!r) return '';
+  let out = '';
+  const conv = r.hrrConviction;
+  if (conv && conv.fires) {
+    out += `<div title="${esc('HRR-OVER CONVICTION \u2014 ' + conv.why + '. Backtest: this cohort (hard-hit-prone / vulnerable non-whiff arm) grades ~60-62% on H+R+RBI 1.5 vs 45% blanket. Stamped for grading.')}" style="display:inline-flex;align-items:center;gap:6px;margin:6px 12px 0;padding:4px 10px;border-radius:100px;background:linear-gradient(135deg,#166534 0%,#15803d 55%,#22c55e 100%);color:#fff;font-size:10px;font-weight:800;letter-spacing:0.04em">\ud83c\udfaf HRR OVER ${Math.round(conv.wr*100)}% \u00b7 high conviction</div>`;
+  }
+  const wx = r.weather;
+  if (wx && wx.dir !== 0 && wx.label) {
+    const boost = wx.dir > 0;
+    out += `<span title="${esc('Weather ' + (boost ? 'boosts' : 'suppresses') + ' HR/HRR: ' + wx.label + '. Folded into this batter read.')}" style="display:inline-flex;align-items:center;gap:4px;margin:6px 0 0 8px;padding:3px 9px;border-radius:100px;font-size:9.5px;font-weight:800;background:${boost?'rgba(224,120,80,0.14)':'rgba(80,140,200,0.14)'};border:1px solid ${boost?'rgba(224,120,80,0.45)':'rgba(80,140,200,0.45)'};color:${boost?'#e0784f':'#5a9fd4'}">${boost?'\ud83c\udf2c\ufe0f':'\u2744\ufe0f'} ${esc(wx.label)}</span>`;
+  }
+  return out;
+}
 function buildHrrProjChip(m, s) {
   let r = null; try { r = computeHrrProjection(m, s); } catch (_) { return ''; }
   if (!r) return '';
@@ -10096,6 +10092,7 @@ function renderAnalysis(data) {
                   ${buildControlChip(m.platoonMeta && m.platoonMeta.pitcher)}
                   ${buildPAOutcomeChip(m.seasonStats, m.platoonMeta && m.platoonMeta.pitcher, (m.seasonStats && m.seasonStats.pa) || (m.platoonMeta && m.platoonMeta.pa) || m.hitterPa)}
                   ${buildHrrProjChip(m, s)}
+                  ${buildHrrConvictionBadge(m, s, data)}
                   ${buildBvPChip(m.vsPitcher, s.pitcher && s.pitcher.name)}
                   ${_isFadeCard ? `<div style="padding:0">${buildGhostCard(m, data, 'fade')}</div>` : ''}
                   ${m._empUnderRec ? `<div style="padding:0">${buildLyridBestBanner(m._empUnderRec.backtestWR, m._empUnderRec.backtestN, { kind: 'compact', label: 'LYRID UNDER · ' + m._empUnderRec.propLabel, tooltip: m._empUnderRec.reasoningLines.join(' · ') })}</div>` : ''}
@@ -14320,7 +14317,7 @@ function logBestBets(data) {
         // ====================================================================
         ...(function () {
           try {
-            const _hm = computeHitterMatchup(m, sideData);
+            const _hm = computeHitterMatchup(m, sideData, data);
             if (!_hm) return { _hitterMatchup: null };
             return {
               _hitterMatchup: _hm.level,
@@ -14328,6 +14325,8 @@ function logBestBets(data) {
               _hitterMultiHitScore: _hm.mhScore,
               _hitterSuppressScore: _hm.supScore,
               _hitterMatchupVsArch: _hm.arch,
+              _hrrConvictionWR: (_hm.hrrConviction && _hm.hrrConviction.fires) ? _hm.hrrConviction.wr : null,
+              _weatherDir: (_hm.weather ? _hm.weather.dir : 0),
               _hitterHrrLean: _hm.hrrLean != null ? _hm.hrrLean : 0,
               _hitterMatchupUnvalidated: true,
               // Numeric H+R+RBI projection vs this pitcher (stamped for grading).
@@ -21823,6 +21822,14 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       } catch (_) {}
       var _vuln = computePitcherVuln(_oppPitcher, _sideData);
       var _antiGhost = (_vuln.opsAgainst != null && _vuln.opsAgainst >= 0.80);
+      // (2026-08-09 backup) HRR-OVER conviction gate (adapter path): KEPT 60% (n=30) vs 40%.
+      // hard-hit-prone OR (opsAgainst>=.80 AND arm not whiff/contact). Lets the good HRR-
+      // overs through the judgment kill and floors their cashRate so they surface.
+      var _hrrArch = null; try { _hrrArch = computePitcherArchetype(_sideData && _sideData.pitcherArsenal, _oppPitcher); } catch (_) {}
+      var _hrrArchKey = _hrrArch && _hrrArch.key;
+      var _hrrBadArm = (_hrrArchKey === 'whiff-ace' || _hrrArchKey === 'contact-buffet');
+      var _hrrProne = (_hrrArchKey === 'hard-hit-prone');
+      var _hrrOpsVuln = (_vuln.opsAgainst != null && _vuln.opsAgainst >= 0.80);
       // (Drop #46) ENVIRONMENT VETO INPUTS. Both fade/under losses this window
       // (Griffin; TB/HOU) traced to the same cause: wind-out + heat + a hitter
       // park overriding the model. Derive that hard composite here so the
@@ -21851,12 +21858,14 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         if (_paSlot != null && _paSlot >= 7) { _paPenalty = 0.85; _lowPA = true; _paNote = ' · bats ' + _paSlot + 'th — fewer PAs (playing-time risk)'; }
         else if (_paSlot == null) { _paPenalty = 0.95; _paNote = ' · lineup slot unconfirmed'; }
       }
+      var _hrrConviction = (parsed.market === 'hrr' && side === 'over' && (_hrrProne || (_hrrOpsVuln && !_hrrBadArm)));
+      var _hrrConvWR = _hrrConviction ? (_hrrProne ? 0.66 : 0.60) : null;
       out.push({
         id: ['mlb', date, e.gamePk, (e.hitterName || ''), parsed.market, side].join(':'),
         sport: 'mlb', date: date, gameId: String(e.gamePk || ''),
         team: e.team, opponent: e.opponent, player: e.hitterName, playerId: e.hitterId || null,
         market: parsed.market, side: side, line: parsed.line,
-        tier: ce.tier, cashRate: +(((ce.wr || 0) / 100) * _paPenalty).toFixed(4), edgeType: ce.edgeType, sampleN: sampleN, battingOrder: _paSlot, lowPA: _lowPA,
+        tier: ce.tier, cashRate: +(Math.max(((ce.wr || 0) / 100), (_hrrConvWR || 0)) * _paPenalty).toFixed(4), edgeType: ce.edgeType, sampleN: sampleN, battingOrder: _paSlot, lowPA: _lowPA, hrrConviction: _hrrConviction, hrrConvictionWhy: (_hrrConviction ? (_hrrProne ? 'hard-hit-prone arm (78% HRR cohort)' : ('vulnerable arm' + (_vuln.opsAgainst != null ? ' .' + Math.round(_vuln.opsAgainst*1000) + ' OPS-against' : '') + ', not whiff/contact')) : null), pitcherArchetypeKey: _hrrArchKey,
         form: e.recentFormLabel || 'neutral', matchupContext: ce.ctxChips || [], why: (ce.plain || '') + _paNote,
         gameLean: gameLean, pitcherFriendlyPark: pitcherFriendlyPark, opposingPitcherWildOrShort: oppWildShort,
         // (Drop #46) environment-veto inputs
@@ -22230,8 +22239,12 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (c.verdictPass) return 'Graded verdict is PASS — board rank is the anti-cal number';
     // Structural: the HRR OVER is the audited 42% cohort. It is never a bet,
     // regardless of what tier/rate a mapping bug might hand it.
-    if (c.sport === 'mlb' && String(c.market).toLowerCase() === 'hrr' && c.side === 'over')
-      return 'HRR over — audited 42% cohort, never bet';
+    if (c.sport === 'mlb' && String(c.market).toLowerCase() === 'hrr' && c.side === 'over') {
+      // (2026-08-09 backup) HRR-over is 45% blanket — BUT the conviction cohort
+      // (hard-hit-prone / vulnerable non-whiff arm) grades 60-62%. Let those through
+      // as bets; keep killing the rest.
+      if (!c.hrrConviction) return 'HRR over — 45% blanket cohort (only hard-hit-prone / vulnerable-arm HRR clears)';
+    }
     return null;
   }
   function lineKill(c) {
