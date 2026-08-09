@@ -3523,7 +3523,7 @@
       <label class="pm-field">Legs
         <select id="pm-minlegs"><option>2</option><option>3</option><option>4</option></select>
         <span>to</span>
-        <select id="pm-maxlegs"><option>2</option><option selected>3</option><option>4</option></select>
+        <select id="pm-maxlegs"><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option></select>
       </label>
       <label class="pm-field">Sport
         <select id="pm-sport"><option value="all">All</option><option value="mlb">MLB</option><option value="wnba">WNBA</option></select>
@@ -4915,6 +4915,13 @@ function applyVerifiedCohortBadges(propRecs, hitterContext) {
   const _seasonK = parseFloat(hitterContext.seasonKPct || (hitterContext.batterK && hitterContext.batterK.season) || 'NaN');
   const _matchK = parseFloat(hitterContext.matchedKPct || (hitterContext.batterK && hitterContext.batterK.matched) || 'NaN');
   const _kTrap = Number.isFinite(_seasonK) && Number.isFinite(_matchK) && (_matchK - _seasonK >= 8);
+  // (2026-08-08) EXPECTED-PA GATE. The verified "rarely strikes out" cohort (72%)
+  // silently assumes a full 3-4 AB game. Bottom-of-order bats (slot 7-9) average
+  // ~3.7 PA and are the likeliest to be pinch-hit for or subbed — a 0.5-hit prop
+  // needs the at-bats. (Ortiz, 8/8: batted 9th, 1 AB, 0-for-1 — sank a 4-leg SGP.)
+  // Dock the cohort WR + flag PA risk so the leg reads lower and drops from the slip.
+  const _slotN = parseFloat(hitterContext.battingOrder);
+  const _paRisk = Number.isFinite(_slotN) && _slotN >= 7;
   for (const p of propRecs) {
     const reason = (p.reason || '').toLowerCase();
     if (p.key === 'H' && reason.includes('rarely strikes out')) {
@@ -4924,6 +4931,7 @@ function applyVerifiedCohortBadges(propRecs, hitterContext) {
       p._verifiedN = 25;
       p._verifiedThirds = '75/62/78';
       p._verifiedNote = 'Only cohort whose Wilson lower bound (52.4%) clears -110. Clears PrizePicks at point estimate. 4-0 on June 9-10.';
+      if (_paRisk) { p._paRisk = true; p._paSlot = _slotN; p._verifiedWR = +(p._verifiedWR * 0.85).toFixed(3); p._verifiedNote += ` · PA-RISK: bats ${_slotN}th (~3.7 PA, pinch-hit/sub risk) — WR docked; the cohort assumes a full 3-4 AB game.`; }
     } else if (reason.includes('elite pitch-type edge') && hand === 'R') {
       if (_kTrap) { p._kTrapVeto = true; continue; }
       p._verifiedCohort = 'elite-pte-r';
@@ -4931,6 +4939,7 @@ function applyVerifiedCohortBadges(propRecs, hitterContext) {
       p._verifiedN = 24;
       p._verifiedThirds = '62/75/62';
       p._verifiedNote = 'R-handed hitters with elite arsenal matchup. Stable across all three audit windows.';
+      if (_paRisk) { p._paRisk = true; p._paSlot = _slotN; p._verifiedWR = +(p._verifiedWR * 0.85).toFixed(3); p._verifiedNote += ` · PA-RISK: bats ${_slotN}th (~3.7 PA, sub risk) — WR docked.`; }
     }
   }
 }
@@ -5417,7 +5426,9 @@ function applyMlbEngineRanking(propRecs, activeEngine) {
     pitcherHand: propRecs[0]._ctxPitcherHand,
     adjustedMaxXwoba: propRecs[0]._ctxAdjustedMaxXwoba,
     // (Drop #24 — June 8, 2026) Recent form for UNDER tier classifier
-    recentFormLabel: propRecs[0]._ctxRecentFormLabel
+    recentFormLabel: propRecs[0]._ctxRecentFormLabel,
+    // (2026-08-08) lineup slot for the expected-PA gate on hit props
+    battingOrder: propRecs[0]._ctxBattingOrder
   }) || null;
   const sharpHitsPick = applySharpHitsOverride(propRecs, hitterCtx);
   // (Drop #23 — June 8, 2026) HARD-HIT tier is independent of Sharp HITS.
@@ -7352,7 +7363,7 @@ function archetypeVote(arch, propType, isVerifiedOver, recentForm) {
     arch.veloDelta <= ARCH_VELO_LO ? ', below-avg velo' : '';
   let dir = 0, weight = 0, label = '';
   if (arch.key === 'whiff-ace') {
-    // RECENT-FORM GATE (2026-08-07): a whiff-ace shelled his last starts is not
+    // RECENT-FORM GATE (2026-08-08): a whiff-ace shelled his last starts is not
     // suppressing anyone right now — the season arsenal is stale. Pull the under vote.
     if (recentForm && recentForm.shelled) return null;
     dir = -1; weight = 2; label = `Whiff-ace${veloTag} — suppression${arch.runEnv === 'wild' ? ' (but wild)' : ''}`;
@@ -7417,10 +7428,9 @@ function computeHitterMatchup(m, s) {
   const armFeeds = arch && arch.key !== 'whiff-ace' && (arch.key === 'contact-buffet' || arch.key === 'hard-hit-prone' || arch.runEnv === 'hittable' || (arch.veloDelta != null && arch.veloDelta <= ARCH_VELO_LO));
   const armWhiffAce = arch && arch.key === 'whiff-ace';
   const armSoftVelo = arch && arch.key !== 'whiff-ace' && arch.veloDelta != null && arch.veloDelta <= ARCH_VELO_LO;
-  // RECENT-FORM OVERLAY (2026-08-07): season arsenal drives the archetype, but if the
+  // RECENT-FORM OVERLAY (2026-08-08): season arsenal drives the archetype, but if the
   // arm has been shelled his last starts the suppression read is stale. Neutralize the
-  // whiff-ace suppression credit and add a "shelled" produce driver — the fix for
-  // pitcher UNDER/suppress reads busting on declining arms.
+  // whiff-ace suppression credit and add a "shelled" produce driver.
   const _rf = s && s.pitcherProps && s.pitcherProps._recentForm;
   const armShelled = !!(_rf && _rf.shelled);
   const effWhiffAce = armWhiffAce && !armShelled;
@@ -9812,6 +9822,7 @@ function renderAnalysis(data) {
               // (Drop #24 — June 8, 2026) Recent form needed by Lyrid UNDER tier
               p._ctxRecentFormLabel = m.recentFormLabel || m.recentForm?.label || '';
               p._ctxUnifiedCall = _unifiedDir;
+              p._ctxBattingOrder = (m.battingOrder != null ? m.battingOrder : null);
             });
             applyMlbEngineRanking(m.propRecs, state.mlbEngine);
 
@@ -21490,7 +21501,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   // SHARP/GOLD; WNBA emits GUARANTEED/PLATINUM/GOLD/LEAN. The spec's
   // table only had VERIFIED/PLATINUM/GOLD/WATCH/NONE.
   var TIER_RANK = { VERIFIED: 3, GUARANTEED: 3, PLATINUM: 2, SHARP: 2, GOLD: 1, PITCHER: 1, HHR: 1, LEAN: 0, PROJ: 0, WATCH: 0, NONE: -1 };
-  var SPORT_BAR = { mlb: 0.62, wnba: 0.70, cs2: 0.57 };
+  var SPORT_BAR = { mlb: 0.62, wnba: 0.70, cs2: 0.57, nfl: 0.60, tennis: 0.60 };
 
   function isBettable(c, o) {
     o = o || {};
@@ -21659,7 +21670,52 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     return { ticket: assemble(bestPick.legs, bestPick), cleanCount: pool.length, bestSlip: true };
   }
 
-  window.LyridParlay = { isBettable: isBettable, score: score, buildParlay: buildParlay, buildBestSlip: buildBestSlip, slateConviction: slateConviction };
+  // (2026-08-08) BEST SIX — cross-sport, best-of-the-best. Takes the single strongest
+  // eligible spot from EACH sport first (diversifies across sports so one bad slate
+  // can't sink it), then fills the remaining slots with the next-highest cash-rate
+  // legs across all sports, every leg in a distinct game. Excludes low-PA bottom-order
+  // hit props (lowPA) so an Ortiz-type 1-AB leg never makes the ticket. A 6-leg slip
+  // is a longshot by construction (six 0.75 legs ~ 18% to sweep) — assemble() surfaces
+  // the TRUE combined hit rate so the size is an honest choice.
+  function buildBestSix(cands, k) {
+    k = Object.assign({ target: 6, minLegs: 3, distinctTeams: false, oneGamePerLeg: true,
+                        standardOnly: true, minTier: 'GOLD', bar: null }, k || {});
+    var pool = (cands || []).filter(function (c) {
+      if (!isBettable(c, k)) return false;
+      if (c.lowPA || (c.flags && c.flags.lowPA)) return false;   // premium slip: no low-PA bats
+      return true;
+    }).sort(function (a, b) { return (b.cashRate || 0) - (a.cashRate || 0); });
+    if (pool.length < k.minLegs)
+      return { ticket: null, cleanCount: pool.length,
+               reason: 'Only ' + pool.length + ' premium, matchup-driven edge(s) across your sports right now — not enough for a ' + k.minLegs + '-leg. Take fewer or wait for the slate to fill.' };
+    var legs = [];
+    function tryAdd(c) {
+      if (!c || legs.length >= k.target) return false;
+      if (legs.some(function (l) { return l.id === c.id; })) return false;
+      if (legs.every(function (l) { return !conflicts(l, c, k); })) { legs.push(c); return true; }
+      return false;
+    }
+    var bySport = {};
+    pool.forEach(function (c) { (bySport[c.sport] = bySport[c.sport] || []).push(c); });
+    // PHASE 1 — one best-of-the-best per sport.
+    Object.keys(bySport).forEach(function (sp) {
+      var arr = bySport[sp];
+      for (var i = 0; i < arr.length; i++) { if (tryAdd(arr[i])) break; }
+    });
+    // PHASE 2 — fill remaining slots with the strongest legs left, any sport, distinct games.
+    for (var j = 0; j < pool.length && legs.length < k.target; j++) tryAdd(pool[j]);
+    if (legs.length < k.minLegs)
+      return { ticket: null, cleanCount: legs.length,
+               reason: 'Game-diversification left only ' + legs.length + ' distinct-game leg(s). Loosen constraints or wait.' };
+    legs.sort(function (a, b) { return (b.cashRate || 0) - (a.cashRate || 0); });
+    var rates = legs.map(function (l) { return l.cashRate || 0; });
+    var pe = powerEV(rates), fe = flexEV(rates);
+    var evb = (fe && pe && fe.ev > pe.ev) ? fe : (pe || fe);
+    var pick = { legs: legs, mode: evb ? evb.mode : 'flex', payout: evb ? evb.mult : (PP_POWER[legs.length] || null), ev: evb ? evb.ev : null };
+    return { ticket: assemble(legs, pick), cleanCount: pool.length, bestSlip: true, bestSix: true, sportsUsed: Object.keys(bySport) };
+  }
+
+  window.LyridParlay = { isBettable: isBettable, score: score, buildParlay: buildParlay, buildBestSlip: buildBestSlip, buildBestSix: buildBestSix, slateConviction: slateConviction };
 
   // ---- Adapters (wired to the LIVE boards, not the spec's idealized shape) ----
   function todayISO() { return new Date().toISOString().slice(0, 10); }
@@ -21786,13 +21842,22 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         var mm = String((row && row[1]) || '').match(/n=\s*([0-9]+)/i);
         if (mm) sampleN = parseInt(mm[1], 10);
       });
+      // (2026-08-08) EXPECTED-PA GATE on hit/HRR legs. Bottom-of-order bats (slot
+      // 7-9) get ~3.7 PA and the most sub/pinch-hit risk; the cohort rate assumes a
+      // full game. Dock cashRate + flag so low-PA hitters fall out of the slip.
+      var _paSlot = (_mm && Number.isFinite(parseFloat(_mm.battingOrder))) ? parseFloat(_mm.battingOrder) : null;
+      var _paPenalty = 1, _lowPA = false, _paNote = '';
+      if (parsed.market === 'hits' || parsed.market === 'hrr') {
+        if (_paSlot != null && _paSlot >= 7) { _paPenalty = 0.85; _lowPA = true; _paNote = ' · bats ' + _paSlot + 'th — fewer PAs (playing-time risk)'; }
+        else if (_paSlot == null) { _paPenalty = 0.95; _paNote = ' · lineup slot unconfirmed'; }
+      }
       out.push({
         id: ['mlb', date, e.gamePk, (e.hitterName || ''), parsed.market, side].join(':'),
         sport: 'mlb', date: date, gameId: String(e.gamePk || ''),
         team: e.team, opponent: e.opponent, player: e.hitterName, playerId: e.hitterId || null,
         market: parsed.market, side: side, line: parsed.line,
-        tier: ce.tier, cashRate: (ce.wr || 0) / 100, edgeType: ce.edgeType, sampleN: sampleN,
-        form: e.recentFormLabel || 'neutral', matchupContext: ce.ctxChips || [], why: ce.plain,
+        tier: ce.tier, cashRate: +(((ce.wr || 0) / 100) * _paPenalty).toFixed(4), edgeType: ce.edgeType, sampleN: sampleN, battingOrder: _paSlot, lowPA: _lowPA,
+        form: e.recentFormLabel || 'neutral', matchupContext: ce.ctxChips || [], why: (ce.plain || '') + _paNote,
         gameLean: gameLean, pitcherFriendlyPark: pitcherFriendlyPark, opposingPitcherWildOrShort: oppWildShort,
         // (Drop #46) environment-veto inputs
         hostileForUnders: _hostileForUnders, windOut: _windOut, heat: _heat, hitterPark: _hitterPark,
@@ -21857,7 +21922,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }
     function constraints() {
       var sp = v('pm-sport'), tp = v('pm-type');
-      return { minLegs: parseInt(v('pm-minlegs') || '2', 10), maxLegs: parseInt(v('pm-maxlegs') || '4', 10),
+      return { minLegs: parseInt(v('pm-minlegs') || '2', 10), maxLegs: parseInt(v('pm-maxlegs') || '6', 10),
         distinctTeams: bb('pm-distinct-teams'), oneGamePerLeg: bb('pm-onegame'), standardOnly: bb('pm-standardonly'),
         _sport: (sp && sp !== 'all') ? sp : null, _type: (tp && tp !== 'all') ? tp : null };
     }
@@ -21869,7 +21934,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         var _pm = function (c) { return c.market === 'strikeouts' || c.market === 'outs'; };
         pool = pool.filter(function (c) { return k._type === 'pitchers' ? _pm(c) : !_pm(c); });
       }
-      S.last = window.LyridParlay.buildBestSlip(pool, k);
+      S.last = window.LyridParlay.buildBestSix(pool, { target: k.maxLegs || 6, minLegs: Math.min(k.minLegs || 3, k.maxLegs || 6), distinctTeams: k.distinctTeams, oneGamePerLeg: true, standardOnly: k.standardOnly });
       var conviction = 'ok';
       try { conviction = window.LyridParlay.slateConviction(pool); } catch (_) {}
       var waiting = pool.filter(function (c) {
@@ -21922,7 +21987,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       var box = el('pm-result'); if (!box) return;
       meta = meta || {};
       var banner = '';
-      if (meta.bestSlip) banner += '<div class="pm-banner" style="background:rgba(120,180,138,0.14);border:1px solid rgba(120,180,138,0.4);color:#7fb08a;font-weight:800">\\u2605 BEST SLIP \\u00b7 highest hit rate across all your sports \\u00b7 standard lines, matchup-driven</div>';
+      if (meta.bestSlip) banner += '<div class="pm-banner" style="background:rgba(120,180,138,0.14);border:1px solid rgba(120,180,138,0.4);color:#7fb08a;font-weight:800">\\u2605 BEST SLIP \\u00b7 top spot from every sport, game-diversified — 6-leg longshot, true combined hit rate shown \\u00b7 standard lines, matchup-driven</div>';
       if (meta.conviction === 'low') {
         banner += '<div class="pm-banner pm-banner-low">Low-conviction slate. Take the single best confirmed play, or pass. Don\u2019t force a parlay.</div>';
       }
@@ -21934,9 +21999,19 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
           '<div class="pm-empty-b">' + ((res && res.reason) || 'No clean edges match these settings.') + '</div></div>'; return;
       }
       var t = res.ticket;
+      // (2026-08-08) SPORT-MIX header — show the diversification at a glance.
+      var _mix = (function () {
+        var c = {}; (t.legs || []).forEach(function (l) { var sp = (l.sport || '?').toUpperCase(); c[sp] = (c[sp] || 0) + 1; });
+        var order = ['MLB', 'WNBA', 'NFL', 'TENNIS'];
+        return Object.keys(c).sort(function (a, b) { var ia = order.indexOf(a), ib = order.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); })
+          .map(function (k) { return (k === 'TENNIS' ? 'Tennis' : k) + ' \u00d7' + c[k]; }).join('  \u00b7  ');
+      })();
+      var _sportCount = (function () { var u = {}; (t.legs || []).forEach(function (l) { u[l.sport || '?'] = 1; }); return Object.keys(u).length; })();
       box.innerHTML = banner + '<div class="pm-ticket"><div class="pm-ticket-head">' +
         '<span class="pm-badge pm-floor-' + t.floor + '">' + t.recommend.toUpperCase() + ' &middot; ' + t.legCount + '-pick' + (t.payout ? ' ' + t.payout + 'x' : '') + '</span>' +
         '<span class="pm-combined">' + Math.round(t.combinedHitRate * 100) + '% all-hit' + (t.ev != null ? ' &middot; ' + (t.ev >= 0 ? '+' : '') + Math.round(t.ev * 100) + '% EV' : '') + '</span></div>' +
+        '<div class="pm-sportmix" style="font-size:11px;font-weight:700;letter-spacing:0.03em;color:#7fb08a;margin:2px 0 9px;display:flex;align-items:center;gap:7px;flex-wrap:wrap">' +
+          '<span style="opacity:.65;font-weight:600">' + _sportCount + ' sport' + (_sportCount === 1 ? '' : 's') + ' &middot;</span>' + _mix + '</div>' +
         t.legs.map(legHTML).join('') +
         (t.correlated ? '<span class="pm-corr">&#9888; legs share a game, combined rate is optimistic</span>' : '') +
         '<div class="pm-note">' + t.note + '</div>' +
@@ -21978,7 +22053,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         var so = el('pm-standardonly'); if (so) so.checked = true;
         var k = constraints(), pool = allCands();
         var res = null;
-        try { res = window.LyridParlay.buildBestSlip(pool, { minLegs: k.minLegs, maxLegs: k.maxLegs, distinctTeams: k.distinctTeams, oneGamePerLeg: k.oneGamePerLeg, standardOnly: true }); }
+        try { res = window.LyridParlay.buildBestSix(pool, { target: 6, minLegs: 3, distinctTeams: k.distinctTeams, oneGamePerLeg: true, standardOnly: true }); }
         catch (e) { res = { ticket: null, reason: 'Best Slip error: ' + (e && e.message) }; }
         var conv = 'ok'; try { conv = window.LyridParlay.slateConviction(pool); } catch (_) {}
         render(res, { conviction: conv, bestSlip: true });
@@ -22621,6 +22696,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       tennisState.loaded = true;
       if (list) list.innerHTML = boardHtml(tennisState.slate);
       if (meta) meta.textContent = `${tennisState.slate.length} match${tennisState.slate.length === 1 ? '' : 'es'}`;
+      try { harvestTennisCandidates(); } catch (_) {}
     } catch (e) {
       if (list) list.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">Schedule unavailable</div><div class="lyrid-empty-text">${esc(String(e.message || e))}</div></div>`;
     }
@@ -22705,6 +22781,63 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         body: JSON.stringify({ matchId: m.matchId, playerA: m.playerA, playerB: m.playerB,
           surface: m.surface, tour: m.tour, startTime: m.startTime, props }) });
     } catch { /* logging is best-effort */ }
+  }
+
+  // (2026-08-08) TENNIS -> parlay candidates. The tennis engine analyzes one match
+  // at a time; this harvester sweeps the loaded slate, pulls PrizePicks lines + the
+  // model read for each match, and emits the qualifying props as standard-line legs so
+  // Best Six can draw a top tennis spot alongside MLB/WNBA/NFL. Fire-and-forget,
+  // sequential + fail-soft so it never blocks the board or hammers the API.
+  async function harvestTennisCandidates() {
+    try {
+      const _pui = window.LyridParlayUI;
+      if (!_pui || typeof _pui.setSportCandidates !== 'function') return;
+      const MKT = {
+        totalGames: { label: 'Total Games', who: null }, gamesWonA: { label: 'Games Won', who: 'A' },
+        gamesWonB: { label: 'Games Won', who: 'B' }, acesA: { label: 'Aces', who: 'A' },
+        acesB: { label: 'Aces', who: 'B' }, dfA: { label: 'Double Faults', who: 'A' },
+        fantasyA: { label: 'Fantasy', who: 'A' }, fantasyB: { label: 'Fantasy', who: 'B' }
+      };
+      const matches = (tennisState.slate || []).slice(0, 10);
+      const all = [];
+      for (let mi = 0; mi < matches.length; mi++) {
+        const m = matches[mi];
+        try {
+          const cur = await fetchPPLines(m);          // real PrizePicks board lines (or null)
+          if (!cur) continue;                          // need a concrete line to be a standard leg
+          const qs = new URLSearchParams({ a: m.playerA, b: m.playerB, surface: m.surface, bestOf: m.bestOf });
+          for (const kk of LINE_KEYS) if (cur[kk] != null && cur[kk] !== '') qs.set(kk, cur[kk]);
+          const r = await fetch('/api/tennis/analyze?' + qs.toString(), { cache: 'no-store' });
+          if (!r.ok) continue;
+          const j = await r.json();
+          const props = (j && j.read && j.read.props) || {};
+          Object.keys(MKT).forEach(function (key) {
+            const pr = props[key], meta = MKT[key];
+            if (!pr || cur[key] == null || cur[key] === '') return;   // only props with a posted line
+            const prob = Number(pr.prob);
+            if (!isFinite(prob)) return;
+            const leanStr = String(pr.lean || '').toLowerCase();
+            const side = /over|more|higher/.test(leanStr) ? 'over'
+                       : /under|less|lower/.test(leanStr) ? 'under'
+                       : (prob >= 0.5 ? 'over' : 'under');
+            const rate = (side === 'over') ? prob : (1 - prob);
+            if (!(rate >= 0.60)) return;                              // premium legs only
+            const player = meta.who === 'A' ? m.playerA : meta.who === 'B' ? m.playerB : (m.playerA + ' / ' + m.playerB);
+            all.push({
+              id: ['tennis', String(m.matchId), key, side].join(':'),
+              sport: 'tennis', date: tennisState.date || '', gameId: 'tennis-' + String(m.matchId),
+              team: player, opponent: (meta.who === 'A' ? m.playerB : meta.who === 'B' ? m.playerA : ''), player: player,
+              market: meta.label + (meta.who ? ' — ' + player : ''), side: side, line: Number(cur[key]),
+              tier: 'GOLD', cashRate: +rate.toFixed(4), edge: (pr.mean != null ? pr.mean : null),
+              why: (side === 'over' ? 'Model over ' : 'Model under ') + meta.label.toLowerCase() + ' vs the posted line' + (m.surface ? ' (' + m.surface + ')' : ''),
+              matchupContext: [],
+              flags: { antiCalibrated: false, highScoringGame: false, started: false, bookProhibited: false, lineStatus: 'standard' }
+            });
+          });
+        } catch (_) { /* skip this match */ }
+      }
+      _pui.setSportCandidates('tennis', all);
+    } catch (_) { /* parlay UI not present */ }
   }
 
   function applyTennisLines(matchId) {
@@ -22867,19 +23000,28 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 
     // feed qualifying picks into the shared parlay builder (same seam as MLB/WNBA)
     try {
-      if (typeof setSportCandidates === 'function') {
+      var _pui = window.LyridParlayUI;
+      if (_pui && typeof _pui.setSportCandidates === 'function') {
         var cands = data.picks
           .filter(function (p) { return p.verdict && p.verdict.tier_candidate && p.verdict.tier_candidate !== 'none'; })
           .map(function (p) {
+            var v = p.verdict || {};
+            var pOver = (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver) || 0;
+            var side = (v.pick === 'lower') ? 'under' : 'over';
+            var rate = (side === 'under') ? (1 - pOver) : pOver;   // cash prob for the chosen side
+            var g = [String(p.team || ''), String(p.opponent || '')].sort().join('@');
             return {
-              id: 'nfl-' + (p.player_key || p.player) + '-' + p.verdict.line,
-              sport: 'nfl', player: p.player, market: p.propLabel,
-              line: p.verdict.line, pick: p.verdict.pick,
-              tier: p.verdict.tier_candidate, edge: p.verdict.edge,
-              flags: {}
+              id: ['nfl', nflState.date, (p.player_key || p.player), (p.propLabel || ''), side].join(':'),
+              sport: 'nfl', date: nflState.date, gameId: 'nfl-' + g,
+              team: p.team, opponent: p.opponent, player: p.player,
+              market: p.propLabel, side: side, line: v.line,
+              tier: 'GOLD', cashRate: +Number(rate).toFixed(4), edge: v.edge,
+              why: (p.card && p.card.summary) || (side === 'under' ? 'Model under edge on a soft line' : 'Model over edge on a soft line'),
+              matchupContext: [],
+              flags: { antiCalibrated: false, highScoringGame: false, started: false, bookProhibited: false, lineStatus: 'standard' }
             };
           });
-        setSportCandidates('nfl', cands);
+        _pui.setSportCandidates('nfl', cands);
       }
     } catch (_) { /* parlay UI not present on this view */ }
   };

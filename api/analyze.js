@@ -1617,15 +1617,13 @@ export default async function handler(req, res) {
         }
       } catch (_) {}
 
-      // RECENT-FORM PITCHER OVERLAY (2026-08-07, window 5 starts): the archetype/K read
-      // above is driven entirely by SEASON arsenal + career novelty — it is blind to a
-      // pitcher who has been declining his last several starts, which is exactly why
-      // season-strong "under/suppress" reads busted on slumping arms. Symmetric to the
-      // hitter formMultiplier: fold the last-5-starts K/9 trend into the K projection
-      // (30% weight, +/-12% cap) and stamp a shelled/surging signal the client uses to
-      // demote suppression/UNDER reads. A 5-start window smooths one-off blowups so the
-      // read tracks a genuine trend, not a single rough night. recentStarts is fetched
-      // above (display) — now it also drives the read. Requires >=3 starts to fire.
+      // RECENT-FORM PITCHER OVERLAY (2026-08-08, window 5 starts): the archetype/K
+      // read above is driven entirely by SEASON arsenal + career novelty — blind to a
+      // pitcher declining his last several starts, which is why season-strong "under/
+      // suppress" reads busted on slumping arms. Fold the last-5-starts K/9 trend into
+      // the K projection (30% weight, +/-12% cap) and stamp a shelled/surging signal
+      // the client uses to demote suppression/UNDER reads. 5 starts smooths one-off
+      // blowups. Requires >=3 starts to fire.
       try {
         const _rs = Array.isArray(recentStarts) ? recentStarts.filter(g => g && parseFloat(g.ip) > 0) : [];
         if (_rs.length >= 3 && pitcherProps) {
@@ -1712,7 +1710,6 @@ export default async function handler(req, res) {
           lineupMeta: (lineup && lineup._lineupMeta) ? {
             source: lineup._lineupMeta.source,
             fetchedAt: lineup._lineupMeta.fetchedAt,
-            phantom: lineup._lineupMeta.phantom || null,
             gameTime: game.gameTime || null,
             gameStatus: game.status || null
           } : null,
