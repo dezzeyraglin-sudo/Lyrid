@@ -19696,7 +19696,34 @@ async function autoGradeOnAppOpen() {
     }
     const isBump = (p) => p.benefitsFrom && Array.isArray(p.benefitsFrom.out) && p.benefitsFrom.out.length;
 
-    const seen = new Set(), clean = [], traps = [];
+    // ── KILL CHAIN ──────────────────────────────────────────────────────────
+    // Discipline layer, ported from the MLB judgment card. Runs AFTER wnbaClassify
+    // tiers a pick; each veto drops it to the visible "killed" list with a stated
+    // reason rather than silently hiding it. A pass is a position — better to flag
+    // with a reason than force a marginal under. Every veto fires only on a real
+    // computed number; nothing here is invented.
+    const wnbaKillReason = (r, p) => {
+      const pos = String(p.position || '').toUpperCase();
+      const posWord = pos.startsWith('G') ? 'guards' : pos.startsWith('C') ? 'centers'
+        : pos.startsWith('F') ? 'forwards' : 'this position';
+      const opp = teamAbbr(p.opponent) || 'the opponent';
+      // GHOST KILL — don't fade a defense that's soft to this player's position.
+      // Uses the ESPN position-defense multiplier (>1 = opponent bleeds this stat
+      // to this position). Skips PRA (composite line, no clean per-market defense).
+      const dm = Number(p.multipliers?.matchup_opposingDefense);
+      if (!r.isPRA && Number.isFinite(dm) && dm >= 1.06) {
+        return { veto: 'GHOST', reason: `Not a ghost — ${opp} is soft to ${posWord} here (allows ~${Math.round((dm - 1) * 100)}% more ${r.m}). You don't fade production against a defense that gives it up.` };
+      }
+      // FORM KILL — don't take the under when recent form is landing at/above the
+      // line. last5Avg is the market-specific recent average from the game logs.
+      const last5 = Number(p.playerContext?.last5Avg);
+      if (Number.isFinite(last5) && last5 >= r.line) {
+        return { veto: 'FORM', reason: `Form contradicts the under — last 5 games ≈ ${last5.toFixed(1)} is already at or above the ${r.line} line.` };
+      }
+      return null;
+    };
+
+    const seen = new Set(), clean = [], traps = [], killed = [];
     for (const p of pool) {
       const k = `${p.player}_${p.market}`;
       if (seen.has(k)) continue; seen.add(k);
@@ -19722,7 +19749,14 @@ async function autoGradeOnAppOpen() {
       (isBump(p) || to.tier === 'LEAN' ? traps : clean).push(r);
     }
 
-    if (clean.length === 0 && traps.length === 0) {
+    // Apply the kill chain to the clean survivors — vetoed picks move to `killed`
+    // with their reason, so the ranked card shows only spots that passed every veto.
+    for (let i = clean.length - 1; i >= 0; i--) {
+      const kill = wnbaKillReason(clean[i], clean[i].p);
+      if (kill) { clean[i].kill = kill; killed.push(clean[i]); clean.splice(i, 1); }
+    }
+
+    if (clean.length === 0 && traps.length === 0 && killed.length === 0) {
       return `<div class="cleanest-edges empty">
         <div class="ce-head"><div><div class="ce-eyebrow">Tonight · Live WNBA</div><div class="ce-title">Tonight's Cleanest Edges</div></div></div>
         <div class="ce-empty-text">Your highest-confidence WNBA plays collect here automatically — assists & rebounds unders, ranked by validated hit rate. Refresh once tonight's book lines post.</div>
@@ -19786,14 +19820,37 @@ async function autoGradeOnAppOpen() {
       ? `<div style="display:flex;align-items:center;gap:8px;margin:18px 2px 8px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#a23b2f;font-weight:700">⚠ Flagged — strong on paper, skip</div><div class="ce-cards">${traps.map(trapCard).join('')}</div>`
       : '';
 
+    // Killed-by-veto cards — the "a pass is a position" list. Each shows which
+    // veto fired and why, so the discipline layer stays auditable.
+    const killCard = (r) => `<div class="ce-card" style="opacity:0.5">
+        <div class="ce-card-top"><div class="ce-rank" style="color:#a23b2f">✕</div>
+          <div class="ce-who"><div class="ce-nm">${esc(r.p.player)}</div><div class="ce-meta">${meta(r)}</div></div>
+          <div class="ce-game"><div class="ce-mu">${esc(r.game)}${r.time ? ' · ' + esc(r.time) : ''}</div></div></div>
+        <div class="ce-verdict less"><span class="ce-varrow">↓</span>
+          <div class="ce-vmain"><div class="ce-vdir">Vetoed</div><div class="ce-vline">${r.line} ${esc(mktLabel(r))}</div></div>
+          ${r.wr != null ? `<div class="ce-rate" style="opacity:0.6"><div class="ce-pct">${r.wr}%</div><div class="ce-pctlbl">on paper</div></div>` : ''}</div>
+        <div class="ce-signals"><span class="ce-sig" style="background:#f6d8d1;color:#a23b2f;font-weight:700">✕ ${esc(r.kill.veto)} KILL</span></div>
+        <div class="ce-why">${esc(r.kill.reason)}</div></div>`;
+
+    const killBlock = killed.length
+      ? `<div style="display:flex;align-items:center;gap:8px;margin:18px 2px 8px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#a23b2f;font-weight:700">✕ Killed by the veto chain — ${killed.length}</div><div class="ce-cards">${killed.map(killCard).join('')}</div>`
+      : '';
+
+    // Honest empty card: everything tonight got vetoed. A pass is a position.
+    const allVetoedNote = (clean.length === 0 && killed.length > 0)
+      ? `<div class="ce-empty-text" style="margin:14px 2px 4px">No card tonight — every candidate was killed by the veto chain (below). A pass is a position.</div>`
+      : '';
+
     return `<div class="cleanest-edges">
       <div class="ce-head"><div><div class="ce-eyebrow">Tonight · Live WNBA</div><div class="ce-title">Tonight's Cleanest Edges</div><div class="ce-sub">Ranked by validated hit rate (264 graded picks). Tap any pick for the reasoning.</div></div><span class="ce-count">${ranked.length}</span></div>
       <div class="ce-cards">${ranked.map(card).join('')}</div>
+      ${allVetoedNote}
       ${trapBlock}
+      ${killBlock}
       <div class="ce-legend"><div class="ce-legend-h">What the badges mean</div>
         <div class="ce-leg-row"><span class="ce-dot" style="background:#22c55e"></span><span><b>★ Guaranteed</b> — inflated PRA/combo line, proj gap ≥ 4. 16-0 (100%).</span></div>
         <div class="ce-leg-row"><span class="ce-dot" style="background:var(--accent)"></span><span><b>◆ Platinum</b> — primary creator cold, line 4-8. 27-1 (96%). <b>◆ Gold</b> — wing rebound ceiling, proj 3-5. 23-4 (85%), size down.</span></div>
-        <div class="ce-leg-row"><span class="ce-dot" style="background:#a23b2f"></span><span><b>⚠ Flagged</b> — injury-bump role or opponent allows stats. The line is stale. Skip.</span></div>
+        <div class="ce-leg-row"><span class="ce-dot" style="background:#a23b2f"></span><span><b>✕ Killed</b> — vetoed by the discipline layer: <b>GHOST</b> (fading a defense soft to the position) or <b>FORM</b> (recent games landing at/above the line). <b>⚠ Flagged</b> — injury-bump role or stale line.</span></div>
       </div></div>`;
   }
 
