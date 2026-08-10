@@ -55,5 +55,21 @@ export function externalFoulRate(opponent) {
  *   return pace ? clampish(pace / LEAGUE_PACE) : null;
  */
 export function externalPaceSignal(opponent, team, total) {
-  return null;   // no pace source yet → ENV stays neutral
+  // ENV / tempo, powered by the game TOTAL (from the Odds API, already passed in).
+  // A high projected total = more possessions + a higher-scoring game = more
+  // counting-stat opportunity, which lifts overs and pressures unders. This is a
+  // legitimate, currently-available environment signal; it is NOT true pace, but
+  // total is the cleanest tempo proxy we can source for free today.
+  //
+  // Convention: 1.0 = neutral, >1 boosts the projection. Damped and clamped to a
+  // sane band (the engine damps/clamps again). Returns null when no total is
+  // available so the layer stays neutral rather than guessing.
+  const t = Number(total);
+  if (!Number.isFinite(t) || t <= 0) return null;   // no line → ENV stays neutral
+
+  const LEAGUE_AVG_TOTAL = 163;   // ~WNBA average game total
+  const ratio = t / LEAGUE_AVG_TOTAL;
+  // 60% pass-through on the deviation, clamped to ±8%.
+  const mult = Math.max(0.92, Math.min(1.08, 1 + (ratio - 1) * 0.6));
+  return Number(mult.toFixed(3));
 }
