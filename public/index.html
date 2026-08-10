@@ -20611,6 +20611,18 @@ async function autoGradeOnAppOpen() {
         return `<span title="what ${esc(p.market)} ${_leanDir} actually hits — empirical tier from 134 graded picks" style="font-size:9px;font-weight:800;letter-spacing:0.05em;color:${fg};background:${bg};padding:3px 8px;border-radius:100px;white-space:nowrap">${ic} ${lbl}</span>`;
       })();
       const _rowDim = (_emp && (_emp.tier === 'AVOID' || _emp.tier === 'PASS')) ? '0.62' : '1';
+      // Minutes-security badge (points engine): the master-variable read from the
+      // PBP audit. SECURE = trust the projection; RISK = leans under; CONFLICT =
+      // model said over but minutes say under → stood down. Stamped by slate.js.
+      const _minBadge = (() => {
+        const ms = p.minutesSecurity;
+        if (!ms || !ms.level) return '';
+        const S = { SECURE: ['#0b5d3b', '#d1fae5', '🔒'], MODERATE: ['#475569', '#e2e8f0', '~'], RISK: ['#7f1d1d', '#fef3c7', '⚠'] };
+        const [fg, bg, ic] = S[ms.level] || S.MODERATE;
+        const conflict = p.minutesConflict
+          ? ' <span style="opacity:0.85">· stood down</span>' : '';
+        return `<span title="${esc(ms.note || '')}" style="font-size:9px;font-weight:800;letter-spacing:0.05em;color:${fg};background:${bg};padding:3px 8px;border-radius:100px;white-space:nowrap">${ic} ${esc(ms.badge || ms.level)}${conflict}</span>`;
+      })();
       const _hasBook = p.lineSource === 'provided';
       const _bookTag = _hasBook ? (p.lineBook ? esc(p.lineBook) : 'BOOK') : 'MODEL';
       const _reason = wnbaMarketReason(p, proj, _edge);
@@ -20634,6 +20646,7 @@ async function autoGradeOnAppOpen() {
             <span style="font-size:12px;color:var(--text-secondary, var(--dim))" title="${_hasBook ? 'real sportsbook line' : 'no book line — engine-inferred'}">${_hasBook ? 'Book' : 'Model line'} <b style="font-size:16px;color:var(--text-primary);font-variant-numeric:tabular-nums">${_lineN != null ? _lineN : '—'}</b> <span style="font-size:8px;text-transform:uppercase;letter-spacing:0.04em;opacity:0.85">${_bookTag}</span></span>
             <span style="margin-left:auto;font-size:10px;font-weight:800;letter-spacing:0.04em;color:${_leanColor};background:${_leanBg};padding:3px 9px;border-radius:100px;white-space:nowrap" title="tool lean vs the line (gap between projection and line)">${esc(_leanTxt)}</span>
             ${_empBadge}
+            ${_minBadge}
           </div>
           ${_reason ? `<div style="margin-top:5px;font-size:11px;line-height:1.5;color:var(--text-secondary, var(--dim))">${_reason}</div>` : ''}
           ${_ppInput}

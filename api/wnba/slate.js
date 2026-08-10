@@ -717,9 +717,41 @@ function _normCdf(z) {
  * @param {number} line  points line
  * @returns {Object|null} { mean, sd, pOver, side, conviction, attempts:{a2,a3,aft}, hasShotData }
  */
-function shotsToClearPoints(prof, line) {
+// ── MINUTES SECURITY ─────────────────────────────────────────────────────────
+// The PBP audit showed the points projection is nearly unbiased when a player
+// gets a full load (32+ min → +1.4 error) but collapses when minutes fall short
+// (<20 min → −8.1). Role stability predicts actual minutes (role≥85 ≈ 31 min vs
+// role<70 ≈ 25), and on graded picks role<70 landed UNDER 63% of the time. So
+// minutes security is the master signal for whether to TRUST the read or lean
+// UNDER. Returns a factor that haircuts expected minutes for the distribution
+// (risky minutes → lower mean → the model itself leans under) plus a badge the
+// card/board picks up.
+function wnbaMinutesSecurity(role, minCv) {
+  const r = Number(role);
+  const cv = Number(minCv);
+  const hasR = Number.isFinite(r), hasCv = Number.isFinite(cv);
+  // Risk rises as role falls and minutes volatility rises.
+  const volatile = hasCv && cv > 0.30;
+  const steady = hasCv && cv < 0.18;
+  if (hasR && r >= 85 && !volatile) {
+    return { level: 'SECURE', read: 'TRUST', minutesFactor: 1.00,
+      badge: 'MINUTES SECURE', note: 'Locked rotation role — the projection is trustworthy in either direction.' };
+  }
+  if ((hasR && r < 70) || volatile) {
+    return { level: 'RISK', read: 'UNDER', minutesFactor: 0.88,
+      badge: 'MINUTES RISK · leans under', note: 'Floating/volatile minutes — historically underperforms the line (role<70 landed under 63%). Read leans UNDER.' };
+  }
+  // Moderate — mild haircut, no strong directional promotion.
+  return { level: 'MODERATE', read: 'LEAN', minutesFactor: steady ? 0.98 : 0.95,
+    badge: 'MINUTES MODERATE', note: 'Semi-stable role — mild minutes risk; trust the read but size accordingly.' };
+}
+
+function shotsToClearPoints(prof, line, security) {
   if (!prof || !Number.isFinite(Number(line))) return null;
-  const m = prof.minAvg;
+  // Apply the minutes-security haircut: risky minutes shrink expected playing time,
+  // which lowers the whole scoring distribution and makes the model itself lean under.
+  const mf = (security && Number.isFinite(security.minutesFactor)) ? security.minutesFactor : 1.0;
+  const m = prof.minAvg * mf;
   const a2 = prof.f2aPerMin * m, a3 = prof.f3aPerMin * m, aft = prof.ftaPerMin * m;
   const { pct2, pct3, pctFt } = prof;
   const mean = 2 * a2 * pct2 + 3 * a3 * pct3 + aft * pctFt;
@@ -744,6 +776,7 @@ function shotsToClearPoints(prof, line) {
     side,
     conviction: Number(Math.max(pOver, 1 - pOver).toFixed(3)),
     attempts: { a2: Number(a2.toFixed(1)), a3: Number(a3.toFixed(1)), aft: Number(aft.toFixed(1)) },
+    minutesFactor: mf,
     hasShotData: prof.hasShotData,
   };
 }
@@ -842,14 +875,21 @@ async function buildAndRunAnalysis({
     // If the shot logs lacked the 2PA/3PA/FTA split, hasShotData is false and the
     // UI should treat this as informational until the feed carries shot splits.
     let shotsToClear = null;
+    let minutesSecurity = null;
     if (shotProfile && market.toLowerCase() === 'points') {
       // Prefer the projected minutes the minutes engine resolved (injury bumps),
       // falling back to the profile's own average.
       const projMin = Number(playerWithRecent.expectedMinutes);
       const prof = Number.isFinite(projMin) && projMin > 0
         ? { ...shotProfile, minAvg: projMin } : shotProfile;
+      // Minutes-security signal (the master variable from the PBP audit) — drives
+      // the haircut applied to the distribution AND the badge on the card.
+      minutesSecurity = wnbaMinutesSecurity(
+        playerWithRecent.role ?? player.scores?.roleStability ?? player.role,
+        shotProfile.minCv
+      );
       // line is resolved just below in `unified`; compute after we have it.
-      shotsToClear = { _prof: prof }; // placeholder resolved post-line
+      shotsToClear = { _prof: prof, _sec: minutesSecurity }; // resolved post-line
     }
 
     // Look up line: caller can provide per-prop lines via gameLines.propLines[playerName_market].
@@ -938,7 +978,7 @@ async function buildAndRunAnalysis({
 
     // Resolve the shots-to-clear estimate now that the points line is known.
     if (shotsToClear && shotsToClear._prof && Number.isFinite(Number(unified.line))) {
-      shotsToClear = shotsToClearPoints(shotsToClear._prof, Number(unified.line));
+      shotsToClear = shotsToClearPoints(shotsToClear._prof, Number(unified.line), shotsToClear._sec);
     } else {
       shotsToClear = null;
     }
@@ -1015,14 +1055,29 @@ async function buildAndRunAnalysis({
       const CONV_BAR = 0.60;   // minimum conviction to surface a points play
       const STRONG_BAR = 0.68; // conviction for the STRONG label
       const conv = shotsToClear.conviction;
+      const sec = minutesSecurity || { read: 'LEAN', level: 'MODERATE' };
       unified.projection = shotsToClear.mean;
       unified.edge = Number((shotsToClear.mean - Number(unified.line)).toFixed(1));
       unified.probOver = shotsToClear.pOver;
       unified.probUnder = Number((1 - shotsToClear.pOver).toFixed(3));
       unified.pointsEngine = 'shots-to-clear';
-      if (conv >= CONV_BAR && !isOut) {
-        unified.recommendation = shotsToClear.side;            // 'OVER' | 'UNDER'
+      unified.minutesSecurity = sec;   // badge + read surfaced to the card
+
+      // Minutes-security modulates the read (PBP audit): a RISK profile that still
+      // says OVER is untrustworthy (minutes shortfall historically → under), so
+      // demote it; a RISK profile saying UNDER is confirmed. A SECURE profile is
+      // trusted in either direction.
+      const overDespiteRisk = sec.read === 'UNDER' && shotsToClear.side === 'OVER';
+      if (overDespiteRisk) {
+        unified.recommendation = 'PASS';
         unified.confidence = Math.round(conv * 100);
+        unified.tier = 'PASS';
+        unified.minutesConflict = true;   // model says over, minutes say under → stand down
+      } else if (conv >= CONV_BAR && !isOut) {
+        unified.recommendation = shotsToClear.side;            // 'OVER' | 'UNDER'
+        // Confirmed-under (risk + under) earns a small confidence bump; secure trusts as-is.
+        const confirmed = sec.read === 'UNDER' && shotsToClear.side === 'UNDER';
+        unified.confidence = Math.min(99, Math.round(conv * 100) + (confirmed ? 4 : 0));
         unified.tier = conv >= STRONG_BAR ? 'STRONG' : 'LEAN';
         unified.hitRate = shotsToClear.conviction;
       } else {
@@ -1109,6 +1164,7 @@ async function buildAndRunAnalysis({
       // shotsToClear as informational (shadow) until the feed carries fg3a/fta.
       shotProfile: shotProfile || null,
       shotsToClear: shotsToClear || null,
+      minutesSecurity: minutesSecurity || null,   // { level, read, badge, note } — card picks this up
       // Team-level opposing defense (ALL-STAR): { allowedPerGame, leagueAvg,
       // multiplier, rating SOFT|AVERAGE|TOUGH, games }. null until enough games.
       teamDefense: teamDef || null
