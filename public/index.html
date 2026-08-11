@@ -7459,6 +7459,20 @@ function computeHitterMatchup(m, s, data) {
       };
     }
   }
+  // (2026-08-10) BvP REALITY CHECK — symmetric. A poor head-to-head over a real sample was
+  // shown as "context" but IGNORED while archetype + contact projection stacked into a high-
+  // conviction HRR badge (Abreu: 4-16 / .528 OPS vs Taillon, then 3 soft outs). If the batter
+  // has actually faced this arm >=12 times and struggled (OPS <= .600), downgrade the squares-
+  // up verdict — direct evidence outranks an optimistic season projection. Only tempers over-
+  // confidence; never manufactures a fade off a small sample.
+  {
+    const _vp = m.vsPitcher;
+    if (_vp && _vp.ab != null && _vp.ab >= 12 && _vp.ops != null && _vp.ops <= 0.600 && contactMatchup && contactMatchup.verdict === 'squares-up') {
+      contactMatchup.verdict = 'neutral';
+      contactMatchup.bvpDowngrade = { hits: _vp.hits, ab: _vp.ab, ops: _vp.ops };
+      contactMatchup.why += ' · BUT ' + _vp.hits + '-' + _vp.ab + ' / .' + Math.round(_vp.ops * 1000) + ' OPS vs this exact arm — projection downgraded';
+    }
+  }
   const hrDrivers = [];
   if (barrel != null && barrel >= 10) hrDrivers.push(`${barrel.toFixed(0)}% barrel`);
   if (ev != null && ev >= 91)         hrDrivers.push(`${ev.toFixed(0)} mph EV`);
