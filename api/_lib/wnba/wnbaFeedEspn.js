@@ -192,6 +192,101 @@ export async function getBoxScore(eventId) {
 
 export { normName, madeAtt };
 
+// ── SPIN / ROTOWIRE role-change read ─────────────────────────────────────────
+// ESPN's athlete "overview" endpoint carries the Rotowire blurb (shown as "Spin"
+// on the app) plus fantasy rostership. The blurb is a human analyst spelling out
+// role changes BEFORE the box-score split fully reflects them — e.g. a starter
+// quietly moved to the bench while the public still bets the old role. We read it
+// for display on every card AND scan it for a demotion/promotion signal.
+
+const _overviewMemo = new Map(); // athleteId → { at, data }
+const _OVERVIEW_TTL = 30 * 60 * 1000;
+
+export async function getPlayerOverview(athleteId) {
+  if (!athleteId) return null;
+  const hit = _overviewMemo.get(String(athleteId));
+  if (hit && (Date.now() - hit.at) < _OVERVIEW_TTL) return hit.data;
+  const d = await getJson(`${CORE}/athletes/${athleteId}/overview`);
+  const rw = d?.rotowire || {};
+  const f = d?.fantasy || {};
+  const data = d ? {
+    story: rw.story || null,
+    headline: rw.headline || rw.description || null,
+    published: rw.published || null,
+    percentOwned: f.percentOwned != null ? Number(f.percentOwned) : null,
+    last7Days: f.last7Days != null ? Number(f.last7Days) : null,
+    positionRank: f.positionRank != null ? Number(f.positionRank) : null,
+  } : null;
+  _overviewMemo.set(String(athleteId), { at: Date.now(), data });
+  return data;
+}
+
+// Parse "Thu Aug 06 08:07:00 PDT 2026" (or ISO) → age in days, else null.
+function _spinAgeDays(published) {
+  if (!published) return null;
+  const t = Date.parse(published);
+  if (Number.isNaN(t)) return null;
+  return (Date.now() - t) / 86400000;
+}
+
+// Detect a role change from the blurb text. Returns a read object or null.
+// Display of the blurb itself is separate — this is only the SIGNAL.
+export function analyzeSpin(ov) {
+  if (!ov || !ov.story) return null;
+  const story = ov.story;
+  const s = story.toLowerCase();
+  const demote = /\b(off the bench|to the bench|lost (his|her|the) start|no longer (a )?start|out of the starting|bench role|coming off the bench|operated off the bench|relegated|moved to the bench)\b/.test(s)
+    || (/as a (starter|reserve)/.test(s) && /in favor of|in place of|behind/.test(s));
+  const promote = /\b(moved into the starting|earned (a|the) start|promoted to (the )?starting|will start|inserted into the starting|named (a|the) starter|starting in place|back in the starting)\b/.test(s);
+  if (!demote && !promote) return null;
+
+  const ageDays = _spinAgeDays(ov.published);
+  const stale = ageDays == null || ageDays <= 10;   // role notes re-price slower than a game recap
+  const replacedBy = (story.match(/in favor of ([A-Za-z .'\-]+?)[.,]/) || story.match(/in place of ([A-Za-z .'\-]+?)[.,]/) || [])[1];
+  const starter = story.match(/as a starter[^.]*?averaged ([\d.]+) points/i);
+  const reserve = story.match(/as a reserve[^.]*?averaged (?:only )?([\d.]+) points/i);
+  const starterPts = starter ? Number(starter[1]) : null;
+  const reservePts = reserve ? Number(reserve[1]) : null;
+  const gap = (starterPts != null && reservePts != null) ? Number((starterPts - reservePts).toFixed(1)) : null;
+  // Bait-and-switch strength: public still on the old role (owned & rising).
+  const publicStale = (ov.percentOwned != null && ov.percentOwned >= 30)
+    && (ov.last7Days != null && ov.last7Days > 0);
+
+  if (demote && !promote) {
+    return {
+      side: 'UNDER', level: stale ? 'STALE_STARTER' : 'STALE_STARTER_OLD',
+      badge: 'STALE STARTER · leans under',
+      replacedBy: (replacedBy || '').trim() || null,
+      starterPts, reservePts, gap, publicStale, ageDays: ageDays != null ? Math.round(ageDays) : null,
+      note: `Recently moved to the bench${replacedBy ? ' in favor of ' + replacedBy.trim() : ''}` +
+            `${gap != null ? ` (${starterPts}→${reservePts} pts as starter→reserve, ${gap} drop)` : ''}` +
+            `${publicStale ? '; public still on the old role (owned ' + ov.percentOwned + '%, rising)' : ''}. Role points under across markets.`,
+      active: stale,
+    };
+  }
+  if (promote && !demote) {
+    return {
+      side: 'OVER', level: 'ROLE_BUMP', badge: 'ROLE BUMP · leans over',
+      replacedBy: null, starterPts, reservePts, gap, publicStale: false,
+      ageDays: ageDays != null ? Math.round(ageDays) : null,
+      note: `Recently moved into the starting lineup — usage and minutes step up. Role points over.`,
+      active: stale,
+    };
+  }
+  return null;
+}
+
+// One call: name → { overview fields + read }. Resolves the athlete id via the
+// memoized roster map. Returns null when no id or no blurb is available.
+export async function getSpin(playerName) {
+  const map = await buildPlayerIdMap();
+  const meta = map[normName(playerName)];
+  if (!meta?.id) return null;
+  const ov = await getPlayerOverview(meta.id);
+  if (!ov) return null;
+  return { ...ov, read: analyzeSpin(ov) };
+}
+
 // ── Current active roster (name-set) for one team ────────────────────────────
 // ESPN's /teams/{id}/roster reflects the LIVE roster — waived players drop off
 // immediately, unlike bbref's season page (which lists everyone who appeared).
