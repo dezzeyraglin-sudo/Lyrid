@@ -389,14 +389,18 @@ async function generateSlate(opts = {}) {
         // from the same leakage-filtered logs; carried onto every analysis so the
         // points path can read P(over) off a distribution instead of a mean.
         const _shotProfile = _bdlGames.length ? buildShotProfile(_bdlGames, 10) : null;
+        // Recent shooting form (bonus read): raw last-10 / last-5 FGA + FG% + TS%
+        // straight from the game logs — "who's actually shooting well right now",
+        // shown next to the tool's projection on the card.
+        const _shootingForm = _bdlGames.length ? buildShootingForm(_bdlGames) : null;
 
         for (const market of markets) {
           tasks.push(
             buildAndRunAnalysis({
-              player, isHome, opponent, team, market, season, game, spread, total,
+              player, isHome, opponent, team, market, season, game, spread, total, date,
               recentFormPromise, allTeamStats, gameLines,
               v2Roster, v2OpponentRoster, injuryReport, defenseTable,
-              shotProfile: _shotProfile
+              shotProfile: _shotProfile, shootingForm: _shootingForm
             })
           );
         }
@@ -744,6 +748,92 @@ function _parseMin(v) {
 function _numf(...vals) { for (const v of vals) { const n = Number(v); if (Number.isFinite(n)) return n; } return 0; }
 
 /**
+ * Recent shooting form (bonus card read): raw last-10 and last-5 window shooting
+ * straight from the game logs. FGA is avg attempts/game, fgPct is real FG% over the
+ * window (makes÷attempts), tsPct is true shooting (PTS ÷ 2(FGA + 0.44·FTA)). Shows
+ * customers who's actually producing before the matchup, alongside the projection.
+ * @param {Array} games  raw game rows (sorted oldest→newest if dated)
+ * @returns {Object|null} { l10:{gp,fga,fgPct,tsPct,ppg}, l5:{...} }
+ */
+function buildShootingForm(games) {
+  if (!Array.isArray(games) || games.length === 0) return null;
+  const withDate = games.every(g => g && (g.date || g.game_date));
+  const sorted = withDate
+    ? [...games].sort((a, b) => String(a.date || a.game_date).localeCompare(String(b.date || b.game_date)))
+    : [...games];
+  const played = sorted.filter(g => Number(g.minutes ?? g.min ?? g.mp) > 0);
+  const win = (n) => {
+    const g = played.slice(-n);
+    if (!g.length) return null;
+    const sum = (f) => g.reduce((a, x) => a + (Number(x[f]) || 0), 0);
+    const fga = sum('fga'), fgm = sum('fgm'), fta = sum('fta'), pts = sum('pts');
+    return {
+      gp: g.length,
+      fga: Number((fga / g.length).toFixed(1)),
+      fgm: Number((fgm / g.length).toFixed(1)),        // avg makes/game — "shots they actually make"
+      fgPct: fga > 0 ? Math.round((fgm / fga) * 100) : null,
+      tsPct: (fga + 0.44 * fta) > 0 ? Math.round((pts / (2 * (fga + 0.44 * fta))) * 100) : null,
+      ppg: Number((pts / g.length).toFixed(1)),
+    };
+  };
+  return { l10: win(10), l5: win(5) };
+}
+
+/**
+ * REGRESSION WATCH — the fill-in shelf-life read. When a player is filling in for
+ * absent teammate(s) (benefitsFrom.out), their recent shooting form is inflated by
+ * the extra usage. This flags that, and — crucially — reads the absent star's injury
+ * status + returnDate so the customer knows WHEN usage snaps back to them.
+ *   REGRESSION WATCH  → a star is trending back (GTD, or returnDate within ~3 days):
+ *                       the L5/L10 numbers are a ceiling, pullback imminent.
+ *   ROLE-BOOSTED      → star still out with no near return: form is real for now,
+ *                       but conditional. Only fires when recent form is actually up.
+ * Future-proof: keys off the live injury feed + returnDate, so it updates itself as
+ * statuses change — no hardcoding of who's out.
+ */
+function buildRegressionWatch({ shootingForm, seasonPpg, benefitsFrom, injuryReport, slateDate }) {
+  if (!benefitsFrom || !Array.isArray(benefitsFrom.out) || !benefitsFrom.out.length) return null;
+  // Match how injuryReport.byName is keyed (wnbaFeedEspn.normName): strip to [a-z ].
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
+  const byName = injuryReport?.byName || {};
+  const today = slateDate ? new Date(slateDate) : new Date();
+  const stars = benefitsFrom.out.map((name) => {
+    const inj = byName[norm(name)] || null;
+    let daysToReturn = null;
+    if (inj?.returnDate) {
+      const rd = new Date(inj.returnDate);
+      if (!Number.isNaN(rd.getTime())) daysToReturn = Math.round((rd - today) / 86400000);
+    }
+    const trendingBack = (inj && /GTD|QUESTION|DOUBT|DAY/i.test(inj.status || ''))
+      || (daysToReturn != null && daysToReturn <= 3 && daysToReturn >= -1);
+    return { name, status: inj?.status || 'OUT', returnDate: inj?.returnDate || null, daysToReturn, trendingBack };
+  });
+  const l5 = shootingForm?.l5;
+  const spikePct = (l5 && Number(seasonPpg) > 0 && l5.ppg != null)
+    ? Math.round((l5.ppg / Number(seasonPpg) - 1) * 100) : null;
+  const elevated = spikePct != null && spikePct >= 15;
+  const imminent = stars.filter(s => s.trendingBack);
+
+  if (imminent.length) {
+    const s = imminent[0];
+    const when = s.returnDate ? ` (expected back ${s.returnDate})` : '';
+    return {
+      level: 'REGRESSION', badge: 'REGRESSION WATCH', stars: imminent.map(x => x.name),
+      returnDate: s.returnDate, spikePct,
+      note: `${imminent.map(x => x.name).join(', ')} trending back${when} — recent form was boosted by the absence. Usage returns to them; treat the L5/L10 line as a ceiling and expect a pullback.`,
+    };
+  }
+  if (elevated) {
+    return {
+      level: 'BOOSTED', badge: 'ROLE-BOOSTED', stars: benefitsFrom.out, spikePct,
+      note: `Elevated role (${spikePct > 0 ? '+' + spikePct + '% ' : ''}vs season) with ${benefitsFrom.out.join(', ')} out — recent form is real for now but regresses when they return.`,
+    };
+  }
+  return null;
+}
+
+/**
  * Build a scoring profile from a player's raw game logs.
  * @param {Array} games  raw BDL game rows (any order; sorted by date if present)
  * @param {number} N     use the most-recent N games (default 10)
@@ -879,9 +969,9 @@ function shotsToClearPoints(prof, line, security) {
 }
 
 async function buildAndRunAnalysis({
-  player, isHome, opponent, team, market, season, game,
+  player, isHome, opponent, team, market, season, game, date,
   spread, total, recentFormPromise, allTeamStats, gameLines,
-  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile
+  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile, shootingForm
 }) {
   try {
     // Get opponent team stats from the pre-fetched map
@@ -1122,7 +1212,11 @@ async function buildAndRunAnalysis({
       }
     }
 
-    // Cold-form UNDER signal (tiered — see wnbaPropSignal.js). Computed for THIS
+    // Regression watch — recent form's shelf-life when filling in for absent stars.
+    const regressionWatch = buildRegressionWatch({
+      shootingForm, seasonPpg: player.seasonAvg, benefitsFrom, injuryReport, slateDate: date,
+    });
+
     // market, plus a parallel PRA signal (the fallback when standalone reb/ast props
     // aren't offered). recentForm.games is most-recent-first, so reverse to oldest→newest.
     let propSignal = null;
@@ -1210,6 +1304,8 @@ async function buildAndRunAnalysis({
       chips: unified.chips || buildChipsFromUnified(unified, player, reboundExtras),
       hardFlags: buildHardFlagsFromUnified(unified, player, reboundExtras),
       spin: _spin || null,             // full Rotowire blurb for display on every card
+      shootingForm: shootingForm || null,   // L10/L5 FGA + FG% + TS% — recent-shooting bonus read
+      regressionWatch: regressionWatch || null,   // fill-in shelf-life / star-return read
       spinRead: _spin?.read || null,   // role-change signal (STALE STARTER / ROLE BUMP) or null
       reasons: buildPropReasons({
         market, unified,
