@@ -522,7 +522,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'regwatch-datefix-2026-08-15',   // deploy marker — confirms this code is live
+    buildTag: 'adaptive-shrinkage-2026-08-15',   // deploy marker — confirms this code is live
     season,
     games: Object.values(gameContexts),
     analyses: successful,
@@ -640,13 +640,44 @@ function buildHardFlagsFromUnified(u, player, reboundExtras) {
 // tag, text }; the card shows the ones matching the pick's lean direction.
 function buildPropReasons(ctx) {
   const { market, unified, shotProfile: sp, shotsToClear: stc, minutesSecurity: ms,
-          reboundExtras, raw, propSignal, opponent, spinRead } = ctx;
+          reboundExtras, raw, propSignal, opponent, spinRead, opponentStyle, adaptiveRead } = ctx;
   const mk = String(market || '').toLowerCase();
   const m = unified?.multipliers || {};
   const opp = opponent || 'the opponent';
   const out = [];
   const add = (dir, tag, text) => out.push({ dir, tag, text });
   const r1 = (x) => Math.round(x * 10) / 10;
+
+  // Adaptive shrinkage regime (points): a hot-shooting spike gets shrunk toward
+  // baseline (variance → leans under vs an inflated line); a volume/role riser is
+  // trusted (real → leans over). Only speaks when the regime is decisive.
+  if (adaptiveRead) {
+    if (adaptiveRead.regime === 'HOT_SHOOTING') add('UNDER', 'HOT-SHOOTING NOISE',
+      `Recent points are up on shooting efficiency, not shot volume — the model shrinks a hot streak toward the ${adaptiveRead.baseProjection} baseline rather than chasing it.`);
+    else if (adaptiveRead.regime === 'RISING') add('OVER', 'REAL RISER',
+      `Shot volume is up with role/opportunity support (not just a hot streak) — the form-adjusted baseline rises to ${adaptiveRead.adjProjection}.`);
+    else if (adaptiveRead.regime === 'COLD_SHOOTING') add('OVER', 'COLD-SHOOTING NOISE',
+      `Recent dip is efficiency, not lost volume — treated as variance and shrunk back toward the ${adaptiveRead.baseProjection} baseline.`);
+  }
+
+  // Opponent style (data-grounded scheme proxy). Rebounds: a perimeter-heavy
+  // opponent generates long misses that leak to guards/wings; a paint team keeps
+  // misses short for the bigs. Under-environment: a fast/high-scoring opponent
+  // means more possessions (pressures unders); a slow/low-scoring one favors them.
+  if (opponentStyle && Array.isArray(opponentStyle.tags)) {
+    if (mk === 'rebounds') {
+      if (opponentStyle.missProfile === 'PERIMETER') add('BOTH', 'LONG MISS',
+        `${opp} is three-heavy (${opponentStyle.threePct}% of shots) — long misses carom past the paint, so boards leak to guards and wings.`);
+      else if (opponentStyle.missProfile === 'PAINT') add('BOTH', 'SHORT MISS',
+        `${opp} is paint-oriented — misses stay short in the restricted area, favoring the biggest bodies.`);
+    }
+    if (opponentStyle.underEnv === 'SUPPRESS') add('UNDER', 'SLOW ENV',
+      `${opp}'s recent games run slow/low-scoring — fewer possessions, a mildly favorable under environment.`);
+    else if (opponentStyle.underEnv === 'FAST') add('OVER', 'FAST ENV',
+      `${opp}'s recent games run fast/high-scoring — more possessions and scoring chances, which pressures unders.`);
+    if (opponentStyle.styleShift) add('BOTH', 'STYLE SHIFT',
+      `${opp} has shifted look lately (${opponentStyle.styleShift.from}→${opponentStyle.styleShift.to} over their last 5) — recent games matter more than the season here.`);
+  }
 
   // Role change from the Spin blurb — applies to ALL markets (a demotion crushes
   // points, rebounds AND assists at once). Only when the note is still fresh.
@@ -756,6 +787,82 @@ function _numf(...vals) { for (const v of vals) { const n = Number(v); if (Numbe
  * @param {Array} games  raw game rows (sorted oldest→newest if dated)
  * @returns {Object|null} { l10:{gp,fga,fgPct,tsPct,ppg}, l5:{...} }
  */
+// ── ADAPTIVE SHRINKAGE ───────────────────────────────────────────────────────
+// Regression-to-the-mean with an evidence-driven weight. Move a BASELINE toward
+// RECENT by w = n/(n+K), where n is recent sample measured in OPPORTUNITIES (not
+// games) and K is prior skepticism. Evidence of a real regime change lowers K so
+// recent data moves the estimate fast; absent evidence, K stays high and recent is
+// shrunk hard toward baseline. This one estimator will later serve player form,
+// opponent adjustment, and projection-bias correction — three priors, one machine.
+function shrinkToward(baseline, recent, nOpportunities, K) {
+  const n = Math.max(0, Number(nOpportunities) || 0);
+  const k = Math.max(1e-6, Number(K) || 1);
+  const w = n / (n + k);
+  const b = Number(baseline), r = Number(recent);
+  if (!Number.isFinite(b)) return { value: r, weight: 1, w };
+  if (!Number.isFinite(r)) return { value: b, weight: 0, w: 0 };
+  return { value: b + w * (r - b), weight: Number(w.toFixed(3)) };
+}
+
+// Regime evidence → a multiplier that lowers the OPPORTUNITY K (moves the estimate
+// faster). Follows the hierarchy: role change fastest, then opportunity, then
+// process, then pure outcome. Each independent signal compounds.
+function regimeEvidenceMult({ spinRead, minutesSecurity, benefitsFrom, shootingForm }) {
+  let mult = 1;
+  // ROLE change (fastest): Spin role move or an injury-driven role.
+  if (spinRead && spinRead.active) mult *= 2.2;
+  else if (benefitsFrom && Array.isArray(benefitsFrom.out) && benefitsFrom.out.length) mult *= 1.7;
+  // OPPORTUNITY change (fast): secure/elevated minutes, and PERSISTENCE — the L5
+  // volume move holding vs L10 rather than one spike game.
+  if (minutesSecurity && minutesSecurity.level === 'SECURE') mult *= 1.3;
+  const l5 = shootingForm?.l5, l10 = shootingForm?.l10;
+  if (l5 && l10 && l5.fga != null && l10.fga != null) {
+    const persist = Math.abs(l5.fga - l10.fga);   // volume shift that L10 already partly reflects
+    if (persist >= 2) mult *= 1.25;               // the change is sticking across the window
+  }
+  return Math.min(mult, 3.5);   // cap so no single pick swings wildly
+}
+
+// Points decomposition: points = FGA (opportunity, sticky) × points-per-FGA
+// (efficiency, noisy). Shrink each axis separately — opportunity with a small K
+// (trust recent volume), efficiency with a large K (hot shooting is shrunk hard) —
+// then recombine. Baseline = L10, recent = L5. ADDITIVE for now (shadow mode):
+// emits an adjusted read + regime label; does not yet override the projection.
+function buildAdaptivePoints({ shootingForm, evidence = {} }) {
+  const base = shootingForm?.l10, recent = shootingForm?.l5;
+  if (!base || !recent || !(base.fga > 0) || !(recent.fga > 0)) return null;
+  const baseFga = base.fga, recentFga = recent.fga;
+  const basePps = base.ppg / base.fga, recentPps = recent.ppg / recent.fga;
+  const nOpp = recentFga * (recent.gp || 5);   // total recent attempts = the evidence unit
+
+  const evMult = regimeEvidenceMult(evidence);
+  const K_OPP = 30 / evMult;   // ~30 recent FGA to half-weight recent volume (less w/ evidence)
+  const K_EFF = 90;            // efficiency needs ~3x the evidence; hot streaks stay shrunk
+
+  const opp = shrinkToward(baseFga, recentFga, nOpp, K_OPP);
+  const eff = shrinkToward(basePps, recentPps, nOpp, K_EFF);
+  const adjProjection = Number((opp.value * eff.value).toFixed(1));
+  const baseProjection = Number((baseFga * basePps).toFixed(1));
+
+  const fgaDelta = recentFga - baseFga, ppsDelta = recentPps - basePps;
+  let regime, regimeNote;
+  if (fgaDelta >= 2 && evMult > 1.2) { regime = 'RISING'; regimeNote = 'volume up with role/opportunity support — real riser'; }
+  else if (fgaDelta >= 2) { regime = 'VOLUME_UP'; regimeNote = 'taking more shots lately'; }
+  else if (Math.abs(fgaDelta) < 1.5 && ppsDelta >= 0.18) { regime = 'HOT_SHOOTING'; regimeNote = 'points up on efficiency, not volume — shrunk toward baseline as likely variance'; }
+  else if (Math.abs(fgaDelta) < 1.5 && ppsDelta <= -0.18) { regime = 'COLD_SHOOTING'; regimeNote = 'efficiency dip on steady volume — treated as variance'; }
+  else if (fgaDelta <= -2) { regime = 'VOLUME_DOWN'; regimeNote = 'fewer shots lately'; }
+  else { regime = 'STABLE'; regimeNote = 'no meaningful regime change'; }
+
+  return {
+    adjProjection, baseProjection,
+    delta: Number((adjProjection - baseProjection).toFixed(1)),
+    regime, regimeNote, evidenceMult: Number(evMult.toFixed(2)),
+    opportunity: { base: baseFga, recent: recentFga, adjusted: Number(opp.value.toFixed(1)), weight: opp.weight },
+    efficiency: { basePps: Number(basePps.toFixed(2)), recentPps: Number(recentPps.toFixed(2)), adjusted: Number(eff.value.toFixed(2)), weight: eff.weight },
+    nOpp, kOpp: Number(K_OPP.toFixed(1)), kEff: K_EFF,
+  };
+}
+
 function buildShootingForm(games) {
   if (!Array.isArray(games) || games.length === 0) return null;
   const withDate = games.every(g => g && (g.date || g.game_date));
@@ -999,6 +1106,10 @@ async function buildAndRunAnalysis({
     }
     // Team-level defense always attaches when available (works on ALL-STAR now).
     const teamDef = teamDefenseFor(defenseTable, opponent);
+    // Opponent OFFENSIVE style fingerprint (three-heavy / paint / miss profile) —
+    // the data-grounded proxy for scheme; enriches matchup reads and drives the
+    // rebounds miss-environment logic without a Synergy feed.
+    const opponentStyle = defenseTable?.teamStyle?.[opponent] || null;
     // COV — coaching coverage scheme. Socket ready: if any source provides a
     // per-opponent coverage signal, expose it here and the layer turns on.
     //   e.g. opponentTeam.coverage = { scheme, vsArchetypeMultiplier }
@@ -1218,6 +1329,12 @@ async function buildAndRunAnalysis({
       shootingForm, seasonPpg: player.seasonAvg, benefitsFrom, injuryReport, slateDate: date,
     });
 
+    // Adaptive shrinkage read (points, shadow mode) — evidence-weighted regime
+    // detection: separates a real volume/role riser from hot-shooting variance.
+    const adaptiveRead = market.toLowerCase() === 'points'
+      ? buildAdaptivePoints({ shootingForm, evidence: { spinRead: _spin?.read, minutesSecurity, benefitsFrom, shootingForm } })
+      : null;
+
     // market, plus a parallel PRA signal (the fallback when standalone reb/ast props
     // aren't offered). recentForm.games is most-recent-first, so reverse to oldest→newest.
     let propSignal = null;
@@ -1298,7 +1415,18 @@ async function buildAndRunAnalysis({
       projection: unified.projection,
       edge: unified.edge,
       recommendation: isOut ? 'PASS' : unified.recommendation,
-      confidence: isOut ? 0 : unified.confidence,
+      confidence: isOut ? 0 : (() => {
+        // Mild under-environment nudge (conservative prior, ±5%). Only touches UNDER
+        // picks; never flips a recommendation, just tilts conviction a little.
+        let c = unified.confidence;
+        const lean = String(unified.recommendation || unified.lean || '').toUpperCase();
+        const f = Number(opponentStyle?.underFactor);
+        if (lean === 'UNDER' && Number.isFinite(c) && Number.isFinite(f) && f !== 1) {
+          c = Math.max(1, Math.min(99, Math.round(c * f)));
+        }
+        return c;
+      })(),
+      underEnv: opponentStyle?.underEnv || null,   // SUPPRESS | NEUTRAL | FAST (mild)
       label: isOut ? 'OUT' : (isDoubtful ? 'RISK' : unified.tier),
       hitRate: unified.hitRate ?? deriveHitRate(unified),
       scores: unified.scores,
@@ -1306,7 +1434,9 @@ async function buildAndRunAnalysis({
       hardFlags: buildHardFlagsFromUnified(unified, player, reboundExtras),
       spin: _spin || null,             // full Rotowire blurb for display on every card
       shootingForm: shootingForm || null,   // L10/L5 FGA + FG% + TS% — recent-shooting bonus read
+      opponentStyle: opponentStyle || null,   // opponent offensive fingerprint (matchup context)
       regressionWatch: regressionWatch || null,   // fill-in shelf-life / star-return read
+      adaptiveRead: adaptiveRead || null,   // opportunity×efficiency shrinkage (points, shadow)
       spinRead: _spin?.read || null,   // role-change signal (STALE STARTER / ROLE BUMP) or null
       reasons: buildPropReasons({
         market, unified,
@@ -1314,7 +1444,7 @@ async function buildAndRunAnalysis({
         shotsToClear: shotsToClear || null,
         minutesSecurity: minutesSecurity || null,
         reboundExtras, raw: player?._raw || null, propSignal, opponent,
-        spinRead: _spin?.read || null,
+        spinRead: _spin?.read || null, opponentStyle, adaptiveRead,
       }),
       lineSource: propLineSource,
       lineBook: lineMeta?.vendor || null,

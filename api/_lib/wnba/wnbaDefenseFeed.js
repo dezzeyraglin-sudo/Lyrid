@@ -132,11 +132,20 @@ export async function buildWnbaDefenseTable(opts = {}) {
 
   const allowed = {};
   const ensure = (team) => (allowed[team] = allowed[team] || { G: mkAcc(), F: mkAcc(), C: mkAcc() });
+  // Team OFFENSIVE style — tracked PER GAME so we can window it (L10 / L5) and catch
+  // recent coaching/scheme changes rather than smearing a season average.
+  const offenseByGame = {};   // team -> [{ date, fga, fg3a, fta, fgm, ast, pts }]
   let rowsSeen = 0;
   await mapLimit(gamesToPull, BOX_CONCURRENCY, async (game) => {
     const box = await getBoxScore(game.eventId).catch(() => []);
+    const teamTotals = {};    // this game's per-team totals
     for (const row of box) {
       const playerTeam = toSlateTri(row.team);
+      if (playerTeam) {
+        const tt = teamTotals[playerTeam] = teamTotals[playerTeam] || { fga: 0, fg3a: 0, fta: 0, fgm: 0, ast: 0, pts: 0 };
+        tt.fga += num(row.fga) || 0; tt.fg3a += num(row.fg3a) || 0; tt.fta += num(row.fta) || 0;
+        tt.fgm += num(row.fgm) || 0; tt.ast += num(row.ast) || 0; tt.pts += num(row.pts) || 0;
+      }
       const defenseTeam = playerTeam === game.home ? game.away : playerTeam === game.away ? game.home : null;
       if (!defenseTeam) continue;
       const bucket = posBucket(posById[row.athleteId]);
@@ -147,6 +156,9 @@ export async function buildWnbaDefenseTable(opts = {}) {
       if (num(row.reb) != null) { acc.rebounds.sum += row.reb; acc.rebounds.n++; }
       if (num(row.ast) != null) { acc.assists.sum += row.ast; acc.assists.n++; }
       rowsSeen++;
+    }
+    for (const [t, tt] of Object.entries(teamTotals)) {
+      (offenseByGame[t] = offenseByGame[t] || []).push({ date: game.date, ...tt });
     }
   });
 
@@ -168,7 +180,86 @@ export async function buildWnbaDefenseTable(opts = {}) {
     }
   }
 
-  const result = { byTeam, teamDefense, leagueAvg, _audit: { source: 'espn', window: WINDOW_GAMES, teams: Object.keys(byTeam).length, teamDefenseTeams: Object.keys(teamDefense).length, finishedGames: finals.length, gamesPulled: gamesToPull.length, rowsSeen, warnings, builtAt: new Date().toISOString() } };
+  // Team style fingerprints over L10 and L5 windows. The L5/L10 split catches a
+  // recent style shift (new rotation, pace change) before a season average would.
+  const winStats = (games, n) => {
+    const g = games.slice(0, n);
+    if (g.length < 2) return null;
+    const sum = (f) => g.reduce((a, x) => a + (Number(x[f]) || 0), 0);
+    const fga = sum('fga');
+    if (fga < 40) return null;
+    return {
+      threeRate: sum('fg3a') / fga,
+      ftRate: sum('fta') / fga,
+      astRate: sum('fgm') > 0 ? sum('ast') / sum('fgm') : 0,
+      ppg: sum('pts') / g.length,
+      games: g.length,
+    };
+  };
+  const rawWindows = {};
+  for (const [t, games] of Object.entries(offenseByGame)) {
+    games.sort((a, b) => String(b.date).localeCompare(String(a.date)));   // newest first
+    const l10 = winStats(games, 10), l5 = winStats(games, 5);
+    if (l10 || l5) rawWindows[t] = { l10, l5 };
+  }
+  // League baselines from the L10 windows (stable denominator).
+  const l10s = Object.values(rawWindows).map(w => w.l10).filter(Boolean);
+  const lgAvg = (f) => l10s.length ? l10s.reduce((a, s) => a + s[f], 0) / l10s.length : 0;
+  const lgThree = lgAvg('threeRate'), lgPpg = lgAvg('ppg'), lgAst = lgAvg('astRate'), lgFt = lgAvg('ftRate');
+
+  const tagWindow = (s) => {
+    if (!s) return { tags: [], missProfile: 'BALANCED' };
+    const tags = [];
+    if (s.threeRate >= lgThree * 1.12) tags.push('three-heavy');
+    else if (s.threeRate <= lgThree * 0.88) tags.push('paint-oriented');
+    if (s.ftRate >= lgFt * 1.15) tags.push('attacks the rim');
+    else if (s.ftRate <= lgFt * 0.85) tags.push('jump-shooting');
+    if (s.astRate >= lgAst * 1.10) tags.push('ball-movement');
+    else if (s.astRate <= lgAst * 0.90) tags.push('iso-heavy');
+    if (s.ppg >= lgPpg * 1.06) tags.push('high-scoring');
+    else if (s.ppg <= lgPpg * 0.94) tags.push('low-scoring');
+    return {
+      tags,
+      missProfile: s.threeRate >= lgThree * 1.08 ? 'PERIMETER' : s.threeRate <= lgThree * 0.92 ? 'PAINT' : 'BALANCED',
+    };
+  };
+
+  const teamStyle = {};
+  for (const [t, w] of Object.entries(rawWindows)) {
+    // Recency-weighted blend (L5 leads, L10 stabilizes) drives the under read.
+    const l5 = w.l5, l10 = w.l10, primary = l5 || l10;
+    const blend = (f) => (l5 && l10) ? 0.6 * l5[f] + 0.4 * l10[f] : (primary ? primary[f] : 0);
+    const bThree = blend('threeRate'), bPpg = blend('ppg');
+    // UNDER-ENVIRONMENT score, grounded in the 443-pick audit: unders hit 81% vs
+    // suppressing/paint defenses and 51% vs three-heavy/fast teams. Suppression
+    // rises as scoring pace and three-rate fall.
+    const paceZ = lgPpg > 0 ? (bPpg - lgPpg) / lgPpg : 0;       // + = high scoring
+    const threeZ = lgThree > 0 ? (bThree - lgThree) / lgThree : 0; // + = three-heavy
+    const heat = paceZ + threeZ;   // higher = faster/hotter environment (bad for unders)
+    // Conservative factors: the opponent effect is real (permutation p≈0.015) but
+    // has no clean mechanism and noisy per-team estimates, so this is a mild causal
+    // PRIOR (fast games = more possessions = harder unders), not a fitted edge.
+    let underEnv, underFactor;
+    if (heat <= -0.10) { underEnv = 'SUPPRESS'; underFactor = 1.05; }   // mildly favors unders
+    else if (heat >= 0.12) { underEnv = 'FAST'; underFactor = 0.95; }   // mildly fades unders
+    else { underEnv = 'NEUTRAL'; underFactor = 1.0; }
+    // Recent-shift flag: L5 miss profile diverges from L10 → coaching/rotation change.
+    const p5 = tagWindow(l5).missProfile, p10 = tagWindow(l10).missProfile;
+    const styleShift = (l5 && l10 && p5 !== p10) ? { from: p10, to: p5 } : null;
+
+    teamStyle[t] = {
+      l10: l10 ? { ...l10, threePct: Math.round(l10.threeRate * 100), ...tagWindow(l10) } : null,
+      l5: l5 ? { ...l5, threePct: Math.round(l5.threeRate * 100), ...tagWindow(l5) } : null,
+      // top-level = the recency-weighted read the engine consumes
+      threePct: Math.round(bThree * 100),
+      ppg: Number(bPpg.toFixed(1)),
+      missProfile: bThree >= lgThree * 1.08 ? 'PERIMETER' : bThree <= lgThree * 0.92 ? 'PAINT' : 'BALANCED',
+      tags: tagWindow({ threeRate: bThree, ftRate: blend('ftRate'), astRate: blend('astRate'), ppg: bPpg }).tags,
+      underEnv, underFactor, styleShift,
+    };
+  }
+
+  const result = { byTeam, teamDefense, teamStyle, leagueAvg, _audit: { source: 'espn', window: WINDOW_GAMES, teams: Object.keys(byTeam).length, teamDefenseTeams: Object.keys(teamDefense).length, styleTeams: Object.keys(teamStyle).length, finishedGames: finals.length, gamesPulled: gamesToPull.length, rowsSeen, warnings, builtAt: new Date().toISOString() } };
   _memo = { at: Date.now(), table: result };
   return result;
 }
@@ -187,4 +278,13 @@ export function defenseMultiplier(table, opponentTeam, position, market) {
 export function teamDefenseFor(table, opponentTeam) {
   if (!table || !table.teamDefense) return null;
   return table.teamDefense[opponentTeam] || null;
+}
+
+/**
+ * Team offensive style fingerprint for one team, or null.
+ * { threeRate, ftRate, astRate, ppg, threePct, missProfile, tags[] }
+ */
+export function teamStyleFor(table, team) {
+  if (!table || !table.teamStyle) return null;
+  return table.teamStyle[team] || null;
 }
