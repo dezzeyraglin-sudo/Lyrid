@@ -397,7 +397,7 @@ async function generateSlate(opts = {}) {
         for (const market of markets) {
           tasks.push(
             buildAndRunAnalysis({
-              player, isHome, opponent, team, market, season, game, spread, total,
+              player, isHome, opponent, team, market, season, game, spread, total, date,
               recentFormPromise, allTeamStats, gameLines,
               v2Roster, v2OpponentRoster, injuryReport, defenseTable,
               shotProfile: _shotProfile, shootingForm: _shootingForm
@@ -522,6 +522,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
+    buildTag: 'regwatch-datefix-2026-08-15',   // deploy marker — confirms this code is live
     season,
     games: Object.values(gameContexts),
     analyses: successful,
@@ -793,10 +794,13 @@ function buildShootingForm(games) {
  */
 function buildRegressionWatch({ shootingForm, seasonPpg, benefitsFrom, injuryReport, slateDate }) {
   if (!benefitsFrom || !Array.isArray(benefitsFrom.out) || !benefitsFrom.out.length) return null;
+  // Match how injuryReport.byName is keyed (wnbaFeedEspn.normName): strip to [a-z ].
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
   const byName = injuryReport?.byName || {};
   const today = slateDate ? new Date(slateDate) : new Date();
   const stars = benefitsFrom.out.map((name) => {
-    const inj = byName[_normName(name)] || null;
+    const inj = byName[norm(name)] || null;
     let daysToReturn = null;
     if (inj?.returnDate) {
       const rd = new Date(inj.returnDate);
@@ -966,7 +970,7 @@ function shotsToClearPoints(prof, line, security) {
 }
 
 async function buildAndRunAnalysis({
-  player, isHome, opponent, team, market, season, game,
+  player, isHome, opponent, team, market, season, game, date,
   spread, total, recentFormPromise, allTeamStats, gameLines,
   v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile, shootingForm
 }) {
