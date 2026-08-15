@@ -67,7 +67,7 @@ import { getTopPlayersForTeam } from "../_lib/wnba/wnbaPlayerData.js";
 import { aggregateRecentForm, aggregateFromGames } from "../_lib/wnba/wnbaGameLog.js";
 import { getAllTeamStats } from "../_lib/wnba/wnbaTeamData.js";
 import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
-import { fetchWnbaProps, fetchWnbaSeasonGames, fetchWnbaPlayerSeasonLogs } from "../_lib/wnba/wnbaFeedEspn.js";
+import { fetchWnbaProps, fetchWnbaSeasonGames, fetchWnbaPlayerSeasonLogs, getSpin } from "../_lib/wnba/wnbaFeedEspn.js";
 import { buildEmpiricalTotals } from "../_lib/wnba/wnbaEmpiricalTotals.js";
 import { evaluatePropSignal } from "../_lib/wnba/wnbaPropSignal.js";
 
@@ -389,6 +389,10 @@ async function generateSlate(opts = {}) {
         // from the same leakage-filtered logs; carried onto every analysis so the
         // points path can read P(over) off a distribution instead of a mean.
         const _shotProfile = _bdlGames.length ? buildShotProfile(_bdlGames, 10) : null;
+        // Recent shooting form (bonus read): raw last-10 / last-5 FGA + FG% + TS%
+        // straight from the game logs — "who's actually shooting well right now",
+        // shown next to the tool's projection on the card.
+        const _shootingForm = _bdlGames.length ? buildShootingForm(_bdlGames) : null;
 
         for (const market of markets) {
           tasks.push(
@@ -396,7 +400,7 @@ async function generateSlate(opts = {}) {
               player, isHome, opponent, team, market, season, game, spread, total,
               recentFormPromise, allTeamStats, gameLines,
               v2Roster, v2OpponentRoster, injuryReport, defenseTable,
-              shotProfile: _shotProfile
+              shotProfile: _shotProfile, shootingForm: _shootingForm
             })
           );
         }
@@ -627,6 +631,103 @@ function buildHardFlagsFromUnified(u, player, reboundExtras) {
   return flags;
 }
 
+// ── GROUNDED PER-CARD REASONS ────────────────────────────────────────────────
+// Plain-English explanations of WHY a pick leans over/under — but every reason
+// fires ONLY from a real computed number crossing a threshold. Nothing here is
+// invented flavor; un-groundable factors (coverage scheme, opponent whistle) are
+// silent unless their feed is populated. Each reason is { dir:'OVER'|'UNDER'|'BOTH',
+// tag, text }; the card shows the ones matching the pick's lean direction.
+function buildPropReasons(ctx) {
+  const { market, unified, shotProfile: sp, shotsToClear: stc, minutesSecurity: ms,
+          reboundExtras, raw, propSignal, opponent, spinRead } = ctx;
+  const mk = String(market || '').toLowerCase();
+  const m = unified?.multipliers || {};
+  const opp = opponent || 'the opponent';
+  const out = [];
+  const add = (dir, tag, text) => out.push({ dir, tag, text });
+  const r1 = (x) => Math.round(x * 10) / 10;
+
+  // Role change from the Spin blurb — applies to ALL markets (a demotion crushes
+  // points, rebounds AND assists at once). Only when the note is still fresh.
+  if (spinRead && spinRead.active) {
+    if (spinRead.side === 'UNDER') add('UNDER', 'STALE STARTER',
+      `Recently benched${spinRead.replacedBy ? ' for ' + spinRead.replacedBy : ''}${spinRead.gap != null ? ` — production fell ${spinRead.gap} pts in the reserve role` : ''}. Line still reflects the old starter role.`);
+    else if (spinRead.side === 'OVER') add('OVER', 'ROLE BUMP',
+      `Recently moved into the starting lineup — minutes and usage step up.`);
+  }
+
+  if (mk === 'points') {
+    const minAvg = Number(sp?.minAvg) || Number(unified?.expectedMinutes) || null;
+    if (sp && minAvg) {
+      const fga = (sp.f2aPerMin + sp.f3aPerMin) * minAvg;
+      const fta = sp.ftaPerMin * minAvg;
+      if (fga < 10) add('UNDER', 'LOW VOLUME',
+        `Projects only ~${r1(fga)} field-goal attempts in ${Math.round(minAvg)} min — not enough volume to comfortably clear a scoring line.`);
+      else if (fga >= 16) add('OVER', 'HIGH VOLUME',
+        `High shot volume — ~${r1(fga)} attempts a night gives plenty of chances to get there.`);
+      if (fta < 2) add('UNDER', 'NO FT CUSHION',
+        `Rarely gets to the line (~${r1(fta)} FTA/game), so there's no free-throw cushion if shots aren't falling.`);
+      else if (fta >= 6) add('OVER', 'FT FLOOR',
+        `Lives at the line (~${r1(fta)} FTA/game) — free throws give the over a floor even on a cold shooting night.`);
+      if (sp.pct2 != null && sp.pct2 < 0.44) add('UNDER', 'COLD 2PT',
+        `Converting a cold ${Math.round(sp.pct2 * 100)}% on twos lately — inefficient looks drag the scoring down.`);
+      if (sp.pct3 != null && sp.pct3 >= 0.40 && sp.f3aPerMin * minAvg >= 4) add('OVER', 'HOT 3PT',
+        `Hot from three (${Math.round(sp.pct3 * 100)}% on ~${r1(sp.f3aPerMin * minAvg)} attempts) — three-point volume raises the ceiling fast.`);
+      if (stc && stc.mean > 0 && stc.sd / stc.mean >= 0.28) add('BOTH', 'STREAKY',
+        `Streaky scorer — game-to-game swing of ±${r1(stc.sd)} around a ${r1(stc.mean)} projection makes the line closer to a coin-flip than it looks.`);
+    }
+    // Minutes security — the master variable from the PBP audit.
+    if (ms && ms.level === 'RISK') add('UNDER', 'MINUTES RISK',
+      `Floating/volatile minutes — the projection over-shoots when playing time falls short, so the read leans under.`);
+    else if (ms && ms.level === 'SECURE') add('BOTH', 'MINUTES SECURE',
+      `Locked rotation role — minutes are dependable, so the projection is trustworthy in either direction.`);
+    if (m.matchup_opposingDefense != null) {
+      if (m.matchup_opposingDefense < 0.97) add('UNDER', 'TOUGH D',
+        `${opp} grades as a tough scoring matchup — good looks are harder to come by.`);
+      else if (m.matchup_opposingDefense > 1.03) add('OVER', 'SOFT D',
+        `${opp} gives up clean looks in this matchup — the model marks scoring up.`);
+    }
+  }
+
+  if (mk === 'assists') {
+    if (Number.isFinite(Number(unified?.projection)) && Number.isFinite(Number(unified?.line))) {
+      const gap = Number(unified.line) - Number(unified.projection);
+      if (gap >= 1.0) add('UNDER', 'BELOW LINE',
+        `Projects ${r1(unified.projection)} assists against a ${unified.line} line — the setup volume isn't there most nights.`);
+      else if (gap <= -1.0) add('OVER', 'ABOVE LINE',
+        `Projects ${r1(unified.projection)} assists over a ${unified.line} line — creating more than the book is pricing.`);
+    }
+    if (m.coverage_coachingScheme != null && m.coverage_coachingScheme < 0.97) add('UNDER', 'COVERAGE',
+      `${opp}'s scheme pressures the primary handler off the ball, shifting them out of the playmaking role.`);
+  }
+
+  if (mk === 'rebounds') {
+    const env = reboundExtras?.environment;
+    if (env?.oppProfileSource === 'REAL' && env.oppType) {
+      if (env.oppType === 'PERIMETER') add('BOTH', 'LONG MISS',
+        `${opp} shoots a lot of threes — long misses carom past the paint, so boards leak to guards and wings rather than the primary big.`);
+      else if (env.oppType === 'DOWNHILL_PAINT') add('BOTH', 'SHORT MISS',
+        `${opp} attacks the paint — short misses stay in the restricted area, favoring the biggest bodies.`);
+    }
+    const eq = reboundExtras?.equity?.equityMultiplier;
+    if (eq != null && eq <= 0.95) add('UNDER', 'EQUITY −',
+      `Rebound share works against this player's role in the matchup — fewer available boards come their way.`);
+    else if (eq != null && eq >= 1.05) add('OVER', 'EQUITY +',
+      `Rebound share favors this player's role tonight — more available boards funnel to them.`);
+  }
+
+  const tov = Number(raw?.TOV ?? raw?.tov ?? raw?.TO);
+  if (Number.isFinite(tov) && tov >= 3) add('UNDER', 'TURNOVERS',
+    `Turnover-prone (~${r1(tov)} a game) — possessions that end without a made shot, assist, or rebound.`);
+  if (propSignal && propSignal.recent != null && propSignal.baseline != null
+      && propSignal.side === 'UNDER' && propSignal.recent < propSignal.baseline)
+    add('UNDER', 'COOLING', `Cooling off — last few games (~${r1(propSignal.recent)}) are running below the season baseline (${r1(propSignal.baseline)}).`);
+  if (m.usageFunnel != null && m.usageFunnel > 1.02) add('OVER', 'USAGE FUNNEL',
+    `A teammate is out — usage funnels up (${r1(m.usageFunnel)}× the normal share of touches).`);
+
+  return out;
+}
+
 // ── SHOTS-TO-CLEAR: shot profile + distributional points estimate ────────────
 // Builds a per-player scoring mechanism from raw BDL game logs and reads
 // P(points > line) off the resulting distribution instead of a single mean.
@@ -645,6 +746,37 @@ function _parseMin(v) {
   return Number(s) || 0;
 }
 function _numf(...vals) { for (const v of vals) { const n = Number(v); if (Number.isFinite(n)) return n; } return 0; }
+
+/**
+ * Recent shooting form (bonus card read): raw last-10 and last-5 window shooting
+ * straight from the game logs. FGA is avg attempts/game, fgPct is real FG% over the
+ * window (makes÷attempts), tsPct is true shooting (PTS ÷ 2(FGA + 0.44·FTA)). Shows
+ * customers who's actually producing before the matchup, alongside the projection.
+ * @param {Array} games  raw game rows (sorted oldest→newest if dated)
+ * @returns {Object|null} { l10:{gp,fga,fgPct,tsPct,ppg}, l5:{...} }
+ */
+function buildShootingForm(games) {
+  if (!Array.isArray(games) || games.length === 0) return null;
+  const withDate = games.every(g => g && (g.date || g.game_date));
+  const sorted = withDate
+    ? [...games].sort((a, b) => String(a.date || a.game_date).localeCompare(String(b.date || b.game_date)))
+    : [...games];
+  const played = sorted.filter(g => Number(g.minutes ?? g.min ?? g.mp) > 0);
+  const win = (n) => {
+    const g = played.slice(-n);
+    if (!g.length) return null;
+    const sum = (f) => g.reduce((a, x) => a + (Number(x[f]) || 0), 0);
+    const fga = sum('fga'), fgm = sum('fgm'), fta = sum('fta'), pts = sum('pts');
+    return {
+      gp: g.length,
+      fga: Number((fga / g.length).toFixed(1)),
+      fgPct: fga > 0 ? Math.round((fgm / fga) * 100) : null,
+      tsPct: (fga + 0.44 * fta) > 0 ? Math.round((pts / (2 * (fga + 0.44 * fta))) * 100) : null,
+      ppg: Number((pts / g.length).toFixed(1)),
+    };
+  };
+  return { l10: win(10), l5: win(5) };
+}
 
 /**
  * Build a scoring profile from a player's raw game logs.
@@ -784,7 +916,7 @@ function shotsToClearPoints(prof, line, security) {
 async function buildAndRunAnalysis({
   player, isHome, opponent, team, market, season, game,
   spread, total, recentFormPromise, allTeamStats, gameLines,
-  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile
+  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile, shootingForm
 }) {
   try {
     // Get opponent team stats from the pre-fetched map
@@ -832,6 +964,11 @@ async function buildAndRunAnalysis({
 
     // Wait for recent form (was already initiated in parallel)
     const recentForm = await recentFormPromise;
+
+    // Rotowire "Spin" blurb + role-change read for this player. Memoized per athlete
+    // in the feed, so the 3 markets share one fetch. Non-fatal — never blocks a card.
+    let _spin = null;
+    try { _spin = await getSpin(player.name); } catch { _spin = null; }
 
     // CRITICAL: re-derive seasonAvg for THIS market from raw counts.
     // The player object was built by getTopPlayersForTeam with market='points',
@@ -1107,6 +1244,17 @@ async function buildAndRunAnalysis({
       scores: unified.scores,
       chips: unified.chips || buildChipsFromUnified(unified, player, reboundExtras),
       hardFlags: buildHardFlagsFromUnified(unified, player, reboundExtras),
+      spin: _spin || null,             // full Rotowire blurb for display on every card
+      shootingForm: shootingForm || null,   // L10/L5 FGA + FG% + TS% — recent-shooting bonus read
+      spinRead: _spin?.read || null,   // role-change signal (STALE STARTER / ROLE BUMP) or null
+      reasons: buildPropReasons({
+        market, unified,
+        shotProfile: shotProfile || null,
+        shotsToClear: shotsToClear || null,
+        minutesSecurity: minutesSecurity || null,
+        reboundExtras, raw: player?._raw || null, propSignal, opponent,
+        spinRead: _spin?.read || null,
+      }),
       lineSource: propLineSource,
       lineBook: lineMeta?.vendor || null,
       propSignal,   // cold-form UNDER tier (or null) for THIS market
