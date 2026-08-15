@@ -20969,10 +20969,22 @@ async function autoGradeOnAppOpen() {
         return `<div style="flex:1;text-align:center;padding:7px 4px">
             <div style="font-size:9px;letter-spacing:0.08em;color:var(--text-secondary,var(--dim));font-weight:700">${lbl}${short}</div>
             <div style="font-size:16px;font-weight:800;color:var(--text-primary);margin-top:2px">${w.ppg}<span style="font-size:9px;font-weight:600;color:var(--text-secondary,var(--dim));margin-left:2px">PPG</span></div>
-            <div style="font-size:10px;color:var(--text-secondary,var(--dim));margin-top:2px">${w.fga} FGA · ${w.fgPct != null ? w.fgPct + '% FG' : '—'}</div>
-            ${w.tsPct != null ? `<div style="font-size:10px;color:var(--text-secondary,var(--dim))">${w.tsPct}% TS</div>` : ''}
+            <div style="font-size:10px;color:var(--text-secondary,var(--dim));margin-top:2px">${w.fga} FGA → ${w.fgm != null ? w.fgm + ' made' : '—'}</div>
+            ${w.fgPct != null ? `<div style="font-size:10px;color:var(--text-secondary,var(--dim))">${w.fgPct}% FG${w.tsPct != null ? ' · ' + w.tsPct + '% TS' : ''}</div>` : ''}
           </div>`;
       };
+      const rw = lead.regressionWatch;
+      const _regressionNote = (() => {
+        if (!rw || !rw.note) return '';
+        const isReg = rw.level === 'REGRESSION';
+        const bg = isReg ? '#7f1d1d' : '#5b4a1f';
+        const ic = isReg ? '⚠' : '▲';
+        return `<div style="margin-top:6px;padding:7px 10px;border-radius:7px;background:${bg};color:#fff">
+            <span style="font-size:10px;font-weight:800;letter-spacing:0.05em">${ic} ${esc(rw.badge)}${rw.spikePct != null && rw.spikePct > 0 ? ' · +' + rw.spikePct + '% vs season' : ''}</span>
+            <div style="margin-top:3px;font-size:11px;line-height:1.45;opacity:0.93">${esc(rw.note)}</div>
+          </div>`;
+      })();
+
       return `<div style="margin-top:10px">
           <div style="font-size:9px;letter-spacing:0.1em;color:var(--text-secondary,var(--dim));font-weight:700;margin-bottom:4px">RECENT SHOOTING FORM</div>
           <div style="display:flex;align-items:stretch;background:var(--panel-2,rgba(35,56,89,0.04));border-radius:8px;overflow:hidden">
@@ -20980,6 +20992,7 @@ async function autoGradeOnAppOpen() {
             <div style="width:1px;background:var(--border,rgba(0,0,0,0.08))"></div>
             ${cell(sf.l5, 'LAST 5', 5)}
           </div>
+          ${_regressionNote}
         </div>`;
     })();
 

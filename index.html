@@ -16959,6 +16959,27 @@ function wnbaEmpTier(market, lean, projection) {
 }
 if (typeof window !== 'undefined') { window.wnbaClassify = wnbaClassify; window.wnbaEmpTier = wnbaEmpTier; window.wnbaDetectPRA = wnbaDetectPRA; }
 
+// ── SPECIALIST: the empirically-proven wheelhouse ─────────────────────────────
+// Validated on 430 graded real-line picks: this exact predicate hit 62-18 (77.5%)
+// vs 55.8% overall and vs the legacy Best-Bet flag's 50.3%. It is the intersection
+// of the three cohorts that actually specialize:
+//   • any UNDER with |edge| ≥ 4        → 33-7  (82.5%)  inflated line, reverts
+//   • assists UNDER with |edge| ≥ 2    → perfect on sample, the sharpest market
+//   • rebounds UNDER, projection 3-5   → 27-11 (71.1%)  wing rebound ceiling
+// A Specialist pick is Lyrid at its best; it should be surfaced loudest and is what
+// the (rewired) Best-Bet flag now tracks.
+function wnbaSpecialist({ market, lean, edge, projection } = {}) {
+  if (String(lean || '').toUpperCase() !== 'UNDER') return false;
+  const mk = String(market || '').toLowerCase();
+  const ed = Math.abs(Number(edge));
+  const proj = Number(projection);
+  if (Number.isFinite(ed) && ed >= 4) return true;
+  if (mk === 'assists' && Number.isFinite(ed) && ed >= 2) return true;
+  if (mk === 'rebounds' && Number.isFinite(proj) && proj >= 3 && proj < 5) return true;
+  return false;
+}
+if (typeof window !== 'undefined') window.wnbaSpecialist = wnbaSpecialist;
+
 function renderHistory() {
   const container = document.getElementById('historyList');
   if (!container) return;
@@ -19873,7 +19894,34 @@ async function autoGradeOnAppOpen() {
     }
     const isBump = (p) => p.benefitsFrom && Array.isArray(p.benefitsFrom.out) && p.benefitsFrom.out.length;
 
-    const seen = new Set(), clean = [], traps = [];
+    // ── KILL CHAIN ──────────────────────────────────────────────────────────
+    // Discipline layer, ported from the MLB judgment card. Runs AFTER wnbaClassify
+    // tiers a pick; each veto drops it to the visible "killed" list with a stated
+    // reason rather than silently hiding it. A pass is a position — better to flag
+    // with a reason than force a marginal under. Every veto fires only on a real
+    // computed number; nothing here is invented.
+    const wnbaKillReason = (r, p) => {
+      const pos = String(p.position || '').toUpperCase();
+      const posWord = pos.startsWith('G') ? 'guards' : pos.startsWith('C') ? 'centers'
+        : pos.startsWith('F') ? 'forwards' : 'this position';
+      const opp = teamAbbr(p.opponent) || 'the opponent';
+      // GHOST KILL — don't fade a defense that's soft to this player's position.
+      // Uses the ESPN position-defense multiplier (>1 = opponent bleeds this stat
+      // to this position). Skips PRA (composite line, no clean per-market defense).
+      const dm = Number(p.multipliers?.matchup_opposingDefense);
+      if (!r.isPRA && Number.isFinite(dm) && dm >= 1.06) {
+        return { veto: 'GHOST', reason: `Not a ghost — ${opp} is soft to ${posWord} here (allows ~${Math.round((dm - 1) * 100)}% more ${r.m}). You don't fade production against a defense that gives it up.` };
+      }
+      // FORM KILL — don't take the under when recent form is landing at/above the
+      // line. last5Avg is the market-specific recent average from the game logs.
+      const last5 = Number(p.playerContext?.last5Avg);
+      if (Number.isFinite(last5) && last5 >= r.line) {
+        return { veto: 'FORM', reason: `Form contradicts the under — last 5 games ≈ ${last5.toFixed(1)} is already at or above the ${r.line} line.` };
+      }
+      return null;
+    };
+
+    const seen = new Set(), clean = [], traps = [], killed = [];
     for (const p of pool) {
       const k = `${p.player}_${p.market}`;
       if (seen.has(k)) continue; seen.add(k);
@@ -19899,7 +19947,14 @@ async function autoGradeOnAppOpen() {
       (isBump(p) || to.tier === 'LEAN' ? traps : clean).push(r);
     }
 
-    if (clean.length === 0 && traps.length === 0) {
+    // Apply the kill chain to the clean survivors — vetoed picks move to `killed`
+    // with their reason, so the ranked card shows only spots that passed every veto.
+    for (let i = clean.length - 1; i >= 0; i--) {
+      const kill = wnbaKillReason(clean[i], clean[i].p);
+      if (kill) { clean[i].kill = kill; killed.push(clean[i]); clean.splice(i, 1); }
+    }
+
+    if (clean.length === 0 && traps.length === 0 && killed.length === 0) {
       return `<div class="cleanest-edges empty">
         <div class="ce-head"><div><div class="ce-eyebrow">Tonight · Live WNBA</div><div class="ce-title">Tonight's Cleanest Edges</div></div></div>
         <div class="ce-empty-text">Your highest-confidence WNBA plays collect here automatically — assists & rebounds unders, ranked by validated hit rate. Refresh once tonight's book lines post.</div>
@@ -19927,12 +19982,16 @@ async function autoGradeOnAppOpen() {
 
     const card = (r, i) => {
       const below = r.tier === 'GOLD';
-      const sigs = [TIER_SIG[r.tier] || TIER_SIG.GOLD];
-      if (below) sigs.push('<span class="ce-sig" style="background:#eee9de;color:#86827a">Below 70% bar · size down</span>');
+      const isSpec = wnbaSpecialist({ market: r.p.market, lean: 'UNDER', edge: r.gap, projection: r.proj });
+      const sigs = [];
+      if (isSpec) sigs.push('<span class="ce-sig" style="background:#f59e0b;color:#1a1206;font-weight:800;box-shadow:0 0 0 1px #b45309">★ SPECIALIST · 77% cohort</span>');
+      sigs.push(TIER_SIG[r.tier] || TIER_SIG.GOLD);
+      if (below && !isSpec) sigs.push('<span class="ce-sig" style="background:#eee9de;color:#86827a">Below 70% bar · size down</span>');
       if (r.isPRA) sigs.push('<span class="ce-sig" style="background:#ede9fe;color:#5b21b6">PRA line</span>');
       if (r.oppFlag === 'SUPPRESSES') sigs.push('<span class="ce-sig" style="background:#dbeafe;color:#1e40af">Defense suppresses stats</span>');
       sigs.push('<span class="ce-sig warnflag">⚠ Check your line</span>');
-      return `<div class="ce-card"${below ? ' style="opacity:0.82"' : ''}>
+      const specStyle = isSpec ? ' style="box-shadow:inset 3px 0 0 #f59e0b"' : (below ? ' style="opacity:0.82"' : '');
+      return `<div class="ce-card"${specStyle}>
         <div class="ce-card-top"><div class="ce-rank">${i + 1}</div>
           <div class="ce-who"><div class="ce-nm">${esc(r.p.player)}</div><div class="ce-meta">${meta(r)}</div></div>
           <div class="ce-game"><div class="ce-mu">${esc(r.game)}${r.time ? ' · ' + esc(r.time) : ''}</div></div></div>
@@ -19963,14 +20022,37 @@ async function autoGradeOnAppOpen() {
       ? `<div style="display:flex;align-items:center;gap:8px;margin:18px 2px 8px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#a23b2f;font-weight:700">⚠ Flagged — strong on paper, skip</div><div class="ce-cards">${traps.map(trapCard).join('')}</div>`
       : '';
 
+    // Killed-by-veto cards — the "a pass is a position" list. Each shows which
+    // veto fired and why, so the discipline layer stays auditable.
+    const killCard = (r) => `<div class="ce-card" style="opacity:0.5">
+        <div class="ce-card-top"><div class="ce-rank" style="color:#a23b2f">✕</div>
+          <div class="ce-who"><div class="ce-nm">${esc(r.p.player)}</div><div class="ce-meta">${meta(r)}</div></div>
+          <div class="ce-game"><div class="ce-mu">${esc(r.game)}${r.time ? ' · ' + esc(r.time) : ''}</div></div></div>
+        <div class="ce-verdict less"><span class="ce-varrow">↓</span>
+          <div class="ce-vmain"><div class="ce-vdir">Vetoed</div><div class="ce-vline">${r.line} ${esc(mktLabel(r))}</div></div>
+          ${r.wr != null ? `<div class="ce-rate" style="opacity:0.6"><div class="ce-pct">${r.wr}%</div><div class="ce-pctlbl">on paper</div></div>` : ''}</div>
+        <div class="ce-signals"><span class="ce-sig" style="background:#f6d8d1;color:#a23b2f;font-weight:700">✕ ${esc(r.kill.veto)} KILL</span></div>
+        <div class="ce-why">${esc(r.kill.reason)}</div></div>`;
+
+    const killBlock = killed.length
+      ? `<div style="display:flex;align-items:center;gap:8px;margin:18px 2px 8px;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#a23b2f;font-weight:700">✕ Killed by the veto chain — ${killed.length}</div><div class="ce-cards">${killed.map(killCard).join('')}</div>`
+      : '';
+
+    // Honest empty card: everything tonight got vetoed. A pass is a position.
+    const allVetoedNote = (clean.length === 0 && killed.length > 0)
+      ? `<div class="ce-empty-text" style="margin:14px 2px 4px">No card tonight — every candidate was killed by the veto chain (below). A pass is a position.</div>`
+      : '';
+
     return `<div class="cleanest-edges">
       <div class="ce-head"><div><div class="ce-eyebrow">Tonight · Live WNBA</div><div class="ce-title">Tonight's Cleanest Edges</div><div class="ce-sub">Ranked by validated hit rate (264 graded picks). Tap any pick for the reasoning.</div></div><span class="ce-count">${ranked.length}</span></div>
       <div class="ce-cards">${ranked.map(card).join('')}</div>
+      ${allVetoedNote}
       ${trapBlock}
+      ${killBlock}
       <div class="ce-legend"><div class="ce-legend-h">What the badges mean</div>
         <div class="ce-leg-row"><span class="ce-dot" style="background:#22c55e"></span><span><b>★ Guaranteed</b> — inflated PRA/combo line, proj gap ≥ 4. 16-0 (100%).</span></div>
         <div class="ce-leg-row"><span class="ce-dot" style="background:var(--accent)"></span><span><b>◆ Platinum</b> — primary creator cold, line 4-8. 27-1 (96%). <b>◆ Gold</b> — wing rebound ceiling, proj 3-5. 23-4 (85%), size down.</span></div>
-        <div class="ce-leg-row"><span class="ce-dot" style="background:#a23b2f"></span><span><b>⚠ Flagged</b> — injury-bump role or opponent allows stats. The line is stale. Skip.</span></div>
+        <div class="ce-leg-row"><span class="ce-dot" style="background:#a23b2f"></span><span><b>✕ Killed</b> — vetoed by the discipline layer: <b>GHOST</b> (fading a defense soft to the position) or <b>FORM</b> (recent games landing at/above the line). <b>⚠ Flagged</b> — injury-bump role or stale line.</span></div>
       </div></div>`;
   }
 
@@ -20701,9 +20783,34 @@ async function autoGradeOnAppOpen() {
         return `<span title="what ${esc(p.market)} ${_leanDir} actually hits — empirical tier from 134 graded picks" style="font-size:9px;font-weight:800;letter-spacing:0.05em;color:${fg};background:${bg};padding:3px 8px;border-radius:100px;white-space:nowrap">${ic} ${lbl}</span>`;
       })();
       const _rowDim = (_emp && (_emp.tier === 'AVOID' || _emp.tier === 'PASS')) ? '0.62' : '1';
+      // Minutes-security badge (points engine): the master-variable read from the
+      // PBP audit. SECURE = trust the projection; RISK = leans under; CONFLICT =
+      // model said over but minutes say under → stood down. Stamped by slate.js.
+      const _minBadge = (() => {
+        const ms = p.minutesSecurity;
+        if (!ms || !ms.level) return '';
+        const S = { SECURE: ['#0b5d3b', '#d1fae5', '🔒'], MODERATE: ['#475569', '#e2e8f0', '~'], RISK: ['#7f1d1d', '#fef3c7', '⚠'] };
+        const [fg, bg, ic] = S[ms.level] || S.MODERATE;
+        const conflict = p.minutesConflict
+          ? ' <span style="opacity:0.85">· stood down</span>' : '';
+        return `<span title="${esc(ms.note || '')}" style="font-size:9px;font-weight:800;letter-spacing:0.05em;color:${fg};background:${bg};padding:3px 8px;border-radius:100px;white-space:nowrap">${ic} ${esc(ms.badge || ms.level)}${conflict}</span>`;
+      })();
       const _hasBook = p.lineSource === 'provided';
       const _bookTag = _hasBook ? (p.lineBook ? esc(p.lineBook) : 'BOOK') : 'MODEL';
       const _reason = wnbaMarketReason(p, proj, _edge);
+      // Grounded per-card reasons (slate.js buildPropReasons). Show only the ones
+      // matching this pick's lean direction; each traces to a real computed number.
+      const _reasonsHtml = (() => {
+        const rs = Array.isArray(p.reasons) ? p.reasons : [];
+        if (!rs.length || !_leanDir) return '';
+        const matched = rs.filter(r => r && (r.dir === _leanDir || r.dir === 'BOTH')).slice(0, 3);
+        if (!matched.length) return '';
+        const rows = matched.map(r => `<div style="display:flex;gap:7px;align-items:flex-start;margin-top:4px">
+            <span style="flex:0 0 auto;margin-top:1px;font-size:8px;font-weight:800;letter-spacing:0.04em;color:var(--text-secondary,var(--dim));background:var(--surface-2,rgba(0,0,0,0.05));padding:1px 5px;border-radius:6px;text-transform:uppercase;white-space:nowrap">${esc(r.tag || '')}</span>
+            <span style="font-size:11px;line-height:1.45;color:var(--text-secondary,var(--dim))">${esc(r.text || '')}</span>
+          </div>`).join('');
+        return `<div style="margin-top:6px">${rows}</div>`;
+      })();
       // PrizePicks line tool: type the standard/demon number you're tapping and get the
       // lean + hit probability vs THAT line (PP lines, esp. demons, sit above the book
       // line and aren't in any feed). Skipped when OUT or no projection to anchor on.
@@ -20724,8 +20831,10 @@ async function autoGradeOnAppOpen() {
             <span style="font-size:12px;color:var(--text-secondary, var(--dim))" title="${_hasBook ? 'real sportsbook line' : 'no book line — engine-inferred'}">${_hasBook ? 'Book' : 'Model line'} <b style="font-size:16px;color:var(--text-primary);font-variant-numeric:tabular-nums">${_lineN != null ? _lineN : '—'}</b> <span style="font-size:8px;text-transform:uppercase;letter-spacing:0.04em;opacity:0.85">${_bookTag}</span></span>
             <span style="margin-left:auto;font-size:10px;font-weight:800;letter-spacing:0.04em;color:${_leanColor};background:${_leanBg};padding:3px 9px;border-radius:100px;white-space:nowrap" title="tool lean vs the line (gap between projection and line)">${esc(_leanTxt)}</span>
             ${_empBadge}
+            ${_minBadge}
           </div>
           ${_reason ? `<div style="margin-top:5px;font-size:11px;line-height:1.5;color:var(--text-secondary, var(--dim))">${_reason}</div>` : ''}
+          ${_reasonsHtml}
           ${_ppInput}
         </div>
         ${sigTags}
@@ -20819,6 +20928,74 @@ async function autoGradeOnAppOpen() {
       : /solid/i.test(tier.label) ? 'solid' : '';
     const _cardId = 'wnba-card-' + String(lead.player || '').replace(/[^a-zA-Z0-9]/g, '');
 
+    // Role-change banner from the Spin read (prominent) — fires only while fresh.
+    const _spinBanner = (() => {
+      const sr = lead.spinRead;
+      if (!sr || !sr.active) return '';
+      const under = sr.side === 'UNDER';
+      const bg = under ? '#7f1d1d' : '#14532d';
+      const label = under ? '⚠ STALE STARTER · leans under' : '▲ ROLE BUMP · leans over';
+      return `<div style="margin:8px 0 2px;padding:8px 12px;border-radius:8px;background:${bg};color:#fff">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.05em">${label}</div>
+          <div style="margin-top:3px;font-size:11px;line-height:1.45;opacity:0.93">${esc(sr.note || '')}</div>
+        </div>`;
+    })();
+
+    // The Spin blurb itself — shown on EVERY card that has one, with rostership.
+    const _spinBlurb = (() => {
+      const s = lead.spin;
+      if (!s || !s.story) return '';
+      let when = '';
+      if (s.published) { const d = new Date(s.published); if (!isNaN(d)) when = ' · ' + d.toLocaleDateString(); }
+      const owned = s.percentOwned != null
+        ? `${s.percentOwned}% rostered${s.last7Days != null ? ` (${s.last7Days > 0 ? '+' : ''}${s.last7Days}% 7d)` : ''}` : '';
+      return `<div style="margin-top:10px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:9px;letter-spacing:0.1em;color:var(--text-secondary,var(--dim));font-weight:700;margin-bottom:3px">
+            <span>SPIN${when}</span>${owned ? `<span style="opacity:0.8;letter-spacing:0.02em">${esc(owned)}</span>` : ''}
+          </div>
+          <div style="font-size:11px;line-height:1.55;color:var(--text-secondary,var(--dim))">${esc(s.story)}</div>
+        </div>`;
+    })();
+
+    // RECENT SHOOTING FORM (bonus read): L10 / L5 raw FGA + FG% + TS% + PPG, so
+    // customers see who's actually producing before the matchup, next to the
+    // tool's projection-vs-defense read below.
+    const _shootingRead = (() => {
+      const sf = lead.shootingForm;
+      if (!sf || (!sf.l10 && !sf.l5)) return '';
+      const cell = (w, lbl, full) => {
+        if (!w) return '<div style="flex:1"></div>';
+        const short = w.gp < full ? ` <span style="opacity:0.7">(${w.gp})</span>` : '';
+        return `<div style="flex:1;text-align:center;padding:7px 4px">
+            <div style="font-size:9px;letter-spacing:0.08em;color:var(--text-secondary,var(--dim));font-weight:700">${lbl}${short}</div>
+            <div style="font-size:16px;font-weight:800;color:var(--text-primary);margin-top:2px">${w.ppg}<span style="font-size:9px;font-weight:600;color:var(--text-secondary,var(--dim));margin-left:2px">PPG</span></div>
+            <div style="font-size:10px;color:var(--text-secondary,var(--dim));margin-top:2px">${w.fga} FGA → ${w.fgm != null ? w.fgm + ' made' : '—'}</div>
+            ${w.fgPct != null ? `<div style="font-size:10px;color:var(--text-secondary,var(--dim))">${w.fgPct}% FG${w.tsPct != null ? ' · ' + w.tsPct + '% TS' : ''}</div>` : ''}
+          </div>`;
+      };
+      const rw = lead.regressionWatch;
+      const _regressionNote = (() => {
+        if (!rw || !rw.note) return '';
+        const isReg = rw.level === 'REGRESSION';
+        const bg = isReg ? '#7f1d1d' : '#5b4a1f';
+        const ic = isReg ? '⚠' : '▲';
+        return `<div style="margin-top:6px;padding:7px 10px;border-radius:7px;background:${bg};color:#fff">
+            <span style="font-size:10px;font-weight:800;letter-spacing:0.05em">${ic} ${esc(rw.badge)}${rw.spikePct != null && rw.spikePct > 0 ? ' · +' + rw.spikePct + '% vs season' : ''}</span>
+            <div style="margin-top:3px;font-size:11px;line-height:1.45;opacity:0.93">${esc(rw.note)}</div>
+          </div>`;
+      })();
+
+      return `<div style="margin-top:10px">
+          <div style="font-size:9px;letter-spacing:0.1em;color:var(--text-secondary,var(--dim));font-weight:700;margin-bottom:4px">RECENT SHOOTING FORM</div>
+          <div style="display:flex;align-items:stretch;background:var(--panel-2,rgba(35,56,89,0.04));border-radius:8px;overflow:hidden">
+            ${cell(sf.l10, 'LAST 10', 10)}
+            <div style="width:1px;background:var(--border,rgba(0,0,0,0.08))"></div>
+            ${cell(sf.l5, 'LAST 5', 5)}
+          </div>
+          ${_regressionNote}
+        </div>`;
+    })();
+
     return `
       <div class="match ${_tierClass}" id="${_cardId}" style="opacity:${cardOpacity}">
         <div class="match-head">
@@ -20830,6 +21007,7 @@ async function autoGradeOnAppOpen() {
           </div>
           <div class="tier-badge ${_tierClass}">${esc(tier.label)}</div>
         </div>
+        ${_spinBanner}
 
         ${whyDrivers.length > 0 ? `
           <div class="hr-drivers-panel" style="margin-bottom:10px">
@@ -20855,10 +21033,12 @@ async function autoGradeOnAppOpen() {
           ${engineBadge}
         </div>
 
+        ${_shootingRead}
         <div class="prop-recs">
           <div class="prop-rec-label">POINTS · REBOUNDS · ASSISTS — TOOL PROJECTION vs BOOK LINE</div>
           ${marketRows}
         </div>
+        ${_spinBlurb}
 
         ${(() => {
           const read = buildPropRead(lead, leadProj);

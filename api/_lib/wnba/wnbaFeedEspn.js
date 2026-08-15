@@ -339,7 +339,8 @@ export async function getInjuries() {
       const teamAbbrev = _INJ_TO_SLATE[espnAbbr] || espnAbbr || null;
       const status = _mapInjStatus(it.type?.name, it.status);
       const detail = it.details?.type || it.shortComment || it.type?.description || null;
-      const entry = { playerName, status, detail, teamAbbrev,
+      const returnDate = it.details?.returnDate || null;   // when ESPN expects them back
+      const entry = { playerName, status, detail, returnDate, teamAbbrev,
         position: ath.position?.abbreviation || null, source: 'espn' };
       all.push(entry);
       byName[normName(playerName)] = entry;
