@@ -570,7 +570,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'total-lines-2026-08-16',   // deploy marker — confirms this code is live
+    buildTag: 'adaptive-reb-ast-2026-08-16',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -709,6 +709,15 @@ function buildPropReasons(ctx) {
       `Shot volume is up with role/opportunity support (not just a hot streak) — the form-adjusted baseline rises to ${adaptiveRead.adjProjection}.`);
     else if (adaptiveRead.regime === 'COLD_SHOOTING') add('OVER', 'COLD-SHOOTING NOISE',
       `Recent dip is efficiency, not lost volume — treated as variance and shrunk back toward the ${adaptiveRead.baseProjection} baseline.`);
+    // Rebounds / assists rate regimes.
+    else if (adaptiveRead.regime === 'HOT_FINISHING') add('UNDER', 'TEAMMATE-FINISHING NOISE',
+      `Assists are up on steady minutes, not more creation — an assist needs a teammate to make the shot, so this shrinks toward the ${adaptiveRead.baseProjection} baseline as likely finishing luck.`);
+    else if (adaptiveRead.regime === 'COLD_FINISHING') add('OVER', 'FINISHING VARIANCE',
+      `Assists dipped on teammate cold-shooting, not lost creation — shrunk back toward the ${adaptiveRead.baseProjection} baseline.`);
+    else if (adaptiveRead.regime === 'RATE_UP') add('OVER', 'BOARD RATE UP',
+      `Grabbing a higher rebound rate on steady minutes — rebound rate is sticky, so this is treated as mostly real (adjusted to ${adaptiveRead.adjProjection}).`);
+    else if (adaptiveRead.regime === 'MINUTES_UP') add('OVER', 'MINUTES UP',
+      `More minutes lately lift the ${mk} baseline to ${adaptiveRead.adjProjection}.`);
   }
 
   // Opponent style (data-grounded scheme proxy). Rebounds: a perimeter-heavy
@@ -935,7 +944,80 @@ function buildAdaptivePoints({ shootingForm, evidence = {}, minutes = {} }) {
   };
 }
 
-// ── GAME TOTAL ESTIMATE ──────────────────────────────────────────────────────
+// Rebounds / assists decomposition: STAT = minutes (opportunity, sticky) × per-minute
+// RATE. The rate is the analog of the points efficiency axis — but the two markets sit
+// at opposite ends of stickiness, so they get very different shrinkage:
+//   • Rebounds: rate (reb/min) is a stable role/physical trait — shrink LIGHTLY (small
+//     K). The noisy part is how many misses were available (game environment), which
+//     the opponent miss-profile partly explains, not the player.
+//   • Assists: rate (ast/min) carries heavy TEAMMATE-FINISHING noise — an assist only
+//     counts if a teammate makes the shot, which is out of the player's control. So a
+//     recent assist spike on flat minutes is the hot-shooting analog and is shrunk HARD
+//     (large K). Honest ceiling: without potential-assist tracking (no WNBA feed), we
+//     can't isolate creation from finishing the way FGA/TS% isolate volume from luck.
+// Minutes re-anchors to projected minutes on a role change, same as points.
+function buildAdaptiveCounting({ market, shootingForm, evidence = {}, minutes = {} }) {
+  const base = shootingForm?.l10, recent = shootingForm?.l5;
+  if (!base || !recent) return null;
+  const isReb = market === 'rebounds';
+  const statKey = isReb ? 'reb' : 'ast';
+  const rateKey = isReb ? 'rebPerMin' : 'astPerMin';
+  const baseMin = Number(base.min), recentMin = Number(recent.min);
+  if (!(baseMin > 0) || !(recentMin > 0)) return null;
+  const baseRate = Number(base[rateKey]) || 0, recentRate = Number(recent[rateKey]) || 0;
+
+  // Re-anchor minutes to projected if a role change (both windows are stale otherwise).
+  let anchorMin = baseMin, reanchor = null;
+  const projMin = Number(minutes.projected), bMin = Number(minutes.baseline) || baseMin;
+  if (Number.isFinite(projMin) && bMin > 5 && projMin > bMin * 1.12) {
+    anchorMin = projMin;
+    reanchor = { fromMin: Number(bMin.toFixed(1)), toMin: Number(projMin.toFixed(1)),
+      from: Number((baseRate * bMin).toFixed(1)), to: Number((baseRate * projMin).toFixed(1)) };
+  }
+
+  const nMin = recentMin * (recent.gp || 5);          // recent total minutes = evidence unit
+  const evMult = regimeEvidenceMult(evidence);
+  const K_RATE = isReb ? 55 : 95;                     // reb rate sticky (small K); ast rate noisy (large K)
+  const K_MIN = 120 / evMult;                         // minutes opportunity, in minute-units
+
+  let minValue, minWeight;
+  if (reanchor) { minValue = anchorMin; minWeight = 0; }
+  else { const o = shrinkToward(baseMin, recentMin, nMin, K_MIN); minValue = o.value; minWeight = o.weight; }
+  const rate = shrinkToward(baseRate, recentRate, nMin, K_RATE);
+  const adjProjection = Number((minValue * rate.value).toFixed(1));
+  const baseProjection = Number((baseMin * baseRate).toFixed(1));
+
+  const minDelta = recentMin - baseMin, rateDelta = recentRate - baseRate;
+  const ratePctUp = baseRate > 0 ? rateDelta / baseRate : 0;
+  let regime, regimeNote;
+  if (reanchor) {
+    regime = 'ROLE_REANCHOR';
+    regimeNote = `inheriting minutes — baseline re-anchored ${reanchor.from}→${reanchor.to} at ${Math.round(projMin)} min`;
+  } else if (minDelta >= 3 && evMult > 1.2) {
+    regime = 'RISING'; regimeNote = 'minutes/role up with support — real riser';
+  } else if (minDelta >= 3) {
+    regime = 'MINUTES_UP'; regimeNote = 'more minutes lately';
+  } else if (Math.abs(minDelta) < 2 && ratePctUp >= 0.20) {
+    regime = isReb ? 'RATE_UP' : 'HOT_FINISHING';
+    regimeNote = isReb
+      ? 'grabbing a higher rebound rate on steady minutes — rebound rate is sticky, treated as mostly real'
+      : 'assists up on steady minutes, not more creation — likely teammate hot-shooting, shrunk toward baseline';
+  } else if (Math.abs(minDelta) < 2 && ratePctUp <= -0.20) {
+    regime = isReb ? 'RATE_DOWN' : 'COLD_FINISHING';
+    regimeNote = isReb ? 'rebound rate dipped on steady minutes' : 'assists down on teammate cold-shooting — treated as variance';
+  } else {
+    regime = 'STABLE'; regimeNote = 'no meaningful regime change';
+  }
+
+  return {
+    market, adjProjection, baseProjection,
+    delta: Number((adjProjection - baseProjection).toFixed(1)),
+    regime, regimeNote, evidenceMult: Number(evMult.toFixed(2)), reanchor,
+    opportunity: { baseMin: Number(baseMin.toFixed(1)), recentMin: Number(recentMin.toFixed(1)), adjustedMin: Number(minValue.toFixed(1)), weight: minWeight },
+    rate: { base: Number(baseRate.toFixed(3)), recent: Number(recentRate.toFixed(3)), adjusted: Number(rate.value.toFixed(3)), weight: rate.weight, perGameBase: Number(base[statKey]), perGameRecent: Number(recent[statKey]) },
+    nMin, kRate: K_RATE,
+  };
+}
 // Project a game's total from recent team SCORING RATE (sticky) × opponent defense,
 // shrunk toward league mean so recent FG% variance (the noisy part) doesn't drive
 // it. Backtested on 101 games: corr 0.62 with actual, mean abs error ~12.7 pts,
@@ -1001,6 +1083,7 @@ function buildShootingForm(games) {
     if (!g.length) return null;
     const sum = (f) => g.reduce((a, x) => a + (Number(x[f]) || 0), 0);
     const fga = sum('fga'), fgm = sum('fgm'), fta = sum('fta'), pts = sum('pts');
+    const reb = sum('reb'), ast = sum('ast'), min = sum('minutes');
     return {
       gp: g.length,
       fga: Number((fga / g.length).toFixed(1)),
@@ -1008,6 +1091,11 @@ function buildShootingForm(games) {
       fgPct: fga > 0 ? Math.round((fgm / fga) * 100) : null,
       tsPct: (fga + 0.44 * fta) > 0 ? Math.round((pts / (2 * (fga + 0.44 * fta))) * 100) : null,
       ppg: Number((pts / g.length).toFixed(1)),
+      reb: Number((reb / g.length).toFixed(1)),         // rebounds & assists per game
+      ast: Number((ast / g.length).toFixed(1)),
+      min: Number((min / g.length).toFixed(1)),          // minutes/game (opportunity base)
+      rebPerMin: min > 0 ? reb / min : 0,                // rate axes — stickier than shooting
+      astPerMin: min > 0 ? ast / min : 0,
     };
   };
   return { l10: win(10), l5: win(5) };
@@ -1468,13 +1556,14 @@ async function buildAndRunAnalysis({
 
     // Adaptive shrinkage read (points, shadow mode) — evidence-weighted regime
     // detection: separates a real volume/role riser from hot-shooting variance.
-    const adaptiveRead = market.toLowerCase() === 'points'
-      ? buildAdaptivePoints({
-          shootingForm,
-          evidence: { spinRead: _spin?.read, minutesSecurity, benefitsFrom, shootingForm },
-          minutes: { baseline: shotProfile?.minAvg, projected: benefitsFrom?.projMinutes },
-        })
-      : null;
+    const _mk = market.toLowerCase();
+    const _adaptiveEvidence = { spinRead: _spin?.read, minutesSecurity, benefitsFrom, shootingForm };
+    const _adaptiveMinutes = { baseline: shotProfile?.minAvg, projected: benefitsFrom?.projMinutes };
+    const adaptiveRead = _mk === 'points'
+      ? buildAdaptivePoints({ shootingForm, evidence: _adaptiveEvidence, minutes: _adaptiveMinutes })
+      : (_mk === 'rebounds' || _mk === 'assists')
+        ? buildAdaptiveCounting({ market: _mk, shootingForm, evidence: _adaptiveEvidence, minutes: _adaptiveMinutes })
+        : null;
 
     // market, plus a parallel PRA signal (the fallback when standalone reb/ast props
     // aren't offered). recentForm.games is most-recent-first, so reverse to oldest→newest.
