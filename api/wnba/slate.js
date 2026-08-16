@@ -1495,6 +1495,12 @@ async function buildAndRunAnalysis({
       };
     }
 
+    return {
+      gameId: game.gameId,
+      player: player.name,
+      team,
+      opponent,
+      market,
       // Injury status surfaced to the card. OUT players are forced to PASS.
       injuryStatus,
       injuryDetail,
