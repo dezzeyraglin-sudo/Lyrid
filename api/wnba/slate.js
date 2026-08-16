@@ -68,6 +68,7 @@ import { aggregateRecentForm, aggregateFromGames } from "../_lib/wnba/wnbaGameLo
 import { getAllTeamStats } from "../_lib/wnba/wnbaTeamData.js";
 import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
 import { fetchWnbaProps, fetchWnbaSeasonGames, fetchWnbaPlayerSeasonLogs, getSpin } from "../_lib/wnba/wnbaFeedEspn.js";
+import { fetchWnbaPpLines } from "../_lib/wnba/ppLines.js";
 import { buildEmpiricalTotals } from "../_lib/wnba/wnbaEmpiricalTotals.js";
 import { evaluatePropSignal } from "../_lib/wnba/wnbaPropSignal.js";
 
@@ -231,6 +232,39 @@ async function generateSlate(opts = {}) {
   const bdlPropMeta = bdlProps.propMeta || {};
   const bdlPropsAvailable = Object.keys(bdlPropLines).length > 0;
 
+  // STEP 2d-PP: PrizePicks STANDARD lines — the real market the tool analyzes
+  // against. Fetched once, standard-only (demon/goblin are no-bets). Non-fatal: if
+  // partner-api 403s from Vercel's IP range, this stays empty and manual/inferred
+  // lines take over — the app never depends on it (per the pp-lines caveats).
+  let ppLines = { ok: false, byKey: {}, altIndex: {}, lines: [] };
+  try {
+    ppLines = await fetchWnbaPpLines({ standardOnly: true });
+    if (!ppLines.ok) warnings.push(`PP lines unavailable: ${ppLines.reason || 'unknown'}${ppLines.blocked ? ' (IP blocked)' : ''}`);
+    else warnings.push(`PP lines: ${ppLines.standardCount} standard, ${ppLines.altCount} alt`);
+  } catch (err) {
+    warnings.push(`PP lines fetch failed: ${err.message}`);
+  }
+  const ppAltIndex = ppLines.altIndex || {};
+  // Build propLines keyed "name_market" from the STANDARD lines. The slate's
+  // existing normalized-name fallback joins these to bbref player names.
+  const ppPropLines = {}, ppPropMeta = {};
+  for (const l of (ppLines.lines || [])) {
+    if (!l.isStandard) continue;
+    const nm = l.name || l.displayName;
+    if (!nm || l.line == null) continue;
+    const key = `${nm}_${l.market}`;
+    if (!(key in ppPropLines)) {
+      ppPropLines[key] = l.line;
+      ppPropMeta[key] = { book: 'prizepicks', oddsType: l.oddsType };
+    }
+    // also key under displayName spelling if it differs
+    if (l.displayName && l.displayName !== nm) {
+      const k2 = `${l.displayName}_${l.market}`;
+      if (!(k2 in ppPropLines)) { ppPropLines[k2] = l.line; ppPropMeta[k2] = { book: 'prizepicks', oddsType: l.oddsType }; }
+    }
+  }
+  const ppPropsAvailable = Object.keys(ppPropLines).length > 0;
+
   // STEP 2e: Season-wide player game logs from BDL (replaces the bbref scrape,
   // which Sports-Reference 429-blocks from Vercel's shared IPs). Fetched ONCE per
   // slate, cached per season, name-keyed. Feeds cold-form recentForm below.
@@ -286,12 +320,11 @@ async function generateSlate(opts = {}) {
     }
 
     const gameLines = lines[game.gameId] || {};
-    // Merge BDL player-prop lines into this game's propLines. Caller-provided
-    // lines win; BDL fills the rest. Result feeds the existing per-prop lookup
-    // (gameLines.propLines[playerName_market]) with no downstream change.
-    if (bdlPropsAvailable) {
-      gameLines.propLines = { ...bdlPropLines, ...(gameLines.propLines || {}) };
-      gameLines.propMeta = { ...bdlPropMeta, ...(gameLines.propMeta || {}) };
+    // Line precedence: caller-provided (manual) > PrizePicks standard > inferred.
+    // PP is the primary market; manual entry overrides it (corrections/fallback).
+    if (ppPropsAvailable || bdlPropsAvailable) {
+      gameLines.propLines = { ...ppPropLines, ...bdlPropLines, ...(gameLines.propLines || {}) };
+      gameLines.propMeta = { ...ppPropMeta, ...bdlPropMeta, ...(gameLines.propMeta || {}) };
     }
     // Real lines from The Odds API, looked up by either team's tricode.
     const feedLine = gameLineFeed.byTeam[homeAbbr] || gameLineFeed.byTeam[awayAbbr] || null;
@@ -400,7 +433,7 @@ async function generateSlate(opts = {}) {
               player, isHome, opponent, team, market, season, game, spread, total, date,
               recentFormPromise, allTeamStats, gameLines,
               v2Roster, v2OpponentRoster, injuryReport, defenseTable,
-              shotProfile: _shotProfile, shootingForm: _shootingForm
+              shotProfile: _shotProfile, shootingForm: _shootingForm, ppAltIndex
             })
           );
         }
@@ -522,7 +555,8 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'adaptive-shrinkage-2026-08-15',   // deploy marker — confirms this code is live
+    buildTag: 'pp-lines-2026-08-15',   // deploy marker — confirms this code is live
+    ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
     analyses: successful,
@@ -652,7 +686,9 @@ function buildPropReasons(ctx) {
   // baseline (variance → leans under vs an inflated line); a volume/role riser is
   // trusted (real → leans over). Only speaks when the regime is decisive.
   if (adaptiveRead) {
-    if (adaptiveRead.regime === 'HOT_SHOOTING') add('UNDER', 'HOT-SHOOTING NOISE',
+    if (adaptiveRead.regime === 'ROLE_REANCHOR') add('OVER', 'ROLE RE-ANCHOR',
+      `Inheriting starter minutes${adaptiveRead.reanchor ? ` (~${Math.round(adaptiveRead.reanchor.projMin)} min)` : ''} — baseline re-anchored from ${adaptiveRead.baseProjection} to ${adaptiveRead.adjProjection} pts; the old form line understates the new role.`);
+    else if (adaptiveRead.regime === 'HOT_SHOOTING') add('UNDER', 'HOT-SHOOTING NOISE',
       `Recent points are up on shooting efficiency, not shot volume — the model shrinks a hot streak toward the ${adaptiveRead.baseProjection} baseline rather than chasing it.`);
     else if (adaptiveRead.regime === 'RISING') add('OVER', 'REAL RISER',
       `Shot volume is up with role/opportunity support (not just a hot streak) — the form-adjusted baseline rises to ${adaptiveRead.adjProjection}.`);
@@ -828,25 +864,46 @@ function regimeEvidenceMult({ spinRead, minutesSecurity, benefitsFrom, shootingF
 // (trust recent volume), efficiency with a large K (hot shooting is shrunk hard) —
 // then recombine. Baseline = L10, recent = L5. ADDITIVE for now (shadow mode):
 // emits an adjusted read + regime label; does not yet override the projection.
-function buildAdaptivePoints({ shootingForm, evidence = {} }) {
+function buildAdaptivePoints({ shootingForm, evidence = {}, minutes = {} }) {
   const base = shootingForm?.l10, recent = shootingForm?.l5;
   if (!base || !recent || !(base.fga > 0) || !(recent.fga > 0)) return null;
-  const baseFga = base.fga, recentFga = recent.fga;
+  let baseFga = base.fga, recentFga = recent.fga;
   const basePps = base.ppg / base.fga, recentPps = recent.ppg / recent.fga;
-  const nOpp = recentFga * (recent.gp || 5);   // total recent attempts = the evidence unit
 
+  // ROLE RE-ANCHOR — the Nelson-Ododa fix. When a player inherits an absent
+  // starter's minutes (benefitsFrom → projected minutes >> their baseline minutes),
+  // BOTH L10 and L5 reflect the OLD bench role. Shrinking between two stale windows
+  // can't see the new role. So scale the opportunity baseline to the projected
+  // minutes (per-minute shot rate × new minutes) BEFORE shrinkage runs. Efficiency
+  // (points-per-shot) is rate-based and role-independent, so it carries over.
+  let reanchor = null;
+  const baseMin = Number(minutes.baseline), projMin = Number(minutes.projected);
+  if (Number.isFinite(baseMin) && baseMin > 5 && Number.isFinite(projMin) && projMin > baseMin * 1.12) {
+    const fgaPerMin = baseFga / baseMin;
+    const newFga = fgaPerMin * projMin;
+    reanchor = { fromFga: Number(baseFga.toFixed(1)), toFga: Number(newFga.toFixed(1)), baseMin, projMin,
+      fromPts: Number((baseFga * basePps).toFixed(1)), toPts: Number((newFga * basePps).toFixed(1)) };
+    baseFga = newFga;                 // opportunity baseline now reflects the new role
+  }
+
+  const nOpp = recentFga * (recent.gp || 5);
   const evMult = regimeEvidenceMult(evidence);
-  const K_OPP = 30 / evMult;   // ~30 recent FGA to half-weight recent volume (less w/ evidence)
-  const K_EFF = 90;            // efficiency needs ~3x the evidence; hot streaks stay shrunk
+  const K_OPP = 30 / evMult;
+  const K_EFF = 90;
 
-  const opp = shrinkToward(baseFga, recentFga, nOpp, K_OPP);
+  // With a fresh re-anchor, recent volume is stale for the new role → trust the
+  // re-anchored baseline for opportunity rather than shrinking toward stale recent.
+  let oppValue, oppWeight;
+  if (reanchor) { oppValue = baseFga; oppWeight = 0; }
+  else { const o = shrinkToward(baseFga, recentFga, nOpp, K_OPP); oppValue = o.value; oppWeight = o.weight; }
   const eff = shrinkToward(basePps, recentPps, nOpp, K_EFF);
-  const adjProjection = Number((opp.value * eff.value).toFixed(1));
-  const baseProjection = Number((baseFga * basePps).toFixed(1));
+  const adjProjection = Number((oppValue * eff.value).toFixed(1));
+  const baseProjection = Number((base.fga * basePps).toFixed(1));   // pre-re-anchor baseline
 
-  const fgaDelta = recentFga - baseFga, ppsDelta = recentPps - basePps;
+  const fgaDelta = recentFga - base.fga, ppsDelta = recentPps - basePps;
   let regime, regimeNote;
-  if (fgaDelta >= 2 && evMult > 1.2) { regime = 'RISING'; regimeNote = 'volume up with role/opportunity support — real riser'; }
+  if (reanchor) { regime = 'ROLE_REANCHOR'; regimeNote = `inheriting starter minutes — baseline re-anchored ${reanchor.fromPts}→${reanchor.toPts} pts at ${Math.round(projMin)} min`; }
+  else if (fgaDelta >= 2 && evMult > 1.2) { regime = 'RISING'; regimeNote = 'volume up with role/opportunity support — real riser'; }
   else if (fgaDelta >= 2) { regime = 'VOLUME_UP'; regimeNote = 'taking more shots lately'; }
   else if (Math.abs(fgaDelta) < 1.5 && ppsDelta >= 0.18) { regime = 'HOT_SHOOTING'; regimeNote = 'points up on efficiency, not volume — shrunk toward baseline as likely variance'; }
   else if (Math.abs(fgaDelta) < 1.5 && ppsDelta <= -0.18) { regime = 'COLD_SHOOTING'; regimeNote = 'efficiency dip on steady volume — treated as variance'; }
@@ -856,8 +913,8 @@ function buildAdaptivePoints({ shootingForm, evidence = {} }) {
   return {
     adjProjection, baseProjection,
     delta: Number((adjProjection - baseProjection).toFixed(1)),
-    regime, regimeNote, evidenceMult: Number(evMult.toFixed(2)),
-    opportunity: { base: baseFga, recent: recentFga, adjusted: Number(opp.value.toFixed(1)), weight: opp.weight },
+    regime, regimeNote, evidenceMult: Number(evMult.toFixed(2)), reanchor,
+    opportunity: { base: Number(base.fga.toFixed(1)), reanchored: reanchor ? reanchor.toFga : null, recent: recentFga, adjusted: Number(oppValue.toFixed(1)), weight: oppWeight },
     efficiency: { basePps: Number(basePps.toFixed(2)), recentPps: Number(recentPps.toFixed(2)), adjusted: Number(eff.value.toFixed(2)), weight: eff.weight },
     nOpp, kOpp: Number(K_OPP.toFixed(1)), kEff: K_EFF,
   };
@@ -1079,7 +1136,7 @@ function shotsToClearPoints(prof, line, security) {
 async function buildAndRunAnalysis({
   player, isHome, opponent, team, market, season, game, date,
   spread, total, recentFormPromise, allTeamStats, gameLines,
-  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile, shootingForm
+  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile, shootingForm, ppAltIndex
 }) {
   try {
     // Get opponent team stats from the pre-fetched map
@@ -1218,10 +1275,21 @@ async function buildAndRunAnalysis({
     }
     const hasRealLine = Number.isFinite(Number(explicitLine));
     const line = hasRealLine ? Number(explicitLine) : inferLineFromPlayer(player, market);
-    // 'provided' = a real book/prop line (caller or BDL); 'inferred' = engine guess.
+    // 'provided' = a real book/prop line (caller or PrizePicks); 'inferred' = engine guess.
     const propLineSource = hasRealLine ? 'provided' : 'inferred';
-    // Book/vendor for a real line (e.g. "fanduel"), surfaced to the card.
+    // Book/vendor for a real line (e.g. "prizepicks"), surfaced to the card.
     const lineMeta = hasRealLine ? (gameLines.propMeta?.[matchedKey] || gameLines.propMeta?.[propLineKey] || null) : null;
+    // ALT-ONLY: no standard line, but PrizePicks lists this prop as demon/goblin.
+    // That's a no-bet under the standing rule — but a different fact from "not on
+    // the board," so the card can say which. Checked only when we had to infer.
+    let altOnly = null;
+    if (!hasRealLine && ppAltIndex) {
+      const nk = normPlayerName(player.name) + '|' + market;
+      // ppAltIndex keys are normalizeName (strips suffixes) — try a loose match too.
+      const loose = normPlayerName(player.name).replace(/\b(jr|sr|ii|iii|iv)\b/g, '').replace(/\s+/g, ' ').trim() + '|' + market;
+      const hit = ppAltIndex[nk] || ppAltIndex[loose];
+      if (hit) altOnly = hit;   // 'demon' | 'goblin'
+    }
 
     const input = {
       player: playerWithRecent,
@@ -1332,7 +1400,11 @@ async function buildAndRunAnalysis({
     // Adaptive shrinkage read (points, shadow mode) — evidence-weighted regime
     // detection: separates a real volume/role riser from hot-shooting variance.
     const adaptiveRead = market.toLowerCase() === 'points'
-      ? buildAdaptivePoints({ shootingForm, evidence: { spinRead: _spin?.read, minutesSecurity, benefitsFrom, shootingForm } })
+      ? buildAdaptivePoints({
+          shootingForm,
+          evidence: { spinRead: _spin?.read, minutesSecurity, benefitsFrom, shootingForm },
+          minutes: { baseline: shotProfile?.minAvg, projected: benefitsFrom?.projMinutes },
+        })
       : null;
 
     // market, plus a parallel PRA signal (the fallback when standalone reb/ast props
@@ -1401,12 +1473,25 @@ async function buildAndRunAnalysis({
       }
     }
 
-    return {
-      gameId: game.gameId,
-      player: player.name,
-      team,
-      opponent,
-      market,
+    // ROLE RE-ANCHOR guard (all points picks, any engine): a player inheriting an
+    // absent starter's minutes whose re-anchored projection reaches the line must
+    // not get a confident UNDER. This is the Nelson-Ododa fix — she was projected
+    // 6.3 UNDER 9.5 while inheriting 32 minutes for two out bigs, and went for 21.
+    if (market.toLowerCase() === 'points' && adaptiveRead?.regime === 'ROLE_REANCHOR'
+        && (unified.recommendation === 'UNDER' || unified.lean === 'UNDER')
+        && Number.isFinite(Number(unified.line))
+        && Number.isFinite(adaptiveRead.adjProjection)
+        && adaptiveRead.adjProjection >= Number(unified.line) - 1.5) {
+      unified.recommendation = 'PASS';
+      unified.tier = 'PASS';
+      unified.confidence = Math.min(Number(unified.confidence) || 0, 40);
+      unified.roleConflict = {
+        line: Number(unified.line), baseProjection: adaptiveRead.baseProjection,
+        reanchoredProjection: adaptiveRead.adjProjection, inheriting: benefitsFrom?.out || [],
+        projMinutes: benefitsFrom?.projMinutes,
+      };
+    }
+
       // Injury status surfaced to the card. OUT players are forced to PASS.
       injuryStatus,
       injuryDetail,
@@ -1437,6 +1522,7 @@ async function buildAndRunAnalysis({
       opponentStyle: opponentStyle || null,   // opponent offensive fingerprint (matchup context)
       regressionWatch: regressionWatch || null,   // fill-in shelf-life / star-return read
       adaptiveRead: adaptiveRead || null,   // opportunity×efficiency shrinkage (points, shadow)
+      roleConflict: unified.roleConflict || null,   // re-anchor stood down a bad under
       spinRead: _spin?.read || null,   // role-change signal (STALE STARTER / ROLE BUMP) or null
       reasons: buildPropReasons({
         market, unified,
@@ -1447,7 +1533,8 @@ async function buildAndRunAnalysis({
         spinRead: _spin?.read || null, opponentStyle, adaptiveRead,
       }),
       lineSource: propLineSource,
-      lineBook: lineMeta?.vendor || null,
+      lineBook: lineMeta?.book || lineMeta?.vendor || null,
+      altOnly: altOnly || null,   // 'demon' | 'goblin' when only an alt line exists (no-bet)
       propSignal,   // cold-form UNDER tier (or null) for THIS market
       praSignal,    // cold-form UNDER tier (or null) for PRA — fallback when reb/ast not offered
       // Diagnostic: how many game-log rows the bbref scrape returned for this player,
