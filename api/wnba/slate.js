@@ -68,7 +68,6 @@ import { aggregateRecentForm, aggregateFromGames } from "../_lib/wnba/wnbaGameLo
 import { getAllTeamStats } from "../_lib/wnba/wnbaTeamData.js";
 import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
 import { fetchWnbaProps, fetchWnbaSeasonGames, fetchWnbaPlayerSeasonLogs, getSpin } from "../_lib/wnba/wnbaFeedEspn.js";
-import { fetchWnbaPpLines } from "../_lib/wnba/ppLines.js";
 import { buildEmpiricalTotals } from "../_lib/wnba/wnbaEmpiricalTotals.js";
 import { evaluatePropSignal } from "../_lib/wnba/wnbaPropSignal.js";
 
@@ -238,11 +237,15 @@ async function generateSlate(opts = {}) {
   // lines take over — the app never depends on it (per the pp-lines caveats).
   let ppLines = { ok: false, byKey: {}, altIndex: {}, lines: [] };
   try {
+    // Dynamic import: if ppLines.js isn't deployed, this is a catchable failure,
+    // not a load-time crash of the whole function. The slate degrades to
+    // manual/inferred lines — it must never depend on the PP module existing.
+    const { fetchWnbaPpLines } = await import("../_lib/wnba/ppLines.js");
     ppLines = await fetchWnbaPpLines({ standardOnly: true });
     if (!ppLines.ok) warnings.push(`PP lines unavailable: ${ppLines.reason || 'unknown'}${ppLines.blocked ? ' (IP blocked)' : ''}`);
     else warnings.push(`PP lines: ${ppLines.standardCount} standard, ${ppLines.altCount} alt`);
   } catch (err) {
-    warnings.push(`PP lines fetch failed: ${err.message}`);
+    warnings.push(`PP lines module unavailable: ${err.message}`);
   }
   const ppAltIndex = ppLines.altIndex || {};
   // Build propLines keyed "name_market" from the STANDARD lines. The slate's
