@@ -123,7 +123,7 @@ const WNBA_V2_PROJECTIONS = (() => {
 // =============================================================
 
 const DEFAULT_MARKETS = ['points', 'rebounds', 'assists'];
-const DEFAULT_TOP_N = 4;
+const DEFAULT_TOP_N = 6;   // starting five + one rotation slot of slack
 const DEFAULT_SPREAD = 0;        // pick'em if no line provided
 const DEFAULT_TOTAL = 164;       // WNBA league average total
 
@@ -150,7 +150,9 @@ async function generateSlate(opts = {}) {
     timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());
   const markets = Array.isArray(opts.markets) && opts.markets.length ? opts.markets : DEFAULT_MARKETS;
-  const topN = Number(opts.topN) || DEFAULT_TOP_N;
+  // Floor at 5 so the whole projected starting five always shows, even if the
+  // client sends a smaller topN. A larger client value is still respected.
+  const topN = Math.max(Number(opts.topN) || DEFAULT_TOP_N, 5);
   const lines = opts.lines || {};
   // Season also in Eastern, for the same rollover reason.
   const season = Number(opts.season) || Number(new Intl.DateTimeFormat('en-US', {

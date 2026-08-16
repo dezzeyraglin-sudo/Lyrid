@@ -284,7 +284,7 @@ export async function getTopPlayersForTeam(teamAbbr, n = 4, season = 2026, marke
 
   // Compute a sort key based on the market.
   const marketKey = String(market).toLowerCase();
-  function sortValue(p) {
+  function marketStat(p) {
     if (marketKey.includes('rebound') || marketKey === 'reb') return Number(p.REB) || 0;
     if (marketKey.includes('assist') || marketKey === 'ast') return Number(p.AST) || 0;
     if (marketKey.includes('three') || marketKey.includes('3pm')) return Number(p.FG3M) || 0;
@@ -292,6 +292,20 @@ export async function getTopPlayersForTeam(teamAbbr, n = 4, season = 2026, marke
     if (marketKey === 'pa') return (Number(p.PTS)||0) + (Number(p.AST)||0);
     if (marketKey === 'pr') return (Number(p.PTS)||0) + (Number(p.REB)||0);
     return Number(p.PTS) || 0;
+  }
+
+  // ROLE-LED ordering so the projected starting five is ALWAYS captured. Minutes
+  // and starter share dominate; the market stat is only a within-role tiebreak
+  // (higher producers first among players of similar minutes). Ordering by the
+  // market stat alone dropped low-scoring starters — defensive specialists,
+  // screen-setting bigs — below high-scoring reserves, so the starting five was
+  // incomplete. Minutes is also the truer opportunity signal for prop analysis.
+  // Degrades gracefully: if MIN is missing, starter share + stat still order sanely.
+  function sortValue(p) {
+    const min = Number(p.MIN) || 0;
+    const gp = Number(p.GP) || 0, gs = Number(p.GS) || 0;
+    const startShare = gp > 0 ? Math.min(gs / gp, 1) : 0;
+    return min + startShare * 10 + marketStat(p) * 0.1;
   }
 
   // Sort descending and take top N
