@@ -336,6 +336,13 @@ async function generateSlate(opts = {}) {
     // Precedence: explicit caller line > Odds API feed > default fallback.
     const spread = Number(gameLines.spread ?? feedLine?.spread ?? DEFAULT_SPREAD);
     const total = Number(gameLines.total ?? feedLine?.total ?? DEFAULT_TOTAL);
+    // Caller-provided total lines to grade against: full game + optional half lines.
+    // Any of these can be typed in per game; each drives its own over/under lean.
+    const totalLines = {
+      full: Number.isFinite(Number(gameLines.total)) ? Number(gameLines.total) : (Number.isFinite(total) ? total : null),
+      firstHalf: Number.isFinite(Number(gameLines.firstHalfTotal ?? gameLines.total1h)) ? Number(gameLines.firstHalfTotal ?? gameLines.total1h) : null,
+      secondHalf: Number.isFinite(Number(gameLines.secondHalfTotal ?? gameLines.total2h)) ? Number(gameLines.secondHalfTotal ?? gameLines.total2h) : null,
+    };
     const lineSource = Number.isFinite(Number(gameLines.spread)) ? 'caller'
       : (feedLine?.spread != null ? `odds_api:${feedLine.bookUsed}` : 'default');
 
@@ -381,7 +388,7 @@ async function generateSlate(opts = {}) {
       gameLine,
       // Projected game total from recent scoring rate × opponent defense, with the
       // first-half / second-half split and a market comparison. Environment read (±13).
-      projectedTotal: estimateGameTotal(homeAbbr, awayAbbr, defenseTable, total),
+      projectedTotal: estimateGameTotal(homeAbbr, awayAbbr, defenseTable, totalLines),
     };
 
     // Get top players for both teams in parallel
@@ -563,7 +570,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'game-total-2026-08-16',   // deploy marker — confirms this code is live
+    buildTag: 'total-lines-2026-08-16',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -937,7 +944,7 @@ function buildAdaptivePoints({ shootingForm, evidence = {}, minutes = {} }) {
 // a per-team half edge the data doesn't support. This is a scoring-ENVIRONMENT read
 // (and a market-total sanity check), not a precise number — carry the ±13 with it.
 const FIRST_HALF_SHARE = 0.494;   // empirical WNBA 1H share of game total
-function estimateGameTotal(homeAbbr, awayAbbr, defenseTable, marketTotal) {
+function estimateGameTotal(homeAbbr, awayAbbr, defenseTable, totalLines) {
   const style = defenseTable?.teamStyle || {};
   const def = defenseTable?.teamDefense || {};
   const offH = style[homeAbbr]?.ppg, offA = style[awayAbbr]?.ppg;
@@ -952,24 +959,33 @@ function estimateGameTotal(homeAbbr, awayAbbr, defenseTable, marketTotal) {
   const expHome = (sh(offH) * sh(allowA)) / lgPPG;
   const expAway = (sh(offA) * sh(allowH)) / lgPPG;
   const total = expHome + expAway;
+  const projFirstHalf = total * FIRST_HALF_SHARE;
+  const projSecondHalf = total * (1 - FIRST_HALF_SHARE);
+  const FULL_ERR = 12.7, HALF_ERR = 7.5;   // half error scales ~1/√2 of the full-game error
   const out = {
     total: Number(total.toFixed(1)),
     home: Number(expHome.toFixed(1)),
     away: Number(expAway.toFixed(1)),
-    firstHalf: Number((total * FIRST_HALF_SHARE).toFixed(1)),
-    secondHalf: Number((total * (1 - FIRST_HALF_SHARE)).toFixed(1)),
-    error: 12.7,                 // empirical mean abs error (carry this, don't hide it)
+    firstHalf: Number(projFirstHalf.toFixed(1)),
+    secondHalf: Number(projSecondHalf.toFixed(1)),
+    error: FULL_ERR,
     method: 'recent scoring rate (shrunk 25% to league) × opponent defense',
     note: 'scoring-environment read, ±13; halves are near-even (~49/51), thin per-team signal',
   };
-  // Market comparison: an edge only worth noting when it clears the error band.
-  const mt = Number(marketTotal);
-  if (Number.isFinite(mt) && mt > 0) {
-    const diff = Number((total - mt).toFixed(1));
-    out.marketTotal = mt;
-    out.vsMarket = diff;
-    out.lean = Math.abs(diff) >= out.error ? (diff > 0 ? 'OVER' : 'UNDER') : 'NONE';
-  }
+  // Grade the projection against each caller-provided line. A lean only fires when
+  // the gap clears that line's error band — otherwise it's inside the noise (NONE).
+  const grade = (proj, line, err) => {
+    const l = Number(line);
+    if (!Number.isFinite(l) || l <= 0) return null;
+    const diff = Number((proj - l).toFixed(1));
+    return { line: l, projected: Number(proj.toFixed(1)), diff, lean: Math.abs(diff) >= err ? (diff > 0 ? 'OVER' : 'UNDER') : 'NONE' };
+  };
+  const lines = totalLines || {};
+  out.vsLines = {
+    full: grade(total, lines.full, FULL_ERR),
+    firstHalf: grade(projFirstHalf, lines.firstHalf, HALF_ERR),
+    secondHalf: grade(projSecondHalf, lines.secondHalf, HALF_ERR),
+  };
   return out;
 }
 
