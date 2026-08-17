@@ -20978,6 +20978,18 @@ async function autoGradeOnAppOpen() {
         </div>`;
     })();
 
+    // Blowout-risk banner (spread-derived, game-wide under signal). Amber accent —
+    // it's a conviction nudge, not a hard veto. Underdog side is stronger.
+    const _blowoutBanner = (() => {
+      const b = lead.blowoutRisk;
+      if (!b) return '';
+      const label = b.isUnderdog ? '▼ BLOWOUT RISK · UNDERDOG · leans under' : '▼ BLOWOUT RISK · leans under';
+      return `<div style="margin:8px 0 2px;padding:8px 12px;border-radius:8px;background:#5b4a1f;color:#fff">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.05em">${label}${b.risk ? ' · ' + b.risk : ''}</div>
+          <div style="margin-top:3px;font-size:11px;line-height:1.45;opacity:0.93">${esc(b.note || '')}</div>
+        </div>`;
+    })();
+
     // The Spin blurb itself — shown on EVERY card that has one, with rostership.
     const _spinBlurb = (() => {
       const s = lead.spin;
@@ -21045,6 +21057,7 @@ async function autoGradeOnAppOpen() {
           <div class="tier-badge ${_tierClass}">${esc(tier.label)}</div>
         </div>
         ${_spinBanner}
+        ${_blowoutBanner}
 
         ${whyDrivers.length > 0 ? `
           <div class="hr-drivers-panel" style="margin-bottom:10px">
