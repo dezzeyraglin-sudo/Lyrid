@@ -535,8 +535,30 @@ async function generateSlate(opts = {}) {
     return (b.scores?.finalEdge || 0) - (a.scores?.finalEdge || 0);
   });
 
-  // Top 10 across the slate
-  const bestPlays = successful.slice(0, 10);
+  // ── COLLAPSE: every prop → one verdict (stages 2-4 + under-only routing) ──
+  // Stage 3 game guard, computed per game from the projected total vs the market total.
+  const gameGuardById = {};
+  for (const g of Object.values(gameContexts)) {
+    const pt = g.projectedTotal;
+    const gap = (pt && Number.isFinite(Number(g.total)) && Number(g.total) > 0)
+      ? Number((pt.total - Number(g.total)).toFixed(1)) : null;
+    gameGuardById[g.gameId] = (gap != null && Math.abs(gap) > GAME_GUARD_THRESHOLD)
+      ? { suppress: true, modelTotal: pt.total, marketTotal: Number(g.total), gap }
+      : { suppress: false, modelTotal: pt?.total ?? null, marketTotal: Number(g.total) || null, gap };
+    g.gameGuard = gameGuardById[g.gameId];   // surfaced on the game row
+  }
+  // Resolve one verdict per prop and stamp it as the authoritative call.
+  for (const a of successful) {
+    a.verdict = resolveVerdict(a, gameGuardById[a.gameId]);
+  }
+
+  // Signal selector (Tonight's Signal / bestPlays) obeys the SAME confidence block
+  // grading does: eligible UNDER verdicts only — never an over, a killed play, or a
+  // game with no defense data. This closes the selector gate that let a no-data game
+  // become the featured signal.
+  const bestPlays = successful
+    .filter(a => a.verdict?.call === 'UNDER' && a.verdict?.signalEligible)
+    .slice(0, 10);
 
   // v2 audit: roll up injury context for the slate-level summary
   const v2Summary = WNBA_V2_PROJECTIONS && injuryReport ? {
@@ -570,7 +592,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'adaptive-reb-ast-2026-08-16',   // deploy marker — confirms this code is live
+    buildTag: 'one-verdict-2026-08-16',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -847,6 +869,65 @@ function _numf(...vals) { for (const v of vals) { const n = Number(v); if (Numbe
  * @param {Array} games  raw game rows (sorted oldest→newest if dated)
  * @returns {Object|null} { l10:{gp,fga,fgPct,tsPct,ppg}, l5:{...} }
  */
+// ── SINGLE-VERDICT PIPELINE ──────────────────────────────────────────────────
+// Every prop enters once and exits with exactly ONE verdict — OVER, UNDER, or PASS.
+// No stage sits beside another stage's call; each can only narrow toward the verdict.
+// This collapses the two subsystems that used to co-render (bidirectional v2
+// projection + under-only validated model) so nothing can lean both ways again.
+//
+// Stage 1 (signed edge) is a.recommendation / a.edge, computed upstream.
+// Stage 2: a role/minutes veto CONSUMES the tier — it doesn't annotate it. The tier
+//   hit-rates were measured on stable-role players, so an unstable role invalidates
+//   the tier's premise (that number doesn't describe this play) → kill, one grade out.
+// Stage 3: a game-level projection guard — if the model total disagrees with the
+//   market total by more than the model's own error, that's ONE broken projection,
+//   not N edges; suppress the game's props rather than grade a cascade.
+// Stage 4: data-sufficiency floor — a prop with no defense data can't be a signal.
+// Routing: UNDER is the only validated, bettable side (June backtest found no
+//   tradeable over signal). Over gaps are computed and shown as CONTEXT, never
+//   promoted to a bettable tier. If the only edge is on the over side → PASS.
+const GAME_GUARD_THRESHOLD = 12.7;   // model-vs-market total gap that flags a broken game projection
+
+function resolveVerdict(a, gameGuard) {
+  const side = String(a.recommendation || '').toUpperCase();   // OVER | UNDER | PASS
+  const edge = a.edge;
+  const dataOk = !((a.hardFlags || []).includes('NO DEFENSE DATA'));
+
+  // Stage 3 — game projection guard (runs first: a broken game invalidates all its props).
+  if (gameGuard?.suppress) {
+    return { call: 'PASS', tier: 'PASS', side, edge, signalEligible: false, killedBy: 'GAME_PROJECTION',
+      note: `Model total ${gameGuard.modelTotal} vs market ${gameGuard.marketTotal} (${gameGuard.gap > 0 ? '+' : ''}${gameGuard.gap}) — a calibrated model almost never misses a sharp total by this much, so this is one broken projection, not a slate of edges. Props suppressed for this game.` };
+  }
+
+  // Routing — overs are context only, never a bettable tier.
+  if (side === 'OVER') {
+    return { call: 'PASS', tier: 'CONTEXT', side: 'OVER', edge, signalEligible: false,
+      note: `Over gap ${edge > 0 ? '+' : ''}${edge} shown as context — there is no validated over tier (backtest found no tradeable over signal), so it is never promoted to a bet.` };
+  }
+  if (side !== 'UNDER') {
+    return { call: 'PASS', tier: 'PASS', side, edge, signalEligible: false };
+  }
+
+  // Stage 2 — veto CONSUMES the under tier. Role instability invalidates the premise.
+  const vetoes = [];
+  if (a.minutesConflict) vetoes.push('model/minutes conflict');
+  if (a.roleConflict) vetoes.push('inheriting starter minutes (role re-anchor)');
+  if (a.spinRead?.active) vetoes.push(`role change — ${a.spinRead.badge}`);
+  if (a.adaptiveRead?.regime === 'ROLE_REANCHOR') vetoes.push('minutes inherited from an absence');
+  if (a.minutesSecurity?.level === 'RISK') vetoes.push('minutes at risk');
+  if (a.benefitsFrom && Array.isArray(a.benefitsFrom.out) && a.benefitsFrom.out.length && Number(a.benefitsFrom.minGain) >= 3) {
+    vetoes.push(`role boosted by ${a.benefitsFrom.out.join(', ')} out`);
+  }
+  if (vetoes.length) {
+    return { call: 'PASS', tier: 'PASS', side: 'UNDER', edge, signalEligible: false, killedBy: 'ROLE_UNSTABLE',
+      note: `Tier premise invalid: the under hit-rate was measured on stable-role players, but ${vetoes.join('; ')} — that number doesn't describe this play. Vetoed to PASS.` };
+  }
+
+  // Survived every stage — the UNDER verdict stands as the single call. Data floor
+  // governs whether it's eligible to be surfaced as a signal.
+  return { call: 'UNDER', tier: a.tier, side: 'UNDER', edge, confidence: a.confidence, signalEligible: dataOk };
+}
+
 // ── ADAPTIVE SHRINKAGE ───────────────────────────────────────────────────────
 // Regression-to-the-mean with an evidence-driven weight. Move a BASELINE toward
 // RECENT by w = n/(n+K), where n is recent sample measured in OPPORTUNITIES (not
