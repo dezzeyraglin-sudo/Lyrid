@@ -592,7 +592,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'one-verdict-2026-08-16',   // deploy marker — confirms this code is live
+    buildTag: 'blowout-risk-2026-08-16',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -711,13 +711,17 @@ function buildHardFlagsFromUnified(u, player, reboundExtras) {
 // tag, text }; the card shows the ones matching the pick's lean direction.
 function buildPropReasons(ctx) {
   const { market, unified, shotProfile: sp, shotsToClear: stc, minutesSecurity: ms,
-          reboundExtras, raw, propSignal, opponent, spinRead, opponentStyle, adaptiveRead } = ctx;
+          reboundExtras, raw, propSignal, opponent, spinRead, opponentStyle, adaptiveRead, blowoutRisk } = ctx;
   const mk = String(market || '').toLowerCase();
   const m = unified?.multipliers || {};
   const opp = opponent || 'the opponent';
   const out = [];
   const add = (dir, tag, text) => out.push({ dir, tag, text });
   const r1 = (x) => Math.round(x * 10) / 10;
+
+  // Blowout risk (spread-derived) — suppresses counting stats game-wide, underdog most.
+  if (blowoutRisk) add('UNDER', blowoutRisk.isUnderdog ? 'BLOWOUT RISK · UNDERDOG' : 'BLOWOUT RISK',
+    blowoutRisk.note);
 
   // Adaptive shrinkage regime (points): a hot-shooting spike gets shrunk toward
   // baseline (variance → leans under vs an inflated line); a volume/role riser is
@@ -1194,6 +1198,35 @@ function buildShootingForm(games) {
  * Future-proof: keys off the live injury feed + returnDate, so it updates itself as
  * statuses change — no hardcoding of who's out.
  */
+// BLOWOUT RISK — a spread-derived under signal. Backtest (1,585 joined games): a
+// 20+ blowout hits the under ~72%, and it splits winner 69% / loser 76%. The
+// mechanism is NOT an NBA-style minutes cap — WNBA benches are short, so starters
+// play through blowouts. Instead, once the game is decided BOTH sides ease: the
+// winner coasts (over-perf -0.4) and the blown-out loser's offense tanks harder
+// (-1.2). So this is a game-WIDE counting-stat under nudge, weighted toward the
+// underdog (the likely loser), not gated to starters. Pre-game proxy = the spread.
+function buildBlowoutRisk({ spread, isHome }) {
+  const s = Number(spread);
+  if (!Number.isFinite(s)) return null;
+  const absSpread = Math.abs(s);
+  if (absSpread < 4) return null;                 // not enough spread for real blowout risk
+  const favoredBy = isHome ? -s : s;              // + if this player's team is favored
+  const isUnderdog = favoredBy < 0;               // getting the points → likely loser → suppresses more
+  let risk;
+  if (absSpread >= 9) risk = 'HIGH';
+  else if (absSpread >= 6) risk = 'MODERATE';
+  else risk = 'MILD';
+  const base = risk === 'HIGH' ? 6 : risk === 'MODERATE' ? 4 : 2;
+  const confBoost = isUnderdog ? base + 2 : base; // underdog carries the extra weight
+  return {
+    risk, side: 'UNDER', favoredBy: Number(favoredBy.toFixed(1)), isUnderdog, confBoost,
+    badge: 'BLOWOUT RISK · leans under',
+    note: isUnderdog
+      ? `${absSpread}-pt underdog — teams that get blown out suppress hardest (76% under in 20+ blowouts) as the offense stalls once the game's decided. Counting-stat under.`
+      : `${absSpread}-pt favorite — even the winning side eases once it's out of hand (69% under in 20+ blowouts); production drops though the starters stay in. Counting-stat under.`,
+  };
+}
+
 function buildRegressionWatch({ shootingForm, seasonPpg, benefitsFrom, injuryReport, slateDate }) {
   if (!benefitsFrom || !Array.isArray(benefitsFrom.out) || !benefitsFrom.out.length) return null;
   // Match how injuryReport.byName is keyed (wnbaFeedEspn.normName): strip to [a-z ].
@@ -1635,6 +1668,9 @@ async function buildAndRunAnalysis({
       shootingForm, seasonPpg: player.seasonAvg, benefitsFrom, injuryReport, slateDate: date,
     });
 
+    // Blowout-risk under signal from the spread (game-wide, underdog-weighted).
+    const blowoutRisk = buildBlowoutRisk({ spread, isHome });
+
     // Adaptive shrinkage read (points, shadow mode) — evidence-weighted regime
     // detection: separates a real volume/role riser from hot-shooting variance.
     const _mk = market.toLowerCase();
@@ -1754,6 +1790,11 @@ async function buildAndRunAnalysis({
         if (lean === 'UNDER' && Number.isFinite(c) && Number.isFinite(f) && f !== 1) {
           c = Math.max(1, Math.min(99, Math.round(c * f)));
         }
+        // Blowout-risk boost: a big spread suppresses counting stats game-wide
+        // (underdog most). Additive conviction for unders, capped.
+        if (lean === 'UNDER' && blowoutRisk && Number.isFinite(c)) {
+          c = Math.max(1, Math.min(99, c + blowoutRisk.confBoost));
+        }
         return c;
       })(),
       underEnv: opponentStyle?.underEnv || null,   // SUPPRESS | NEUTRAL | FAST (mild)
@@ -1766,6 +1807,7 @@ async function buildAndRunAnalysis({
       shootingForm: shootingForm || null,   // L10/L5 FGA + FG% + TS% — recent-shooting bonus read
       opponentStyle: opponentStyle || null,   // opponent offensive fingerprint (matchup context)
       regressionWatch: regressionWatch || null,   // fill-in shelf-life / star-return read
+      blowoutRisk: blowoutRisk || null,   // spread-derived game-wide under signal
       adaptiveRead: adaptiveRead || null,   // opportunity×efficiency shrinkage (points, shadow)
       roleConflict: unified.roleConflict || null,   // re-anchor stood down a bad under
       spinRead: _spin?.read || null,   // role-change signal (STALE STARTER / ROLE BUMP) or null
@@ -1775,7 +1817,7 @@ async function buildAndRunAnalysis({
         shotsToClear: shotsToClear || null,
         minutesSecurity: minutesSecurity || null,
         reboundExtras, raw: player?._raw || null, propSignal, opponent,
-        spinRead: _spin?.read || null, opponentStyle, adaptiveRead,
+        spinRead: _spin?.read || null, opponentStyle, adaptiveRead, blowoutRisk,
       }),
       lineSource: propLineSource,
       lineBook: lineMeta?.book || lineMeta?.vendor || null,
