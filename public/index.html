@@ -19944,6 +19944,20 @@ async function autoGradeOnAppOpen() {
         tier: to.tier, wr, reason: to.reason, isPRA, oppFlag: to.oppFlag,
         game: gmu[p.gameId] || `${teamAbbr(p.team)} @ ${teamAbbr(p.opponent)}`, time: gtime[p.gameId] || '',
       };
+      // ── CONSUME THE BACKEND SINGLE VERDICT ──────────────────────────────────
+      // The backend collapsed each prop to one call (stages 2-4 + under-only routing).
+      // A role/minutes veto or the game-projection guard invalidates the tier's
+      // premise — so the pick is KILLED with that reason, never shown as a live tier
+      // beside a warning. This is what removes "PLATINUM but SKIP": one call out.
+      const bv = p.verdict;
+      if (bv && bv.call !== 'UNDER') {
+        r.kill = {
+          veto: bv.killedBy === 'GAME_PROJECTION' ? 'GAME' : bv.killedBy === 'ROLE_UNSTABLE' ? 'ROLE' : 'PASS',
+          reason: bv.note || 'Vetoed by the single-verdict pipeline.',
+        };
+        killed.push(r);
+        continue;
+      }
       (isBump(p) || to.tier === 'LEAN' ? traps : clean).push(r);
     }
 
@@ -20823,16 +20837,39 @@ async function autoGradeOnAppOpen() {
               style="width:64px;font-size:13px;padding:3px 7px;border:1px solid var(--border-hairline, rgba(0,0,0,0.18));border-radius:7px;background:transparent;color:var(--text-primary);font-variant-numeric:tabular-nums" />
             <span class="wnba-ppline-out" style="font-size:11px;color:var(--text-secondary, var(--dim))"></span>
           </div>`;
+      // SINGLE VERDICT — the one authoritative call from the backend pipeline,
+      // replacing the bidirectional lean pill so a row can never show a bettable
+      // over, or a tier sitting beside a veto. UNDER = bettable (tier shown); an
+      // over routes to context; a role/game/data veto shows PASS with the reason.
+      const _v = p.verdict;
+      const _verdictBadge = (() => {
+        if (!_v) return `<span style="margin-left:auto;font-size:10px;font-weight:800;letter-spacing:0.04em;color:${_leanColor};background:${_leanBg};padding:3px 9px;border-radius:100px;white-space:nowrap" title="tool lean vs the line">${esc(_leanTxt)}</span>`;
+        if (_v.call === 'UNDER') {
+          const t = _v.tier && _v.tier !== 'PASS' ? ' · ' + _v.tier : '';
+          return `<span style="margin-left:auto;font-size:10px;font-weight:800;letter-spacing:0.04em;color:#fff;background:#7f1d1d;padding:3px 9px;border-radius:100px;white-space:nowrap" title="${esc(_v.note || 'validated under')}">▼ UNDER${_lineN != null ? ' ' + _lineN : ''}${t}</span>`;
+        }
+        if (_v.tier === 'CONTEXT') {
+          return `<span style="margin-left:auto;font-size:10px;font-weight:700;letter-spacing:0.04em;color:#3b5bdb;background:rgba(59,91,219,0.1);padding:3px 9px;border-radius:100px;white-space:nowrap" title="${esc(_v.note || '')}">△ OVER · context only</span>`;
+        }
+        const why = _v.killedBy === 'GAME_PROJECTION' ? 'GAME' : _v.killedBy === 'ROLE_UNSTABLE' ? 'ROLE' : '';
+        return `<span style="margin-left:auto;font-size:10px;font-weight:800;letter-spacing:0.04em;color:var(--text-secondary,var(--dim));background:rgba(120,120,120,0.14);padding:3px 9px;border-radius:100px;white-space:nowrap" title="${esc(_v.note || '')}">✕ PASS${why ? ' · ' + why : ''}</span>`;
+      })();
+      // Empirical/cold-form tier only renders on a live UNDER — never beside a PASS or over.
+      const _empBadgeGated = (_v && _v.call !== 'UNDER') ? '' : _empBadge;
+      // A one-line reason under the row when the verdict narrowed away from a bet.
+      const _verdictNote = (_v && _v.call !== 'UNDER' && _v.note)
+        ? `<div style="margin-top:4px;font-size:10px;line-height:1.45;color:var(--text-secondary,var(--dim));font-style:italic">${esc(_v.note)}</div>` : '';
       return `
         <div style="padding:9px 0;opacity:${_rowDim};border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
           <div style="display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap">
             <span style="min-width:74px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-primary)">${i === 0 ? '<span style="color:var(--accent, #c9a45e)" title="strongest edge for this player">★</span> ' : ''}${esc(p.market)}</span>
             <span style="font-size:12px;color:var(--text-secondary, var(--dim))" title="what the tool projects this player finishes with">Tool <b style="font-size:16px;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${isOut ? 'OUT' : (_projN != null ? _projN.toFixed(1) : '—')}</b></span>
             <span style="font-size:12px;color:var(--text-secondary, var(--dim))" title="${_hasBook ? 'real sportsbook line' : 'no book line — engine-inferred'}">${_hasBook ? 'Book' : 'Model line'} <b style="font-size:16px;color:var(--text-primary);font-variant-numeric:tabular-nums">${_lineN != null ? _lineN : '—'}</b> <span style="font-size:8px;text-transform:uppercase;letter-spacing:0.04em;opacity:0.85">${_bookTag}</span></span>
-            <span style="margin-left:auto;font-size:10px;font-weight:800;letter-spacing:0.04em;color:${_leanColor};background:${_leanBg};padding:3px 9px;border-radius:100px;white-space:nowrap" title="tool lean vs the line (gap between projection and line)">${esc(_leanTxt)}</span>
-            ${_empBadge}
+            ${_verdictBadge}
+            ${_empBadgeGated}
             ${_minBadge}
           </div>
+          ${_verdictNote}
           ${_reason ? `<div style="margin-top:5px;font-size:11px;line-height:1.5;color:var(--text-secondary, var(--dim))">${_reason}</div>` : ''}
           ${_reasonsHtml}
           ${_ppInput}
