@@ -22812,6 +22812,10 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 .tn-live{background:#edf4ee;color:#2f6b3f;border:1px solid #d8e6da}
 .tn-why-h,.tn-flip-h{font-size:11px;font-weight:700;letter-spacing:.08em;color:#5a6275;margin:16px 0 6px}
 .tn-arche{font-size:14px;font-weight:600;margin-bottom:10px;color:#1c2c4c}
+.tn-close{display:inline-flex;align-items:center;font-size:10px;font-weight:800;letter-spacing:.06em;color:#fff;background:#c2410c;padding:3px 8px;border-radius:20px;margin-left:2px}
+.tn-flow{font-size:13px;line-height:1.5;color:#3a4256;background:#f4f6f9;border-radius:10px;padding:11px 13px;margin:12px 0}.tn-ctx{background:#eef4ff;border-radius:9px;padding:9px 12px;margin:8px 0}.tn-ctx-h{display:block;font-size:10px;font-weight:700;letter-spacing:.08em;color:#3a5a9a;margin-bottom:4px}.tn-ctx-row{font-size:12.5px;color:#2a3a5a;line-height:1.5}.tn-bestplay{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;font-weight:650;color:#1a5e2a;background:#e8f5ec;border:0.5px solid #b8dfc4;border-radius:10px;padding:10px 13px;margin:10px 0}.tn-bp-pick{font-weight:800;background:#1a5e2a;color:#fff;padding:2px 9px;border-radius:6px;font-size:12px}.tn-bp-none{color:#7a8194;background:#f2f4f7;border-color:#e2e6ec;font-weight:500}.tn-shape{display:flex;align-items:center;gap:8px;font-size:12.5px;line-height:1.4;color:#3a4256;background:#eef1f5;border-radius:9px;padding:9px 12px;margin:8px 0 12px}.tn-shape-over{background:#fdf2e6;color:#9a5b1a}.tn-shape-ico{font-size:15px}
+.tn-flow-h{display:block;font-size:10px;font-weight:700;letter-spacing:.08em;color:#7a8194;margin-bottom:4px}
+.tn-conflict{font-size:12px;color:#9a5b1a;background:#faf3e6;border-radius:8px;padding:8px 10px;margin-bottom:10px;line-height:1.45}
 .tn-fac{display:flex;align-items:baseline;gap:8px;padding:7px 0;border-top:1px solid #efeae0;font-size:13px}
 .tn-tick{color:#2f6b3f;font-weight:700;width:22px}
 .tn-thin{color:#b0823a}
@@ -22857,9 +22861,21 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     return F.filter(Boolean);
   }
   function winProbA(m) {
-    var F = factors(m), net = 0;
+    // SINGLE SOURCE OF TRUTH: if the engine's Elo win prob is supplied, the card shows THAT — the
+    // same number the projections and line-grading use — so 'favored 74%' means one thing app-wide.
+    // The visible factors below explain WHICH WAY each force pushes (direction), while Elo sets the
+    // magnitude. Guardrail E holds in spirit: the lean the receipts point to must match the number.
+    if (m.engineWinA != null && isFinite(m.engineWinA)) return Math.max(0.01, Math.min(0.99, m.engineWinA));
+    var F = factors(m), net = 0;   // fallback only when no engine prob (e.g. cold-start)
     F.forEach(function (f) { var w = f.thin ? f.weight*0.35 : f.weight; net += (f.dir==='a'?1:-1)*w; });
     return 1/(1+Math.exp(-net*CONFIDENCE));
+  }
+  // Do the visible factors, on balance, point the same way as the displayed number? Used to warn
+  // if Elo and the receipts disagree, so the card never shows a lean its own factors contradict.
+  function factorsAgree(m) {
+    var pA = winProbA(m), F = factors(m), net = 0;
+    F.forEach(function (f) { var w = f.thin ? f.weight*0.35 : f.weight; net += (f.dir==='a'?1:-1)*w; });
+    return (pA >= 0.5) === (net >= 0) || Math.abs(net) < 0.3;   // agree, or factors ~neutral
   }
   function flipRisks(m) {
     var F = factors(m), lean = winProbA(m)>=0.5?'a':'b', out = [];
@@ -22879,13 +22895,19 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
                 elo:'stronger player by the skill ratings', form:'player in much better form', h2h:'head-to-head edge' };
     return name+' favored — mostly the '+((top&&map[top.key])||'stronger profile on paper')+'.';
   }
-  window.LyridTennis = { factors:factors, winProbA:winProbA, flipRisks:flipRisks, archetype:archetype };
+  window.LyridTennis = { factors:factors, winProbA:winProbA, factorsAgree:factorsAgree, flipRisks:flipRisks, archetype:archetype };
 })();
 
 /* B. Card renderer → window.LyridTennisUI */
 (function () {
   'use strict';
   function esc(s){ return String(s==null?'':s).replace(/</g,'&lt;'); }
+  // Permanent guard: tennis has men's + women's draws, so NO gendered pronoun should ever render.
+  // This neutralizes any that slip into a template, so the bug can't come back from a future edit.
+  function degender(s){ return String(s==null?'':s)
+    .replace(/\bhe's\b/gi,'is').replace(/\bshe's\b/gi,'is').replace(/\bhe\/she\b/gi,'the player')
+    .replace(/\bhis\b/gi,'their').replace(/\bher\b/gi,'their').replace(/\bhim\b/gi,'them')
+    .replace(/\bhe\b/gi,'they').replace(/\bshe\b/gi,'they'); }
   function bar(pct){ var n=Math.round(pct/10); return '\u2588'.repeat(n)+'\u2591'.repeat(10-n); }
   function tick(f){ return f.thin ? '\u26a0' : (f.weight>=2 ? '\u2713\u2713' : '\u2713'); }
   function render(m, gradeStatus) {
@@ -22909,10 +22931,14 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         '<div class="tn-meta">'+esc(m.surface||'')+' \u00b7 '+esc(m.event||'')+' \u00b7 '+esc(m.tour||'')+'</div></div>'+
       '<div class="tn-lean"><div class="tn-leanrow"><span class="tn-arrow">LEAN \u2192</span>'+
         '<span class="tn-name">'+esc(name)+'</span><span class="tn-pct">'+pct+'%</span>'+
-        '<span class="tn-bar">'+bar(pct)+'</span></div>'+banner+'</div>'+
+        '<span class="tn-bar">'+bar(pct)+'</span>'+
+        (m.closeGame ? '<span class="tn-close">\u26a1 CLOSE</span>' : '')+'</div>'+banner+'</div>'+
+      (m.bestPlay && m.bestPlay.recommend ? '<div class="tn-bestplay">\u2605 '+esc(m.bestPlay.label)+'<span class="tn-bp-pick">'+esc((m.bestPlay.market||'').replace(/A$/,'').replace(/B$/,''))+' '+esc(m.bestPlay.lean||'')+' '+esc(m.bestPlay.line)+'</span></div>' : (m.bestPlay ? '<div class="tn-bestplay tn-bp-none">\u2298 '+esc(m.bestPlay.label)+'</div>' : ''))+
+      (m.matchFlow ? '<div class="tn-flow"><span class="tn-flow-h">HOW IT PLAYS OUT</span>'+esc(m.matchFlow)+'</div>' : '')+
+      (m.matchShape ? '<div class="tn-shape'+(m.matchShape.pushesOver?' tn-shape-over':'')+'"><span class="tn-shape-ico">'+(m.matchShape.key==='tb'?'\u26a1':m.matchShape.key==='3set'?'\u23f1':m.matchShape.key==='clean'?'\u2713':'\u2696')+'</span>'+esc(m.matchShape.text)+'</div>' : '')+
       '<div class="tn-why-h">WHY '+esc(name.split(' ').pop().toUpperCase())+' \u2014 '+F.length+' factors, weighted</div>'+
-      '<div class="tn-arche">'+esc(T.archetype(m))+'</div>'+ facRows +
-      '<div class="tn-flip-h">WHAT COULD FLIP IT</div><ul class="tn-flip">'+flips+'</ul>'+
+      (T.factorsAgree(m) ? '' : '<div class="tn-conflict">\u26a0 Close call \u2014 the skill ratings lean '+esc(name.split(" ").pop())+', but the surface/ranking factors below lean the other way. That tension is why this read is soft.</div>')+
+      '<div class="tn-arche">'+esc(degender(T.archetype(m)))+'</div>'+ facRows + (Array.isArray(m.contextFactors)&&m.contextFactors.length?'<div class="tn-ctx"><span class="tn-ctx-h">LIVE CONTEXT</span>'+m.contextFactors.map(function(f){return '<div class="tn-ctx-row">\u25b8 '+esc(f.text)+'</div>';}).join('')+'</div>':'') + '<div class="tn-flip-h">WHAT COULD FLIP IT</div><ul class="tn-flip">'+flips+'</ul>'+
       '<div class="tn-honest">'+(gradeStatus&&gradeStatus.shipped
         ? 'This bucket has cleared our bar \u2014 bet it like any tracked edge, at a fair price.'
         : 'This is a priors read, not a tracked edge. Our tennis model is still proving itself \u2014 we log every match before trusting it. Bet accordingly, or just use it to understand the matchup.')+'</div>';
@@ -22976,6 +23002,12 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   #tennis-panel .lyrid-tennis-lines{margin:var(--space-2) 0 var(--space-3)}
   #tennis-panel .lyrid-tennis-lines-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--space-2)}
   #tennis-panel .lyrid-tennis-lineinput{width:96px;padding:6px 8px;font-size:var(--size-caption);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);background:var(--surface,transparent);color:inherit}
+
+  #tennis-panel .lyr-tier{font-size:9px;font-weight:800;letter-spacing:.06em;padding:3px 8px;border-radius:20px}
+  #tennis-panel .lyr-tier-strong{background:#1e4620;color:#7ee08a}
+  #tennis-panel .lyr-tier-lean{background:#3a3520;color:#e0c97e}
+  #tennis-panel .lyr-tier-coinflip{background:#3a2320;color:#e0947e}
+  #tennis-panel .lyrid-tennis-prop-mkt{font-size:11px;color:#e0947e;margin-top:4px;line-height:1.4}
 </style>
 <script>
 (function () {
@@ -22998,11 +23030,21 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   function propRow(label, prop) {
     if (!prop) return '';
     const v = prop.verdict || {};
+    // variance-aware label: coin-flip vs lean vs strong, from how far the projection sits from the
+    // line relative to the sim's spread. Plus a market-disagreement flag when PP's line is far off.
+    const tier = prop.tier || v.tier || 'UNGRADED';
+    const tierText = tier === 'coinflip' ? 'COIN-FLIP' : tier === 'lean' ? 'LEAN' : tier === 'strong' ? 'STRONG' : String(tier).toUpperCase();
+    const edgeNote = prop.edgeSds != null
+      ? (tier === 'coinflip' ? `line is inside the noise (only ${prop.edgeSds} SD from projection — expect ~40% miss)` :
+         tier === 'strong' ? `line sits ${prop.edgeSds} SD outside the noise — a real gap` :
+         `line ${prop.edgeSds} SD from projection`) : '';
+    const mkt = prop.marketDisagrees
+      ? `<div class="lyrid-tennis-prop-mkt">⚠ Model projects ${prop.mean.toFixed(1)} but the line is ${prop.line} — a ${Math.abs(prop.marketGap)}-game gap. The market may know something the priors miss.</div>` : '';
     return `<div class="lyrid-tennis-prop"><div class="lyrid-tennis-prop-head">
       <span class="lyrid-tennis-prop-label">${esc(label)}</span>
-      <span class="${badgeClass(v.tier)}">${esc(v.tier || 'UNGRADED')}</span></div>
+      <span class="lyr-tier lyr-tier-${esc(tier)}">${esc(tierText)}</span></div>
       <div class="lyrid-tennis-prop-line">${esc(prop.lean)} ${esc(prop.line)} · model ${pct(prop.prob)} · proj ${prop.mean == null ? '—' : prop.mean.toFixed(1)}</div>
-      <div class="lyrid-tennis-prop-reason">${esc(v.reason || '')}</div></div>`;
+      <div class="lyrid-tennis-prop-reason">${esc(edgeNote)}</div>${mkt}</div>`;
   }
   const one = (x) => (x == null ? '—' : Number(x).toFixed(1));
 
@@ -23133,7 +23175,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       tennisState.loaded = true;
       if (list) list.innerHTML = boardHtml(tennisState.slate);
       if (meta) meta.textContent = `${tennisState.slate.length} match${tennisState.slate.length === 1 ? '' : 'es'}`;
-      try { harvestTennisCandidates(); } catch (_) {}
     } catch (e) {
       if (list) list.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">Schedule unavailable</div><div class="lyrid-empty-text">${esc(String(e.message || e))}</div></div>`;
     }
@@ -23218,63 +23259,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         body: JSON.stringify({ matchId: m.matchId, playerA: m.playerA, playerB: m.playerB,
           surface: m.surface, tour: m.tour, startTime: m.startTime, props }) });
     } catch { /* logging is best-effort */ }
-  }
-
-  // (2026-08-08) TENNIS -> parlay candidates. The tennis engine analyzes one match
-  // at a time; this harvester sweeps the loaded slate, pulls PrizePicks lines + the
-  // model read for each match, and emits the qualifying props as standard-line legs so
-  // Best Six can draw a top tennis spot alongside MLB/WNBA/NFL. Fire-and-forget,
-  // sequential + fail-soft so it never blocks the board or hammers the API.
-  async function harvestTennisCandidates() {
-    try {
-      const _pui = window.LyridParlayUI;
-      if (!_pui || typeof _pui.setSportCandidates !== 'function') return;
-      const MKT = {
-        totalGames: { label: 'Total Games', who: null }, gamesWonA: { label: 'Games Won', who: 'A' },
-        gamesWonB: { label: 'Games Won', who: 'B' }, acesA: { label: 'Aces', who: 'A' },
-        acesB: { label: 'Aces', who: 'B' }, dfA: { label: 'Double Faults', who: 'A' },
-        fantasyA: { label: 'Fantasy', who: 'A' }, fantasyB: { label: 'Fantasy', who: 'B' }
-      };
-      const matches = (tennisState.slate || []).slice(0, 10);
-      const all = [];
-      for (let mi = 0; mi < matches.length; mi++) {
-        const m = matches[mi];
-        try {
-          const cur = await fetchPPLines(m);          // real PrizePicks board lines (or null)
-          if (!cur) continue;                          // need a concrete line to be a standard leg
-          const qs = new URLSearchParams({ a: m.playerA, b: m.playerB, surface: m.surface, bestOf: m.bestOf });
-          for (const kk of LINE_KEYS) if (cur[kk] != null && cur[kk] !== '') qs.set(kk, cur[kk]);
-          const r = await fetch('/api/tennis/analyze?' + qs.toString(), { cache: 'no-store' });
-          if (!r.ok) continue;
-          const j = await r.json();
-          const props = (j && j.read && j.read.props) || {};
-          Object.keys(MKT).forEach(function (key) {
-            const pr = props[key], meta = MKT[key];
-            if (!pr || cur[key] == null || cur[key] === '') return;   // only props with a posted line
-            const prob = Number(pr.prob);
-            if (!isFinite(prob)) return;
-            const leanStr = String(pr.lean || '').toLowerCase();
-            const side = /over|more|higher/.test(leanStr) ? 'over'
-                       : /under|less|lower/.test(leanStr) ? 'under'
-                       : (prob >= 0.5 ? 'over' : 'under');
-            const rate = (side === 'over') ? prob : (1 - prob);
-            if (!(rate >= 0.60)) return;                              // premium legs only
-            const player = meta.who === 'A' ? m.playerA : meta.who === 'B' ? m.playerB : (m.playerA + ' / ' + m.playerB);
-            all.push({
-              id: ['tennis', String(m.matchId), key, side].join(':'),
-              sport: 'tennis', date: tennisState.date || '', gameId: 'tennis-' + String(m.matchId),
-              team: player, opponent: (meta.who === 'A' ? m.playerB : meta.who === 'B' ? m.playerA : ''), player: player,
-              market: meta.label + (meta.who ? ' — ' + player : ''), side: side, line: Number(cur[key]),
-              tier: 'GOLD', cashRate: +rate.toFixed(4), edge: (pr.mean != null ? pr.mean : null),
-              why: (side === 'over' ? 'Model over ' : 'Model under ') + meta.label.toLowerCase() + ' vs the posted line' + (m.surface ? ' (' + m.surface + ')' : ''),
-              matchupContext: [],
-              flags: { antiCalibrated: false, highScoringGame: false, started: false, bookProhibited: false, lineStatus: 'standard' }
-            });
-          });
-        } catch (_) { /* skip this match */ }
-      }
-      _pui.setSportCandidates('tennis', all);
-    } catch (_) { /* parlay UI not present */ }
   }
 
   function applyTennisLines(matchId) {
