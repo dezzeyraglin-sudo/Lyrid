@@ -92,32 +92,33 @@ function gammaMT(shape, scale) {
 function gaussian() { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random();
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 
-// Simulate one set game-by-game from hold probs; returns {gamesA, gamesB, svGmsA, svGmsB, winA}.
+// Simulate one set game-by-game from hold probs; returns games, service games, winner, tiebreak,
+// and breaks (games won on the opponent's serve — the basis for "break points won").
 function simSet(holdA, holdB, serveA) {
-  let a = 0, b = 0, svA = 0, svB = 0, aServes = serveA;
+  let a = 0, b = 0, svA = 0, svB = 0, aServes = serveA, brkA = 0, brkB = 0;
   for (;;) {
-    if (aServes) { svA++; (Math.random() < holdA ? a++ : b++); }
-    else { svB++; (Math.random() < holdB ? b++ : a++); }
+    if (aServes) { svA++; if (Math.random() < holdA) a++; else { b++; brkB++; } }   // B breaks A
+    else { svB++; if (Math.random() < holdB) b++; else { a++; brkA++; } }            // A breaks B
     aServes = !aServes;
     if ((a >= 6 || b >= 6) && Math.abs(a - b) >= 2) break;
     if (a === 7 || b === 7) break; // 7-6 tiebreak set
   }
-  // a set that ends 7-6 went to a tiebreak (both players reached 6 games)
   const tiebreak = (a === 7 && b === 6) || (b === 7 && a === 6);
-  return { gamesA: a, gamesB: b, svGmsA: svA, svGmsB: svB, winA: a > b, tiebreak };
+  return { gamesA: a, gamesB: b, svGmsA: svA, svGmsB: svB, winA: a > b, tiebreak, brkA, brkB };
 }
 
 // Simulate a full match; returns per-match totals for tails.
 function simMatch(holdA, holdB, bestOf, aRates, bRates, pA, pB) {
   const need = bestOf === 5 ? 3 : 2;
   let setsA = 0, setsB = 0, gA = 0, gB = 0, svA = 0, svB = 0;
-  let acesA = 0, dfA = 0, acesB = 0, dfB = 0;
+  let acesA = 0, dfA = 0, acesB = 0, dfB = 0, brkA = 0, brkB = 0;
   let hA = holdA, hB = holdB;          // mutable: momentum shifts these between sets
   let serveA = Math.random() < 0.5;
   let tiebreaks = 0;
   while (setsA < need && setsB < need) {
     const s = simSet(hA, hB, serveA);
     gA += s.gamesA; gB += s.gamesB; svA += s.svGmsA; svB += s.svGmsB;
+    brkA += s.brkA; brkB += s.brkB;
     if (s.tiebreak) tiebreaks++;
     acesA += negBinom(s.svGmsA * aRates.ace, 3); dfA += poisson(s.svGmsA * aRates.df);
     acesB += negBinom(s.svGmsB * bRates.ace, 3); dfB += poisson(s.svGmsB * bRates.df);
@@ -133,7 +134,7 @@ function simMatch(holdA, holdB, bestOf, aRates, bRates, pA, pB) {
     serveA = !serveA;
   }
   return { winA: setsA > setsB, setsA, setsB, gamesA: gA, gamesB: gB, total: gA + gB,
-    svGmsA: svA, svGmsB: svB, acesA, dfA, acesB, dfB, tiebreaks };
+    svGmsA: svA, svGmsB: svB, acesA, dfA, acesB, dfB, tiebreaks, brkA, brkB };
 }
 
 const TOUR_ACES_FACED = 0.55; // neutral aces-faced-per-return-game baseline (UNVALIDATED)
@@ -199,7 +200,7 @@ export function projectMatch({ playerA, playerB, surface = 'Hard', bestOf = 3, s
   const bRates = { aceAdj: aceAdjB, df: B.dfPerSvGm };
 
   // Monte Carlo — one match sim feeds every distribution, including per-sim fantasy scores.
-  const tot = [], acA = [], acB = [], dfA = [], dfB = [], gwA = [], gwB = [], fantA = [], fantB = [];
+  const tot = [], acA = [], acB = [], dfA = [], dfB = [], gwA = [], gwB = [], fantA = [], fantB = [], bpA = [], bpB = [], tbArr = [];
   let winA = 0, threeSet = 0, straightWinner = 0, anyTiebreak = 0, tbTotal = 0;
   for (let i = 0; i < sims; i++) {
     const m = simMatch(holdA, holdB, bestOf, aRates, bRates, PA, PB);
@@ -224,6 +225,7 @@ export function projectMatch({ playerA, playerB, surface = 'Hard', bestOf = 3, s
     // fantasy for THIS sim (net games = gamesWon − gamesLost; net sets likewise)
     fantA.push(fantasyScore(m.acesA, m.dfA, m.gamesA, m.gamesB, m.setsA, m.setsB));
     fantB.push(fantasyScore(m.acesB, m.dfB, m.gamesB, m.gamesA, m.setsB, m.setsA));
+    bpA.push(m.brkA); bpB.push(m.brkB); tbArr.push(m.tiebreaks);   // break-points-won + total tiebreaks
   }
   const mean = (x) => x.reduce((s, v) => s + v, 0) / x.length;
   const stdev = (x) => { const m = mean(x); return Math.sqrt(x.reduce((s, v) => s + (v - m) ** 2, 0) / x.length); };
@@ -261,6 +263,9 @@ export function projectMatch({ playerA, playerB, surface = 'Hard', bestOf = 3, s
     gamesWonB: { mean: mean(gwB), prob: overUnder(gwB) },
     fantasyA: { mean: mean(fantA), prob: overUnder(fantA) },
     fantasyB: { mean: mean(fantB), prob: overUnder(fantB) },
+    breakPointsWonA: { mean: mean(bpA), prob: overUnder(bpA) },   // games A won on B's serve (breaks)
+    breakPointsWonB: { mean: mean(bpB), prob: overUnder(bpB) },
+    totalTieBreaks: { mean: mean(tbArr), prob: overUnder(tbArr) },
     sampleWarning: (A.n < 20 || B.n < 20) ? 'thin surface sample' : null,
     _fantasyScoringConfirmed: true,
   };

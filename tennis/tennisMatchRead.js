@@ -75,6 +75,9 @@ export function buildMatchRead({
     fantasyB: doProp('fantasy', proj.fantasyB.prob, lines.fantasyB, null, B.p._n, recentRetirementB),
     gamesWonA: doProp('gamesWon', proj.gamesWonA.prob, lines.gamesWonA, null, A.p._n, recentRetirementA),
     gamesWonB: doProp('gamesWon', proj.gamesWonB.prob, lines.gamesWonB, null, B.p._n, recentRetirementB),
+    breakPointsWonA: doProp('breakPointsWon', proj.breakPointsWonA.prob, lines.breakPointsWonA, null, A.p._n, recentRetirementA),
+    breakPointsWonB: doProp('breakPointsWon', proj.breakPointsWonB.prob, lines.breakPointsWonB, null, B.p._n, recentRetirementB),
+    totalTieBreaks: doProp('totalTieBreaks', proj.totalTieBreaks.prob, lines.totalTieBreaks, null, Math.min(A.p._n, B.p._n), recentRetirementA || recentRetirementB),
   };
 
   // Projected means — always present, so the fantasy score (and the rest) shows even with no line.
