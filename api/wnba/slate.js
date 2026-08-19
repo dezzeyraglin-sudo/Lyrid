@@ -592,7 +592,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'blowout-risk-2026-08-16',   // deploy marker — confirms this code is live
+    buildTag: 'blowout-alpha-exempt-2026-08-18',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -1205,7 +1205,7 @@ function buildShootingForm(games) {
 // winner coasts (over-perf -0.4) and the blown-out loser's offense tanks harder
 // (-1.2). So this is a game-WIDE counting-stat under nudge, weighted toward the
 // underdog (the likely loser), not gated to starters. Pre-game proxy = the spread.
-function buildBlowoutRisk({ spread, isHome }) {
+function buildBlowoutRisk({ spread, isHome, usage }) {
   const s = Number(spread);
   if (!Number.isFinite(s)) return null;
   const absSpread = Math.abs(s);
@@ -1216,10 +1216,30 @@ function buildBlowoutRisk({ spread, isHome }) {
   if (absSpread >= 9) risk = 'HIGH';
   else if (absSpread >= 6) risk = 'MODERATE';
   else risk = 'MILD';
+
+  // ALPHA EXEMPTION — the primary usage option does NOT get the blowout under.
+  // WNBA benches are short, so stars play THROUGH blowouts and carry the load: the
+  // losing team's alpha fuels the comeback, the winner's alpha builds the lead.
+  // Confirmed live (ATL 97-LV 82, 15-pt blowout): Wilson 34min/18 FGA→44 PRA and
+  // Howard 39min/19 FGA→30 PRA both blew way over their unders while role player
+  // NaLyssa Smith (22min/5 FGA) faded to 16 and hit. The suppression is real — but
+  // only for role players. High recent shot volume (or a big-minute high-role star)
+  // marks the alpha, who is exempt.
+  const fga = Number(usage?.fga), minAvg = Number(usage?.minAvg), role = Number(usage?.role);
+  const isAlpha = (Number.isFinite(fga) && fga >= 13)
+    || (Number.isFinite(minAvg) && minAvg >= 32 && Number.isFinite(role) && role >= 85);
+  if (isAlpha) {
+    return {
+      risk, side: 'NONE', isAlpha: true, favoredBy: Number(favoredBy.toFixed(1)), isUnderdog, confBoost: 0,
+      badge: 'BLOWOUT · alpha exempt',
+      note: `${absSpread}-pt spread, but this is the team's primary usage option — WNBA stars play through blowouts and carry the load (comeback or lead), so the blowout under does NOT apply. Treat as neutral/over-context.`,
+    };
+  }
+
   const base = risk === 'HIGH' ? 6 : risk === 'MODERATE' ? 4 : 2;
   const confBoost = isUnderdog ? base + 2 : base; // underdog carries the extra weight
   return {
-    risk, side: 'UNDER', favoredBy: Number(favoredBy.toFixed(1)), isUnderdog, confBoost,
+    risk, side: 'UNDER', favoredBy: Number(favoredBy.toFixed(1)), isUnderdog, confBoost, isAlpha: false,
     badge: 'BLOWOUT RISK · leans under',
     note: isUnderdog
       ? `${absSpread}-pt underdog — teams that get blown out suppress hardest (76% under in 20+ blowouts) as the offense stalls once the game's decided. Counting-stat under.`
@@ -1668,8 +1688,12 @@ async function buildAndRunAnalysis({
       shootingForm, seasonPpg: player.seasonAvg, benefitsFrom, injuryReport, slateDate: date,
     });
 
-    // Blowout-risk under signal from the spread (game-wide, underdog-weighted).
-    const blowoutRisk = buildBlowoutRisk({ spread, isHome });
+    // Blowout-risk under signal from the spread (game-wide, underdog-weighted),
+    // with the alpha exemption — the primary usage option plays through blowouts.
+    const blowoutRisk = buildBlowoutRisk({
+      spread, isHome,
+      usage: { fga: shootingForm?.l10?.fga, minAvg: shotProfile?.minAvg, role: player?.role ?? unified?.scores?.role },
+    });
 
     // Adaptive shrinkage read (points, shadow mode) — evidence-weighted regime
     // detection: separates a real volume/role riser from hot-shooting variance.
