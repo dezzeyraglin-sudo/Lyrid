@@ -154,6 +154,7 @@ async function generateSlate(opts = {}) {
   // client sends a smaller topN. A larger client value is still respected.
   const topN = Math.max(Number(opts.topN) || DEFAULT_TOP_N, 5);
   const lines = opts.lines || {};
+  const playerBiasOverride = opts.playerBias || null;   // rolling per-player bias from client
   // Season also in Eastern, for the same rollover reason.
   const season = Number(opts.season) || Number(new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York', year: 'numeric',
@@ -448,7 +449,7 @@ async function generateSlate(opts = {}) {
               player, isHome, opponent, team, market, season, game, spread, total, date,
               recentFormPromise, allTeamStats, gameLines,
               v2Roster, v2OpponentRoster, injuryReport, defenseTable,
-              shotProfile: _shotProfile, shootingForm: _shootingForm, ppAltIndex
+              shotProfile: _shotProfile, shootingForm: _shootingForm, ppAltIndex, playerBiasOverride
             })
           );
         }
@@ -592,7 +593,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'blowout-alpha-exempt-2026-08-18',   // deploy marker — confirms this code is live
+    buildTag: 'suppression-correction-2026-08-18',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -719,6 +720,14 @@ function buildPropReasons(ctx) {
   const add = (dir, tag, text) => out.push({ dir, tag, text });
   const r1 = (x) => Math.round(x * 10) / 10;
 
+  // Per-player suppression correction — the model's chronic bias on this player.
+  if (ctx.biasCorrection && ctx.biasCorrection.correction) {
+    const bc = ctx.biasCorrection;
+    if (bc.correction > 0) add('UNDER', 'SUPPRESSION FADE',
+      `Model chronically under-projects this player (${bc.fromRolling ? 'recent' : 'season'} bias +${bc.bias} over ${bc.n}) — projection lifted +${bc.correction}; treat the under with caution.`);
+    else add('UNDER', 'OVER-PROJECTED',
+      `Model chronically over-projects this player (bias ${bc.bias} over ${bc.n}) — projection trimmed ${bc.correction}; the under is stronger than the raw number.`);
+  }
   // Blowout risk (spread-derived) — suppresses counting stats game-wide, underdog most.
   if (blowoutRisk) add('UNDER', blowoutRisk.isUnderdog ? 'BLOWOUT RISK · UNDERDOG' : 'BLOWOUT RISK',
     blowoutRisk.note);
@@ -914,6 +923,7 @@ function resolveVerdict(a, gameGuard) {
 
   // Stage 2 — veto CONSUMES the under tier. Role instability invalidates the premise.
   const vetoes = [];
+  if (a.biasVeto) vetoes.push(`chronically under-projected (+${a.biasVeto.correction} correction lifts ${a.biasVeto.rawProjection}→line)`);
   if (a.minutesConflict) vetoes.push('model/minutes conflict');
   if (a.roleConflict) vetoes.push('inheriting starter minutes (role re-anchor)');
   if (a.spinRead?.active) vetoes.push(`role change — ${a.spinRead.badge}`);
@@ -939,6 +949,75 @@ function resolveVerdict(a, gameGuard) {
 // recent data moves the estimate fast; absent evidence, K stays high and recent is
 // shrunk hard toward baseline. This one estimator will later serve player form,
 // opponent adjustment, and projection-bias correction — three priors, one machine.
+// Seed per-player projection-bias from the 1,670-pick audit. [bias, n]; bias =
+// mean(actual - projection), + = model under-projects. FALLBACK ONLY — a rolling
+// map passed in the request supersedes this, since bias drifts (e.g. a role change
+// can flip a player's sign between months). Never hard-kill an under on seed alone.
+const PLAYER_BIAS_SEED = {
+  'aja wilson': {points:[-2.9,11], rebounds:[1.2,11]},
+  'aliyah boston': {points:[-2.6,11], assists:[-1.0,11]},
+  'allisha gray': {points:[-2.6,13], assists:[1.2,13]},
+  'alyssa thomas': {points:[-5.0,10], rebounds:[1.2,9]},
+  'aneesah morrow': {points:[-4.6,6], rebounds:[-2.6,6]},
+  'angel reese': {points:[-2.5,13], rebounds:[2.4,13]},
+  'arike ogunbowale': {points:[-2.5,11], rebounds:[1.2,11]},
+  'awa fam': {points:[-1.6,11], rebounds:[-1.0,11]},
+  'azzi fudd': {points:[-1.3,9]},
+  'breanna stewart': {points:[1.4,12]},
+  'bridget carleton': {points:[-3.0,10], rebounds:[2.1,10]},
+  'brittney griner': {points:[-1.8,6]},
+  'carla leite': {points:[-4.5,10]},
+  'chelsea gray': {points:[-2.3,12]},
+  'courtney williams': {points:[-3.3,9]},
+  'dearica hamby': {points:[-2.1,10]},
+  'dominique malonga': {rebounds:[1.2,11]},
+  'flaujae johnson': {points:[2.3,12]},
+  'gabby williams': {points:[-4.5,9]},
+  'jackie young': {points:[3.9,14]},
+  'jessica shepard': {points:[-2.3,10], assists:[-1.2,10], rebounds:[2.8,9]},
+  'jonquel jones': {points:[-2.1,13], rebounds:[-1.1,13]},
+  'kayla mcbride': {points:[3.5,12]},
+  'kelsey mitchell': {points:[1.3,11], rebounds:[1.2,11]},
+  'kiki iriafen': {rebounds:[1.4,11]},
+  'marina mabrey': {points:[-2.5,10]},
+  'michaela onyenwere': {points:[-1.6,12]},
+  'monique akoa makani': {points:[-1.5,7]},
+  'natasha howard': {points:[-3.2,12]},
+  'natisha hiedeman': {points:[-1.3,14], rebounds:[1.2,14]},
+  'nneka ogwumike': {assists:[1.4,10], rebounds:[1.3,10]},
+  'olivia miles': {points:[2.6,12], assists:[2.1,12]},
+  'paige bueckers': {points:[2.0,10]},
+  'pauline astier': {points:[-2.7,10]},
+  'rae burrell': {assists:[1.1,8]},
+  'rhyne howard': {points:[-2.4,13], rebounds:[1.0,13]},
+  'shakira austin': {points:[-5.0,12]},
+  'skylar diggins': {points:[-3.7,8]},
+  'sonia citron': {points:[-2.2,11]},
+  'sophie cunningham': {points:[-3.5,11]},
+  'sydney taylor': {assists:[1.0,6]},
+  'veronica burton': {points:[-5.2,9]},
+};
+
+// Per-player suppression correction. Look up this player+market's projection bias
+// (rolling override first, else the seed), shrink it toward zero by sample size so
+// thin data barely moves, and return the capped correction to ADD to the projection.
+// Positive lifts an under-projected player (fades their under); negative lowers an
+// over-projected one (strengthens the under). `fromRolling` marks trustworthy live
+// data vs the older seed.
+function playerBiasCorrection(name, market, override) {
+  const key = _normName(name);
+  const mk = String(market || '').toLowerCase();
+  let src = null, fromRolling = false;
+  if (override && override[key] && override[key][mk]) { src = override[key][mk]; fromRolling = true; }
+  else if (PLAYER_BIAS_SEED[key] && PLAYER_BIAS_SEED[key][mk]) { src = PLAYER_BIAS_SEED[key][mk]; }
+  if (!src) return null;
+  const bias = Number(src[0]), n = Number(src[1]);
+  if (!Number.isFinite(bias) || !Number.isFinite(n) || n < 4) return null;
+  const s = shrinkToward(0, bias, n, 10);           // K=10: n=14 keeps ~58%, n=6 ~38%
+  const correction = Math.max(-4, Math.min(4, Number(s.value.toFixed(1))));
+  return { bias, n, correction, fromRolling, weight: s.weight };
+}
+
 function shrinkToward(baseline, recent, nOpportunities, K) {
   const n = Math.max(0, Number(nOpportunities) || 0);
   const k = Math.max(1e-6, Number(K) || 1);
@@ -1427,7 +1506,7 @@ function shotsToClearPoints(prof, line, security) {
 async function buildAndRunAnalysis({
   player, isHome, opponent, team, market, season, game, date,
   spread, total, recentFormPromise, allTeamStats, gameLines,
-  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile, shootingForm, ppAltIndex
+  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile, shootingForm, ppAltIndex, playerBiasOverride
 }) {
   try {
     // Get opponent team stats from the pre-fetched map
@@ -1690,6 +1769,33 @@ async function buildAndRunAnalysis({
 
     // Blowout-risk under signal from the spread (game-wide, underdog-weighted),
     // with the alpha exemption — the primary usage option plays through blowouts.
+    // ── PER-PLAYER SUPPRESSION CORRECTION ──────────────────────────────────
+    // The model chronically under-projects certain high-usage players (Young,
+    // Reese, Bueckers, and the alpha overs from live slips). Lift the projection by
+    // this player+market's shrunk bias, re-derive the edge, and — only on a
+    // meaningful, trustworthy signal — kill an under whose corrected projection now
+    // reaches the line. This is the root-cause fix under the alpha overs and the
+    // Bonner miss. Applied to the LIVE projection, not shadow.
+    const biasFix = playerBiasCorrection(player.name, market, playerBiasOverride);
+    if (biasFix && biasFix.correction && Number.isFinite(Number(unified.projection))) {
+      unified.rawProjection = unified.projection;
+      unified.projection = Number((Number(unified.projection) + biasFix.correction).toFixed(1));
+      unified.biasCorrection = biasFix;
+      const L = Number(unified.line);
+      if (Number.isFinite(L)) {
+        unified.edge = Number((unified.projection - L).toFixed(1));
+        // Kill an under the correction lifts to the line — but only when the signal
+        // is strong enough to trust (rolling data, or a solid seed): |corr|>=1.5, n>=8.
+        const lean = String(unified.recommendation || unified.lean || '').toUpperCase();
+        const trustworthy = (biasFix.fromRolling || (biasFix.n >= 8 && Math.abs(biasFix.correction) >= 1.5));
+        if (lean === 'UNDER' && biasFix.correction > 0 && trustworthy && unified.projection >= L - 0.5) {
+          unified.recommendation = 'PASS';
+          unified.tier = 'PASS';
+          unified.biasVeto = { correction: biasFix.correction, rawProjection: unified.rawProjection, line: L, n: biasFix.n, source: biasFix.fromRolling ? 'rolling' : 'seed' };
+        }
+      }
+    }
+
     const blowoutRisk = buildBlowoutRisk({
       spread, isHome,
       usage: { fga: shootingForm?.l10?.fga, minAvg: shotProfile?.minAvg, role: player?.role ?? unified?.scores?.role },
@@ -1834,6 +1940,9 @@ async function buildAndRunAnalysis({
       blowoutRisk: blowoutRisk || null,   // spread-derived game-wide under signal
       adaptiveRead: adaptiveRead || null,   // opportunity×efficiency shrinkage (points, shadow)
       roleConflict: unified.roleConflict || null,   // re-anchor stood down a bad under
+      biasCorrection: unified.biasCorrection || null,   // per-player suppression correction applied
+      biasVeto: unified.biasVeto || null,   // under killed because correction lifted proj to line
+      rawProjection: unified.rawProjection ?? null,   // projection before bias correction
       spinRead: _spin?.read || null,   // role-change signal (STALE STARTER / ROLE BUMP) or null
       reasons: buildPropReasons({
         market, unified,
@@ -1841,7 +1950,7 @@ async function buildAndRunAnalysis({
         shotsToClear: shotsToClear || null,
         minutesSecurity: minutesSecurity || null,
         reboundExtras, raw: player?._raw || null, propSignal, opponent,
-        spinRead: _spin?.read || null, opponentStyle, adaptiveRead, blowoutRisk,
+        spinRead: _spin?.read || null, opponentStyle, adaptiveRead, blowoutRisk, biasCorrection: unified.biasCorrection || null,
       }),
       lineSource: propLineSource,
       lineBook: lineMeta?.book || lineMeta?.vendor || null,
@@ -2408,6 +2517,7 @@ export default async function handler(req, res) {
       markets: body.markets,
       topN: body.topN,
       lines: body.lines,
+      playerBias: body.playerBias,   // optional rolling {normName:{market:[bias,n]}} from client
       season: body.season
     });
 
