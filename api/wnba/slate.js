@@ -593,7 +593,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'suppression-correction-2026-08-18',   // deploy marker — confirms this code is live
+    buildTag: 'futureproof-alpha-2026-08-18',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -721,6 +721,8 @@ function buildPropReasons(ctx) {
   const r1 = (x) => Math.round(x * 10) / 10;
 
   // Per-player suppression correction — the model's chronic bias on this player.
+  if (ctx.lowSample) add('UNDER', 'THIN SAMPLE',
+    `Only ${ctx.lowSample.games} recent games — a rookie, call-up, return, or early-season move. Baseline is unstable; read shown but not signal-eligible.`);
   if (ctx.biasCorrection && ctx.biasCorrection.correction) {
     const bc = ctx.biasCorrection;
     if (bc.correction > 0) add('UNDER', 'SUPPRESSION FADE',
@@ -904,7 +906,8 @@ const GAME_GUARD_THRESHOLD = 12.7;   // model-vs-market total gap that flags a b
 function resolveVerdict(a, gameGuard) {
   const side = String(a.recommendation || '').toUpperCase();   // OVER | UNDER | PASS
   const edge = a.edge;
-  const dataOk = !((a.hardFlags || []).includes('NO DEFENSE DATA'));
+  // Data floor: no defense data, OR too thin a player baseline (rookie/trade/return).
+  const dataOk = !((a.hardFlags || []).includes('NO DEFENSE DATA')) && !a.lowSample;
 
   // Stage 3 — game projection guard (runs first: a broken game invalidates all its props).
   if (gameGuard?.suppress) {
@@ -1305,13 +1308,28 @@ function buildBlowoutRisk({ spread, isHome, usage }) {
   // only for role players. High recent shot volume (or a big-minute high-role star)
   // marks the alpha, who is exempt.
   const fga = Number(usage?.fga), minAvg = Number(usage?.minAvg), role = Number(usage?.role);
-  const isAlpha = (Number.isFinite(fga) && fga >= 13)
+  const bf = usage?.benefitsFrom;
+  const projMin = Number(usage?.projMinutes);
+  const reanchored = !!usage?.reanchored;
+  const establishedAlpha = (Number.isFinite(fga) && fga >= 13)
     || (Number.isFinite(minAvg) && minAvg >= 32 && Number.isFinite(role) && role >= 85);
+  // FUTURE-PROOF: a backward FGA test is blind to a newly-minted alpha (injury
+  // fill-in, promoted starter) whose recent shot volume hasn't caught up. Fire the
+  // exemption on the FORWARD role signals too — inheriting a departed starter's
+  // minutes, a role re-anchor, or a big projected-minutes load — so tonight's alpha
+  // is caught on night one, not after ten games.
+  const emergingAlpha = reanchored
+    || (bf && Array.isArray(bf.out) && bf.out.length && Number(bf.minGain) >= 3 && Number.isFinite(projMin) && projMin >= 30)
+    || (Number.isFinite(projMin) && projMin >= 34);
+  const isAlpha = establishedAlpha || emergingAlpha;
   if (isAlpha) {
+    const emerging = !establishedAlpha && emergingAlpha;
     return {
-      risk, side: 'NONE', isAlpha: true, favoredBy: Number(favoredBy.toFixed(1)), isUnderdog, confBoost: 0,
-      badge: 'BLOWOUT · alpha exempt',
-      note: `${absSpread}-pt spread, but this is the team's primary usage option — WNBA stars play through blowouts and carry the load (comeback or lead), so the blowout under does NOT apply. Treat as neutral/over-context.`,
+      risk, side: 'NONE', isAlpha: true, emerging, favoredBy: Number(favoredBy.toFixed(1)), isUnderdog, confBoost: 0,
+      badge: emerging ? 'BLOWOUT · new alpha exempt' : 'BLOWOUT · alpha exempt',
+      note: emerging
+        ? `${absSpread}-pt spread, but this player is projected into an alpha role tonight (${bf?.out?.length ? bf.out.join(', ') + ' out, ' : ''}${Number.isFinite(projMin) ? Math.round(projMin) + ' min' : 'elevated load'}) — new alphas carry the load through blowouts too, so the blowout under does NOT apply.`
+        : `${absSpread}-pt spread, but this is the team's primary usage option — WNBA stars play through blowouts and carry the load (comeback or lead), so the blowout under does NOT apply. Treat as neutral/over-context.`,
     };
   }
 
@@ -1796,9 +1814,26 @@ async function buildAndRunAnalysis({
       }
     }
 
+    // DATA-SUFFICIENCY FLOOR — a player with too few games is a thin, unstable
+    // baseline: a rookie, a call-up, an injury return, or an early-season trade.
+    // We don't pretend to know — flag low sample, keep them off the featured signal,
+    // and let the read show without confident endorsement. (This catches early-season
+    // trades, where the whole league is low-sample; a mid-season veteran trade with a
+    // long prior-team log is the case a per-game team field would be needed to catch,
+    // which ESPN's log doesn't expose — so we don't overclaim it.)
+    const sampleGames = Number(shotProfile?.gamesUsed) || Number(shootingForm?.l10?.gp) || 0;
+    const lowSample = sampleGames > 0 && sampleGames < 5 ? { games: sampleGames } : null;
+
     const blowoutRisk = buildBlowoutRisk({
       spread, isHome,
-      usage: { fga: shootingForm?.l10?.fga, minAvg: shotProfile?.minAvg, role: player?.role ?? unified?.scores?.role },
+      usage: {
+        fga: shootingForm?.l10?.fga, minAvg: shotProfile?.minAvg, role: player?.role ?? unified?.scores?.role,
+        benefitsFrom, projMinutes: benefitsFrom?.projMinutes,
+        // Same condition the role re-anchor uses — computed inline so it doesn't
+        // depend on adaptiveRead being built first (it isn't yet at this point).
+        reanchored: Number.isFinite(Number(benefitsFrom?.projMinutes)) && Number.isFinite(Number(shotProfile?.minAvg))
+          && Number(benefitsFrom.projMinutes) > Number(shotProfile.minAvg) * 1.12,
+      },
     });
 
     // Adaptive shrinkage read (points, shadow mode) — evidence-weighted regime
@@ -1943,6 +1978,7 @@ async function buildAndRunAnalysis({
       biasCorrection: unified.biasCorrection || null,   // per-player suppression correction applied
       biasVeto: unified.biasVeto || null,   // under killed because correction lifted proj to line
       rawProjection: unified.rawProjection ?? null,   // projection before bias correction
+      lowSample: lowSample || null,   // thin baseline (rookie/trade/return) — low confidence
       spinRead: _spin?.read || null,   // role-change signal (STALE STARTER / ROLE BUMP) or null
       reasons: buildPropReasons({
         market, unified,
@@ -1950,7 +1986,7 @@ async function buildAndRunAnalysis({
         shotsToClear: shotsToClear || null,
         minutesSecurity: minutesSecurity || null,
         reboundExtras, raw: player?._raw || null, propSignal, opponent,
-        spinRead: _spin?.read || null, opponentStyle, adaptiveRead, blowoutRisk, biasCorrection: unified.biasCorrection || null,
+        spinRead: _spin?.read || null, opponentStyle, adaptiveRead, blowoutRisk, biasCorrection: unified.biasCorrection || null, lowSample,
       }),
       lineSource: propLineSource,
       lineBook: lineMeta?.book || lineMeta?.vendor || null,
