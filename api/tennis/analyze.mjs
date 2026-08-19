@@ -46,7 +46,7 @@ function loadIndex() {
 // silently returns a read for the WRONG player, which is worse than no read at all.
 function normName(s) {
   return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase().replace(/[.]/g, ' ').replace(/\s+/g, ' ').trim();
+    .toLowerCase().replace(/[.\-']/g, ' ').replace(/\s+/g, ' ').trim();
 }
 function nameKey(s) {
   const t = normName(s).split(' ').filter(Boolean);
@@ -159,6 +159,8 @@ export default async function handler(req, res) {
         dfA: num(q.dfA), totalGames: num(q.totalGames),
         fantasyA: num(q.fantasyA), fantasyB: num(q.fantasyB),
         gamesWonA: num(q.gamesWonA), gamesWonB: num(q.gamesWonB),
+        breakPointsWonA: num(q.breakPointsWonA), breakPointsWonB: num(q.breakPointsWonB),
+        totalTieBreaks: num(q.totalTieBreaks),
       },
       sims: 4000,
     });
