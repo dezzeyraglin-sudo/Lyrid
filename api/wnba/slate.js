@@ -1008,7 +1008,12 @@ const PLAYER_BIAS_SEED = {
 // over-projected one (strengthens the under). `fromRolling` marks trustworthy live
 // data vs the older seed.
 function playerBiasCorrection(name, market, override) {
-  const key = _normName(name);
+  // Own normalizer (module-scope safe) — matches how the seed keys were built:
+  // lowercase, strip accents and non-[a-z ], collapse spaces. Must NOT reference the
+  // function-local _normName inside buildAndRunAnalysis.
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
+  const key = norm(name);
   const mk = String(market || '').toLowerCase();
   let src = null, fromRolling = false;
   if (override && override[key] && override[key][mk]) { src = override[key][mk]; fromRolling = true; }
