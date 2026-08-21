@@ -62,8 +62,10 @@ export async function listAllPlayers(season = 2026) {
   // The main /wnba/years/{year}.html page only has standings + team summaries.
   // Per-game player stats are at /wnba/years/{year}_per_game.html
   const path = `/wnba/years/${season}_per_game.html`;
-  // Common table IDs (try in priority order)
-  const candidateIds = ['per_game_stats', 'per_game', 'players_per_game'];
+  // Table IDs in priority order. bbref renamed per_game_stats → per_game (confirmed
+  // live Aug 2026), so the current id is primary; the old ones stay as fallback in
+  // case bbref reverts or an archived season page still uses them.
+  const candidateIds = ['per_game', 'per_game_stats', 'players_per_game'];
   for (const tableId of candidateIds) {
     const rows = await fetchAndParseTable(path, tableId);
     if (rows.length > 0) {
@@ -86,7 +88,8 @@ export async function listAllPlayers(season = 2026) {
 export async function listAllPlayersAdvanced(season = 2026) {
   // Advanced stats live at /wnba/years/{year}_advanced.html (not the main page)
   const path = `/wnba/years/${season}_advanced.html`;
-  const candidateIds = ['advanced_stats', 'advanced', 'players_advanced'];
+  // bbref renamed advanced_stats → advanced (confirmed live); current id primary.
+  const candidateIds = ['advanced', 'advanced_stats', 'players_advanced'];
   for (const tableId of candidateIds) {
     const rows = await fetchAndParseTable(path, tableId);
     if (rows.length > 0) {
