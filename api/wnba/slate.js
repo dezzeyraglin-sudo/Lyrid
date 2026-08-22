@@ -296,6 +296,17 @@ async function generateSlate(opts = {}) {
     warnings.push(`Defense table failed: ${err.message}`);
   }
 
+  // Production cadence from ESPN play-by-play — when in a game each player scores
+  // (front/back-loaded). Enhancement, not critical: dynamic import inside try/catch so
+  // a missing/failing module degrades to no cadence rather than crashing the function.
+  let cadenceProfiles = null;
+  try {
+    const { buildCadenceProfiles } = await import('./wnbaCadenceFeed.js');
+    cadenceProfiles = await buildCadenceProfiles({ days: 14, maxGames: 60 });
+  } catch (err) {
+    warnings.push(`Cadence feed unavailable: ${err.message}`);
+  }
+
   // Empirical team-totals evaluator (rolling team off/def vs league proxy line).
   // Built once per slate from this season's finished games that PRECEDE the slate
   // date (no leakage). Fail-safe: stays null if BDL/season history is unavailable.
@@ -449,7 +460,7 @@ async function generateSlate(opts = {}) {
               player, isHome, opponent, team, market, season, game, spread, total, date,
               recentFormPromise, allTeamStats, gameLines,
               v2Roster, v2OpponentRoster, injuryReport, defenseTable,
-              shotProfile: _shotProfile, shootingForm: _shootingForm, ppAltIndex, playerBiasOverride
+              shotProfile: _shotProfile, shootingForm: _shootingForm, ppAltIndex, playerBiasOverride, cadenceProfiles
             })
           );
         }
@@ -593,7 +604,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'futureproof-alpha-2026-08-18',   // deploy marker — confirms this code is live
+    buildTag: 'cadence-2026-08-22',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -730,6 +741,9 @@ function buildPropReasons(ctx) {
     else add('UNDER', 'OVER-PROJECTED',
       `Model chronically over-projects this player (bias ${bc.bias} over ${bc.n}) — projection trimmed ${bc.correction}; the under is stronger than the raw number.`);
   }
+  // Production cadence (front/back-loaded) crossed with game script.
+  if (ctx.cadence) add(ctx.cadence.side === 'UNDER' ? 'UNDER' : 'CONTEXT',
+    ctx.cadence.label === 'back' ? 'BACK-LOADED' : 'FRONT-LOADED', ctx.cadence.note);
   // Blowout risk (spread-derived) — suppresses counting stats game-wide, underdog most.
   if (blowoutRisk) add('UNDER', blowoutRisk.isUnderdog ? 'BLOWOUT RISK · UNDERDOG' : 'BLOWOUT RISK',
     blowoutRisk.note);
@@ -1529,7 +1543,7 @@ function shotsToClearPoints(prof, line, security) {
 async function buildAndRunAnalysis({
   player, isHome, opponent, team, market, season, game, date,
   spread, total, recentFormPromise, allTeamStats, gameLines,
-  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile, shootingForm, ppAltIndex, playerBiasOverride
+  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile, shootingForm, ppAltIndex, playerBiasOverride, cadenceProfiles
 }) {
   try {
     // Get opponent team stats from the pre-fetched map
@@ -1841,9 +1855,27 @@ async function buildAndRunAnalysis({
       },
     });
 
-    // Adaptive shrinkage read (points, shadow mode) — evidence-weighted regime
-    // detection: separates a real volume/role riser from hot-shooting variance.
+    // PRODUCTION CADENCE (PBP) × game script. Back-loaded players need late buckets,
+    // so blowout risk turns them into strong unders; in a close game they catch up
+    // late and their unders are weak. Front-loaded players bank early and are steadier.
     const _mk = market.toLowerCase();
+    let cadence = null;
+    if (cadenceProfiles) {
+      const _cn = String(player.name || '').toLowerCase().normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
+      const prof = cadenceProfiles[_cn];
+      const c = prof ? (_mk === 'rebounds' ? prof.rebounds : prof.points) : null;
+      if (c && c.label !== 'even') {
+        const blowout = blowoutRisk && blowoutRisk.risk && blowoutRisk.risk !== 'MILD' && !blowoutRisk.isAlpha;
+        if (c.label === 'back' && blowout) cadence = { label: 'back', side: 'UNDER', confBoost: 4, games: prof.games,
+          note: `Back-loaded — ${Math.round(c.share2h * 100)}% of production is 2nd-half (last ${prof.games}g). With blowout risk the late buckets it needs may not come. Strengthens the under.` };
+        else if (c.label === 'back') cadence = { label: 'back', side: 'CONTEXT', fadeUnder: true, confBoost: 0, games: prof.games,
+          note: `Back-loaded — ${Math.round(c.share2h * 100)}% of production is 2nd-half (last ${prof.games}g). In a competitive game it catches up late, so a low early read is a weak under.` };
+        else if (c.label === 'front') cadence = { label: 'front', side: 'UNDER', confBoost: blowout ? 1 : 2, games: prof.games,
+          note: `Front-loaded — ${Math.round((1 - c.share2h) * 100)}% of production is 1st-half (last ${prof.games}g). Banks stats early and is steadier for the under.` };
+      }
+    }
+
     const _adaptiveEvidence = { spinRead: _spin?.read, minutesSecurity, benefitsFrom, shootingForm };
     const _adaptiveMinutes = { baseline: shotProfile?.minAvg, projected: benefitsFrom?.projMinutes };
     const adaptiveRead = _mk === 'points'
@@ -1888,7 +1920,25 @@ async function buildAndRunAnalysis({
       const conv = shotsToClear.conviction;
       const sec = minutesSecurity || { read: 'LEAN', level: 'MODERATE' };
       unified.projection = shotsToClear.mean;
-      unified.edge = Number((shotsToClear.mean - Number(unified.line)).toFixed(1));
+      // The suppression correction ran earlier but shots-to-clear just overwrote it.
+      // Re-apply it here so POINTS (the highest-value market) is actually corrected,
+      // then re-derive the edge and re-run the under veto from the corrected mean.
+      // Without this, the whole per-player bias correction is a no-op for points.
+      if (unified.biasCorrection && unified.biasCorrection.correction) {
+        const bc = unified.biasCorrection;
+        unified.rawProjection = Number(Number(shotsToClear.mean).toFixed(2));
+        unified.projection = Number((Number(shotsToClear.mean) + bc.correction).toFixed(1));
+        const L = Number(unified.line);
+        if (Number.isFinite(L)) {
+          const lean0 = String(unified.recommendation || unified.lean || '').toUpperCase();
+          const trust = (bc.fromRolling || (bc.n >= 8 && Math.abs(bc.correction) >= 1.5));
+          if (lean0 === 'UNDER' && bc.correction > 0 && trust && unified.projection >= L - 0.5) {
+            unified.recommendation = 'PASS'; unified.tier = 'PASS';
+            unified.biasVeto = { correction: bc.correction, rawProjection: unified.rawProjection, line: L, n: bc.n, source: bc.fromRolling ? 'rolling' : 'seed' };
+          }
+        }
+      }
+      unified.edge = Number((unified.projection - Number(unified.line)).toFixed(1));
       unified.probOver = shotsToClear.pOver;
       unified.probUnder = Number((1 - shotsToClear.pOver).toFixed(3));
       unified.pointsEngine = 'shots-to-clear';
@@ -1965,6 +2015,12 @@ async function buildAndRunAnalysis({
         if (lean === 'UNDER' && blowoutRisk && Number.isFinite(c)) {
           c = Math.max(1, Math.min(99, c + blowoutRisk.confBoost));
         }
+        // Cadence: front-loaded / back-loaded+blowout strengthen the under; a
+        // back-loaded player in a close game catches up late — trim that under.
+        if (lean === 'UNDER' && cadence && Number.isFinite(c)) {
+          if (cadence.fadeUnder) c = Math.max(1, c - 3);
+          else if (cadence.side === 'UNDER') c = Math.min(99, c + cadence.confBoost);
+        }
         return c;
       })(),
       underEnv: opponentStyle?.underEnv || null,   // SUPPRESS | NEUTRAL | FAST (mild)
@@ -1978,6 +2034,7 @@ async function buildAndRunAnalysis({
       opponentStyle: opponentStyle || null,   // opponent offensive fingerprint (matchup context)
       regressionWatch: regressionWatch || null,   // fill-in shelf-life / star-return read
       blowoutRisk: blowoutRisk || null,   // spread-derived game-wide under signal
+      cadence: cadence || null,   // production cadence (front/back-loaded) × game script
       adaptiveRead: adaptiveRead || null,   // opportunity×efficiency shrinkage (points, shadow)
       roleConflict: unified.roleConflict || null,   // re-anchor stood down a bad under
       biasCorrection: unified.biasCorrection || null,   // per-player suppression correction applied
@@ -1991,7 +2048,7 @@ async function buildAndRunAnalysis({
         shotsToClear: shotsToClear || null,
         minutesSecurity: minutesSecurity || null,
         reboundExtras, raw: player?._raw || null, propSignal, opponent,
-        spinRead: _spin?.read || null, opponentStyle, adaptiveRead, blowoutRisk, biasCorrection: unified.biasCorrection || null, lowSample,
+        spinRead: _spin?.read || null, opponentStyle, adaptiveRead, blowoutRisk, biasCorrection: unified.biasCorrection || null, lowSample, cadence,
       }),
       lineSource: propLineSource,
       lineBook: lineMeta?.book || lineMeta?.vendor || null,
