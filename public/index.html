@@ -21037,6 +21037,25 @@ async function autoGradeOnAppOpen() {
         </div>`;
     })();
 
+    // Production cadence badge — tells the customer WHEN this player produces, so they
+    // know whether they can relax early or may have to sweat the finish. Reads from
+    // whichever market carried a cadence read. Purely informational (green = early and
+    // settled, amber = late and sweaty) — it doesn't assert a bet side.
+    const _cadenceBanner = (() => {
+      const cd = lead.cadence || (props.find(p => p && p.cadence) || {}).cadence;
+      if (!cd || !cd.label || cd.label === 'even') return '';
+      const back = cd.label === 'back';
+      const bg = back ? '#5b3a1f' : '#14532d';
+      const label = back ? '🕐 LATE PRODUCER · you may sweat the finish' : '⚡ EARLY PRODUCER · settles quickly';
+      const plain = back
+        ? `Tends to get going mid-to-late${cd.games ? ` (last ${cd.games}g)` : ''} — production comes in the 2nd half, so this one can stay live to the final whistle.`
+        : `Gets going early${cd.games ? ` (last ${cd.games}g)` : ''} — banks stats in the 1st half and usually settles well before the finish.`;
+      return `<div style="margin:8px 0 2px;padding:8px 12px;border-radius:8px;background:${bg};color:#fff">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.05em">${label}</div>
+          <div style="margin-top:3px;font-size:11px;line-height:1.45;opacity:0.93">${esc(plain)}</div>
+        </div>`;
+    })();
+
     // The Spin blurb itself — shown on EVERY card that has one, with rostership.
     const _spinBlurb = (() => {
       const s = lead.spin;
@@ -21105,6 +21124,7 @@ async function autoGradeOnAppOpen() {
         </div>
         ${_spinBanner}
         ${_blowoutBanner}
+        ${_cadenceBanner}
 
         ${whyDrivers.length > 0 ? `
           <div class="hr-drivers-panel" style="margin-bottom:10px">
