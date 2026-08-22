@@ -19767,6 +19767,43 @@ async function autoGradeOnAppOpen() {
   }
 
   // -----------------------------------------------------------
+  // ROLLING PER-PLAYER BIAS — computed from graded history, passed to the slate so
+  // the suppression correction runs on FRESH data instead of the frozen June seed.
+  // This is the fix for the staleness casualties (Wilson, Onyenwere) whose bias sign
+  // flipped between June and now. Key normalizer matches the slate's bias keys EXACTLY
+  // (no jr/sr stripping) so the override lands on the right player.
+  // -----------------------------------------------------------
+  function computeWnbaRollingBias(history, windowSize = 15, minSample = 5) {
+    const norm = (s) => String(s || '').toLowerCase().normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
+    const byPM = {};
+    const dates = Object.keys(history || {}).sort();   // ascending → most recent last
+    for (const date of dates) {
+      const day = history[date] || {};
+      for (const e of Object.values(day)) {
+        if (!e || !e.graded || e.actual == null || e.projection == null) continue;
+        const mk = String(e.market || '').toLowerCase();
+        if (mk !== 'points' && mk !== 'rebounds' && mk !== 'assists') continue;
+        const err = Number(e.actual) - Number(e.projection);
+        if (!Number.isFinite(err)) continue;
+        const key = norm(e.player) + '|' + mk;
+        (byPM[key] = byPM[key] || []).push(err);
+      }
+    }
+    const out = {};
+    for (const key in byPM) {
+      const recent = byPM[key].slice(-windowSize);    // most recent N picks
+      if (recent.length < minSample) continue;
+      const bias = recent.reduce((a, b) => a + b, 0) / recent.length;
+      if (Math.abs(bias) < 1.0) continue;             // only meaningful bias
+      const sep = key.lastIndexOf('|');
+      const name = key.slice(0, sep), mk = key.slice(sep + 1);
+      (out[name] = out[name] || {})[mk] = [Math.round(bias * 10) / 10, recent.length];
+    }
+    return out;
+  }
+
+  // -----------------------------------------------------------
   // FETCH
   // -----------------------------------------------------------
   window.loadWnbaSlate = async function() {
@@ -19783,7 +19820,17 @@ async function autoGradeOnAppOpen() {
     updateWnbaDateDisplay();
 
     try {
-      const body = state.date ? JSON.stringify({ date: state.date }) : '{}';
+      // Compute the rolling per-player bias from graded history and pass it so the
+      // slate's suppression correction runs on fresh data (supersedes the seed).
+      let playerBias = null;
+      try {
+        const pb = computeWnbaRollingBias(state.wnbaPropHistory || {});
+        if (pb && Object.keys(pb).length) playerBias = pb;
+      } catch (e) { console.warn('[wnba] rolling bias compute failed:', e); }
+      const bodyObj = {};
+      if (state.date) bodyObj.date = state.date;
+      if (playerBias) bodyObj.playerBias = playerBias;
+      const body = JSON.stringify(bodyObj);
       const res = await fetch('/api/wnba/slate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -23097,9 +23144,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       ${propRow('Fantasy — ' + names[1], read.props && read.props.fantasyB)}
       ${propRow('Games Won — ' + names[0], read.props && read.props.gamesWonA)}
       ${propRow('Games Won — ' + names[1], read.props && read.props.gamesWonB)}
-      ${propRow('Break Points Won — ' + names[0], read.props && read.props.breakPointsWonA)}
-      ${propRow('Break Points Won — ' + names[1], read.props && read.props.breakPointsWonB)}
-      ${propRow('Total Tie Breaks', read.props && read.props.totalTieBreaks)}
       ${drivers.length ? `<details class="lyrid-tennis-drivers"><summary>why</summary><ul>${drivers.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></details>` : ''}
       ${chips.length ? `<div class="lyrid-tennis-gates">${chips.map((c) => `<span class="lyrid-chip warn">${esc(c)}</span>`).join('')}</div>` : ''}
       <div class="lyrid-tennis-footer">Priors only — not bets, until a slate is graded. ${esc((read.note || ''))}</div></div>`;
@@ -23183,7 +23227,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }
   }
 
-  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB', 'gamesWonA', 'gamesWonB', 'breakPointsWonA', 'breakPointsWonB', 'totalTieBreaks'];
+  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB', 'gamesWonA', 'gamesWonB'];
 
   // Pull the standard PrizePicks lines for this matchup so the inputs prefill. Fails soft — if
   // PrizePicks is unreachable or the shape changed, you just type them as before.
@@ -23250,7 +23294,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   async function logGradedLines(m, read, cur) {
     try {
       const P = read.props || {};
-      const map = { totalGames:'Total Games', gamesWonA:'Games Won A', gamesWonB:'Games Won B', breakPointsWonA:'Break Points Won A', breakPointsWonB:'Break Points Won B', totalTieBreaks:'Total Tie Breaks',
+      const map = { totalGames:'Total Games', gamesWonA:'Games Won A', gamesWonB:'Games Won B',
         acesA:'Aces A', acesB:'Aces B', dfA:'Double Faults A', fantasyA:'Fantasy A', fantasyB:'Fantasy B' };
       const props = [];
       for (const k of Object.keys(map)) {
