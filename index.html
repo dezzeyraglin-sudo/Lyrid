@@ -21142,6 +21142,26 @@ async function autoGradeOnAppOpen() {
     // know whether they can relax early or may have to sweat the finish. Reads from
     // whichever market carried a cadence read. Purely informational (green = early and
     // settled, amber = late and sweaty) — it doesn't assert a bet side.
+    const _foulProneBanner = (() => {
+      const fp = lead.foulProne;
+      if (!fp) return '';
+      const hi = fp.level === 'HIGH';
+      const fmt = (w) => w ? `${w.per36}/36 · ${w.trouble}/${w.games} in trouble` : '—';
+      return `<div style="margin:8px 0 2px;padding:8px 12px;border-radius:8px;background:${hi ? '#7c2d12' : '#5b4a1f'};color:#fff">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.05em">⚑ FOUL-PRONE${fp.level ? ' · ' + fp.level : ''}</div>
+          <div style="margin-top:3px;font-size:11px;line-height:1.45;opacity:0.93">${esc(fp.note || 'High foul rate — early-benching / foul-out risk that caps minutes.')}</div>
+          <div style="margin-top:4px;font-size:10px;color:rgba(255,255,255,0.8);font-variant-numeric:tabular-nums">L10: ${fmt(fp.l10)} · L5: ${fmt(fp.l5)}</div>
+        </div>`;
+    })();
+    const _minutesRiskBanner = (() => {
+      const mv = lead.minutesVolatility;
+      if (!mv) return '';
+      const hi = mv.level === 'HIGH';
+      return `<div style="margin:8px 0 2px;padding:8px 12px;border-radius:8px;background:${hi ? '#7c2d12' : '#5b4a1f'};color:#fff">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.05em">⏱ MINUTES RISK${mv.level ? ' · ' + mv.level : ''}${mv.range ? ' · ' + mv.range[0] + '-' + mv.range[1] + ' min' : ''}</div>
+          <div style="margin-top:3px;font-size:11px;line-height:1.45;opacity:0.93">${esc(mv.note || '')}</div>
+        </div>`;
+    })();
     const _cadenceBanner = (() => {
       const cd = lead.cadence || (props.find(p => p && p.cadence) || {}).cadence;
       if (!cd || !cd.scenario) return '';
@@ -21235,6 +21255,8 @@ async function autoGradeOnAppOpen() {
           <div class="tier-badge ${_tierClass}">${esc(tier.label)}</div>
         </div>
         ${_spinBanner}
+        ${_foulProneBanner}
+        ${_minutesRiskBanner}
         ${_blowoutBanner}
         ${_cadenceBanner}
 

@@ -604,7 +604,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'cadence-by-market-2026-08-23',   // deploy marker — confirms this code is live
+    buildTag: 'foul-prone-2026-08-23',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -741,6 +741,10 @@ function buildPropReasons(ctx) {
     else add('UNDER', 'OVER-PROJECTED',
       `Model chronically over-projects this player (bias ${bc.bias} over ${bc.n}) — projection trimmed ${bc.correction}; the under is stronger than the raw number.`);
   }
+  // Minutes volatility — hard-swinging minutes make the projection unreliable.
+  if (ctx.minutesVolatility) add('UNDER', 'MINUTES RISK', ctx.minutesVolatility.note);
+  // Foul-prone — high foul rate risks early benching / fouling out.
+  if (ctx.foulProne) add('UNDER', 'FOUL-PRONE', ctx.foulProne.note);
   // Recent-form floor — projection was lifted toward the player's real recent rate.
   if (ctx.rebFloor) { const _fm = ctx.rebFloor.market || 'rebounds';
     add('OVER', 'FORM FLOOR',
@@ -1295,6 +1299,8 @@ function buildShootingForm(games) {
     const sum = (f) => g.reduce((a, x) => a + (Number(x[f]) || 0), 0);
     const fga = sum('fga'), fgm = sum('fgm'), fta = sum('fta'), pts = sum('pts');
     const reb = sum('reb'), ast = sum('ast'), min = sum('minutes');
+    const pf = sum('pf');
+    const foulTrouble = g.filter((x) => (Number(x.pf) || 0) >= 4).length;   // games with 4+ fouls
     return {
       gp: g.length,
       fga: Number((fga / g.length).toFixed(1)),
@@ -1307,6 +1313,9 @@ function buildShootingForm(games) {
       min: Number((min / g.length).toFixed(1)),          // minutes/game (opportunity base)
       rebPerMin: min > 0 ? reb / min : 0,                // rate axes — stickier than shooting
       astPerMin: min > 0 ? ast / min : 0,
+      pf: Number((pf / g.length).toFixed(1)),            // fouls per game
+      foulPer36: min > 0 ? Number(((pf / min) * 36).toFixed(1)) : 0,   // foul RATE (benching risk)
+      foulTrouble,                                       // games in this window with 4+ fouls
     };
   };
   return { l10: win(10), l5: win(5) };
@@ -1521,6 +1530,31 @@ function _normCdf(z) {
 // UNDER. Returns a factor that haircuts expected minutes for the distribution
 // (risky minutes → lower mean → the model itself leans under) plus a badge the
 // card/board picks up.
+
+// projection (which assumes a normal night) is unreliable and a short-minutes game
+// (foul trouble, blowout benching, rest) can crater it. This is the Malonga case:
+// projected ~16, played reduced minutes, finished 8. Only fires for players with a
+// real role (minAvg ≥ 12) — deep-bench players have high CV but aren't bet, and their
+// tiny-minute swings aren't meaningful. Thresholds from the league distribution
+// (stable stars sit at CV ~0.07; a genuine swinger is ~0.30+ / std ~5+).
+function buildMinutesVolatility(shotProfile) {
+  const minAvg = Number(shotProfile?.minAvg);
+  const minStd = Number(shotProfile?.minStd);
+  const minCv = Number(shotProfile?.minCv);
+  if (![minAvg, minStd, minCv].every(Number.isFinite) || minAvg < 12) return null;
+  let level = null;
+  if (minStd >= 7 || minCv >= 0.45) level = 'HIGH';
+  else if (minStd >= 5 || minCv >= 0.30) level = 'MODERATE';
+  if (!level) return null;
+  const lo = Math.max(0, Math.round(minAvg - minStd));
+  const hi = Math.round(minAvg + minStd);
+  return {
+    level, minAvg: Number(minAvg.toFixed(1)), minStd: Number(minStd.toFixed(1)), minCv,
+    range: [lo, hi], confHaircut: level === 'HIGH' ? 6 : 3,
+    note: `Minutes swing hard — averages ${Math.round(minAvg)} but ranges ${lo}-${hi} game to game (±${Math.round(minStd)}). The projection assumes a normal night; a short-minutes game (foul trouble, blowout benching, rest) can crater it. Higher risk — size down.`,
+  };
+}
+
 function wnbaMinutesSecurity(role, minCv) {
   const r = Number(role);
   const cv = Number(minCv);
@@ -1895,6 +1929,8 @@ async function buildAndRunAnalysis({
     // which ESPN's log doesn't expose — so we don't overclaim it.)
     const sampleGames = Number(shotProfile?.gamesUsed) || Number(shootingForm?.l10?.gp) || 0;
     const lowSample = sampleGames > 0 && sampleGames < 5 ? { games: sampleGames } : null;
+    const minutesVolatility = buildMinutesVolatility(shotProfile);   // hard-swinging minutes → higher risk
+    const foulProne = buildFoulProne(shootingForm);   // fouls at a high rate → benching / foul-out risk
 
     const blowoutRisk = buildBlowoutRisk({
       spread, isHome,
@@ -1945,24 +1981,38 @@ async function buildAndRunAnalysis({
       //            front+close → good under (60%); front+blowout → over lean (thin)
       // Samples small (n=5-65) so directional; scenario in {TRAP,SUPPORT,CAUTION,INFO}.
       if (c && c.label !== 'even') {
-        const blowout = blowoutRisk && blowoutRisk.risk && blowoutRisk.risk !== 'MILD' && !blowoutRisk.isAlpha;
+        // blowoutGame is spread-based (the actual game script). blowout is the
+        // alpha-adjusted version used only for the blowout-UNDER support. The cadence
+        // TRAP assumes a COMPETITIVE game, so it must gate on blowoutGame — not the
+        // alpha-adjusted flag, which was making a 20-pt-spread game read as
+        // "competitive" and firing a false trap on the primary usage option (Malonga).
+        const blowoutGame = !!(blowoutRisk && blowoutRisk.risk && blowoutRisk.risk !== 'MILD');
+        const blowout = blowoutGame && !blowoutRisk.isAlpha;
         const p2h = Math.round(c.share2h * 100);
-        const gm = (prof.l10?.games ?? prof.l5?.games);
+        const gm = (prof.l10?.games ?? prof.l5?.games) || 0;
+        const MIN_CAD = 5;   // don't fire a betting signal on a thin cadence sample
         let sc = null, side = 'CONTEXT', fadeUnder = false, confBoost = 0, note = '';
-        if (_mk === 'assists') {
-          if (c.label === 'back') { sc = 'TRAP'; fadeUnder = true;
+        if (gm < MIN_CAD) {
+          sc = 'INFO';
+          note = `Cadence from only ${gm} game${gm === 1 ? '' : 's'} — too thin to call a trap or support. Informational; the projection stands on its own.`;
+        } else if (_mk === 'assists') {
+          if (c.label === 'back' && !blowoutGame) { sc = 'TRAP'; fadeUnder = true;
             note = `Back-loaded assists — ${p2h}% 2nd-half (last ${gm}g). Late playmakers catch up hard (backtest 73% OVER). Strong under trap — fade.`; }
+          else if (c.label === 'back') { sc = 'INFO';
+            note = `Back-loaded assists (last ${gm}g), but blowout risk — the competitive-game catch-up doesn't apply here. Informational.`; }
           else { sc = 'INFO'; note = `Front-loaded assists (last ${gm}g). Informational — ~neutral for betting.`; }
         } else if (_mk === 'rebounds') {
           if (c.label === 'back') { sc = 'SUPPORT'; side = 'UNDER'; confBoost = blowout ? 4 : 2;
             note = `Back-loaded boards — ${p2h}% 2nd-half (last ${gm}g). Back-loaded rebounders still hit the under (backtest 65-80%). Supports the under.`; }
           else { sc = 'INFO'; note = `Front-loaded boards (last ${gm}g). Informational — ~neutral (52%).`; }
-        } else {
+        } else { // points
           if (c.label === 'back' && blowout) { sc = 'SUPPORT'; side = 'UNDER'; confBoost = 2;
             note = `Back-loaded + blowout (last ${gm}g). Late buckets capped (backtest 62% under). Mild under support.`; }
+          else if (c.label === 'back' && blowoutGame) { sc = 'INFO';
+            note = `Back-loaded but a likely blowout AND the primary usage option — neither the competitive-game trap nor the blowout-under cleanly applies. Projection stands on its own.`; }
           else if (c.label === 'back') { sc = 'TRAP'; fadeUnder = true;
             note = `Back-loaded points — ${p2h}% 2nd-half (last ${gm}g). Competitive game, catches up late (~55% over). Weak under — fade.`; }
-          else if (c.label === 'front' && !blowout) { sc = 'SUPPORT'; side = 'UNDER'; confBoost = 2;
+          else if (c.label === 'front' && !blowoutGame) { sc = 'SUPPORT'; side = 'UNDER'; confBoost = 2;
             note = `Front-loaded + close game (last ${gm}g). Banks early and holds (backtest 60% under). Supports the under.`; }
           else { sc = 'CAUTION';
             note = `Front-loaded + blowout (last ${gm}g). Thin sample leaned OVER (36% under). Caution on the under.`; }
@@ -2131,6 +2181,11 @@ async function buildAndRunAnalysis({
           if (cadence.fadeUnder) c = Math.max(1, c - 5);
           else if (cadence.side === 'UNDER') c = Math.min(99, c + cadence.confBoost);
         }
+        // Minutes volatility: hard-swinging minutes make the projection unreliable in
+        // BOTH directions — trim conviction whatever the side.
+        if (minutesVolatility && Number.isFinite(c)) {
+          c = Math.max(1, c - minutesVolatility.confHaircut);
+        }
         return c;
       })(),
       underEnv: opponentStyle?.underEnv || null,   // SUPPRESS | NEUTRAL | FAST (mild)
@@ -2154,6 +2209,8 @@ async function buildAndRunAnalysis({
       rawProjection: unified.rawProjection ?? null,   // projection before bias correction
       rebFloor: unified.rebFloor || null,   // rebound projection lifted toward recent form
       lowSample: lowSample || null,   // thin baseline (rookie/trade/return) — low confidence
+      minutesVolatility: minutesVolatility || null,   // minutes swing hard — projection unreliable
+      foulProne: foulProne || null,   // high foul rate — benching / foul-out risk
       spinRead: _spin?.read || null,   // role-change signal (STALE STARTER / ROLE BUMP) or null
       reasons: buildPropReasons({
         market, unified,
@@ -2161,7 +2218,7 @@ async function buildAndRunAnalysis({
         shotsToClear: shotsToClear || null,
         minutesSecurity: minutesSecurity || null,
         reboundExtras, raw: player?._raw || null, propSignal, opponent,
-        spinRead: _spin?.read || null, opponentStyle, adaptiveRead, blowoutRisk, biasCorrection: unified.biasCorrection || null, lowSample, cadence, rebFloor: unified.rebFloor || null,
+        spinRead: _spin?.read || null, opponentStyle, adaptiveRead, blowoutRisk, biasCorrection: unified.biasCorrection || null, lowSample, cadence, minutesVolatility, foulProne, rebFloor: unified.rebFloor || null,
       }),
       lineSource: propLineSource,
       lineBook: lineMeta?.book || lineMeta?.vendor || null,
