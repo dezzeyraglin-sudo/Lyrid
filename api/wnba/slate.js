@@ -604,7 +604,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'cadence-2026-08-22',   // deploy marker — confirms this code is live
+    buildTag: 'form-floor-minutes-2026-08-22',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -741,6 +741,10 @@ function buildPropReasons(ctx) {
     else add('UNDER', 'OVER-PROJECTED',
       `Model chronically over-projects this player (bias ${bc.bias} over ${bc.n}) — projection trimmed ${bc.correction}; the under is stronger than the raw number.`);
   }
+  // Recent-form floor — projection was lifted toward the player's real recent rate.
+  if (ctx.rebFloor) { const _fm = ctx.rebFloor.market || 'rebounds';
+    add('OVER', 'FORM FLOOR',
+    `Base projected ${ctx.rebFloor.base} but they've averaged ${ctx.rebFloor.recentAvg} ${_fm} recently — lifted to ${ctx.rebFloor.floored}. The low under was a mirage; this player isn't actually cold.`); }
   // Production cadence (front/back-loaded) crossed with game script.
   if (ctx.cadence) add(ctx.cadence.side === 'UNDER' ? 'UNDER' : 'CONTEXT',
     ctx.cadence.label === 'back' ? 'BACK-LOADED' : 'FRONT-LOADED', ctx.cadence.note);
@@ -1021,6 +1025,27 @@ const PLAYER_BIAS_SEED = {
 // Positive lifts an under-projected player (fades their under); negative lowers an
 // over-projected one (strengthens the under). `fromRolling` marks trustworthy live
 // data vs the older seed.
+// RECENT-FORM FLOOR — a projection must not sit far below the player's own recent
+// average without a role/minutes reason. Market-aware because stickiness differs:
+// rebound rate is stable (small gap to trigger, weight recent heavily), points carry
+// shooting variance and assists teammate-finishing noise (need a bigger gap and lean
+// less on recent, so we don't chase a hot streak). Only ever LIFTS an under-projection;
+// returns null when the base is already at or above recent form.
+function recentFormFloor(mk, baseProj, shootingForm) {
+  const cfg = {
+    rebounds: { gap: 1.5, w: 0.55, key: 'reb' },
+    points:   { gap: 2.5, w: 0.45, key: 'ppg' },
+    assists:  { gap: 2.0, w: 0.40, key: 'ast' },
+  }[mk];
+  if (!cfg) return null;
+  const recent = Number(shootingForm?.l10?.[cfg.key]);
+  const base = Number(baseProj);
+  if (!Number.isFinite(recent) || !Number.isFinite(base)) return null;
+  if (recent < base + cfg.gap) return null;
+  const floored = Number((base * (1 - cfg.w) + recent * cfg.w).toFixed(1));
+  return { base: Number(base.toFixed(1)), recentAvg: Number(recent.toFixed(1)), floored, market: mk };
+}
+
 function playerBiasCorrection(name, market, override) {
   // Own normalizer (module-scope safe) — matches how the seed keys were built:
   // lowercase, strip accents and non-[a-z ], collapse spaces. Must NOT reference the
@@ -1439,14 +1464,25 @@ function buildShotProfile(games, N = 10) {
   }
   if (mins.length === 0 || totMin <= 0) return null;
 
-  const minAvg = totMin / mins.length;
+  // Minutes is the master variable, so a stale baseline mis-scales every downstream
+  // projection. The flat 10-game average lags role changes (Clark trending 30→35.6,
+  // Reese 30→34) and under-projects trending-up players. Weight the baseline toward
+  // the last 5 games so current role drives it; keep minStd around the raw mean as the
+  // honest variability measure.
+  const minAvgRaw = totMin / mins.length;
+  const _l5 = mins.slice(-5);
+  const _l5avg = _l5.length ? _l5.reduce((a, b) => a + b, 0) / _l5.length : minAvgRaw;
+  const minAvg = Number((minAvgRaw * 0.45 + _l5avg * 0.55).toFixed(1));
   const minStd = mins.length > 1
-    ? Math.sqrt(mins.reduce((s, m) => s + (m - minAvg) ** 2, 0) / (mins.length - 1)) : 4;
+    ? Math.sqrt(mins.reduce((s, m) => s + (m - minAvgRaw) ** 2, 0) / (mins.length - 1)) : 4;
 
   // League-average fallbacks when a rate/percentage is undefined at this sample.
   return {
     gamesUsed: mins.length,
     minAvg: Number(minAvg.toFixed(1)),
+    minAvgRaw: Number(minAvgRaw.toFixed(1)),        // flat 10-game avg, before recency weighting
+    minRecent: Number(_l5avg.toFixed(1)),           // last-5 average
+    minTrend: Number((_l5avg - minAvgRaw).toFixed(1)),  // + = minutes trending up
     minStd: Number(minStd.toFixed(1)),
     minCv: Number((minStd / minAvg).toFixed(3)),
     f2aPerMin: f2a / totMin,
@@ -1833,7 +1869,24 @@ async function buildAndRunAnalysis({
       }
     }
 
-    // DATA-SUFFICIENCY FLOOR — a player with too few games is a thin, unstable
+    // RECENT-FORM FLOOR for rebounds & assists (points is floored after shots-to-clear
+    // sets its projection). Anchors a lowballed projection toward the player's real
+    // recent rate — catches chronic under-projection the bias correction can't reach
+    // (e.g. Bonner: reb projected 4.6 while averaging 7.4).
+    if ((market.toLowerCase() === 'rebounds' || market.toLowerCase() === 'assists')) {
+      const rf = recentFormFloor(market.toLowerCase(), unified.projection, shootingForm);
+      if (rf) {
+        unified.rebFloor = rf;
+        unified.projection = rf.floored;
+        const L = Number(unified.line);
+        if (Number.isFinite(L)) {
+          unified.edge = Number((rf.floored - L).toFixed(1));
+          const gap = rf.floored - L;
+          unified.recommendation = Math.abs(gap) < 0.5 ? 'PASS' : (gap < 0 ? 'UNDER' : 'OVER');
+        }
+      }
+    }
+
     // baseline: a rookie, a call-up, an injury return, or an early-season trade.
     // We don't pretend to know — flag low sample, keep them off the featured signal,
     // and let the read show without confident endorsement. (This catches early-season
@@ -1939,7 +1992,22 @@ async function buildAndRunAnalysis({
         }
       }
       unified.edge = Number((unified.projection - Number(unified.line)).toFixed(1));
-      unified.probOver = shotsToClear.pOver;
+      // POINTS recent-form floor — after shots-to-clear + bias, catch a lowballed
+      // points projection (the Onyenwere case: projected 6, scoring more). Bigger gap
+      // and lighter recent weight than rebounds, since points carry shooting variance.
+      {
+        const rf = recentFormFloor('points', unified.projection, shootingForm);
+        if (rf) {
+          unified.rebFloor = rf;
+          unified.projection = rf.floored;
+          const L = Number(unified.line);
+          if (Number.isFinite(L)) {
+            unified.edge = Number((rf.floored - L).toFixed(1));
+            const gap = rf.floored - L;
+            unified.recommendation = Math.abs(gap) < 0.5 ? 'PASS' : (gap < 0 ? 'UNDER' : 'OVER');
+          }
+        }
+      }
       unified.probUnder = Number((1 - shotsToClear.pOver).toFixed(3));
       unified.pointsEngine = 'shots-to-clear';
       unified.minutesSecurity = sec;   // badge + read surfaced to the card
@@ -2040,6 +2108,7 @@ async function buildAndRunAnalysis({
       biasCorrection: unified.biasCorrection || null,   // per-player suppression correction applied
       biasVeto: unified.biasVeto || null,   // under killed because correction lifted proj to line
       rawProjection: unified.rawProjection ?? null,   // projection before bias correction
+      rebFloor: unified.rebFloor || null,   // rebound projection lifted toward recent form
       lowSample: lowSample || null,   // thin baseline (rookie/trade/return) — low confidence
       spinRead: _spin?.read || null,   // role-change signal (STALE STARTER / ROLE BUMP) or null
       reasons: buildPropReasons({
@@ -2048,7 +2117,7 @@ async function buildAndRunAnalysis({
         shotsToClear: shotsToClear || null,
         minutesSecurity: minutesSecurity || null,
         reboundExtras, raw: player?._raw || null, propSignal, opponent,
-        spinRead: _spin?.read || null, opponentStyle, adaptiveRead, blowoutRisk, biasCorrection: unified.biasCorrection || null, lowSample, cadence,
+        spinRead: _spin?.read || null, opponentStyle, adaptiveRead, blowoutRisk, biasCorrection: unified.biasCorrection || null, lowSample, cadence, rebFloor: unified.rebFloor || null,
       }),
       lineSource: propLineSource,
       lineBook: lineMeta?.book || lineMeta?.vendor || null,
