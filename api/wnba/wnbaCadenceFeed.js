@@ -1,19 +1,17 @@
 // wnbaCadenceFeed.js — production CADENCE from ESPN play-by-play.
 //
-// For each player, over a recent window of games, we bucket their production by
-// quarter to learn WHEN in a game they score/rebound: front-loaded (banks early),
-// back-loaded (struggles early, picks up mid-to-late), or even. This is a real
-// under/over signal because cadence interacts with game script:
+// For each player, over a recent window, we bucket their POINTS, REBOUNDS and ASSISTS
+// by quarter to learn WHEN in a game they produce: front-loaded (banks early),
+// back-loaded (picks up mid-to-late), or even. This drives two things:
+//   1) An under/over conviction signal crossed with game script (back-loaded + blowout
+//      risk = strong under; back-loaded + close game = weak under — the Onyenwere trap).
+//   2) A per-quarter / per-half PROJECTION: given a player's projected total for a
+//      market, split it across quarters by their cadence, so you can see roughly what
+//      they'll have by halftime and whether you'll be sweating the 2nd half.
 //
-//   • BACK-loaded + blowout risk  → the sharpest UNDER. They need late production,
-//     and a decided game (bench, slower pace, garbage time) never delivers it.
-//   • BACK-loaded + close game    → FADE the under. They catch up late — this is the
-//     Michaela Onyenwere trap (0 pts in Q1, 11 of 14 in the 2nd half, beat her under).
-//   • FRONT-loaded                → less game-script sensitive; already banked early,
-//     so blowout risk barely moves them and their unders are steadier.
-//
-// ESPN PBP quirk: play participants carry athlete IDs only; names come from the
-// game's boxscore. We build the id→name map per game, then attribute.
+// ESPN PBP quirks: play participants carry athlete IDs only (names come from the game
+// boxscore); on an assisted basket participants[0] is the scorer, participants[1] the
+// assister; rebounds are typed plays credited to participants[0].
 
 import https from 'node:https';
 
@@ -33,7 +31,14 @@ function getJson(url) {
 const SB = (ymd) => `https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${ymd}`;
 const SUM = (id) => `https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/summary?event=${id}`;
 
-// Per-game cadence: { normName: { q: {pts,reb}, name } } from one game's PBP.
+function normName(s) {
+  return String(s || '').toLowerCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+const z = () => ({ pts: 0, reb: 0, ast: 0 });
+
+// Per-game: { normName: { name, q: {1..4}: {pts,reb,ast} } } from one game's PBP.
 async function fetchGameCadence(eventId) {
   const d = await getJson(SUM(eventId)).catch(() => null);
   if (!d || !Array.isArray(d.plays)) return null;
@@ -47,53 +52,46 @@ async function fetchGameCadence(eventId) {
     }
   }
   const out = {};
+  const bucket = (name, q) => {
+    const key = normName(name);
+    const row = (out[key] = out[key] || { name, q: { 1: z(), 2: z(), 3: z(), 4: z() } });
+    return row.q[q];
+  };
   for (const p of d.plays) {
     const q = p.period?.number;
-    if (!q || q > 4) continue;                       // ignore OT for the 1H/2H split
+    if (!q || q > 4) continue;                          // ignore OT for the half split
     const parts = p.participants || [];
     if (!parts.length) continue;
-    const sid = parts[0].athlete?.id;
-    const name = id2name[sid];
-    if (!name) continue;
-    const key = normName(name);
-    const row = (out[key] = out[key] || { name, q: { 1: { pts: 0, reb: 0 }, 2: { pts: 0, reb: 0 }, 3: { pts: 0, reb: 0 }, 4: { pts: 0, reb: 0 } } });
-    if (p.scoringPlay) row.q[q].pts += Number(p.scoreValue) || 0;
+    const scorerName = id2name[parts[0]?.athlete?.id];
+    const text = String(p.text || '').toLowerCase();
     const typ = String(p.type?.text || '').toLowerCase();
-    if (typ.includes('rebound')) row.q[q].reb += 1;
+    if (p.scoringPlay && scorerName) bucket(scorerName, q).pts += Number(p.scoreValue) || 0;
+    if (typ.includes('rebound') && scorerName) bucket(scorerName, q).reb += 1;
+    if (p.scoringPlay && text.includes('assist') && parts[1]) {
+      const assister = id2name[parts[1].athlete?.id];
+      if (assister) bucket(assister, q).ast += 1;
+    }
   }
   return out;
 }
 
-function normName(s) {
-  return String(s || '').toLowerCase().normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
-}
-
-// Classify a 1H/2H split into a cadence label + a signed skew (-1 fully front .. +1 fully back).
-function classify(h1, h2) {
-  const tot = h1 + h2;
-  if (tot < 6) return { label: 'even', skew: 0, share2h: 0.5 };   // too little to judge
-  const share2h = h2 / tot;
-  const skew = Number((share2h - 0.5).toFixed(2)) * 2;            // -1..+1
+// Per-quarter totals → shares + a cadence label.
+function profileMarket(q) {
+  const tot = q[1] + q[2] + q[3] + q[4];
+  if (tot < 6) return null;
+  const shares = [q[1] / tot, q[2] / tot, q[3] / tot, q[4] / tot].map((x) => Number(x.toFixed(3)));
+  const share2h = Number(((q[3] + q[4]) / tot).toFixed(2));
   let label = 'even';
   if (share2h >= 0.60) label = 'back';
   else if (share2h <= 0.40) label = 'front';
-  return { label, skew: Number(skew.toFixed(2)), share2h: Number(share2h.toFixed(2)) };
+  return { total: tot, shares, share2h, label };
 }
 
 let _cache = null, _cacheAt = 0;
-const TTL = 6 * 60 * 60 * 1000;   // 6h — cadence drifts slowly
+const TTL = 6 * 60 * 60 * 1000;
 
-/**
- * Build per-player cadence profiles over the last `days` of completed games.
- * Returns { normName: { name, games, points:{h1,h2,label,skew,share2h}, rebounds:{...} } }.
- * Cached in-process for 6h. Bounded window keeps the PBP fetch count sane; for
- * production this belongs in a nightly job writing to storage, not per-slate.
- */
 export async function buildCadenceProfiles({ days = 14, maxGames = 60 } = {}) {
   if (_cache && Date.now() - _cacheAt < TTL) return _cache;
-
-  // Collect completed game IDs across the window.
   const ids = [];
   const today = new Date();
   for (let i = 0; i < days && ids.length < maxGames; i++) {
@@ -104,59 +102,63 @@ export async function buildCadenceProfiles({ days = 14, maxGames = 60 } = {}) {
       if (e.competitions?.[0]?.status?.type?.completed) ids.push(e.id);
     }
   }
-
-  // Aggregate per-player production by half across those games (bounded concurrency).
-  const agg = {};   // key -> { name, gp, pts:{h1,h2}, reb:{h1,h2} }
+  const agg = {};
   const CONC = 4;
   for (let i = 0; i < ids.length; i += CONC) {
     const batch = await Promise.all(ids.slice(i, i + CONC).map((id) => fetchGameCadence(id)));
     for (const game of batch) {
       if (!game) continue;
       for (const [key, row] of Object.entries(game)) {
-        const a = (agg[key] = agg[key] || { name: row.name, gp: 0, pts: { h1: 0, h2: 0 }, reb: { h1: 0, h2: 0 } });
+        const a = (agg[key] = agg[key] || {
+          name: row.name, gp: 0,
+          pts: { 1: 0, 2: 0, 3: 0, 4: 0 }, reb: { 1: 0, 2: 0, 3: 0, 4: 0 }, ast: { 1: 0, 2: 0, 3: 0, 4: 0 },
+        });
         a.gp += 1;
-        a.pts.h1 += row.q[1].pts + row.q[2].pts; a.pts.h2 += row.q[3].pts + row.q[4].pts;
-        a.reb.h1 += row.q[1].reb + row.q[2].reb; a.reb.h2 += row.q[3].reb + row.q[4].reb;
+        for (const qn of [1, 2, 3, 4]) {
+          a.pts[qn] += row.q[qn].pts; a.reb[qn] += row.q[qn].reb; a.ast[qn] += row.q[qn].ast;
+        }
       }
     }
   }
-
   const profiles = {};
   for (const [key, a] of Object.entries(agg)) {
-    if (a.gp < 3) continue;   // need a few games to trust the cadence
-    profiles[key] = {
-      name: a.name, games: a.gp,
-      points: { h1: a.pts.h1, h2: a.pts.h2, ...classify(a.pts.h1, a.pts.h2) },
-      rebounds: { h1: a.reb.h1, h2: a.reb.h2, ...classify(a.reb.h1, a.reb.h2) },
-    };
+    if (a.gp < 3) continue;
+    const points = profileMarket(a.pts), rebounds = profileMarket(a.reb), assists = profileMarket(a.ast);
+    if (!points && !rebounds && !assists) continue;
+    profiles[key] = { name: a.name, games: a.gp, points, rebounds, assists };
   }
   _cache = profiles; _cacheAt = Date.now();
   return profiles;
 }
 
-// Turn a player's cadence + game script into an under/over conviction nudge.
-// Returns { note, confBoost, side } or null. blowoutRisk is the buildBlowoutRisk output.
+// Split a projected TOTAL for a market across quarters/halves by cadence.
+export function splitByCadence(profile, market, projectedTotal) {
+  const mk = String(market || '').toLowerCase();
+  const c = profile ? (mk === 'rebounds' ? profile.rebounds : mk === 'assists' ? profile.assists : profile.points) : null;
+  const T = Number(projectedTotal);
+  if (!c || !Array.isArray(c.shares) || !Number.isFinite(T)) return null;
+  const byQuarter = c.shares.map((s) => Number((T * s).toFixed(1)));
+  return {
+    byQuarter,
+    firstHalf: Number((byQuarter[0] + byQuarter[1]).toFixed(1)),
+    secondHalf: Number((byQuarter[2] + byQuarter[3]).toFixed(1)),
+    label: c.label, share2h: c.share2h,
+  };
+}
+
 export function cadenceSignal(profile, market, blowoutRisk) {
   if (!profile) return null;
   const mk = String(market || '').toLowerCase();
-  const c = mk === 'rebounds' ? profile.rebounds : profile.points;   // points cadence proxies PRA
+  const c = mk === 'rebounds' ? profile.rebounds : mk === 'assists' ? profile.assists : profile.points;
   if (!c || c.label === 'even') return null;
   const blowout = blowoutRisk && blowoutRisk.risk && blowoutRisk.risk !== 'MILD' && !blowoutRisk.isAlpha;
   if (c.label === 'back') {
-    if (blowout) return {
-      side: 'UNDER', confBoost: 4,
-      note: `Back-loaded — ${Math.round(c.share2h * 100)}% of production comes in the 2nd half. With blowout risk, the late buckets it needs may never come. Strengthens the under.`,
-    };
-    return {
-      side: 'OVER', confBoost: 0, fadeUnder: true,
-      note: `Back-loaded — ${Math.round(c.share2h * 100)}% of production is 2nd-half. In a competitive game it catches up late, so a low early read is a weak under (the Onyenwere pattern).`,
-    };
+    if (blowout) return { side: 'UNDER', confBoost: 4, label: 'back', share2h: c.share2h,
+      note: `Back-loaded — ${Math.round(c.share2h * 100)}% of production comes in the 2nd half. With blowout risk the late buckets it needs may not come. Strengthens the under.` };
+    return { side: 'CONTEXT', confBoost: 0, fadeUnder: true, label: 'back', share2h: c.share2h,
+      note: `Back-loaded — ${Math.round(c.share2h * 100)}% of production is 2nd-half. In a competitive game it catches up late, so a low early read is a weak under.` };
   }
-  if (c.label === 'front') {
-    return {
-      side: 'UNDER', confBoost: blowout ? 1 : 2,
-      note: `Front-loaded — ${Math.round((1 - c.share2h) * 100)}% of production is 1st-half. Banks stats early and is steadier for the under; blowout risk barely moves it.`,
-    };
-  }
+  if (c.label === 'front') return { side: 'UNDER', confBoost: blowout ? 1 : 2, label: 'front', share2h: c.share2h,
+    note: `Front-loaded — ${Math.round((1 - c.share2h) * 100)}% of production is 1st-half. Banks stats early and is steadier for the under.` };
   return null;
 }

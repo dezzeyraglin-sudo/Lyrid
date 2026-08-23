@@ -604,7 +604,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'form-floor-minutes-2026-08-22',   // deploy marker — confirms this code is live
+    buildTag: 'cadence-quarters-2026-08-22',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -1912,12 +1912,23 @@ async function buildAndRunAnalysis({
     // so blowout risk turns them into strong unders; in a close game they catch up
     // late and their unders are weak. Front-loaded players bank early and are steadier.
     const _mk = market.toLowerCase();
-    let cadence = null;
+    let cadence = null, cadenceProjection = null;
     if (cadenceProfiles) {
       const _cn = String(player.name || '').toLowerCase().normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
       const prof = cadenceProfiles[_cn];
-      const c = prof ? (_mk === 'rebounds' ? prof.rebounds : prof.points) : null;
+      const c = prof ? (_mk === 'rebounds' ? prof.rebounds : _mk === 'assists' ? prof.assists : prof.points) : null;
+      // Per-quarter / per-half projection: split the projected total by cadence, so you
+      // can see roughly what they'll have by halftime and whether it's a late sweat.
+      if (c && Array.isArray(c.shares) && Number.isFinite(Number(unified.projection))) {
+        const T = Number(unified.projection);
+        const byQuarter = c.shares.map((s) => Number((T * s).toFixed(1)));
+        cadenceProjection = {
+          market: _mk, total: Number(T.toFixed(1)), games: prof.games, label: c.label,
+          byQuarter, firstHalf: Number((byQuarter[0] + byQuarter[1]).toFixed(1)),
+          secondHalf: Number((byQuarter[2] + byQuarter[3]).toFixed(1)), share2h: c.share2h,
+        };
+      }
       if (c && c.label !== 'even') {
         const blowout = blowoutRisk && blowoutRisk.risk && blowoutRisk.risk !== 'MILD' && !blowoutRisk.isAlpha;
         if (c.label === 'back' && blowout) cadence = { label: 'back', side: 'UNDER', confBoost: 4, games: prof.games,
@@ -2103,6 +2114,7 @@ async function buildAndRunAnalysis({
       regressionWatch: regressionWatch || null,   // fill-in shelf-life / star-return read
       blowoutRisk: blowoutRisk || null,   // spread-derived game-wide under signal
       cadence: cadence || null,   // production cadence (front/back-loaded) × game script
+      cadenceProjection: cadenceProjection || null,   // per-quarter/half split of the projected total
       adaptiveRead: adaptiveRead || null,   // opportunity×efficiency shrinkage (points, shadow)
       roleConflict: unified.roleConflict || null,   // re-anchor stood down a bad under
       biasCorrection: unified.biasCorrection || null,   // per-player suppression correction applied
