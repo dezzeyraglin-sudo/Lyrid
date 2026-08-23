@@ -604,7 +604,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'cadence-l5l10-2026-08-22',   // deploy marker — confirms this code is live
+    buildTag: 'cadence-l5l10-fix-2026-08-23',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -1912,7 +1912,7 @@ async function buildAndRunAnalysis({
     // so blowout risk turns them into strong unders; in a close game they catch up
     // late and their unders are weak. Front-loaded players bank early and are steadier.
     const _mk = market.toLowerCase();
-    let cadence = null, cadenceProjection = null;
+    let cadence = null, cadenceProjection = null, cadenceWindows = null;
     if (cadenceProfiles) {
       const _cn = String(player.name || '').toLowerCase().normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
@@ -1921,7 +1921,7 @@ async function buildAndRunAnalysis({
       const c10 = _pickMk(prof?.l10), c5 = _pickMk(prof?.l5);
       const c = c10 || c5;   // signal/projection use L10 (more stable), fall back to L5
       // Both windows surfaced so the customer sees whether cadence is stable or shifting.
-      const cadenceWindows = (c10 || c5) ? {
+      cadenceWindows = (c10 || c5) ? {
         l10: c10 ? { label: c10.label, share2h: c10.share2h, games: prof.l10.games } : null,
         l5: c5 ? { label: c5.label, share2h: c5.share2h, games: prof.l5.games } : null,
       } : null;
