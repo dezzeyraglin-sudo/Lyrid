@@ -604,7 +604,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'foul-prone-2026-08-23',   // deploy marker — confirms this code is live
+    buildTag: 'foul-prone-fix-2026-08-23',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -1531,6 +1531,29 @@ function _normCdf(z) {
 // (risky minutes → lower mean → the model itself leans under) plus a badge the
 // card/board picks up.
 
+// FOUL-PRONE — a player fouling at a high rate is at real risk of early benching or
+// fouling out, which caps minutes and (unpredictably) craters production. Two measures
+// from the recent windows: foul RATE (per 36 min) and FREQUENCY (games with 4+ fouls).
+// Thresholds from the league distribution (median ~3.7/36; p90 ~5.4). Shows L10+L5.
+function buildFoulProne(shootingForm) {
+  const l10 = shootingForm?.l10, l5 = shootingForm?.l5;
+  if (!l10) return null;
+  const rate10 = Number(l10.foulPer36), trouble10 = Number(l10.foulTrouble), gp10 = Number(l10.gp);
+  if (!Number.isFinite(rate10) || !Number.isFinite(gp10) || gp10 < 4) return null;
+  const troubleRate10 = gp10 > 0 ? trouble10 / gp10 : 0;
+  let level = null;
+  if (rate10 >= 5.0 || troubleRate10 >= 0.40) level = 'HIGH';
+  else if (rate10 >= 4.3 || troubleRate10 >= 0.30) level = 'MODERATE';
+  if (!level) return null;
+  const win = (w) => (w && Number.isFinite(Number(w.foulPer36)))
+    ? { per36: Number(w.foulPer36), trouble: Number(w.foulTrouble), games: Number(w.gp) } : null;
+  return {
+    level, l10: win(l10), l5: win(l5),
+    note: `Foul-prone — ${rate10} fouls per 36 min, ${trouble10} of last ${gp10} games in foul trouble (4+). At real risk of early benching or fouling out, which caps minutes. Adds to minutes risk.`,
+  };
+}
+
+// MINUTES VOLATILITY — flags a player whose minutes swing hard game to game, so the
 // projection (which assumes a normal night) is unreliable and a short-minutes game
 // (foul trouble, blowout benching, rest) can crater it. This is the Malonga case:
 // projected ~16, played reduced minutes, finished 8. Only fires for players with a
