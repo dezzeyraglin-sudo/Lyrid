@@ -21130,9 +21130,17 @@ async function autoGradeOnAppOpen() {
       };
       const m = MAP[cd.scenario];
       if (!m) return '';
+      // L10 + L5 windows so the customer sees if cadence is stable or shifting.
+      const cw = lead.cadenceWindows || (props.find(p => p && p.cadenceWindows) || {}).cadenceWindows;
+      const winLine = cw ? (() => {
+        const fmt = (w) => w ? `${w.label}·${Math.round(w.share2h * 100)}%2H (${w.games}g)` : '—';
+        const shift = cw.l10 && cw.l5 && cw.l10.label !== cw.l5.label;
+        return `<div style="margin-top:5px;font-size:10px;color:rgba(255,255,255,0.8);font-variant-numeric:tabular-nums">L10: ${fmt(cw.l10)}  ·  L5: ${fmt(cw.l5)}${shift ? '  <span style="color:#fbbf24">⟳ shifting</span>' : ''}</div>`;
+      })() : '';
       return `<div style="margin:8px 0 2px;padding:8px 12px;border-radius:8px;background:${m.bg};color:#fff">
           <div style="font-size:11px;font-weight:800;letter-spacing:0.05em">${m.label}</div>
           <div style="margin-top:3px;font-size:11px;line-height:1.45;opacity:0.93">${esc(cd.note || '')}</div>
+          ${winLine}
         </div>`;
     })();
 

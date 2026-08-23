@@ -1,17 +1,15 @@
-// wnbaCadenceFeed.js — production CADENCE from ESPN play-by-play.
+// wnbaCadenceFeed.js — production CADENCE from ESPN play-by-play, per player, over
+// BOTH the last 10 and last 5 games so you can see whether the front/back-loaded
+// pattern is stable or shifting recently (same idea as the L10/L5 shooting form).
 //
-// For each player, over a recent window, we bucket their POINTS, REBOUNDS and ASSISTS
-// by quarter to learn WHEN in a game they produce: front-loaded (banks early),
-// back-loaded (picks up mid-to-late), or even. This drives two things:
-//   1) An under/over conviction signal crossed with game script (back-loaded + blowout
-//      risk = strong under; back-loaded + close game = weak under — the Onyenwere trap).
-//   2) A per-quarter / per-half PROJECTION: given a player's projected total for a
-//      market, split it across quarters by their cadence, so you can see roughly what
-//      they'll have by halftime and whether you'll be sweating the 2nd half.
+// For each player we bucket POINTS, REBOUNDS and ASSISTS by quarter to learn WHEN they
+// produce: front-loaded (banks early), back-loaded (picks up mid-to-late), or even.
+// Drives: (1) an under/over conviction signal crossed with game script, and (2) a
+// per-quarter/half projection (split a projected total by cadence).
 //
-// ESPN PBP quirks: play participants carry athlete IDs only (names come from the game
-// boxscore); on an assisted basket participants[0] is the scorer, participants[1] the
-// assister; rebounds are typed plays credited to participants[0].
+// ESPN PBP quirks: participants carry athlete IDs only (names from the boxscore); on an
+// assisted basket participants[0] is the scorer, participants[1] the assister; rebounds
+// are typed plays credited to participants[0].
 
 import https from 'node:https';
 
@@ -38,7 +36,7 @@ function normName(s) {
 
 const z = () => ({ pts: 0, reb: 0, ast: 0 });
 
-// Per-game: { normName: { name, q: {1..4}: {pts,reb,ast} } } from one game's PBP.
+// One game's PBP → { normName: { name, q:{1..4}:{pts,reb,ast} } }.
 async function fetchGameCadence(eventId) {
   const d = await getJson(SUM(eventId)).catch(() => null);
   if (!d || !Array.isArray(d.plays)) return null;
@@ -59,7 +57,7 @@ async function fetchGameCadence(eventId) {
   };
   for (const p of d.plays) {
     const q = p.period?.number;
-    if (!q || q > 4) continue;                          // ignore OT for the half split
+    if (!q || q > 4) continue;
     const parts = p.participants || [];
     if (!parts.length) continue;
     const scorerName = id2name[parts[0]?.athlete?.id];
@@ -87,54 +85,78 @@ function profileMarket(q) {
   return { total: tot, shares, share2h, label };
 }
 
+// Sum the per-quarter breakdowns across a set of games, then profile each market.
+function windowProfile(games) {
+  if (games.length < 3) return null;
+  const pts = { 1: 0, 2: 0, 3: 0, 4: 0 }, reb = { 1: 0, 2: 0, 3: 0, 4: 0 }, ast = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  for (const g of games) for (const qn of [1, 2, 3, 4]) {
+    pts[qn] += g.q[qn].pts; reb[qn] += g.q[qn].reb; ast[qn] += g.q[qn].ast;
+  }
+  const points = profileMarket(pts), rebounds = profileMarket(reb), assists = profileMarket(ast);
+  if (!points && !rebounds && !assists) return null;
+  return { games: games.length, points, rebounds, assists };
+}
+
 let _cache = null, _cacheAt = 0;
 const TTL = 6 * 60 * 60 * 1000;
 
-export async function buildCadenceProfiles({ days = 14, maxGames = 60 } = {}) {
+/**
+ * { normName: { name, l10:{games,points,rebounds,assists}, l5:{...} } }
+ * Each market carries { shares:[q1..q4], share2h, label }.
+ */
+export async function buildCadenceProfiles({ days = 24, maxGames = 100 } = {}) {
   if (_cache && Date.now() - _cacheAt < TTL) return _cache;
-  const ids = [];
+
+  const games = [];   // { id, date }
   const today = new Date();
-  for (let i = 0; i < days && ids.length < maxGames; i++) {
+  for (let i = 0; i < days && games.length < maxGames; i++) {
     const dt = new Date(today); dt.setDate(dt.getDate() - i);
     const ymd = `${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, '0')}${String(dt.getDate()).padStart(2, '0')}`;
     const sb = await getJson(SB(ymd)).catch(() => null);
     for (const e of (sb?.events || [])) {
-      if (e.competitions?.[0]?.status?.type?.completed) ids.push(e.id);
+      if (e.competitions?.[0]?.status?.type?.completed) games.push({ id: e.id, date: ymd });
     }
   }
-  const agg = {};
+  games.sort((a, b) => a.date.localeCompare(b.date));   // oldest first
+
+  // Per player: an ordered list of per-game quarter breakdowns.
+  const byPlayer = {};
   const CONC = 4;
-  for (let i = 0; i < ids.length; i += CONC) {
-    const batch = await Promise.all(ids.slice(i, i + CONC).map((id) => fetchGameCadence(id)));
-    for (const game of batch) {
-      if (!game) continue;
-      for (const [key, row] of Object.entries(game)) {
-        const a = (agg[key] = agg[key] || {
-          name: row.name, gp: 0,
-          pts: { 1: 0, 2: 0, 3: 0, 4: 0 }, reb: { 1: 0, 2: 0, 3: 0, 4: 0 }, ast: { 1: 0, 2: 0, 3: 0, 4: 0 },
-        });
-        a.gp += 1;
-        for (const qn of [1, 2, 3, 4]) {
-          a.pts[qn] += row.q[qn].pts; a.reb[qn] += row.q[qn].reb; a.ast[qn] += row.q[qn].ast;
-        }
+  for (let i = 0; i < games.length; i += CONC) {
+    const batch = games.slice(i, i + CONC);
+    const results = await Promise.all(batch.map((g) => fetchGameCadence(g.id).then((r) => ({ r, date: g.date }))));
+    for (const { r, date } of results) {
+      if (!r) continue;
+      for (const [key, row] of Object.entries(r)) {
+        const rec = (byPlayer[key] = byPlayer[key] || { name: row.name, games: [] });
+        rec.games.push({ date, q: row.q });
       }
     }
   }
+
   const profiles = {};
-  for (const [key, a] of Object.entries(agg)) {
-    if (a.gp < 3) continue;
-    const points = profileMarket(a.pts), rebounds = profileMarket(a.reb), assists = profileMarket(a.ast);
-    if (!points && !rebounds && !assists) continue;
-    profiles[key] = { name: a.name, games: a.gp, points, rebounds, assists };
+  for (const [key, rec] of Object.entries(byPlayer)) {
+    rec.games.sort((a, b) => a.date.localeCompare(b.date));   // ascending → recent last
+    const l10 = windowProfile(rec.games.slice(-10));
+    const l5 = windowProfile(rec.games.slice(-5));
+    if (!l10 && !l5) continue;
+    profiles[key] = { name: rec.name, l10, l5 };
   }
   _cache = profiles; _cacheAt = Date.now();
   return profiles;
 }
 
-// Split a projected TOTAL for a market across quarters/halves by cadence.
-export function splitByCadence(profile, market, projectedTotal) {
+// Pick a window's market cadence. Defaults to L10 (more stable); falls back to L5.
+function pick(profile, market, window = 'l10') {
+  const w = profile?.[window] || profile?.l10 || profile?.l5;
+  if (!w) return null;
   const mk = String(market || '').toLowerCase();
-  const c = profile ? (mk === 'rebounds' ? profile.rebounds : mk === 'assists' ? profile.assists : profile.points) : null;
+  return mk === 'rebounds' ? w.rebounds : mk === 'assists' ? w.assists : w.points;
+}
+
+// Split a projected TOTAL across quarters/halves by cadence (L10 by default).
+export function splitByCadence(profile, market, projectedTotal, window = 'l10') {
+  const c = pick(profile, market, window);
   const T = Number(projectedTotal);
   if (!c || !Array.isArray(c.shares) || !Number.isFinite(T)) return null;
   const byQuarter = c.shares.map((s) => Number((T * s).toFixed(1)));
@@ -146,19 +168,18 @@ export function splitByCadence(profile, market, projectedTotal) {
   };
 }
 
-export function cadenceSignal(profile, market, blowoutRisk) {
-  if (!profile) return null;
-  const mk = String(market || '').toLowerCase();
-  const c = mk === 'rebounds' ? profile.rebounds : mk === 'assists' ? profile.assists : profile.points;
+// Under/over conviction nudge from cadence × game script (L10 by default).
+export function cadenceSignal(profile, market, blowoutRisk, window = 'l10') {
+  const c = pick(profile, market, window);
   if (!c || c.label === 'even') return null;
   const blowout = blowoutRisk && blowoutRisk.risk && blowoutRisk.risk !== 'MILD' && !blowoutRisk.isAlpha;
+  const p2h = Math.round(c.share2h * 100);
   if (c.label === 'back') {
-    if (blowout) return { side: 'UNDER', confBoost: 4, label: 'back', share2h: c.share2h,
-      note: `Back-loaded — ${Math.round(c.share2h * 100)}% of production comes in the 2nd half. With blowout risk the late buckets it needs may not come. Strengthens the under.` };
-    return { side: 'CONTEXT', confBoost: 0, fadeUnder: true, label: 'back', share2h: c.share2h,
-      note: `Back-loaded — ${Math.round(c.share2h * 100)}% of production is 2nd-half. In a competitive game it catches up late, so a low early read is a weak under.` };
+    if (blowout) return { side: 'UNDER', confBoost: 2, label: 'back', scenario: 'BACK_BLOWOUT', share2h: c.share2h,
+      note: `Back-loaded — ${p2h}% 2nd-half; blowout risk caps the late buckets (backtest 58% under). Mild under support.` };
+    return { side: 'CONTEXT', confBoost: 0, fadeUnder: true, label: 'back', scenario: 'BACK_TRAP', share2h: c.share2h,
+      note: `Back-loaded — ${p2h}% 2nd-half; competitive game, catches up late (went OVER ~56%). Under is a trap — fade.` };
   }
-  if (c.label === 'front') return { side: 'UNDER', confBoost: blowout ? 1 : 2, label: 'front', share2h: c.share2h,
-    note: `Front-loaded — ${Math.round((1 - c.share2h) * 100)}% of production is 1st-half. Banks stats early and is steadier for the under.` };
-  return null;
+  return { side: 'CONTEXT', confBoost: 0, informational: true, label: 'front', scenario: blowout ? 'FRONT_BLOWOUT' : 'FRONT_CLOSE', share2h: c.share2h,
+    note: `Front-loaded — ${100 - p2h}% 1st-half. ${blowout ? 'Blowout: banked early, under leans mildly live (54%).' : 'Informational (~neutral, 55%).'}` };
 }

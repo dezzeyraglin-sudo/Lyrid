@@ -604,7 +604,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'cadence-scenarios-2026-08-22',   // deploy marker — confirms this code is live
+    buildTag: 'cadence-l5l10-2026-08-22',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -1917,14 +1917,21 @@ async function buildAndRunAnalysis({
       const _cn = String(player.name || '').toLowerCase().normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
       const prof = cadenceProfiles[_cn];
-      const c = prof ? (_mk === 'rebounds' ? prof.rebounds : _mk === 'assists' ? prof.assists : prof.points) : null;
+      const _pickMk = (w) => (w ? (_mk === 'rebounds' ? w.rebounds : _mk === 'assists' ? w.assists : w.points) : null);
+      const c10 = _pickMk(prof?.l10), c5 = _pickMk(prof?.l5);
+      const c = c10 || c5;   // signal/projection use L10 (more stable), fall back to L5
+      // Both windows surfaced so the customer sees whether cadence is stable or shifting.
+      const cadenceWindows = (c10 || c5) ? {
+        l10: c10 ? { label: c10.label, share2h: c10.share2h, games: prof.l10.games } : null,
+        l5: c5 ? { label: c5.label, share2h: c5.share2h, games: prof.l5.games } : null,
+      } : null;
       // Per-quarter / per-half projection: split the projected total by cadence, so you
       // can see roughly what they'll have by halftime and whether it's a late sweat.
       if (c && Array.isArray(c.shares) && Number.isFinite(Number(unified.projection))) {
         const T = Number(unified.projection);
         const byQuarter = c.shares.map((s) => Number((T * s).toFixed(1)));
         cadenceProjection = {
-          market: _mk, total: Number(T.toFixed(1)), games: prof.games, label: c.label,
+          market: _mk, total: Number(T.toFixed(1)), games: (prof.l10?.games ?? prof.l5?.games), label: c.label,
           byQuarter, firstHalf: Number((byQuarter[0] + byQuarter[1]).toFixed(1)),
           secondHalf: Number((byQuarter[2] + byQuarter[3]).toFixed(1)), share2h: c.share2h,
         };
@@ -1937,14 +1944,14 @@ async function buildAndRunAnalysis({
       if (c && c.label !== 'even') {
         const blowout = blowoutRisk && blowoutRisk.risk && blowoutRisk.risk !== 'MILD' && !blowoutRisk.isAlpha;
         const p2h = Math.round(c.share2h * 100);
-        if (c.label === 'back' && blowout) cadence = { label: 'back', scenario: 'BACK_BLOWOUT', side: 'UNDER', confBoost: 2, games: prof.games, share2h: c.share2h,
-          note: `Back-loaded — ${p2h}% of production is 2nd-half (last ${prof.games}g). Blowout risk caps the late buckets it needs (backtest 58% under). Mild under support.` };
-        else if (c.label === 'back') cadence = { label: 'back', scenario: 'BACK_TRAP', side: 'CONTEXT', fadeUnder: true, confBoost: 0, games: prof.games, share2h: c.share2h,
-          note: `Back-loaded — ${p2h}% of production is 2nd-half (last ${prof.games}g). In a competitive game it catches up late — these went OVER ~56% in the backtest, so this under is a TRAP. Fade.` };
-        else if (c.label === 'front') cadence = { label: 'front', scenario: blowout ? 'FRONT_BLOWOUT' : 'FRONT_CLOSE', side: 'CONTEXT', confBoost: 0, informational: true, games: prof.games, share2h: c.share2h,
+        if (c.label === 'back' && blowout) cadence = { label: 'back', scenario: 'BACK_BLOWOUT', side: 'UNDER', confBoost: 2, games: (prof.l10?.games ?? prof.l5?.games), share2h: c.share2h,
+          note: `Back-loaded — ${p2h}% of production is 2nd-half (last ${(prof.l10?.games ?? prof.l5?.games)}g). Blowout risk caps the late buckets it needs (backtest 58% under). Mild under support.` };
+        else if (c.label === 'back') cadence = { label: 'back', scenario: 'BACK_TRAP', side: 'CONTEXT', fadeUnder: true, confBoost: 0, games: (prof.l10?.games ?? prof.l5?.games), share2h: c.share2h,
+          note: `Back-loaded — ${p2h}% of production is 2nd-half (last ${(prof.l10?.games ?? prof.l5?.games)}g). In a competitive game it catches up late — these went OVER ~56% in the backtest, so this under is a TRAP. Fade.` };
+        else if (c.label === 'front') cadence = { label: 'front', scenario: blowout ? 'FRONT_BLOWOUT' : 'FRONT_CLOSE', side: 'CONTEXT', confBoost: 0, informational: true, games: (prof.l10?.games ?? prof.l5?.games), share2h: c.share2h,
           note: blowout
-            ? `Front-loaded — ${100 - p2h}% of production is 1st-half (last ${prof.games}g). In a blowout they've already banked it early — unders lean live but only mildly (backtest 54%).`
-            : `Front-loaded — ${100 - p2h}% of production is 1st-half (last ${prof.games}g). Banks stats early; informational (backtested ~neutral, 55%).` };
+            ? `Front-loaded — ${100 - p2h}% of production is 1st-half (last ${(prof.l10?.games ?? prof.l5?.games)}g). In a blowout they've already banked it early — unders lean live but only mildly (backtest 54%).`
+            : `Front-loaded — ${100 - p2h}% of production is 1st-half (last ${(prof.l10?.games ?? prof.l5?.games)}g). Banks stats early; informational (backtested ~neutral, 55%).` };
       }
     }
 
@@ -2122,6 +2129,7 @@ async function buildAndRunAnalysis({
       regressionWatch: regressionWatch || null,   // fill-in shelf-life / star-return read
       blowoutRisk: blowoutRisk || null,   // spread-derived game-wide under signal
       cadence: cadence || null,   // production cadence (front/back-loaded) × game script
+      cadenceWindows: cadenceWindows || null,   // L10 + L5 cadence labels for display
       cadenceProjection: cadenceProjection || null,   // per-quarter/half split of the projected total
       adaptiveRead: adaptiveRead || null,   // opportunity×efficiency shrinkage (points, shadow)
       roleConflict: unified.roleConflict || null,   // re-anchor stood down a bad under
