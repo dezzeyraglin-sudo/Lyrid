@@ -604,7 +604,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'cadence-l5l10-fix-2026-08-23',   // deploy marker — confirms this code is live
+    buildTag: 'cadence-by-market-2026-08-23',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -1937,21 +1937,37 @@ async function buildAndRunAnalysis({
         };
       }
 
-      // Cadence × game script → the customer banner + conviction. Calibrated to a
-      // 269-pick backtest: back-loaded in a competitive game went OVER ~56% (the under
-      // is a TRAP — fade); back+blowout leaned under 58% (mild support, small n);
-      // front-loaded ~neutral (informational). `scenario` selects one of four banners.
+      // MARKET-SPECIFIC calibration from the split backtest — the cadence edge differs
+      // sharply by market (rebounds especially was backwards under one rule):
+      //   ASSISTS  back → strong TRAP (27% under = 73% OVER; late playmakers catch up)
+      //   REBOUNDS back → SUPPORTS the under (65-80% under — NOT a trap)
+      //   POINTS   back+blowout → mild under support (62%); back+else → mild trap (55% over)
+      //            front+close → good under (60%); front+blowout → over lean (thin)
+      // Samples small (n=5-65) so directional; scenario in {TRAP,SUPPORT,CAUTION,INFO}.
       if (c && c.label !== 'even') {
         const blowout = blowoutRisk && blowoutRisk.risk && blowoutRisk.risk !== 'MILD' && !blowoutRisk.isAlpha;
         const p2h = Math.round(c.share2h * 100);
-        if (c.label === 'back' && blowout) cadence = { label: 'back', scenario: 'BACK_BLOWOUT', side: 'UNDER', confBoost: 2, games: (prof.l10?.games ?? prof.l5?.games), share2h: c.share2h,
-          note: `Back-loaded — ${p2h}% of production is 2nd-half (last ${(prof.l10?.games ?? prof.l5?.games)}g). Blowout risk caps the late buckets it needs (backtest 58% under). Mild under support.` };
-        else if (c.label === 'back') cadence = { label: 'back', scenario: 'BACK_TRAP', side: 'CONTEXT', fadeUnder: true, confBoost: 0, games: (prof.l10?.games ?? prof.l5?.games), share2h: c.share2h,
-          note: `Back-loaded — ${p2h}% of production is 2nd-half (last ${(prof.l10?.games ?? prof.l5?.games)}g). In a competitive game it catches up late — these went OVER ~56% in the backtest, so this under is a TRAP. Fade.` };
-        else if (c.label === 'front') cadence = { label: 'front', scenario: blowout ? 'FRONT_BLOWOUT' : 'FRONT_CLOSE', side: 'CONTEXT', confBoost: 0, informational: true, games: (prof.l10?.games ?? prof.l5?.games), share2h: c.share2h,
-          note: blowout
-            ? `Front-loaded — ${100 - p2h}% of production is 1st-half (last ${(prof.l10?.games ?? prof.l5?.games)}g). In a blowout they've already banked it early — unders lean live but only mildly (backtest 54%).`
-            : `Front-loaded — ${100 - p2h}% of production is 1st-half (last ${(prof.l10?.games ?? prof.l5?.games)}g). Banks stats early; informational (backtested ~neutral, 55%).` };
+        const gm = (prof.l10?.games ?? prof.l5?.games);
+        let sc = null, side = 'CONTEXT', fadeUnder = false, confBoost = 0, note = '';
+        if (_mk === 'assists') {
+          if (c.label === 'back') { sc = 'TRAP'; fadeUnder = true;
+            note = `Back-loaded assists — ${p2h}% 2nd-half (last ${gm}g). Late playmakers catch up hard (backtest 73% OVER). Strong under trap — fade.`; }
+          else { sc = 'INFO'; note = `Front-loaded assists (last ${gm}g). Informational — ~neutral for betting.`; }
+        } else if (_mk === 'rebounds') {
+          if (c.label === 'back') { sc = 'SUPPORT'; side = 'UNDER'; confBoost = blowout ? 4 : 2;
+            note = `Back-loaded boards — ${p2h}% 2nd-half (last ${gm}g). Back-loaded rebounders still hit the under (backtest 65-80%). Supports the under.`; }
+          else { sc = 'INFO'; note = `Front-loaded boards (last ${gm}g). Informational — ~neutral (52%).`; }
+        } else {
+          if (c.label === 'back' && blowout) { sc = 'SUPPORT'; side = 'UNDER'; confBoost = 2;
+            note = `Back-loaded + blowout (last ${gm}g). Late buckets capped (backtest 62% under). Mild under support.`; }
+          else if (c.label === 'back') { sc = 'TRAP'; fadeUnder = true;
+            note = `Back-loaded points — ${p2h}% 2nd-half (last ${gm}g). Competitive game, catches up late (~55% over). Weak under — fade.`; }
+          else if (c.label === 'front' && !blowout) { sc = 'SUPPORT'; side = 'UNDER'; confBoost = 2;
+            note = `Front-loaded + close game (last ${gm}g). Banks early and holds (backtest 60% under). Supports the under.`; }
+          else { sc = 'CAUTION';
+            note = `Front-loaded + blowout (last ${gm}g). Thin sample leaned OVER (36% under). Caution on the under.`; }
+        }
+        cadence = { label: c.label, market: _mk, scenario: sc, side, fadeUnder, confBoost, games: gm, share2h: c.share2h, note };
       }
     }
 

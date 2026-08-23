@@ -8960,7 +8960,7 @@ function renderWnbaRecommendations(data) {
     let why = null;
     if (v.killedBy === 'ROLE_UNSTABLE') why = 'role boosted / unstable — hit-rate premise broken';
     else if (v.killedBy === 'GAME_PROJECTION') why = 'game projection off the market — suppressed';
-    else if (a.cadence && a.cadence.scenario === 'BACK_TRAP') why = 'back-loaded, competitive game — under is a trap (~56% over)';
+    else if (a.cadence && a.cadence.scenario === 'TRAP') why = 'back-loaded, competitive game — under is a trap (~56% over)';
     else if (a.biasVeto) why = 'chronically under-projected — correction lifts it off the under';
     else if (a.rebFloor) why = `lowballed vs recent form (avg ${a.rebFloor.recentAvg})`;
     if (why) { seenA[key] = 1; avoid.push({ a, why }); }
@@ -8972,7 +8972,7 @@ function renderWnbaRecommendations(data) {
     const bits = [];
     const v = a.verdict || {};
     if (v.tier && v.tier !== 'PASS' && v.tier !== 'UNDER') bits.push(v.tier);
-    if (a.cadence && a.cadence.scenario === 'BACK_BLOWOUT') bits.push('back-loaded + blowout');
+    if (a.cadence && a.cadence.scenario === 'SUPPORT') bits.push(a.cadence.market === 'rebounds' ? 'back-loaded boards (under)' : 'cadence supports under');
     if (a.blowoutRisk && a.blowoutRisk.risk && a.blowoutRisk.risk !== 'MILD' && !a.blowoutRisk.isAlpha) bits.push(a.blowoutRisk.isUnderdog ? 'blowout underdog' : 'blowout risk');
     if (a.minutesSecurity && a.minutesSecurity.level === 'SECURE') bits.push('minutes secure');
     return bits.slice(0, 3).join(' · ');
@@ -20983,8 +20983,32 @@ async function autoGradeOnAppOpen() {
       // A one-line reason under the row when the verdict narrowed away from a bet.
       const _verdictNote = (_v && _v.call !== 'UNDER' && _v.note)
         ? `<div style="margin-top:4px;font-size:10px;line-height:1.45;color:var(--text-secondary,var(--dim));font-style:italic">${esc(_v.note)}</div>` : '';
+      // Rebounds gets its OWN cadence banner above its row — front/back-loaded rebounder,
+      // with the L10/L5 windows. Uses this prop's rebounds-specific cadence.
+      const _rebCadenceBanner = (() => {
+        if (String(p.market || '').toLowerCase() !== 'rebounds' || !p.cadence || !p.cadence.scenario) return '';
+        const MAP = {
+          TRAP:    { bg: '#7f1d1d', label: '⚠ REB UNDER TRAP' },
+          SUPPORT: { bg: '#14532d', label: '▼ REB UNDER SUPPORTED · back-loaded rebounder' },
+          CAUTION: { bg: '#5b4a1f', label: '⚠ REB UNDER · caution' },
+          INFO:    { bg: '#1f3a5b', label: '⚡ REBOUND CADENCE · informational' },
+        };
+        const m = MAP[p.cadence.scenario];
+        if (!m) return '';
+        const cw = p.cadenceWindows;
+        const winLine = cw ? (() => {
+          const fmt = (w) => w ? `${w.label}·${Math.round(w.share2h * 100)}%2H (${w.games}g)` : '—';
+          const shift = cw.l10 && cw.l5 && cw.l10.label !== cw.l5.label;
+          return `<div style="margin-top:4px;font-size:10px;color:rgba(255,255,255,0.8);font-variant-numeric:tabular-nums">L10: ${fmt(cw.l10)} · L5: ${fmt(cw.l5)}${shift ? ' <span style="color:#fbbf24">⟳ shifting</span>' : ''}</div>`;
+        })() : '';
+        return `<div style="margin:2px 0 6px;padding:7px 11px;border-radius:8px;background:${m.bg};color:#fff">
+            <div style="font-size:10px;font-weight:800;letter-spacing:0.05em">${m.label}</div>
+            <div style="margin-top:2px;font-size:10px;line-height:1.4;opacity:0.92">${esc(p.cadence.note || '')}</div>${winLine}
+          </div>`;
+      })();
       return `
         <div style="padding:9px 0;opacity:${_rowDim};border-top:${i === 0 ? '0' : '0.5px solid var(--border-hairline, rgba(0,0,0,0.06))'}">
+          ${_rebCadenceBanner}
           <div style="display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap">
             <span style="min-width:74px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-primary)">${i === 0 ? '<span style="color:var(--accent, #c9a45e)" title="strongest edge for this player">★</span> ' : ''}${esc(p.market)}</span>
             <span style="font-size:12px;color:var(--text-secondary, var(--dim))" title="what the tool projects this player finishes with">Tool <b style="font-size:16px;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${isOut ? 'OUT' : (_projN != null ? _projN.toFixed(1) : '—')}</b></span>
@@ -21121,12 +21145,12 @@ async function autoGradeOnAppOpen() {
     const _cadenceBanner = (() => {
       const cd = lead.cadence || (props.find(p => p && p.cadence) || {}).cadence;
       if (!cd || !cd.scenario) return '';
-      // Four cadence × game-script banners, calibrated to the backtest.
+      // Cadence banners, calibrated per market from the split backtest.
       const MAP = {
-        BACK_TRAP:     { bg: '#7f1d1d', label: '⚠ UNDER TRAP · back-loaded, competitive game' },
-        BACK_BLOWOUT:  { bg: '#14532d', label: '▼ UNDER SUPPORTED · back-loaded + blowout risk' },
-        FRONT_BLOWOUT: { bg: '#5b4a1f', label: '⚠ FRONT-LOADED IN BLOWOUT · under leans live' },
-        FRONT_CLOSE:   { bg: '#1f3a5b', label: '⚡ EARLY PRODUCER · informational' },
+        TRAP:    { bg: '#7f1d1d', label: '⚠ UNDER TRAP' },
+        SUPPORT: { bg: '#14532d', label: '▼ UNDER SUPPORTED' },
+        CAUTION: { bg: '#5b4a1f', label: '⚠ UNDER · caution' },
+        INFO:    { bg: '#1f3a5b', label: '⚡ CADENCE · informational' },
       };
       const m = MAP[cd.scenario];
       if (!m) return '';
