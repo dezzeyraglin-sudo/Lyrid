@@ -604,7 +604,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'cadence-quarters-2026-08-22',   // deploy marker — confirms this code is live
+    buildTag: 'cadence-scenarios-2026-08-22',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -1929,14 +1929,22 @@ async function buildAndRunAnalysis({
           secondHalf: Number((byQuarter[2] + byQuarter[3]).toFixed(1)), share2h: c.share2h,
         };
       }
+
+      // Cadence × game script → the customer banner + conviction. Calibrated to a
+      // 269-pick backtest: back-loaded in a competitive game went OVER ~56% (the under
+      // is a TRAP — fade); back+blowout leaned under 58% (mild support, small n);
+      // front-loaded ~neutral (informational). `scenario` selects one of four banners.
       if (c && c.label !== 'even') {
         const blowout = blowoutRisk && blowoutRisk.risk && blowoutRisk.risk !== 'MILD' && !blowoutRisk.isAlpha;
-        if (c.label === 'back' && blowout) cadence = { label: 'back', side: 'UNDER', confBoost: 4, games: prof.games,
-          note: `Back-loaded — ${Math.round(c.share2h * 100)}% of production is 2nd-half (last ${prof.games}g). With blowout risk the late buckets it needs may not come. Strengthens the under.` };
-        else if (c.label === 'back') cadence = { label: 'back', side: 'CONTEXT', fadeUnder: true, confBoost: 0, games: prof.games,
-          note: `Back-loaded — ${Math.round(c.share2h * 100)}% of production is 2nd-half (last ${prof.games}g). In a competitive game it catches up late, so a low early read is a weak under.` };
-        else if (c.label === 'front') cadence = { label: 'front', side: 'UNDER', confBoost: blowout ? 1 : 2, games: prof.games,
-          note: `Front-loaded — ${Math.round((1 - c.share2h) * 100)}% of production is 1st-half (last ${prof.games}g). Banks stats early and is steadier for the under.` };
+        const p2h = Math.round(c.share2h * 100);
+        if (c.label === 'back' && blowout) cadence = { label: 'back', scenario: 'BACK_BLOWOUT', side: 'UNDER', confBoost: 2, games: prof.games, share2h: c.share2h,
+          note: `Back-loaded — ${p2h}% of production is 2nd-half (last ${prof.games}g). Blowout risk caps the late buckets it needs (backtest 58% under). Mild under support.` };
+        else if (c.label === 'back') cadence = { label: 'back', scenario: 'BACK_TRAP', side: 'CONTEXT', fadeUnder: true, confBoost: 0, games: prof.games, share2h: c.share2h,
+          note: `Back-loaded — ${p2h}% of production is 2nd-half (last ${prof.games}g). In a competitive game it catches up late — these went OVER ~56% in the backtest, so this under is a TRAP. Fade.` };
+        else if (c.label === 'front') cadence = { label: 'front', scenario: blowout ? 'FRONT_BLOWOUT' : 'FRONT_CLOSE', side: 'CONTEXT', confBoost: 0, informational: true, games: prof.games, share2h: c.share2h,
+          note: blowout
+            ? `Front-loaded — ${100 - p2h}% of production is 1st-half (last ${prof.games}g). In a blowout they've already banked it early — unders lean live but only mildly (backtest 54%).`
+            : `Front-loaded — ${100 - p2h}% of production is 1st-half (last ${prof.games}g). Banks stats early; informational (backtested ~neutral, 55%).` };
       }
     }
 
@@ -2094,10 +2102,10 @@ async function buildAndRunAnalysis({
         if (lean === 'UNDER' && blowoutRisk && Number.isFinite(c)) {
           c = Math.max(1, Math.min(99, c + blowoutRisk.confBoost));
         }
-        // Cadence: front-loaded / back-loaded+blowout strengthen the under; a
-        // back-loaded player in a close game catches up late — trim that under.
+        // Cadence: back-loaded in a competitive game went OVER ~56% (backtest) — fade
+        // that under hard. back+blowout gets a mild boost; front-loaded is neutral.
         if (lean === 'UNDER' && cadence && Number.isFinite(c)) {
-          if (cadence.fadeUnder) c = Math.max(1, c - 3);
+          if (cadence.fadeUnder) c = Math.max(1, c - 5);
           else if (cadence.side === 'UNDER') c = Math.min(99, c + cadence.confBoost);
         }
         return c;

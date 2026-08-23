@@ -8935,6 +8935,83 @@ function refreshCleanestEdges() {
   if (mount) mount.innerHTML = renderCleanestEdges(state.currentDate);
 }
 
+function renderWnbaRecommendations(data) {
+  if (!data || !Array.isArray(data.analyses)) return '';
+  const pool = [...data.analyses, ...(Array.isArray(data.bestPlays) ? data.bestPlays : [])];
+  const num = (x) => (Number.isFinite(Number(x)) ? Number(x) : null);
+
+  // TAKE: props that cleared the whole pipeline — verdict UNDER + signal-eligible.
+  const seen = {}; const takes = [];
+  for (const a of pool) {
+    const v = a.verdict || {};
+    if (v.call !== 'UNDER' || !v.signalEligible) continue;
+    const key = (a.player || '') + '|' + (a.market || '');
+    if (seen[key]) continue; seen[key] = 1;
+    takes.push(a);
+  }
+  takes.sort((x, y) => (num(y.confidence) || 0) - (num(x.confidence) || 0));
+
+  // AVOID: props a real signal killed — the traps the tool caught.
+  const seenA = {}; const avoid = [];
+  for (const a of pool) {
+    const v = a.verdict || {};
+    const key = (a.player || '') + '|' + (a.market || '');
+    if (seen[key] || seenA[key]) continue;
+    let why = null;
+    if (v.killedBy === 'ROLE_UNSTABLE') why = 'role boosted / unstable — hit-rate premise broken';
+    else if (v.killedBy === 'GAME_PROJECTION') why = 'game projection off the market — suppressed';
+    else if (a.cadence && a.cadence.scenario === 'BACK_TRAP') why = 'back-loaded, competitive game — under is a trap (~56% over)';
+    else if (a.biasVeto) why = 'chronically under-projected — correction lifts it off the under';
+    else if (a.rebFloor) why = `lowballed vs recent form (avg ${a.rebFloor.recentAvg})`;
+    if (why) { seenA[key] = 1; avoid.push({ a, why }); }
+  }
+
+  if (!takes.length && !avoid.length) return '';
+
+  const sig = (a) => {
+    const bits = [];
+    const v = a.verdict || {};
+    if (v.tier && v.tier !== 'PASS' && v.tier !== 'UNDER') bits.push(v.tier);
+    if (a.cadence && a.cadence.scenario === 'BACK_BLOWOUT') bits.push('back-loaded + blowout');
+    if (a.blowoutRisk && a.blowoutRisk.risk && a.blowoutRisk.risk !== 'MILD' && !a.blowoutRisk.isAlpha) bits.push(a.blowoutRisk.isUnderdog ? 'blowout underdog' : 'blowout risk');
+    if (a.minutesSecurity && a.minutesSecurity.level === 'SECURE') bits.push('minutes secure');
+    return bits.slice(0, 3).join(' · ');
+  };
+
+  const takeRows = takes.slice(0, 8).map((a) => {
+    const proj = num(a.projection), line = num(a.line);
+    const gap = (proj != null && line != null) ? (line - proj).toFixed(1) : '—';
+    const why = sig(a) || 'cleared all vetoes';
+    return `<div style="display:flex;align-items:baseline;gap:8px;padding:7px 0;border-top:0.5px solid rgba(255,255,255,0.06)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:#fff">${esc(a.player || '')} <span style="font-weight:800;color:#4ade80">Under ${line != null ? line : '—'}</span> <span style="font-size:11px;color:#9ca3af;text-transform:capitalize">${esc(a.market || '')}</span></div>
+        <div style="margin-top:2px;font-size:11px;color:#9ca3af">${esc(why)}</div>
+      </div>
+      <div style="text-align:right;white-space:nowrap">
+        <div style="font-size:11px;color:#9ca3af">projects</div>
+        <div style="font-size:15px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">${proj != null ? proj.toFixed(1) : '—'}</div>
+        <div style="font-size:10px;color:#4ade80">${gap !== '—' ? gap + ' under' : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const avoidRows = avoid.slice(0, 6).map(({ a, why }) => `
+    <div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:0.5px solid rgba(255,255,255,0.06)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:#e5e7eb">${esc(a.player || '')} <span style="font-size:11px;color:#9ca3af;text-transform:capitalize">${esc(a.market || '')}</span></div>
+        <div style="margin-top:1px;font-size:11px;color:#f0a58f">${esc(why)}</div>
+      </div>
+    </div>`).join('');
+
+  return `<section style="margin:0 0 14px;padding:14px;border-radius:12px;background:#111827;border:1px solid rgba(255,255,255,0.07)">
+    <div style="font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#4ade80;margin-bottom:2px">✓ Recommended Unders</div>
+    <div style="font-size:11px;color:#9ca3af;margin-bottom:4px">Cleared every veto tonight — shown with what the tool projects each player finishes with.</div>
+    ${takeRows || '<div style="padding:8px 0;font-size:12px;color:#9ca3af">No plays cleared every filter tonight — that itself is the signal to sit out.</div>'}
+    ${avoid.length ? `<div style="font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#f0a58f;margin:14px 0 2px">✗ Traps To Avoid</div>
+    <div style="font-size:11px;color:#9ca3af;margin-bottom:2px">A real signal killed these unders — where you've been losing that one leg.</div>${avoidRows}` : ''}
+  </section>`;
+}
+
 function renderCleanestEdges(date) {
   let edges = gatherCleanestEdges(date);
   // (Tonight's Card spec — E) BOARD DEMOTION. Run each edge through the shared
@@ -9067,7 +9144,7 @@ function renderGames() {
     }
   }
 
-  list.innerHTML = `<section id="tonights-card" class="lyr-tc" style="display:none"></section><div id="cleanestEdgesMount">${renderCleanestEdges(state.currentDate)}</div><div class="lyrid-games-list">${slate.games.map((g, i) => {
+  list.innerHTML = `<section id="tonights-card" class="lyr-tc" style="display:none"></section>${renderWnbaRecommendations(state.raw)}<div id="cleanestEdgesMount">${renderCleanestEdges(state.currentDate)}</div><div class="lyrid-games-list">${slate.games.map((g, i) => {
     const awName = g.awayPitcher?.name || 'TBD';
     const hmName = g.homePitcher?.name || 'TBD';
     const awHand = g.awayPitcher?.hand || '?';
@@ -21043,16 +21120,19 @@ async function autoGradeOnAppOpen() {
     // settled, amber = late and sweaty) — it doesn't assert a bet side.
     const _cadenceBanner = (() => {
       const cd = lead.cadence || (props.find(p => p && p.cadence) || {}).cadence;
-      if (!cd || !cd.label || cd.label === 'even') return '';
-      const back = cd.label === 'back';
-      const bg = back ? '#5b3a1f' : '#14532d';
-      const label = back ? '🕐 LATE PRODUCER · you may sweat the finish' : '⚡ EARLY PRODUCER · settles quickly';
-      const plain = back
-        ? `Tends to get going mid-to-late${cd.games ? ` (last ${cd.games}g)` : ''} — production comes in the 2nd half, so this one can stay live to the final whistle.`
-        : `Gets going early${cd.games ? ` (last ${cd.games}g)` : ''} — banks stats in the 1st half and usually settles well before the finish.`;
-      return `<div style="margin:8px 0 2px;padding:8px 12px;border-radius:8px;background:${bg};color:#fff">
-          <div style="font-size:11px;font-weight:800;letter-spacing:0.05em">${label}</div>
-          <div style="margin-top:3px;font-size:11px;line-height:1.45;opacity:0.93">${esc(plain)}</div>
+      if (!cd || !cd.scenario) return '';
+      // Four cadence × game-script banners, calibrated to the backtest.
+      const MAP = {
+        BACK_TRAP:     { bg: '#7f1d1d', label: '⚠ UNDER TRAP · back-loaded, competitive game' },
+        BACK_BLOWOUT:  { bg: '#14532d', label: '▼ UNDER SUPPORTED · back-loaded + blowout risk' },
+        FRONT_BLOWOUT: { bg: '#5b4a1f', label: '⚠ FRONT-LOADED IN BLOWOUT · under leans live' },
+        FRONT_CLOSE:   { bg: '#1f3a5b', label: '⚡ EARLY PRODUCER · informational' },
+      };
+      const m = MAP[cd.scenario];
+      if (!m) return '';
+      return `<div style="margin:8px 0 2px;padding:8px 12px;border-radius:8px;background:${m.bg};color:#fff">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.05em">${m.label}</div>
+          <div style="margin-top:3px;font-size:11px;line-height:1.45;opacity:0.93">${esc(cd.note || '')}</div>
         </div>`;
     })();
 
