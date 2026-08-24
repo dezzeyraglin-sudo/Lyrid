@@ -604,7 +604,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'foul-prone-fix-2026-08-23',   // deploy marker — confirms this code is live
+    buildTag: 'minutes-model-2026-08-23',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -742,9 +742,11 @@ function buildPropReasons(ctx) {
       `Model chronically over-projects this player (bias ${bc.bias} over ${bc.n}) — projection trimmed ${bc.correction}; the under is stronger than the raw number.`);
   }
   // Minutes volatility — hard-swinging minutes make the projection unreliable.
-  if (ctx.minutesVolatility) add('UNDER', 'MINUTES RISK', ctx.minutesVolatility.note);
-  // Foul-prone — high foul rate risks early benching / fouling out.
-  if (ctx.foulProne) add('UNDER', 'FOUL-PRONE', ctx.foulProne.note);
+  // RISK flag both directions (backtest: volatility doesn't predict a side), not a lean.
+  if (ctx.minutesVolatility) add('BOTH', 'MINUTES RISK', ctx.minutesVolatility.note);
+  // Foul-prone — high foul rate risks early benching / fouling out. Also a two-sided
+  // RISK flag: backtested, foul-prone does NOT predict unders — treat as variance only.
+  if (ctx.foulProne) add('BOTH', 'FOUL-PRONE', ctx.foulProne.note);
   // Recent-form floor — projection was lifted toward the player's real recent rate.
   if (ctx.rebFloor) { const _fm = ctx.rebFloor.market || 'rebounds';
     add('OVER', 'FORM FLOOR',
@@ -1549,7 +1551,69 @@ function buildFoulProne(shootingForm) {
     ? { per36: Number(w.foulPer36), trouble: Number(w.foulTrouble), games: Number(w.gp) } : null;
   return {
     level, l10: win(l10), l5: win(l5),
-    note: `Foul-prone — ${rate10} fouls per 36 min, ${trouble10} of last ${gp10} games in foul trouble (4+). At real risk of early benching or fouling out, which caps minutes. Adds to minutes risk.`,
+    note: `Foul-prone — ${rate10} fouls per 36 min, ${trouble10} of last ${gp10} games in foul trouble (4+). Fragile minutes (early benching / foul-out risk). Backtested: this does NOT lean the bet either way — it's a variance flag, so widen your range and size down, don't treat it as an under.`,
+  };
+}
+
+// UNIFIED MINUTES MODEL — one projected-minutes number with a floor, ceiling, and
+// confidence, stacking the validated inputs. Minutes is the master variable and the
+// backtest is emphatic: a player who plays <75% of their average minutes hits the
+// under 87% of the time — so the FLOOR is the money number. The center starts from the
+// recency-weighted baseline, shifts up when a player absorbs an OUT teammate's role,
+// and takes a haircut for the player's own injury designation. The floor drops hard for
+// any CONFIRMED downside (a questionable/doubtful tag, foul-out risk) because those are
+// the reduced-minutes spots the 87% lives in. Note: the designation haircut magnitudes
+// are initial estimates — the framework is validated (low minutes → under), but the
+// exact multipliers need calibration once graded picks are tagged with designations.
+function buildMinutesModel({ shotProfile, injuryStatus, benefitsFrom, minutesVolatility, foulProne, blowoutRisk, role }) {
+  const base = Number(shotProfile?.minAvg);
+  if (!Number.isFinite(base) || base <= 0) return null;
+  const std = Number(shotProfile?.minStd) || 4;
+  const cv = Number(shotProfile?.minCv);
+  const drivers = [];
+
+  // 1) Center: recency baseline, lifted if absorbing an OUT teammate's minutes.
+  let center = base;
+  if (benefitsFrom && Number.isFinite(Number(benefitsFrom.projMinutes)) && Number(benefitsFrom.projMinutes) > base) {
+    center = Number(benefitsFrom.projMinutes);
+    drivers.push({ dir: 'up', text: `absorbing minutes (${benefitsFrom.out.join(', ')} out): ${Math.round(base)}→${Math.round(center)}` });
+  }
+
+  // 2) Own injury designation → haircut to the center.
+  const st = String(injuryStatus || 'AVAILABLE').toUpperCase();
+  const HAIR = { AVAILABLE: 1.0, PROBABLE: 0.98, QUESTIONABLE: 0.88, GTD: 0.88, DOUBTFUL: 0.50, OUT: 0 };
+  const mult = HAIR[st] != null ? HAIR[st] : 1.0;
+  if (mult < 1.0 && mult > 0) {
+    const before = center; center = center * mult;
+    drivers.push({ dir: 'down', text: `${st.toLowerCase()} designation — minutes haircut ${Math.round(before)}→${Math.round(center)}` });
+  }
+
+  // 3) Floor & ceiling. Normal spread is ±1 std; a designation or foul-out risk drops
+  //    the FLOOR hard (that's the reduced-minutes, ~87%-under scenario).
+  let floor = center - std;
+  let ceiling = benefitsFrom ? center + 1.3 * std : center + std;
+  if (st === 'QUESTIONABLE' || st === 'GTD') { floor = Math.min(floor, base * 0.55); drivers.push({ dir: 'floor', text: 'designation: real chance of limited minutes — floor drops' }); }
+  else if (st === 'DOUBTFUL') { floor = 0; }
+  if (foulProne && foulProne.level === 'HIGH') { floor = Math.min(floor, center - 1.4 * std); drivers.push({ dir: 'floor', text: 'foul-out risk lowers the floor' }); }
+
+  floor = Math.max(0, Math.round(floor));
+  ceiling = Math.round(ceiling);
+  center = Math.round(center);
+
+  // 4) Confidence: stable minutes → high; cut by volatility, designation, foul risk.
+  let conf = 82;
+  if (Number.isFinite(cv)) conf -= Math.round(cv * 55);
+  if (st === 'QUESTIONABLE' || st === 'GTD') conf -= 22;
+  else if (st === 'DOUBTFUL') conf -= 38;
+  if (minutesVolatility && minutesVolatility.level === 'HIGH') conf -= 8;
+  if (foulProne && foulProne.level === 'HIGH') conf -= 5;
+  conf = Math.max(15, Math.min(95, conf));
+
+  return {
+    projMinutes: center, floor, ceiling, confidence: conf, baseline: Math.round(base),
+    status: st, drivers,
+    // The under-friendly read: how far the floor sits below the baseline.
+    floorPctOfBase: base > 0 ? Number((floor / base).toFixed(2)) : null,
   };
 }
 
@@ -1574,7 +1638,7 @@ function buildMinutesVolatility(shotProfile) {
   return {
     level, minAvg: Number(minAvg.toFixed(1)), minStd: Number(minStd.toFixed(1)), minCv,
     range: [lo, hi], confHaircut: level === 'HIGH' ? 6 : 3,
-    note: `Minutes swing hard — averages ${Math.round(minAvg)} but ranges ${lo}-${hi} game to game (±${Math.round(minStd)}). The projection assumes a normal night; a short-minutes game (foul trouble, blowout benching, rest) can crater it. Higher risk — size down.`,
+    note: `Minutes swing hard — averages ${Math.round(minAvg)} but ranges ${lo}-${hi} game to game (±${Math.round(minStd)}). Projection assumes a normal night and can miss either way (backtest: volatility doesn't predict a side — but a short-minutes night is ~87% under). Higher variance — widen your range and size down.`,
   };
 }
 
@@ -1967,6 +2031,11 @@ async function buildAndRunAnalysis({
       },
     });
 
+    // UNIFIED MINUTES MODEL — one projected-minutes number + floor/ceiling/confidence,
+    // stacking the recency baseline, benefitsFrom (up), injury designation (haircut),
+    // and foul-out risk (lowers the floor). The floor is the ~87%-under money number.
+    const minutesModel = buildMinutesModel({ shotProfile, injuryStatus, benefitsFrom, minutesVolatility, foulProne, blowoutRisk, role: player?.role ?? unified?.scores?.role });
+
     // PRODUCTION CADENCE (PBP) × game script. Back-loaded players need late buckets,
     // so blowout risk turns them into strong unders; in a close game they catch up
     // late and their unders are weak. Front-loaded players bank early and are steadier.
@@ -2233,6 +2302,7 @@ async function buildAndRunAnalysis({
       rebFloor: unified.rebFloor || null,   // rebound projection lifted toward recent form
       lowSample: lowSample || null,   // thin baseline (rookie/trade/return) — low confidence
       minutesVolatility: minutesVolatility || null,   // minutes swing hard — projection unreliable
+      minutesModel: minutesModel || null,   // unified projected minutes + floor/ceiling/confidence
       foulProne: foulProne || null,   // high foul rate — benching / foul-out risk
       spinRead: _spin?.read || null,   // role-change signal (STALE STARTER / ROLE BUMP) or null
       reasons: buildPropReasons({

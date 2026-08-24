@@ -21153,6 +21153,36 @@ async function autoGradeOnAppOpen() {
           <div style="margin-top:4px;font-size:10px;color:rgba(255,255,255,0.8);font-variant-numeric:tabular-nums">L10: ${fmt(fp.l10)} · L5: ${fmt(fp.l5)}</div>
         </div>`;
     })();
+    const _minutesModelPanel = (() => {
+      const mm = lead.minutesModel;
+      if (!mm || !Number.isFinite(mm.projMinutes)) return '';
+      // Floor below 75% of baseline is the ~87%-under zone — highlight it.
+      const lowFloor = mm.floorPctOfBase != null && mm.floorPctOfBase < 0.75;
+      const conf = mm.confidence;
+      const confColor = conf >= 70 ? '#4ade80' : conf >= 50 ? '#fbbf24' : '#f0a58f';
+      const span = Math.max(1, mm.ceiling - mm.floor);
+      const centerPct = Math.round(((mm.projMinutes - mm.floor) / span) * 100);
+      const driverLines = (mm.drivers || []).map(dv => {
+        const arrow = dv.dir === 'up' ? '▲' : dv.dir === 'down' ? '▼' : '↓';
+        const c = dv.dir === 'up' ? '#4ade80' : '#f0a58f';
+        return `<div style="font-size:10px;color:var(--text-secondary,var(--dim));margin-top:2px"><span style="color:${c}">${arrow}</span> ${esc(dv.text)}</div>`;
+      }).join('');
+      return `<div style="margin:8px 0 2px;padding:10px 12px;border-radius:10px;background:var(--surface-2,rgba(0,0,0,0.04));border:1px solid ${lowFloor ? 'rgba(240,165,143,0.4)' : 'var(--border-hairline,rgba(0,0,0,0.08))'}">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <span style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary,var(--dim))">Minutes Model</span>
+            <span style="font-size:10px;color:${confColor};font-weight:700">${conf}% conf</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:6px;margin-top:4px">
+            <span style="font-size:22px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums">${mm.projMinutes}</span>
+            <span style="font-size:11px;color:var(--text-secondary,var(--dim))">proj min · range ${mm.floor}–${mm.ceiling}</span>
+          </div>
+          <div style="position:relative;height:5px;border-radius:3px;background:var(--surface-3,rgba(0,0,0,0.1));margin-top:6px">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.max(2,Math.min(100,centerPct))}%;border-radius:3px;background:${lowFloor ? '#f0a58f' : '#4ade80'}"></div>
+          </div>
+          ${lowFloor ? `<div style="margin-top:5px;font-size:10px;color:#c2410c;font-weight:600">⚠ Floor at ${Math.round(mm.floorPctOfBase*100)}% of baseline — a short-minutes night here is ~87% under.</div>` : ''}
+          ${driverLines}
+        </div>`;
+    })();
     const _minutesRiskBanner = (() => {
       const mv = lead.minutesVolatility;
       if (!mv) return '';
@@ -21255,6 +21285,7 @@ async function autoGradeOnAppOpen() {
           <div class="tier-badge ${_tierClass}">${esc(tier.label)}</div>
         </div>
         ${_spinBanner}
+        ${_minutesModelPanel}
         ${_foulProneBanner}
         ${_minutesRiskBanner}
         ${_blowoutBanner}
