@@ -17,7 +17,7 @@ const SITE   = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
 const WEB    = 'https://site.web.api.espn.com/apis/site/v2/sports/basketball/nba';
 const COMMON = 'https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba';
 
-const UA = 'Mozilla/5.0 (compatible; LyridBot/1.0)';
+const UA = 'curl/8.5.0';  // ESPN 403s browser-like UAs; curl/8.5.0 is the combination that passes (same as the WNBA feed)
 const DEFAULT_TIMEOUT = 12000;
 
 // ---------------- low-level fetch ----------------
