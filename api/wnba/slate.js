@@ -604,7 +604,7 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'minutes-model-2026-08-23',   // deploy marker — confirms this code is live
+    buildTag: 'role-uncertainty-signals-2026-08-24',   // deploy marker — confirms this code is live
     ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
@@ -1565,7 +1565,7 @@ function buildFoulProne(shootingForm) {
 // the reduced-minutes spots the 87% lives in. Note: the designation haircut magnitudes
 // are initial estimates — the framework is validated (low minutes → under), but the
 // exact multipliers need calibration once graded picks are tagged with designations.
-function buildMinutesModel({ shotProfile, injuryStatus, benefitsFrom, minutesVolatility, foulProne, blowoutRisk, role }) {
+function buildMinutesModel({ shotProfile, injuryStatus, benefitsFrom, minutesVolatility, foulProne, blowoutRisk, role, roleChange }) {
   const base = Number(shotProfile?.minAvg);
   if (!Number.isFinite(base) || base <= 0) return null;
   const std = Number(shotProfile?.minStd) || 4;
@@ -1596,23 +1596,36 @@ function buildMinutesModel({ shotProfile, injuryStatus, benefitsFrom, minutesVol
   else if (st === 'DOUBTFUL') { floor = 0; }
   if (foulProne && foulProne.level === 'HIGH') { floor = Math.min(floor, center - 1.4 * std); drivers.push({ dir: 'floor', text: 'foul-out risk lowers the floor' }); }
 
+  // 3b) UNCONFIRMED ROLE CHANGE (stale starter / role bump) = uncertainty, NOT a
+  //     confident shift. The public hasn't caught up — but neither have we, and the
+  //     player may revert to the OLD role. Widen the range (raise the ceiling toward
+  //     the old-role minutes) and cut confidence, rather than committing to the under.
+  //     This is the Brink/Zandalasini lesson: both were "stale starters" and played
+  //     full minutes (25, 30) — above a too-tight ceiling — so the under lost.
+  let roleUncertain = false;
+  if (roleChange && roleChange.active) {
+    roleUncertain = true;
+    ceiling = Math.max(ceiling, center + 1.6 * std);   // could still play the old, bigger role
+    drivers.push({ dir: 'up', text: 'unconfirmed role change — may revert to old role; ceiling widened, too uncertain to lean' });
+  }
+
   floor = Math.max(0, Math.round(floor));
   ceiling = Math.round(ceiling);
   center = Math.round(center);
 
-  // 4) Confidence: stable minutes → high; cut by volatility, designation, foul risk.
+  // 4) Confidence: stable minutes → high; cut by volatility, designation, foul, role flux.
   let conf = 82;
   if (Number.isFinite(cv)) conf -= Math.round(cv * 55);
   if (st === 'QUESTIONABLE' || st === 'GTD') conf -= 22;
   else if (st === 'DOUBTFUL') conf -= 38;
   if (minutesVolatility && minutesVolatility.level === 'HIGH') conf -= 8;
   if (foulProne && foulProne.level === 'HIGH') conf -= 5;
+  if (roleUncertain) conf -= 15;   // genuine two-sided uncertainty
   conf = Math.max(15, Math.min(95, conf));
 
   return {
     projMinutes: center, floor, ceiling, confidence: conf, baseline: Math.round(base),
-    status: st, drivers,
-    // The under-friendly read: how far the floor sits below the baseline.
+    status: st, roleUncertain, drivers,
     floorPctOfBase: base > 0 ? Number((floor / base).toFixed(2)) : null,
   };
 }
@@ -2034,7 +2047,7 @@ async function buildAndRunAnalysis({
     // UNIFIED MINUTES MODEL — one projected-minutes number + floor/ceiling/confidence,
     // stacking the recency baseline, benefitsFrom (up), injury designation (haircut),
     // and foul-out risk (lowers the floor). The floor is the ~87%-under money number.
-    const minutesModel = buildMinutesModel({ shotProfile, injuryStatus, benefitsFrom, minutesVolatility, foulProne, blowoutRisk, role: player?.role ?? unified?.scores?.role });
+    const minutesModel = buildMinutesModel({ shotProfile, injuryStatus, benefitsFrom, minutesVolatility, foulProne, blowoutRisk, role: player?.role ?? unified?.scores?.role, roleChange: _spin?.read });
 
     // PRODUCTION CADENCE (PBP) × game script. Back-loaded players need late buckets,
     // so blowout risk turns them into strong unders; in a close game they catch up
@@ -2305,6 +2318,24 @@ async function buildAndRunAnalysis({
       minutesModel: minutesModel || null,   // unified projected minutes + floor/ceiling/confidence
       foulProne: foulProne || null,   // high foul rate — benching / foul-out risk
       spinRead: _spin?.read || null,   // role-change signal (STALE STARTER / ROLE BUMP) or null
+      // SIGNAL ATTRIBUTION — a compact tag of which signals fired on this pick, so once
+      // it grades we can measure each signal's real hit rate (starting with the untested
+      // STALE STARTER, which drove the Brink/Zandalasini losses). Log this with the pick.
+      signalsFired: (() => {
+        const s = [];
+        if (_spin?.read?.active && _spin.read.side === 'UNDER') s.push('stale_starter');
+        if (_spin?.read?.active && _spin.read.side === 'OVER') s.push('role_bump');
+        if (minutesModel?.roleUncertain) s.push('role_uncertain');
+        if (minutesModel && minutesModel.floorPctOfBase != null && minutesModel.floorPctOfBase < 0.75) s.push('minutes_floor_low');
+        if (injuryStatus && injuryStatus !== 'AVAILABLE') s.push('injury_' + String(injuryStatus).toLowerCase());
+        if (foulProne?.level) s.push('foul_prone_' + String(foulProne.level).toLowerCase());
+        if (minutesVolatility?.level) s.push('minutes_vol_' + String(minutesVolatility.level).toLowerCase());
+        if (blowoutRisk?.risk && blowoutRisk.risk !== 'MILD') s.push('blowout_' + (blowoutRisk.isUnderdog ? 'dog' : 'fav'));
+        if (cadence?.scenario) s.push('cadence_' + String(cadence.scenario).toLowerCase());
+        if (unified.rebFloor) s.push('form_floor');
+        if (unified.biasVeto) s.push('bias_veto');
+        return s;
+      })(),
       reasons: buildPropReasons({
         market, unified,
         shotProfile: shotProfile || null,

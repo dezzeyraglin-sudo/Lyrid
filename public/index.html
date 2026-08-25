@@ -19276,6 +19276,9 @@ window.captureWnbaPredictions = function(data) {
       })(),
       detectedAsPRA: wnbaDetectPRA(p.market, p.line),
       floor: p.floor ?? null, ceiling: p.ceiling ?? null,
+      signalsFired: Array.isArray(p.signalsFired) ? p.signalsFired : [],
+      minutesFloorPct: p.minutesModel && p.minutesModel.floorPctOfBase != null ? p.minutesModel.floorPctOfBase : null,
+      roleUncertain: !!(p.minutesModel && p.minutesModel.roleUncertain),
       capturedAt: existing?.capturedAt || new Date().toISOString(),
       actual: null, result: null, error: null, graded: false
     };
@@ -19421,6 +19424,9 @@ window.logWnbaBestBetsForGame = function(data, gameId) {
       } : null,
       empTier: p.empTier ? { tier: p.empTier.tier, bet: !!p.empTier.recommend, wr: p.empTier.wr ?? null, n: p.empTier.n ?? null } : null,
       floor: p.floor ?? null, ceiling: p.ceiling ?? null,
+      signalsFired: Array.isArray(p.signalsFired) ? p.signalsFired : [],
+      minutesFloorPct: p.minutesModel && p.minutesModel.floorPctOfBase != null ? p.minutesModel.floorPctOfBase : null,
+      roleUncertain: !!(p.minutesModel && p.minutesModel.roleUncertain),
       capturedAt: existing?.capturedAt || new Date().toISOString(),
       actual: existing?.actual ?? null, result: existing?.result ?? null,
       error: existing?.error ?? null, graded: existing?.graded ?? false
