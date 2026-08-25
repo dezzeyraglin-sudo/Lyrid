@@ -3413,6 +3413,7 @@
   <nav class="lyrid-header-nav" role="navigation" aria-label="Main">
     <button class="lyrid-nav-btn active" data-tab="slate" onclick="switchTab('slate')">Slate</button>
     <button class="lyrid-nav-btn" data-tab="wnba" onclick="switchTab('wnba')">WNBA</button>
+    <button class="lyrid-nav-btn" data-tab="nba" onclick="switchTab('nba')">NBA</button>
     <button class="lyrid-nav-btn" data-tab="cs2" onclick="switchToCs2()">CS2</button>
     <button class="lyrid-nav-btn" data-tab="tennis" onclick="switchTab('tennis')">Tennis</button>
     <button class="lyrid-nav-btn" data-tab="nfl" onclick="switchTab('nfl')">NFL</button>
@@ -3544,6 +3545,16 @@
 </div>
 
 <!-- WNBA -->
+<div class="panel-content" id="nba-panel">
+  <div class="lyrid-eyebrow">Player Props</div>
+  <h2 style="margin-bottom:var(--space-4)">NBA</h2>
+  <div style="display:flex;gap:var(--space-3);align-items:center;margin-bottom:var(--space-5);flex-wrap:wrap">
+    <input id="nba-date" type="date" style="height:36px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font:14px var(--font-sans)">
+    <button class="lyrid-btn primary" onclick="analyzeNba(document.getElementById('nba-date').value).then(renderNbaBoard)">Analyze</button>
+    <span id="nba-status" style="font:13px var(--font-sans);color:var(--text-muted)"></span>
+  </div>
+  <div id="nba-results"></div>
+</div>
 <div class="panel-content" id="wnba-panel">
   <div class="lyrid-page-head">
     <div class="lyrid-page-eyebrow" id="wnbaPageEyebrow">Loading…</div>
@@ -4402,7 +4413,7 @@ let state = {
   // graded against actual box scores via /api/wnba/results. Each entry stores the
   // full prediction context so the engine can be sharpened (which layers predict).
   // key: 'YYYY-MM-DD_Player_market'
-  wnbaPropHistory: {},   // { date: { key: { date, player, team, opponent, market, line, projection, edge, lean, probOver, tier, lineSource, confidence, drivers, dataCompleteness, floor, ceiling, capturedAt, actual, result, error, graded } } }
+  nbaPropHistory: {}, wnbaPropHistory: {},   // { date: { key: { date, player, team, opponent, market, line, projection, edge, lean, probOver, tier, lineSource, confidence, drivers, dataCompleteness, floor, ceiling, capturedAt, actual, result, error, graded } } }
   wnbaGameBets: {},      // { date_gameId_type: { date, gameId, type, pick, tier, units, home, away, result, graded, finalHomeScore, finalAwayScore, _emp* } }
   // MLB selection engine toggle (May 23, 2026)
   //   'unassisted' = NEW data-grounded engine — biased toward hitters with the
@@ -5859,6 +5870,7 @@ function loadState() {
     if (crit) {
       const c = JSON.parse(crit);
       if (c.wnbaGameBets)    state.wnbaGameBets    = { ...(state.wnbaGameBets || {}),    ...c.wnbaGameBets };
+      if (c.nbaPropHistory) state.nbaPropHistory = { ...(state.nbaPropHistory || {}), ...c.nbaPropHistory };
       if (c.wnbaPropHistory) state.wnbaPropHistory = { ...(state.wnbaPropHistory || {}), ...c.wnbaPropHistory };
       if (c.picks)           state.picks           = { ...(state.picks || {}),           ...c.picks };
     }
@@ -13179,7 +13191,7 @@ function importJsonState(text) {
   }
 
   // Sanity check the shape — should have at least one expected top-level key
-  const expectedKeys = ['picks', 'taggedHitters', 'projectionAudit', 'gameLineBets', 'firstInningBets', 'pitcherPropBets', 'wnbaPropHistory', 'wnbaGameBets'];
+  const expectedKeys = ['picks', 'taggedHitters', 'projectionAudit', 'gameLineBets', 'firstInningBets', 'pitcherPropBets', 'nbaPropHistory', 'wnbaPropHistory', 'wnbaGameBets'];
   const hasExpectedShape = expectedKeys.some(k => k in parsed);
   if (!hasExpectedShape) {
     alert('JSON does not look like a Lyrid state backup. None of the expected keys (picks, taggedHitters, projectionAudit, etc.) are present.');
@@ -13247,7 +13259,15 @@ function importJsonState(text) {
   if (parsed.wnbaGameBets && typeof parsed.wnbaGameBets === 'object') {
     state.wnbaGameBets = Object.assign({}, state.wnbaGameBets || {}, parsed.wnbaGameBets);
   }
-  if (parsed.wnbaPropHistory && typeof parsed.wnbaPropHistory === 'object') {
+  if (parsed.nbaPropHistory && typeof parsed.nbaPropHistory === 'object') {
+      state.nbaPropHistory = state.nbaPropHistory || {};
+      for (const [d, entries] of Object.entries(parsed.nbaPropHistory)) {
+        if (entries && typeof entries === 'object') {
+          state.nbaPropHistory[d] = Object.assign({}, state.nbaPropHistory[d] || {}, entries);
+        }
+      }
+    }
+    if (parsed.wnbaPropHistory && typeof parsed.wnbaPropHistory === 'object') {
     // Nested by date → merge each date's entries so existing days aren't wiped.
     state.wnbaPropHistory = state.wnbaPropHistory || {};
     for (const [d, entries] of Object.entries(parsed.wnbaPropHistory)) {
@@ -17084,6 +17104,9 @@ function renderHistory() {
     Object.keys(state.wnbaPropHistory || {}).forEach(d => {
       Object.values(state.wnbaPropHistory[d]).forEach(e => all.push(e));
     });
+    Object.keys(state.nbaPropHistory || {}).forEach(d => {
+      Object.values(state.nbaPropHistory[d]).forEach(e => all.push(e));
+    });
     if (all.length === 0) {
       container.innerHTML = subnavHtml + `<div class="empty"><div class="empty-icon">◌</div><div>No WNBA predictions tracked yet.<br><br>Predictions are auto-captured when you open the WNBA tab and load a slate.<br>After games finish, tap ⚡ GRADE ALL (or reopen the app) to score them against actual box scores.</div></div>`;
       return;
@@ -18909,7 +18932,7 @@ function saveNotes() {
 function confirmReset() {
   if (!confirm('Reset ALL data?')) return;
   if (!confirm('Are you sure? Cannot be undone.')) return;
-  state = { picks:{}, banned:{pitchers:[],hitters:[],teams:[]}, notes:'', currentDate:getTodayStr(), researchTags:{}, tracking:{}, bestBetHistory:{}, hrAudit: { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } }, gameLineBets: {}, firstInningBets: {}, projectionAudit: {}, wnbaPropHistory: {}, secretFilter: { enabled: false } };
+  state = { picks:{}, banned:{pitchers:[],hitters:[],teams:[]}, notes:'', currentDate:getTodayStr(), researchTags:{}, tracking:{}, bestBetHistory:{}, hrAudit: { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } }, gameLineBets: {}, firstInningBets: {}, projectionAudit: {}, nbaPropHistory: {}, wnbaPropHistory: {}, secretFilter: { enabled: false } };
   saveState();
   location.reload();
 }
@@ -22839,6 +22862,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   window.LyridParlayBridge = {
     pushMlb: function (edges, date) { try { var d = date || todayISO(); UI.setSportCandidates('mlb', mlbHhrCandidates(d).concat(mlbPitcherCandidates(d))); } catch (_) {} },
     pushWnba: function (ranked, data) { try { UI.setSportCandidates('wnba', wnbaToCandidates(ranked, data)); } catch (_) {} },
+    pushNba: function (candidates) { try { UI.setSportCandidates('nba', candidates || []); } catch (_) {} },
     toCandidates: function (edges, date) { return mlbToCandidates(edges, date || todayISO()); }
   };
 })();
@@ -23689,5 +23713,55 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 })();
 </script>
 
+<script>
+// ---- NBA engine wiring (see nba-frontend-patch.md) ----
+async function analyzeNba(date) {
+  const d = date || (window.state && state.currentDate) || new Date().toISOString().slice(0,10);
+  const st = document.getElementById('nba-status'); if (st) st.textContent = 'Analyzing\u2026';
+  try {
+    const res = await fetch('/api/nba/analyze?date=' + encodeURIComponent(d));
+    if (!res.ok) throw new Error('nba analyze ' + res.status);
+    const out = await res.json();
+    try { if (window.LyridParlayBridge) window.LyridParlayBridge.pushNba(out.candidates); } catch (_) {}
+    logNbaBestBets(out.candidates);
+    return out;
+  } catch (e) { console.error('analyzeNba failed', e); if (st) st.textContent = 'Error'; return { candidates: [] }; }
+}
+function logNbaBestBets(candidates) {
+  state.nbaPropHistory = state.nbaPropHistory || {};
+  for (const c of (candidates || [])) {
+    const date = c.date; state.nbaPropHistory[date] = state.nbaPropHistory[date] || {};
+    state.nbaPropHistory[date][c.id] = Object.assign({}, state.nbaPropHistory[date][c.id], {
+      date: date, sport: 'nba', player: c.player, team: c.team, opponent: c.opponent,
+      market: c.market, line: c.line, projection: c.projection, edge: c.edge, lean: c.lean,
+      probOver: c.probOver, tier: c.tier, lineSource: c.lineSource, recommendation: c.recommendation,
+      isBestBet: true, confidence: c.cashRate, floor: c.floor, ceiling: c.ceiling,
+      reason: c.why, lineStatus: (c.flags && c.flags.lineStatus) || 'standard',
+      capturedAt: new Date().toISOString(), actual: null, result: null, error: null, graded: false
+    });
+  }
+  try { if (typeof saveState === 'function') saveState(); } catch (_) {}
+}
+function renderNbaBoard(out) {
+  const el = document.getElementById('nba-results'); if (!el) return;
+  const rows = (out && out.candidates) || [];
+  const st = document.getElementById('nba-status'); if (st) st.textContent = rows.length ? (rows.length + ' best bet' + (rows.length > 1 ? 's' : '')) : '';
+  if (!rows.length) { el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans)">No NBA best bets on this slate.</p>'; return; }
+  const tc = function (t) { return t === 'STRONG' ? ['var(--tier-strong-fill)', 'var(--tier-strong-text)'] : ['var(--tier-solid-fill)', 'var(--tier-solid-text)']; };
+  el.innerHTML = rows.map(function (c) {
+    var col = tc(c.tier), arrow = c.side === 'under' ? '\u25BC' : '\u25B2', pct = Math.round((c.cashRate || 0) * 100);
+    return '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-4);margin-bottom:var(--space-3)">'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:600 16px var(--font-serif);color:var(--text-primary)">' + c.player + '</div>'
+      + '<span style="background:' + col[0] + ';color:' + col[1] + ';font:500 11px var(--font-sans);letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">' + c.tier + '</span></div>'
+      + '<div style="font:13px var(--font-sans);color:var(--text-secondary);margin-top:2px">' + c.team + ' vs ' + c.opponent + '</div>'
+      + '<div style="display:flex;gap:var(--space-4);margin-top:var(--space-3);align-items:baseline;flex-wrap:wrap">'
+      + '<div style="font:500 15px var(--font-sans);color:var(--text-primary)">' + arrow + ' ' + c.side + ' ' + c.market + ' <span style="font-family:var(--font-mono);font-variant-numeric:tabular-nums">' + c.line + '</span></div>'
+      + '<div style="font:13px var(--font-sans);color:var(--text-muted)">proj <span style="font-family:var(--font-mono)">' + (c.projection != null ? c.projection : '\u2014') + '</span> \u00B7 ' + pct + '%</div></div>'
+      + (c.why ? '<div style="font:13px var(--font-sans);color:var(--text-secondary);margin-top:var(--space-2)">' + c.why + '</div>' : '')
+      + '</div>';
+  }).join('');
+}
+
+</script>
 </body>
 </html>
