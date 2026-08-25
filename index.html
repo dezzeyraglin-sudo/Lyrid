@@ -23750,21 +23750,61 @@ function logNbaBestBets(candidates) {
 }
 function renderNbaBoard(out) {
   const el = document.getElementById('nba-results'); if (!el) return;
-  const rows = (out && out.candidates) || [];
-  const st = document.getElementById('nba-status'); if (st) st.textContent = rows.length ? (rows.length + ' best bet' + (rows.length > 1 ? 's' : '')) : '';
-  if (!rows.length) { el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans)">No NBA best bets on this slate.</p>'; return; }
-  const tc = function (t) { return t === 'STRONG' ? ['var(--tier-strong-fill)', 'var(--tier-strong-text)'] : ['var(--tier-solid-fill)', 'var(--tier-solid-text)']; };
-  el.innerHTML = rows.map(function (c) {
-    var col = tc(c.tier), arrow = c.side === 'under' ? '\u25BC' : '\u25B2', pct = Math.round((c.cashRate || 0) * 100);
-    return '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-4);margin-bottom:var(--space-3)">'
-      + '<div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:600 16px var(--font-serif);color:var(--text-primary)">' + c.player + '</div>'
-      + '<span style="background:' + col[0] + ';color:' + col[1] + ';font:500 11px var(--font-sans);letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)">' + c.tier + '</span></div>'
-      + '<div style="font:13px var(--font-sans);color:var(--text-secondary);margin-top:2px">' + c.team + ' vs ' + c.opponent + '</div>'
-      + '<div style="display:flex;gap:var(--space-4);margin-top:var(--space-3);align-items:baseline;flex-wrap:wrap">'
-      + '<div style="font:500 15px var(--font-sans);color:var(--text-primary)">' + arrow + ' ' + c.side + ' ' + c.market + ' <span style="font-family:var(--font-mono);font-variant-numeric:tabular-nums">' + c.line + '</span></div>'
-      + '<div style="font:13px var(--font-sans);color:var(--text-muted)">proj <span style="font-family:var(--font-mono)">' + (c.projection != null ? c.projection : '\u2014') + '</span> \u00B7 ' + pct + '%</div></div>'
-      + (c.why ? '<div style="font:13px var(--font-sans);color:var(--text-secondary);margin-top:var(--space-2)">' + c.why + '</div>' : '')
+  const cands = (out && out.candidates) || [];
+  const st = document.getElementById('nba-status');
+  const gameCount = new Set(cands.map(function (c) { return [c.team, c.opponent].sort().join('@'); })).size;
+  if (st) st.textContent = cands.length ? (cands.length + ' play' + (cands.length > 1 ? 's' : '') + ' \u00B7 ' + gameCount + ' game' + (gameCount > 1 ? 's' : '')) : '';
+  if (!cands.length) { el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans)">No NBA plays on this slate yet \u2014 lines may not be posted, or no player cleared the board.</p>'; return; }
+  // group candidates by game (normalized team pair)
+  const games = {};
+  cands.forEach(function (c) {
+    const key = [c.team, c.opponent].sort().join(' \u00B7 ');
+    (games[key] = games[key] || { teams: [c.team, c.opponent].sort(), rows: [] }).rows.push(c);
+  });
+  const U = '#2E6B4E', O = '#8E3B3B', INK = 'var(--text-primary)', MUT = 'var(--text-muted)', SEC = 'var(--text-secondary)', BR = 'var(--brass,#93683A)';
+  // signature: recency gauge from the model's floor/ceiling range, line tick, projection dot
+  function gauge(c) {
+    const lo = Number(c.floor), hi = Number(c.ceiling), ln = Number(c.line), pj = Number(c.projection);
+    if (!(isFinite(lo) && isFinite(hi) && isFinite(ln) && isFinite(pj)) || hi <= lo) return '<div style="height:20px"></div>';
+    const pos = function (v) { return Math.max(2, Math.min(98, ((v - lo) / (hi - lo)) * 100)); };
+    const under = pj < ln;
+    return '<div style="position:relative;height:20px;margin-top:2px">'
+      + '<div style="position:absolute;top:9px;left:0;right:0;height:2px;background:rgba(0,0,0,0.12)"></div>'
+      + '<div style="position:absolute;top:4px;left:' + pos(ln) + '%;width:1.5px;height:12px;background:' + INK + '"></div>'
+      + '<div style="position:absolute;top:6px;left:' + pos(pj) + '%;width:9px;height:9px;border-radius:50%;transform:translateX(-50%);border:2px solid var(--surface-card);background:' + (under ? U : O) + '"></div>'
       + '</div>';
+  }
+  el.innerHTML = Object.keys(games).map(function (k) {
+    const g = games[k];
+    const rows = g.rows.map(function (c) {
+      const under = c.side === 'under' || Number(c.projection) < Number(c.line);
+      const arrow = under ? '\u25BC' : '\u25B2';
+      const col = under ? U : O;
+      const pct = c.cashRate != null ? Math.round(c.cashRate * 100) + '% cash' : '';
+      return '<div style="border-bottom:1px solid var(--border-hairline)">'
+        + '<div style="display:grid;grid-template-columns:1.5fr 0.85fr 1.15fr 0.5fr;gap:12px;align-items:center;padding:11px 4px;cursor:pointer" '
+        + 'onclick="var d=this.parentNode.querySelector(\'.nba-detail\');d.style.display=d.style.display===\'block\'?\'none\':\'block\'">'
+        + '<div style="font:600 15px var(--font-serif);color:' + INK + '">' + c.player
+        + '<div style="font:400 10px var(--font-mono);letter-spacing:.06em;color:' + MUT + ';text-transform:uppercase;margin-top:1px">' + c.team + '</div></div>'
+        + '<div style="font:10px var(--font-mono);text-transform:uppercase;letter-spacing:.06em;color:' + SEC + '">' + c.market
+        + '<div style="font:600 16px var(--font-serif);color:' + INK + ';font-variant-numeric:tabular-nums">' + c.line + '</div></div>'
+        + '<div>' + gauge(c) + '</div>'
+        + '<div style="text-align:right;font:10px var(--font-mono);letter-spacing:.08em;color:' + BR + '">Analyze \u2192</div>'
+        + '</div>'
+        + '<div class="nba-detail" style="display:none;padding:2px 4px 14px">'
+        + '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'
+        + '<span style="font:600 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;padding:4px 9px;border-radius:3px;background:' + (under ? 'rgba(46,107,78,0.12)' : 'rgba(142,59,59,0.10)') + ';color:' + col + '">' + arrow + ' ' + (under ? 'under' : 'over') + ' ' + c.line + '</span>'
+        + '<span style="font:13px var(--font-sans);color:' + SEC + '">projects <b style="font-family:var(--font-mono)">' + (c.projection != null ? c.projection : '\u2014') + '</b>'
+        + (isFinite(Number(c.floor)) && isFinite(Number(c.ceiling)) ? ' <span style="color:' + MUT + '">(range ' + c.floor + '\u2013' + c.ceiling + ')</span>' : '')
+        + (pct ? ' \u00B7 ' + pct : '') + (c.tier ? ' \u00B7 ' + c.tier : '') + '</span></div>'
+        + (c.why ? '<div style="font:13px var(--font-sans);color:' + SEC + ';margin-top:6px;line-height:1.5">' + c.why + '</div>' : '')
+        + '</div></div>';
+    }).join('');
+    return '<div style="margin-bottom:20px">'
+      + '<div style="display:flex;align-items:baseline;gap:10px;padding:0 2px 8px;border-bottom:1.5px solid var(--text-primary);margin-bottom:2px">'
+      + '<span style="font:600 16px var(--font-serif);color:' + INK + '">' + g.teams.join(' \u00B7 ') + '</span>'
+      + '<span style="font:10px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:' + MUT + ';margin-left:auto">' + g.rows.length + ' play' + (g.rows.length > 1 ? 's' : '') + '</span>'
+      + '</div>' + rows + '</div>';
   }).join('');
 }
 
