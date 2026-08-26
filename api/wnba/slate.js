@@ -217,6 +217,39 @@ async function generateSlate(opts = {}) {
     warnings.push(`Odds API lines fetch failed: ${err.message}`);
   }
 
+  // ESPN ODDS FALLBACK — the Odds API is quota-limited (401 OUT_OF_USAGE_CREDITS drops
+  // every game to default 164/0). ESPN's scoreboard carries pregame total + spread for
+  // free with no quota, so fill any team the Odds API didn't. Same HOME-spread convention
+  // buildBlowoutRisk expects (favoredBy = isHome ? -spread : spread). Non-fatal.
+  try {
+    const ymd = String(date).replace(/-/g, '');
+    const sb = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${ymd}`,
+      { headers: { 'User-Agent': 'curl/8.5.0' }, signal: AbortSignal.timeout(10000) })
+      .then(r => (r.ok ? r.json() : null)).catch(() => null);
+    let filled = 0;
+    for (const ev of (sb?.events || [])) {
+      const comp = (ev.competitions || [])[0] || {};
+      const cs = comp.competitors || [];
+      const home = cs.find(c => c.homeAway === 'home')?.team?.abbreviation;
+      const away = cs.find(c => c.homeAway === 'away')?.team?.abbreviation;
+      if (!home || !away) continue;
+      const odds = (comp.odds || [])[0] || {};
+      const total = Number(odds.overUnder);
+      // "GS -13.5" → favorite abbr + number; convert to the HOME team's spread line.
+      let homeSpread = null;
+      const m = typeof odds.details === 'string' ? odds.details.match(/([A-Z]{2,4})\s*(-?\d+(?:\.\d+)?)/) : null;
+      if (m) { const favAbbr = m[1], favNum = Number(m[2]); if (Number.isFinite(favNum)) homeSpread = favAbbr === home ? favNum : -favNum; }
+      const line = { spread: Number.isFinite(homeSpread) ? homeSpread : null, total: Number.isFinite(total) ? total : null, bookUsed: 'espn' };
+      if (line.spread == null && line.total == null) continue;
+      // fill only teams the Odds API didn't already provide (Odds API stays primary)
+      if (!gameLineFeed.byTeam[home]) { gameLineFeed.byTeam[home] = line; filled++; }
+      if (!gameLineFeed.byTeam[away]) { gameLineFeed.byTeam[away] = line; }
+    }
+    if (filled) warnings.push(`ESPN odds fallback: filled ${filled} game(s)`);
+  } catch (err) {
+    warnings.push(`ESPN odds fallback failed: ${err.message}`);
+  }
+
   // STEP 2d: Pre-fetch real PLAYER PROP lines ONCE (BallDontLie, GOAT tier).
   // Merged into each game's propLines below so the existing precedence holds:
   // caller-provided line > BDL prop line > engine-inferred line. Non-fatal: if
