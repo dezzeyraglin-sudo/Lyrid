@@ -9016,7 +9016,7 @@ function renderWnbaSlipMaker(data) {
     const a = s.a;
     return `<div style="display:flex;align-items:baseline;gap:8px;padding:9px 0;border-top:0.5px solid rgba(255,255,255,0.07)">
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:700;color:#fff">${esc(a.player || '')} <span style="font-weight:800;color:#4ade80">Under ${s.line}</span> <span style="font-size:11px;color:#9aa3b2;text-transform:${(a.market||'').toLowerCase()==='pra'?'uppercase':'capitalize'}">${esc(a.market || '')}</span></div>
+        <div style="font-size:13px;font-weight:700;color:#fff">${esc(a.player || '')} <span style="font-weight:800;color:#4ade80">Under ${s.line}</span> <span style="font-size:11px;color:#9aa3b2;text-transform:${(a.comboLabel)?'none':'capitalize'}">${esc(a.comboLabel || a.market || '')}</span></div>
         <div style="margin-top:2px;font-size:11px;color:#8f98a8">${esc(whySafe(a))}</div>
       </div>
       <div style="text-align:right;white-space:nowrap">

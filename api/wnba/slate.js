@@ -531,54 +531,78 @@ async function generateSlate(opts = {}) {
     }
   }
 
-  // ---- STANDALONE PRA PLAYS: composite projection vs PP's posted PRA line ----
-  // PP posts PRA as its only combo market (16 standard lines this slate) and the engine
-  // ignored all of them. praProjection (above) is the composite; this turns it into a
-  // first-class under/over play whenever PP actually posted a PRA line for that player,
-  // inheriting the player-level risk context so the slip maker's trap filter still applies.
+  // ---- STANDALONE COMBO PLAYS: P+R, P+A, R+A, PRA vs PP's posted combo lines ----
+  // PP posts all four combos (now captured by ppLines STAT_MAP). Each combo projection is
+  // built from the component projections already computed above and compared to PP's line,
+  // so the tool can see which of a player's lines is the softest under ("most unlikely").
+  // Inherits the player-level risk context so the slip maker's trap filter still applies.
   const _normNm = (s) => String(s || '').toLowerCase().replace(/[^a-z ]/g, '').trim();
-  const ppPraByNorm = {};
+  const COMBOS = [
+    { mk: 'ptsrebs', parts: ['ptsProj', 'rebProj'], label: 'P+R' },
+    { mk: 'ptsasts', parts: ['ptsProj', 'astProj'], label: 'P+A' },
+    { mk: 'rebasts', parts: ['rebProj', 'astProj'], label: 'R+A' },
+    { mk: 'pra',     parts: ['ptsProj', 'rebProj', 'astProj'], label: 'PRA' },
+  ];
+  // normalized PP combo-line index: { market: { normName: line } } (handles name drift)
+  const ppComboByNorm = {};
+  for (const cb of COMBOS) ppComboByNorm[cb.mk] = {};
   for (const k of Object.keys(ppPropLines)) {
-    if (!k.toLowerCase().endsWith('_pra')) continue;
-    ppPraByNorm[_normNm(k.slice(0, k.length - 4))] = ppPropLines[k];
+    const us = k.lastIndexOf('_');
+    if (us < 0) continue;
+    const mk = k.slice(us + 1);
+    if (!ppComboByNorm[mk]) continue;
+    ppComboByNorm[mk][_normNm(k.slice(0, us))] = ppPropLines[k];
   }
-  const praAnalyses = []; const praBuilt = {};
+  const comboAnalyses = []; const comboBuilt = {};
   for (const a of allAnalyses) {
-    if (a.error || a.praProjection == null) continue;
+    if (a.error) continue;
     const pgKey = `${a.player}|${a.gameId || a.opponent}`;
-    if (praBuilt[pgKey]) continue;
-    const ppPra = ppPropLines[`${a.player}_pra`] ?? ppPraByNorm[_normNm(a.player)];
-    if (ppPra == null) continue;                       // only when PP posted a PRA line
-    const proj = Number(a.praProjection), line = Number(ppPra);
-    if (!Number.isFinite(proj) || !Number.isFinite(line)) continue;
-    praBuilt[pgKey] = 1;
-    const gap = line - proj;
-    const call = proj < line ? 'UNDER' : 'OVER';
-    const sig = a.praSignal || null;
-    let conf = Math.min(90, 50 + Math.abs(gap) * 4);
-    if (sig && sig.side === call && sig.meetsThreshold) conf = Math.min(92, conf + 6);
-    conf = Math.round(conf);
-    const signalEligible = call === 'UNDER' && Math.abs(gap) >= 1.5 && !(a.minutesModel && a.minutesModel.roleUncertain);
-    const pu = +(0.5 + Math.min(0.42, Math.abs(gap) * 0.03)).toFixed(3);
-    praAnalyses.push({
-      player: a.player, team: a.team, opponent: a.opponent, gameId: a.gameId,
-      market: 'pra', line, projection: +proj.toFixed(2), rawProjection: proj,
-      lineBook: 'prizepicks', lineSource: 'provided', lineOdds: null,
-      confidence: conf,
-      probUnder: call === 'UNDER' ? pu : +(1 - pu).toFixed(3),
-      probOver: call === 'UNDER' ? +(1 - pu).toFixed(3) : pu,
-      edge: +(gap / (line || 1)).toFixed(3),
-      verdict: { call, side: call, edge: +(gap / (line || 1)).toFixed(3), confidence: conf, signalEligible },
-      recommendation: signalEligible ? call : 'PASS',
-      empTier: { tier: (sig && sig.tier) || 'UNGRADED' },
-      praSignal: sig, isComboPRA: true,
-      minutesModel: a.minutesModel || null, minutesVolatility: a.minutesVolatility || null,
-      foulProne: a.foulProne || null, blowoutRisk: a.blowoutRisk || null,
-      cadence: a.cadence || null, minutesSecurity: a.minutesSecurity || null,
-      biasVeto: false, lowSample: false,
-    });
+    const pg = praByPlayerGame[pgKey];
+    if (!pg) continue;
+    const nn = _normNm(a.player);
+    for (const cb of COMBOS) {
+      const bk = `${a.player}|${cb.mk}|${a.gameId || a.opponent}`;
+      if (comboBuilt[bk]) continue;
+      const vals = cb.parts.map((p) => pg[p]);
+      if (vals.some((v) => v == null || !Number.isFinite(Number(v)))) continue;
+      const ppLine = ppPropLines[`${a.player}_${cb.mk}`] ?? ppComboByNorm[cb.mk][nn];
+      if (ppLine == null) continue;                    // only when PP posted this combo line
+      const line = Number(ppLine);
+      if (!Number.isFinite(line)) continue;
+      // use the vetted PRA projection for PRA; raw component sum for the two-stat combos
+      const proj = (cb.mk === 'pra' && a.praProjection != null)
+        ? Number(a.praProjection)
+        : vals.reduce((s, v) => s + Number(v), 0);
+      if (!Number.isFinite(proj)) continue;
+      comboBuilt[bk] = 1;
+      const gap = line - proj;
+      const call = proj < line ? 'UNDER' : 'OVER';
+      const sig = cb.mk === 'pra' ? (a.praSignal || null) : null;
+      let conf = Math.min(90, 50 + Math.abs(gap) * 4);
+      if (sig && sig.side === call && sig.meetsThreshold) conf = Math.min(92, conf + 6);
+      conf = Math.round(conf);
+      const signalEligible = call === 'UNDER' && Math.abs(gap) >= 1.5 && !(a.minutesModel && a.minutesModel.roleUncertain);
+      const pu = +(0.5 + Math.min(0.42, Math.abs(gap) * 0.03)).toFixed(3);
+      comboAnalyses.push({
+        player: a.player, team: a.team, opponent: a.opponent, gameId: a.gameId,
+        market: cb.mk, comboLabel: cb.label, line, projection: +proj.toFixed(2), rawProjection: proj,
+        lineBook: 'prizepicks', lineSource: 'provided', lineOdds: null,
+        confidence: conf,
+        probUnder: call === 'UNDER' ? pu : +(1 - pu).toFixed(3),
+        probOver: call === 'UNDER' ? +(1 - pu).toFixed(3) : pu,
+        edge: +(gap / (line || 1)).toFixed(3),
+        verdict: { call, side: call, edge: +(gap / (line || 1)).toFixed(3), confidence: conf, signalEligible },
+        recommendation: signalEligible ? call : 'PASS',
+        empTier: { tier: (sig && sig.tier) || 'UNGRADED' },
+        praSignal: sig, isCombo: true,
+        minutesModel: a.minutesModel || null, minutesVolatility: a.minutesVolatility || null,
+        foulProne: a.foulProne || null, blowoutRisk: a.blowoutRisk || null,
+        cadence: a.cadence || null, minutesSecurity: a.minutesSecurity || null,
+        biasVeto: false, lowSample: false,
+      });
+    }
   }
-  if (praAnalyses.length) allAnalyses.push(...praAnalyses);
+  if (comboAnalyses.length) allAnalyses.push(...comboAnalyses);
 
   // STEP 5: Organize output
   const successful = allAnalyses.filter(a => !a.error && a.recommendation !== 'PASS');
