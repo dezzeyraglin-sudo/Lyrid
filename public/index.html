@@ -20114,7 +20114,7 @@ async function autoGradeOnAppOpen() {
     const signalGameId = pickSignalGameId(games, data.passes || []);
 
     const boardHtml = wnbaCleanestEdges(data);
-    list.innerHTML = `${boardHtml}<div class="lyrid-games-list">${games.map(g => {
+    list.innerHTML = `${renderWnbaSlipMaker(data)}${renderWnbaRecommendations(data)}${boardHtml}<div class="lyrid-games-list">${games.map(g => {
       return renderWnbaGameRow(g, data.passes || [], g.gameId === signalGameId);
     }).join('')}</div>`;
   }
