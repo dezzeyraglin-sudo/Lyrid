@@ -237,7 +237,7 @@ export async function findPlayerByName(name, season = 2026, market = 'points') {
  * @param {string} market
  * @returns {Promise<Array<Object>>}
  */
-export async function getTopPlayersForTeam(teamAbbr, n = 4, season = 2026, market = 'points') {
+export async function getTopPlayersForTeam(teamAbbr, n = 4, season = 2026, market = 'points', ppNames = null) {
   if (!teamAbbr) return [];
 
   const [base, advanced, bio, touches, slugMap] = await Promise.all([
@@ -311,10 +311,29 @@ export async function getTopPlayersForTeam(teamAbbr, n = 4, season = 2026, marke
     return min + startShare * 10 + marketStat(p) * 0.1;
   }
 
-  // Sort descending and take top N
-  const topN = [...teamPlayers]
-    .sort((a, b) => sortValue(b) - sortValue(a))
-    .slice(0, n);
+  // Sort descending; take top N (captures the projected starting five + rotation).
+  const sorted = [...teamPlayers].sort((a, b) => sortValue(b) - sortValue(a));
+  let selected = sorted.slice(0, n);
+
+  // PP-DRIVEN INCLUSION: also analyze any player PP posted a line for, even below the
+  // top N — this lifts PP-board coverage toward ~100% without analyzing the whole
+  // roster. ppNames are RAW names, normalized here with the SAME normName the roster
+  // gate uses, so the join can't drift between the PP feed and bbref. Hard-capped so a
+  // malformed PP feed can never explode the slate.
+  if (Array.isArray(ppNames) && ppNames.length) {
+    const want = new Set(ppNames.map(normName).filter(Boolean));
+    const have = new Set(selected.map(p => normName(p.PLAYER_NAME)));
+    for (const p of sorted) {
+      if (selected.length >= 20) break;
+      const nm = normName(p.PLAYER_NAME);
+      if (have.has(nm)) continue;
+      const last = nm.split(' ').slice(-1)[0];
+      let hit = want.has(nm);
+      if (!hit && last) { for (const w of want) if (w.endsWith(' ' + last)) { hit = true; break; } }
+      if (hit) { selected.push(p); have.add(nm); }
+    }
+  }
+  const topN = selected;
 
   // Merge with advanced/bio/touches and return engine-shaped objects
   const results = topN.map(basePlayer => {

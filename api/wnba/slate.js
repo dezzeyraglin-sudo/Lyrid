@@ -5,7 +5,7 @@
 // POST /api/wnba/slate
 //
 // Generates a full slate of prop analyses for a day's WNBA games.
-// Top 4 players per team × 3 markets (points, rebounds, assists) per player.
+// Top N players per team (default 10) × 3 markets (points, rebounds, assists) per player.
 //
 // Caller can:
 //   - Specify a date (default: today)
@@ -14,7 +14,7 @@
 //   - Override default top-N (default: 4 per team)
 //
 // SCALING NOTES:
-//   - 6 games × 2 teams × 4 players × 3 markets = 144 analyses
+//   - 6 games × 2 teams × 10 players × 3 markets = 360 analyses (heavy slate)
 //   - 5-10 second cold-cache latency
 //   - <2 second warm-cache latency (subsequent slate calls in same hour)
 //
@@ -123,7 +123,7 @@ const WNBA_V2_PROJECTIONS = (() => {
 // =============================================================
 
 const DEFAULT_MARKETS = ['points', 'rebounds', 'assists'];
-const DEFAULT_TOP_N = 6;   // starting five + one rotation slot of slack
+const DEFAULT_TOP_N = 7;   // confirmed starters + slack for context; PP-driven inclusion (below) adds every PP-lined player on top, so coverage no longer depends on this cap
 const DEFAULT_SPREAD = 0;        // pick'em if no line provided
 const DEFAULT_TOTAL = 164;       // WNBA league average total
 
@@ -271,6 +271,12 @@ async function generateSlate(opts = {}) {
   }
   const ppPropsAvailable = Object.keys(ppPropLines).length > 0;
 
+  // PP-DRIVEN SELECTION: raw names of every PP-lined player (singles + combos), passed
+  // to getTopPlayersForTeam so those players are analyzed even outside the top-N rotation.
+  // This is what lifts PP-board coverage toward ~100% without analyzing whole rosters.
+  const ppNames = [];
+  for (const l of (ppLines.lines || [])) { if (l.name) ppNames.push(l.name); if (l.displayName) ppNames.push(l.displayName); }
+
   // STEP 2e: Season-wide player game logs from BDL (replaces the bbref scrape,
   // which Sports-Reference 429-blocks from Vercel's shared IPs). Fetched ONCE per
   // slate, cached per season, name-keyed. Feeds cold-form recentForm below.
@@ -405,11 +411,11 @@ async function generateSlate(opts = {}) {
 
     // Get top players for both teams in parallel
     const teamPromise = Promise.all([
-      getTopPlayersForTeam(homeAbbr, topN, season, 'points').catch(err => {
+      getTopPlayersForTeam(homeAbbr, topN, season, 'points', ppNames).catch(err => {
         warnings.push(`Top players fetch failed for ${homeAbbr}: ${err.message}`);
         return [];
       }),
-      getTopPlayersForTeam(awayAbbr, topN, season, 'points').catch(err => {
+      getTopPlayersForTeam(awayAbbr, topN, season, 'points', ppNames).catch(err => {
         warnings.push(`Top players fetch failed for ${awayAbbr}: ${err.message}`);
         return [];
       })
