@@ -8947,6 +8947,97 @@ function refreshCleanestEdges() {
   if (mount) mount.innerHTML = renderCleanestEdges(state.currentDate);
 }
 
+function renderWnbaSlipMaker(data) {
+  if (!data || !Array.isArray(data.analyses)) return '';
+  const pool = [...data.analyses, ...(Array.isArray(data.bestPlays) ? data.bestPlays : [])];
+  const num = (x) => (Number.isFinite(Number(x)) ? Number(x) : null);
+
+  // SAFE unders only. Cleared the pipeline AND carry no residual variance/role trap —
+  // the profiles that keep busting your slips (volatile role players like Burke/Onyenwere,
+  // unconfirmed role changes, cadence traps, under-projected lifts). This filter is the
+  // whole point: it would rather build a short slip than include a coin-flip.
+  const byPlayer = {}; let rejected = 0; let ppPool = 0;
+  for (const a of pool) {
+    const v = a.verdict || {};
+    if (v.call !== 'UNDER' || !v.signalEligible) continue;
+    if (String(a.lineBook || '').toLowerCase() !== 'prizepicks') continue;   // PP lines only — you can only bet what PP posts
+    ppPool++;
+    const proj = num(a.projection), line = num(a.line), conf = num(a.confidence) || 0;
+    if (proj == null || line == null) continue;
+    const gap = line - proj;
+    const dq = [];
+    if (a.minutesVolatility && a.minutesVolatility.level === 'HIGH') dq.push('volatile minutes');
+    if (a.foulProne && a.foulProne.level === 'HIGH') dq.push('foul-prone variance');
+    if (a.cadence && a.cadence.scenario === 'TRAP') dq.push('cadence trap');
+    if (a.minutesModel && a.minutesModel.roleUncertain) dq.push('role uncertain');
+    if (a.biasVeto) dq.push('under-projected');
+    if (gap < 1.5) dq.push('gap too thin');
+    if (conf < 58) dq.push('low conviction');
+    if (dq.length) { rejected++; continue; }
+    // MOST UNLIKELY per player: keep the biggest under gap across their PP markets (pts/reb/ast/PRA)
+    const p = a.player || '';
+    if (!byPlayer[p] || gap > byPlayer[p].gap) byPlayer[p] = { a, proj, line, conf, gap };
+  }
+  const safe = Object.values(byPlayer);
+  safe.sort((x, y) => y.conf - x.conf || y.gap - x.gap);
+
+  // Diversify: cap 1 leg per game so a single blowout can't take out the ticket.
+  const perGame = {}; const slip = [];
+  for (const s of safe) {
+    const g = s.a.gameId || ('x' + Math.random());
+    if (perGame[g]) continue;
+    perGame[g] = 1; slip.push(s);
+    if (slip.length >= 6) break;
+  }
+
+  const whySafe = (a) => {
+    const bits = [];
+    if (a.blowoutRisk && a.blowoutRisk.risk && a.blowoutRisk.risk !== 'MILD' && !a.blowoutRisk.isAlpha)
+      bits.push(a.blowoutRisk.isUnderdog ? 'blowout-dog suppression' : 'blowout risk');
+    if (a.cadence && a.cadence.scenario === 'SUPPORT') bits.push('cadence supports under');
+    if (a.minutesSecurity && a.minutesSecurity.level === 'SECURE') bits.push('minutes secure');
+    if (a.minutesModel && a.minutesModel.floorPctOfBase != null && a.minutesModel.floorPctOfBase < 0.75) bits.push('minutes floor low');
+    if (v_tier(a)) bits.push(v_tier(a));
+    return bits.slice(0, 2).join(' · ') || 'cleared every filter';
+  };
+  function v_tier(a) { const t = (a.verdict || {}).tier; return (t && t !== 'PASS' && t !== 'UNDER') ? t : null; }
+
+  if (slip.length < 2) {
+    const _why = ppPool === 0
+      ? 'No PrizePicks-line unders on the board — the slip maker only uses players PP has actually posted lines for.'
+      : `Fewer than 2 PP-line plays cleared every trap${rejected ? ` (${rejected} rejected)` : ''} — so there's no slip to build.`;
+    return `<section style="margin:0 0 14px;padding:14px;border-radius:12px;background:#0f1a2e;border:1px solid rgba(255,255,255,0.08)">
+      <div style="font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#c9b47a">◆ Protected Slip</div>
+      <div style="font-size:13px;color:#cbd2dc;margin-top:6px;line-height:1.5">${_why} That's the filter protecting you: no ticket beats a bad ticket.</div>
+    </section>`;
+  }
+
+  const legRows = slip.map((s) => {
+    const a = s.a;
+    return `<div style="display:flex;align-items:baseline;gap:8px;padding:9px 0;border-top:0.5px solid rgba(255,255,255,0.07)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:#fff">${esc(a.player || '')} <span style="font-weight:800;color:#4ade80">Under ${s.line}</span> <span style="font-size:11px;color:#9aa3b2;text-transform:${(a.market||'').toLowerCase()==='pra'?'uppercase':'capitalize'}">${esc(a.market || '')}</span></div>
+        <div style="margin-top:2px;font-size:11px;color:#8f98a8">${esc(whySafe(a))}</div>
+      </div>
+      <div style="text-align:right;white-space:nowrap">
+        <div style="font-size:15px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">${s.proj.toFixed(1)}</div>
+        <div style="font-size:10px;color:#4ade80">${s.gap.toFixed(1)} under</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const gamesN = Object.keys(perGame).length;
+  return `<section style="margin:0 0 14px;padding:14px;border-radius:12px;background:#0f1a2e;border:1px solid rgba(201,180,122,0.35)">
+    <div style="display:flex;align-items:baseline;justify-content:space-between">
+      <span style="font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#c9b47a">◆ Protected Slip · ${slip.length} legs</span>
+      <span style="font-size:10px;color:#8f98a8;font-variant-numeric:tabular-nums">${gamesN} game${gamesN > 1 ? 's' : ''}${rejected ? ' · ' + rejected + ' rejected' : ''}</span>
+    </div>
+    <div style="font-size:11px;color:#9aa3b2;margin:4px 0 2px;line-height:1.45">Every leg cleared the whole pipeline and carries no variance/role trap — one leg per game, so a single blowout can't sink it. Take as many legs as your flex size; they're ranked by conviction.</div>
+    ${legRows}
+    <div style="margin-top:10px;font-size:10px;color:#7c8494;line-height:1.5">Refuses the profiles that lost your last slip: volatile role players, unconfirmed role changes, cadence traps, and lowballed unders. Fewer legs is the filter working, not a bug.</div>
+  </section>`;
+}
+
 function renderWnbaRecommendations(data) {
   if (!data || !Array.isArray(data.analyses)) return '';
   const pool = [...data.analyses, ...(Array.isArray(data.bestPlays) ? data.bestPlays : [])];
@@ -9156,7 +9247,7 @@ function renderGames() {
     }
   }
 
-  list.innerHTML = `<section id="tonights-card" class="lyr-tc" style="display:none"></section>${renderWnbaRecommendations(state.raw)}<div id="cleanestEdgesMount">${renderCleanestEdges(state.currentDate)}</div><div class="lyrid-games-list">${slate.games.map((g, i) => {
+  list.innerHTML = `<section id="tonights-card" class="lyr-tc" style="display:none"></section>${renderWnbaSlipMaker(state.raw)}${renderWnbaRecommendations(state.raw)}<div id="cleanestEdgesMount">${renderCleanestEdges(state.currentDate)}</div><div class="lyrid-games-list">${slate.games.map((g, i) => {
     const awName = g.awayPitcher?.name || 'TBD';
     const hmName = g.homePitcher?.name || 'TBD';
     const awHand = g.awayPitcher?.hand || '?';
@@ -23743,6 +23834,11 @@ function logNbaBestBets(candidates) {
       probOver: c.probOver, tier: c.tier, lineSource: c.lineSource, recommendation: c.recommendation,
       isBestBet: true, confidence: c.cashRate, floor: c.floor, ceiling: c.ceiling,
       reason: c.why, lineStatus: (c.flags && c.flags.lineStatus) || 'standard',
+      // --- attribution logging (captured at slate time, graded later) ---
+      signalsFired: Array.isArray(c.signalsFired) ? c.signalsFired : [],
+      designation: c.designation || 'available',
+      totalLine: (c.totalLine != null ? c.totalLine : null),
+      spread: (c.spread != null ? c.spread : null),
       capturedAt: new Date().toISOString(), actual: null, result: null, error: null, graded: false
     });
   }
@@ -23750,10 +23846,11 @@ function logNbaBestBets(candidates) {
 }
 function renderNbaBoard(out) {
   const el = document.getElementById('nba-results'); if (!el) return;
-  const cands = (out && out.candidates) || [];
+  const cands = (out && (out.players || out.candidates)) || [];   // full slate when present, else bets
   const st = document.getElementById('nba-status');
   const gameCount = new Set(cands.map(function (c) { return [c.team, c.opponent].sort().join('@'); })).size;
-  if (st) st.textContent = cands.length ? (cands.length + ' play' + (cands.length > 1 ? 's' : '') + ' \u00B7 ' + gameCount + ' game' + (gameCount > 1 ? 's' : '')) : '';
+  var betN = cands.filter(function(x){return x.isBet !== false && x.tier;}).length;
+  if (st) st.textContent = cands.length ? (cands.length + ' player' + (cands.length>1?'s':'') + ' \u00B7 ' + gameCount + ' game' + (gameCount>1?'s':'') + (betN? ' \u00B7 ' + betN + ' flagged':'')) : '';
   if (!cands.length) { el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans)">No NBA plays on this slate yet \u2014 lines may not be posted, or no player cleared the board.</p>'; return; }
   // group candidates by game (normalized team pair)
   const games = {};
@@ -23781,7 +23878,9 @@ function renderNbaBoard(out) {
       const arrow = under ? '\u25BC' : '\u25B2';
       const col = under ? U : O;
       const pct = c.cashRate != null ? Math.round(c.cashRate * 100) + '% cash' : '';
-      return '<div style="border-bottom:1px solid var(--border-hairline)">'
+      var isBet = (c.isBet !== false) && c.tier;
+      var lead = isBet ? 'border-left:2px solid var(--brass,#93683A);' : 'border-left:2px solid transparent;';
+      return '<div style="border-bottom:1px solid var(--border-hairline);' + lead + '">'
         + '<div style="display:grid;grid-template-columns:1.5fr 0.85fr 1.15fr 0.5fr;gap:12px;align-items:center;padding:11px 4px;cursor:pointer" '
         + 'onclick="var d=this.parentNode.querySelector(\'.nba-detail\');d.style.display=d.style.display===\'block\'?\'none\':\'block\'">'
         + '<div style="font:600 15px var(--font-serif);color:' + INK + '">' + c.player

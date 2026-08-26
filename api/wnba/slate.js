@@ -531,6 +531,55 @@ async function generateSlate(opts = {}) {
     }
   }
 
+  // ---- STANDALONE PRA PLAYS: composite projection vs PP's posted PRA line ----
+  // PP posts PRA as its only combo market (16 standard lines this slate) and the engine
+  // ignored all of them. praProjection (above) is the composite; this turns it into a
+  // first-class under/over play whenever PP actually posted a PRA line for that player,
+  // inheriting the player-level risk context so the slip maker's trap filter still applies.
+  const _normNm = (s) => String(s || '').toLowerCase().replace(/[^a-z ]/g, '').trim();
+  const ppPraByNorm = {};
+  for (const k of Object.keys(ppPropLines)) {
+    if (!k.toLowerCase().endsWith('_pra')) continue;
+    ppPraByNorm[_normNm(k.slice(0, k.length - 4))] = ppPropLines[k];
+  }
+  const praAnalyses = []; const praBuilt = {};
+  for (const a of allAnalyses) {
+    if (a.error || a.praProjection == null) continue;
+    const pgKey = `${a.player}|${a.gameId || a.opponent}`;
+    if (praBuilt[pgKey]) continue;
+    const ppPra = ppPropLines[`${a.player}_pra`] ?? ppPraByNorm[_normNm(a.player)];
+    if (ppPra == null) continue;                       // only when PP posted a PRA line
+    const proj = Number(a.praProjection), line = Number(ppPra);
+    if (!Number.isFinite(proj) || !Number.isFinite(line)) continue;
+    praBuilt[pgKey] = 1;
+    const gap = line - proj;
+    const call = proj < line ? 'UNDER' : 'OVER';
+    const sig = a.praSignal || null;
+    let conf = Math.min(90, 50 + Math.abs(gap) * 4);
+    if (sig && sig.side === call && sig.meetsThreshold) conf = Math.min(92, conf + 6);
+    conf = Math.round(conf);
+    const signalEligible = call === 'UNDER' && Math.abs(gap) >= 1.5 && !(a.minutesModel && a.minutesModel.roleUncertain);
+    const pu = +(0.5 + Math.min(0.42, Math.abs(gap) * 0.03)).toFixed(3);
+    praAnalyses.push({
+      player: a.player, team: a.team, opponent: a.opponent, gameId: a.gameId,
+      market: 'pra', line, projection: +proj.toFixed(2), rawProjection: proj,
+      lineBook: 'prizepicks', lineSource: 'provided', lineOdds: null,
+      confidence: conf,
+      probUnder: call === 'UNDER' ? pu : +(1 - pu).toFixed(3),
+      probOver: call === 'UNDER' ? +(1 - pu).toFixed(3) : pu,
+      edge: +(gap / (line || 1)).toFixed(3),
+      verdict: { call, side: call, edge: +(gap / (line || 1)).toFixed(3), confidence: conf, signalEligible },
+      recommendation: signalEligible ? call : 'PASS',
+      empTier: { tier: (sig && sig.tier) || 'UNGRADED' },
+      praSignal: sig, isComboPRA: true,
+      minutesModel: a.minutesModel || null, minutesVolatility: a.minutesVolatility || null,
+      foulProne: a.foulProne || null, blowoutRisk: a.blowoutRisk || null,
+      cadence: a.cadence || null, minutesSecurity: a.minutesSecurity || null,
+      biasVeto: false, lowSample: false,
+    });
+  }
+  if (praAnalyses.length) allAnalyses.push(...praAnalyses);
+
   // STEP 5: Organize output
   const successful = allAnalyses.filter(a => !a.error && a.recommendation !== 'PASS');
   const passes = allAnalyses.filter(a => a.recommendation === 'PASS');
