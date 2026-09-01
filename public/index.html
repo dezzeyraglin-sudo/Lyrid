@@ -3724,7 +3724,7 @@
       <button class="lyrid-date-btn" type="button" onclick="tennisChangeDate('today')" style="margin-left:4px">Today</button>
     </div>
     <button class="lyrid-btn primary" id="loadTennisBtn" onclick="loadTennisSlate()">Refresh</button>
-    <button class="lyrid-btn" id="tennisCEBtn" onclick="analyzeAllTennis()" style="margin-left:6px">★ Find cleanest edges</button>
+    <button class="lyrid-btn" id="tennisCEBtn" onclick="autoBatchTennisEdges()" style="margin-left:6px">★ Find cleanest edges</button>
     <span id="tennisMeta" class="lyrid-eyebrow" style="margin-left:auto"></span>
   </div>
   <div id="tennisBanner"></div>
@@ -23869,10 +23869,42 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       tennisState.loaded = true;
       if (list) list.innerHTML = boardHtml(tennisState.slate);
       if (meta) meta.textContent = `${tennisState.slate.length} match${tennisState.slate.length === 1 ? '' : 'es'}`;
+      // AUTO-SHOW the Cleanest Edges board like the other sports — batch-analyze the slate server-side
+      // in one request (fast), populate the cache, and render. No per-match tapping required.
+      autoBatchTennisEdges();
     } catch (e) {
       if (list) list.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">Schedule unavailable</div><div class="lyrid-empty-text">${esc(String(e.message || e))}</div></div>`;
     }
   }
+
+  // One request analyzes the whole slate server-side and fills the board. Replaces the slow
+  // one-fetch-per-match loop. Only cached (analyzed) matches with a real edge show.
+  let _tennisBatchRunning = false;
+  async function autoBatchTennisEdges() {
+    if (_tennisBatchRunning || !tennisState.slate || !tennisState.slate.length) return;
+    if (!window.LyridTennisCleanestEdges) return;
+    _tennisBatchRunning = true;
+    const mount = document.getElementById('tennisCleanestEdges');
+    if (mount) mount.innerHTML = '<div class="tce-loading">Analyzing the slate for cleanest edges…</div>';
+    try {
+      const qs = new URLSearchParams({ max: '24', ppOnly: '1' });
+      if (tennisState.date) qs.set('date', tennisState.date);
+      const r = await fetch('/api/tennis/batch?' + qs.toString(), { cache: 'no-store' });
+      const j = await r.json();
+      if (j.analyzed) {
+        for (const a of j.analyzed) {
+          if (a && a.read) tennisAnalysisCache[String(a.match.matchId)] = { match: a.match, read: a.read, gradeStatus: a.gradeStatus, date: tennisState.date || null };
+        }
+        refreshTennisCleanestEdges();
+        const finalMount = document.getElementById('tennisCleanestEdges');
+        if (finalMount && !finalMount.innerHTML.trim()) finalMount.innerHTML = '<div class="tce-empty">No clean edges on this slate — every play is inside the noise.</div>';
+      }
+    } catch (_) {
+      if (mount) mount.innerHTML = '<div class="tce-empty">Could not analyze the slate right now.</div>';
+    }
+    _tennisBatchRunning = false;
+  }
+  window.autoBatchTennisEdges = autoBatchTennisEdges;
 
   const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB', 'gamesWonA', 'gamesWonB', 'breakPointsWonA', 'breakPointsWonB', 'totalTieBreaks'];
 
