@@ -3389,6 +3389,121 @@
 .nfl-driver-ic.neu { background: #eef0f2; color: #5a7a9a; }
 .nfl-driver-label { font-weight: 600; color: var(--text-primary); }
 .nfl-driver-text { color: var(--text-secondary); }
+/* ===== LYRID NFL REDESIGN (nflx-) — all colors via tokens ===== */
+#nfl-panel .nflx{max-width:760px;margin:0 auto}
+.nflx-mast{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--space-4);padding-bottom:var(--space-5);border-bottom:1px solid var(--border-strong)}
+.nflx-mast-lead{flex:1 1 auto;min-width:220px}
+.nflx-eyebrow{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;font-weight:var(--weight-medium);color:var(--text-secondary)}
+.nflx-title{font-family:var(--font-serif);font-weight:var(--weight-semibold);font-size:var(--size-h1);line-height:var(--line-h1);letter-spacing:var(--tracking-tight);margin-top:var(--space-1)}
+.nflx-mast-meta{font-family:var(--font-mono);font-size:var(--size-caption);color:var(--text-muted);margin-top:var(--space-2)}
+.nflx-mast-actions{display:flex;align-items:center;gap:var(--space-3)}
+.nflx-datenav{display:inline-flex;align-items:center;gap:var(--space-1);background:var(--surface-card);border:1px solid var(--border-hairline);border-radius:var(--radius-sm);padding:2px}
+.nflx-datenav button{width:28px;height:28px;border:0;background:transparent;color:var(--text-secondary);cursor:pointer;border-radius:var(--radius-sm);font-size:15px;line-height:1}
+.nflx-datenav button:hover{background:var(--surface-muted);color:var(--text-primary)}
+.nflx-datenav .cur{font-size:var(--size-caption);font-weight:var(--weight-medium);padding:0 var(--space-2);color:var(--text-primary)}
+
+.nflx-sect{display:flex;align-items:center;gap:var(--space-3);margin:var(--space-7) 0 var(--space-4)}
+.nflx-sect-t{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-medium);letter-spacing:var(--tracking-tight);white-space:nowrap}
+.nflx-sect-rule{flex:1 1 auto;height:1px;background:var(--border-hairline)}
+.nflx-sect-n{font-family:var(--font-mono);font-size:var(--size-caption);color:var(--text-muted)}
+
+.nflx-card{background:var(--surface-card);border:1px solid var(--border-hairline);border-radius:var(--radius-lg);box-shadow:var(--elevation-hover);overflow:hidden}
+.nflx-card-head{padding:var(--space-5) var(--space-5) var(--space-4);border-bottom:1px solid var(--border-hairline)}
+.nflx-card-top{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-3)}
+.nflx-card-title{font-family:var(--font-serif);font-size:var(--size-h2);font-weight:var(--weight-semibold);letter-spacing:var(--tracking-tight)}
+.nflx-card-count{font-family:var(--font-mono);font-size:var(--size-h3);color:var(--brand-primary)}
+.nflx-card-sub{font-size:var(--size-body-sm);color:var(--text-secondary);margin-top:var(--space-2);max-width:62ch}
+.nflx-card-note{display:inline-flex;align-items:center;gap:6px;margin-top:var(--space-3);font-size:var(--size-caption);color:var(--data-warning);background:var(--data-warning-surface);border-radius:var(--radius-pill);padding:3px 10px}
+
+.nflx-pick{display:grid;grid-template-columns:auto 1fr;gap:var(--space-3) var(--space-4);padding:var(--space-5);border-bottom:1px solid var(--border-hairline)}
+.nflx-pick:last-child{border-bottom:0}
+.nflx-pick-rank{font-family:var(--font-mono);font-size:var(--size-caption);color:var(--text-muted);width:20px;padding-top:3px}
+.nflx-pick-body{min-width:0}
+.nflx-pick-name{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-semibold);letter-spacing:var(--tracking-tight);line-height:1.25}
+.nflx-pick-mu{font-size:var(--size-caption);color:var(--text-muted);font-family:var(--font-mono)}
+.nflx-pick-line{display:flex;align-items:baseline;gap:var(--space-2);margin-top:var(--space-1);flex-wrap:wrap}
+.nflx-dir{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-semibold)}
+.nflx-dir.up{color:var(--data-positive)} .nflx-dir.down{color:var(--data-negative)} .nflx-dir.muted{color:var(--text-muted)}
+.nflx-prop-market{font-size:var(--size-body-sm);color:var(--text-secondary)}
+.nflx-linev{font-family:var(--font-mono);color:var(--text-primary);font-weight:var(--weight-medium)}
+
+.nflx-proj{margin:var(--space-4) 0 var(--space-3)}
+.nflx-proj-track{position:relative;height:34px}
+.nflx-proj-axis{position:absolute;left:0;right:0;top:22px;height:1px;background:var(--border-hairline)}
+.nflx-proj-band{position:absolute;top:14px;height:8px;border-radius:var(--radius-pill);background:var(--brand-tint)}
+.nflx-proj-band.clears{background:var(--data-positive-surface)}
+.nflx-proj-med{position:absolute;top:9px;width:2px;height:18px;background:var(--text-primary);border-radius:2px}
+.nflx-proj-med-lbl{position:absolute;top:-2px;transform:translateX(-50%);font-family:var(--font-mono);font-size:var(--size-eyebrow);color:var(--text-primary)}
+.nflx-proj-line{position:absolute;top:6px;width:2px;height:24px;background:var(--brand-primary);border-radius:2px}
+.nflx-proj-line::after{content:'';position:absolute;top:-4px;left:-3px;width:8px;height:8px;border-radius:50%;background:var(--brand-primary)}
+.nflx-proj-line-lbl{position:absolute;top:26px;transform:translateX(-50%);font-family:var(--font-mono);font-size:var(--size-eyebrow);color:var(--brand-primary);font-weight:var(--weight-medium);white-space:nowrap}
+.nflx-proj-ends{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:var(--size-eyebrow);color:var(--text-muted);margin-top:2px}
+.nflx-proj-read{font-size:var(--size-caption);color:var(--text-secondary);margin-top:var(--space-1)}
+.nflx-proj-read b{font-weight:var(--weight-medium)}
+.nflx-proj-read .soft{color:var(--data-positive)} .nflx-proj-read .stiff{color:var(--data-negative)}
+
+.nflx-metarow{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;margin-top:var(--space-2)}
+.nflx-pct{display:flex;align-items:baseline;gap:6px}
+.nflx-pct .v{font-family:var(--font-mono);font-size:var(--size-h3);color:var(--text-primary)}
+.nflx-pct .k{font-size:var(--size-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;color:var(--text-muted)}
+.nflx-chip{font-size:var(--size-eyebrow);letter-spacing:.06em;text-transform:uppercase;font-weight:var(--weight-medium);padding:3px 9px;border-radius:var(--radius-pill);white-space:nowrap}
+.nflx-chip.guaranteed{background:var(--tier-elite-fill);color:var(--tier-elite-text)}
+.nflx-chip.platinum{background:var(--tier-strong-fill);color:var(--tier-strong-text)}
+.nflx-chip.gold{background:var(--tier-solid-fill);color:var(--tier-solid-text)}
+.nflx-chip.ceiling{background:var(--surface-muted);color:var(--text-secondary)}
+.nflx-chip.prov{background:transparent;color:var(--text-muted);border:1px solid var(--border-hairline)}
+.nflx-why{font-size:var(--size-body-sm);color:var(--text-secondary);line-height:var(--line-body);margin-top:var(--space-3)}
+.nflx-blocked{font-size:var(--size-caption);color:var(--data-warning);background:var(--data-warning-surface);border-radius:var(--radius-sm);padding:var(--space-2) var(--space-3);margin-top:var(--space-3)}
+
+.nflx-flagged{border-top:1px solid var(--border-hairline);background:var(--surface-muted)}
+.nflx-flagged summary{cursor:pointer;list-style:none;padding:var(--space-4) var(--space-5);font-size:var(--size-body-sm);font-weight:var(--weight-medium);color:var(--data-warning);display:flex;align-items:center;gap:var(--space-2)}
+.nflx-flagged summary::-webkit-details-marker{display:none}
+.nflx-flagged[open] summary{border-bottom:1px solid var(--border-hairline)}
+.nflx-fl-row{display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) var(--space-5);font-size:var(--size-body-sm);border-bottom:1px solid var(--border-hairline)}
+.nflx-fl-row:last-child{border-bottom:0}
+.nflx-fl-who .ln{font-family:var(--font-mono);color:var(--text-muted)}
+.nflx-fl-reason{color:var(--data-warning);font-size:var(--size-caption);text-align:right;flex:0 1 auto}
+
+.nflx-empty{padding:var(--space-7) var(--space-5);text-align:center}
+.nflx-empty-t{font-family:var(--font-serif);font-size:var(--size-h3);color:var(--text-primary)}
+.nflx-empty-s{font-size:var(--size-body-sm);color:var(--text-secondary);margin-top:var(--space-2)}
+
+.nflx-game{background:var(--surface-card);border:1px solid var(--border-hairline);border-radius:var(--radius-md);margin-bottom:var(--space-2);overflow:hidden}
+.nflx-game-row{display:flex;align-items:center;gap:var(--space-3);width:100%;text-align:left;background:transparent;border:0;padding:var(--space-4);cursor:pointer;font:inherit;color:inherit}
+.nflx-game-row:hover{background:var(--surface-muted)}
+.nflx-game[open] .nflx-game-row{border-bottom:1px solid var(--border-hairline)}
+.nflx-game-mu{font-family:var(--font-serif);font-weight:var(--weight-semibold);font-size:var(--size-body);letter-spacing:var(--tracking-tight)}
+.nflx-script{font-size:var(--size-eyebrow);letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:var(--radius-pill)}
+.nflx-script.pass{background:var(--data-positive-surface);color:var(--data-positive)}
+.nflx-script.run{background:var(--data-warning-surface);color:var(--data-warning)}
+.nflx-script.close{background:var(--surface-muted);color:var(--text-muted)}
+.nflx-game-meta{margin-left:auto;display:flex;align-items:center;gap:var(--space-3);font-family:var(--font-mono);font-size:var(--size-caption);color:var(--text-muted)}
+.nflx-game-meta .edge{color:var(--data-positive);font-weight:var(--weight-medium)}
+.nflx-game-chev{color:var(--text-muted);transition:transform var(--duration-fast)}
+.nflx-game[open] .nflx-game-chev{transform:rotate(90deg)}
+.nflx-game-body{padding:var(--space-4)}
+
+.nflx-prop{border:1px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-4);margin-bottom:var(--space-3)}
+.nflx-prop:last-child{margin-bottom:0}
+.nflx-prop-top{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap}
+.nflx-prop-name{font-family:var(--font-serif);font-size:var(--size-body);font-weight:var(--weight-semibold)}
+.nflx-prop-sub{font-size:var(--size-caption);color:var(--text-muted);font-family:var(--font-mono)}
+.nflx-filters{display:flex;gap:var(--space-3);margin-top:var(--space-3);flex-wrap:wrap}
+.nflx-filt{display:inline-flex;align-items:center;gap:6px;font-size:var(--size-caption);color:var(--text-secondary)}
+.nflx-filt .dot{width:14px;height:14px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700}
+.nflx-filt.pass .dot{background:var(--data-positive-surface);color:var(--data-positive)}
+.nflx-filt.fail .dot{background:var(--data-negative-surface);color:var(--data-negative)}
+.nflx-drivers{margin-top:var(--space-3);display:grid;gap:var(--space-1)}
+.nflx-drv{display:flex;align-items:baseline;gap:var(--space-2);font-size:var(--size-caption)}
+.nflx-drv .w{font-family:var(--font-mono);flex:0 0 auto}
+.nflx-drv.pos .w{color:var(--data-positive)} .nflx-drv.neg .w{color:var(--data-negative)} .nflx-drv.neu .w{color:var(--text-muted)}
+.nflx-drv .f{color:var(--text-secondary)} .nflx-drv .f b{color:var(--text-primary);font-weight:var(--weight-medium)}
+
+@media (max-width:520px){
+  #nfl-panel .nflx{max-width:100%}
+  .nflx-pick{grid-template-columns:1fr;gap:var(--space-2)}
+  .nflx-pick-rank{display:none}
+}
 /* ===== END NFL CSS ===== */
 </style>
 
@@ -3618,20 +3733,30 @@
 
 <!-- NFL -->
 <div class="panel-content" id="nfl-panel">
-  <div class="lyrid-page-header">
-    <div class="lyrid-page-eyebrow" id="nflPageEyebrow">NFL · yardage props · in-season</div>
-    <div class="lyrid-date-nav">
-      <button class="lyrid-date-btn" type="button" onclick="nflChangeDate(-1)" aria-label="Previous day">‹</button>
-      <span class="lyrid-date-current" id="nflDateDisplay">Today</span>
-      <button class="lyrid-date-btn" type="button" onclick="nflChangeDate(1)" aria-label="Next day">›</button>
-      <button class="lyrid-date-btn" type="button" onclick="nflChangeDate('today')" style="margin-left:4px">Today</button>
-    </div>
-    <button class="lyrid-btn primary" id="loadNflBtn" onclick="loadNflSlate()">Refresh</button>
-    <span id="nflMeta" class="lyrid-eyebrow" style="margin-left:auto"></span>
+  <div class="nflx">
+    <header class="nflx-mast">
+      <div class="nflx-mast-lead">
+        <div class="nflx-eyebrow" id="nflPageEyebrow">NFL · yardage props · in-season</div>
+        <div class="nflx-title">Sunday slate</div>
+        <div class="nflx-mast-meta" id="nflMeta"></div>
+      </div>
+      <div class="nflx-mast-actions">
+        <div class="nflx-datenav">
+          <button type="button" onclick="nflChangeDate(-1)" aria-label="Previous day">‹</button>
+          <span class="cur" id="nflDateDisplay">Today</span>
+          <button type="button" onclick="nflChangeDate(1)" aria-label="Next day">›</button>
+          <button type="button" onclick="nflChangeDate('today')" title="Jump to today" aria-label="Today">•</button>
+        </div>
+        <button class="lyrid-btn primary" id="loadNflBtn" onclick="loadNflSlate()">Refresh</button>
+      </div>
+    </header>
+    <div id="nflBanner"></div>
+    <section class="nflx-sect"><span class="nflx-sect-t">Tonight’s card</span><span class="nflx-sect-rule"></span><span class="nflx-sect-n">judgment-filtered</span></section>
+    <div id="nflJudgmentCard"></div>
+    <section class="nflx-sect"><span class="nflx-sect-t">Games</span><span class="nflx-sect-rule"></span><span class="nflx-sect-n" id="nflGamesCount">tap to analyze</span></section>
+    <div id="nflGamesList"></div>
+    <div id="nflAnalysisContainer" style="display:none"></div>
   </div>
-  <div id="nflBanner"></div>
-  <div id="nflGamesList"></div>
-  <div id="nflAnalysisContainer"></div>
 </div>
 
 <!-- TRACK -->
@@ -23658,8 +23783,10 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   'use strict';
 
   var nflState = { loaded: false, date: null };
+  var RANK = { GUARANTEED: 3, PLATINUM: 2, GOLD: 1, none: 0 };
+  var TIER_CLASS = { GUARANTEED: 'guaranteed', PLATINUM: 'platinum', GOLD: 'gold', none: 'none' };
 
-  // ---- date helpers (mirror the other sports' change-date pattern) ----
+  // ---- date helpers ----
   function todayStr() {
     try { return (window.getTodayStr && window.getTodayStr()) || new Date().toISOString().slice(0, 10); }
     catch (_) { return new Date().toISOString().slice(0, 10); }
@@ -23671,106 +23798,202 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   window.nflChangeDate = function (delta) {
     var base = nflState.date || todayStr();
     if (delta === 'today') { nflState.date = todayStr(); }
-    else {
-      var d = new Date(base + 'T00:00:00');
-      d.setDate(d.getDate() + delta);
-      nflState.date = d.toISOString().slice(0, 10);
-    }
+    else { var d = new Date(base + 'T00:00:00'); d.setDate(d.getDate() + delta); nflState.date = d.toISOString().slice(0, 10); }
     setNflDateDisplay();
     window.loadNflSlate();
   };
 
-  // ---- tier badge class map (GUARANTEED->elite, PLATINUM->strong, GOLD->solid) ----
-  var TIER_CLASS = { GUARANTEED: 'guaranteed', PLATINUM: 'platinum', GOLD: 'gold', none: 'none' };
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function num(x){ return (typeof x==='number' && isFinite(x)) ? x : null; }
+  function pAdjOf(v){ v=v||{}; return num(v.pOverAdjusted!=null?v.pOverAdjusted:v.pOver); }
+  function explOf(item,label){ var a=(item.card&&item.card.explanations)||[]; for (var i=0;i<a.length;i++){ if (a[i].label===label) return a[i]; } return null; }
 
-  // ---- render one classifier verdict as a Lyrid pick card ----
-  function renderNflCard(item) {
-    var v = item.verdict || {};
-    var tier = v.tier_candidate || 'none';
-    var noPlay = tier === 'none';
-    var dir = v.pick === 'higher' ? 'higher' : 'lower';
-    var pOver = (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver) || 0;
-    var f = v.filters || {};
-    var card = item.card || {};
-    function esc(x){ return String(x==null?'':x).replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}); }
-    var ctxBits = [];
-    if (item.team) ctxBits.push(esc(item.team));
-    if (item.position) ctxBits.push(esc(item.position));
-    if (item.opponent) ctxBits.push(esc(item.opponent));
-    var ctxLine = ctxBits.length ? '<div class="nfl-pick-team">' + ctxBits.join(' \u00b7 ') + '</div>' : '';
-    function filterRow(label, pass) {
-      return '<div class="nfl-filter-row">' +
-        '<span class="nfl-filter-check ' + (pass ? 'pass' : 'fail') + '">' + (pass ? '\u2713' : '\u2715') + '</span>' +
-        '<span class="nfl-filter-label">' + label + '</span></div>';
-    }
-    var filters = filterRow('Soft line', f.softLine) + filterRow('Volume-secure', f.volumeSecure) + filterRow('Script-clear', f.scriptClear);
-    var blocked = (v.blocked && v.blocked.length) ? '<div class="nfl-blocked-note">Blocked: ' + esc(v.blocked[0]) + '</div>' : '';
-    var summaryHTML = card.summary ? '<div class="nfl-summary">' + esc(card.summary) + '</div>' : '';
-    var driversHTML = '';
-    if (card.explanations && card.explanations.length) {
-      var rows = card.explanations.slice(0, 8).map(function (e) {
-        var cls = e.dir === '+' ? 'pos' : (e.dir === '-' ? 'neg' : 'neu');
-        var icon = e.dir === '+' ? '\u25b2' : (e.dir === '-' ? '\u25bc' : '\u25cf');
-        return '<div class="nfl-driver-row">' +
-          '<span class="nfl-driver-ic ' + cls + '">' + icon + '</span>' +
-          '<span class="nfl-driver-body"><span class="nfl-driver-label">' + esc(e.label) + '</span> ' +
-          '<span class="nfl-driver-text">' + esc(e.text) + '</span></span></div>';
-      }).join('');
-      driversHTML = '<div class="nfl-section-eyebrow">Why \u2014 ranked drivers</div>' + rows;
-    }
-    var verdictRow = '<div class="nfl-verdict' + (noPlay ? ' noplay' : '') + '">' +
-      '<span class="nfl-dir ' + dir + (noPlay ? ' muted' : '') + '">' + (dir === 'higher' ? 'Higher' : 'Lower') + '</span>' +
-      '<span class="nfl-prob">' + Math.round(pOver * 100) + '%</span>' +
-      '<span class="nfl-prob-label">model P(over)</span></div>';
-    var body = driversHTML
-      ? (summaryHTML + '<div class="nfl-section-eyebrow">Three-Filter Check</div>' + filters + blocked + driversHTML)
-      : ('<div class="nfl-section-eyebrow">Three-Filter Check</div>' + filters + blocked);
-    return '<div class="nfl-pick-card">' +
-      '<div class="nfl-pick-head"><div>' +
-        '<div class="nfl-pick-player">' + esc(item.player || '') + '</div>' + ctxLine +
-        '<div class="nfl-pick-prop">' + esc(item.propLabel || '') + ' <span class="nfl-line-val">' + v.line + '</span></div>' +
-      '</div><span class="nfl-tier-badge ' + TIER_CLASS[tier] + '">' + (noPlay ? 'No Play' : tier) + '</span></div>' +
-      verdictRow + body +
-      '<div class="nfl-provisional">Provisional \u2014 tiers calibrate against backtest before badges go live.</div>' +
-    '</div>';
+  // ============================================================
+  // SIGNATURE — projection track: p25–median–p75 band vs the line
+  // ============================================================
+  function projTrack(comp, line){
+    comp = comp || {}; line = num(line);
+    if (num(comp.median) == null || line == null) return '';
+    var p25 = num(comp.p25) != null ? comp.p25 : Math.round(comp.median * 0.75);
+    var p75 = num(comp.p75) != null ? comp.p75 : Math.round(comp.median * 1.25);
+    var lo = Math.min(p25, line), hi = Math.max(p75, line);
+    var pad = (hi - lo) * 0.18 + 4, min = Math.max(0, lo - pad), max = hi + pad || 1;
+    var pct = function(x){ return (x - min) / (max - min) * 100; };
+    var clears = comp.median >= line, soft = Math.round(comp.median - line);
+    return '<div class="nflx-proj"><div class="nflx-proj-track">' +
+      '<div class="nflx-proj-axis"></div>' +
+      '<div class="nflx-proj-band' + (clears?' clears':'') + '" style="left:' + pct(p25) + '%;width:' + (pct(p75)-pct(p25)) + '%"></div>' +
+      '<div class="nflx-proj-med" style="left:' + pct(comp.median) + '%"></div>' +
+      '<div class="nflx-proj-med-lbl" style="left:' + pct(comp.median) + '%">' + comp.median + '</div>' +
+      '<div class="nflx-proj-line" style="left:' + pct(line) + '%"></div>' +
+      '<div class="nflx-proj-line-lbl" style="left:' + pct(line) + '%">line ' + line + '</div>' +
+      '</div><div class="nflx-proj-ends"><span>' + p25 + '</span><span>projected \u00b7 p25\u2013p75</span><span>' + p75 + '</span></div>' +
+      '<div class="nflx-proj-read">Model lands him around <b>' + comp.median + '</b> \u2014 ' +
+        (soft>=0 ? '<b class="soft">' + soft + ' above</b>' : '<b class="stiff">' + Math.abs(soft) + ' below</b>') + ' the line.</div></div>';
   }
 
-  // ---- load the NFL slate (mirrors loadCs2Slate shape) ----
+  // ============================================================
+  // JUDGMENT — the kill-chain (a gatekeeper, not a generator)
+  // NFL tiers are PROVISIONAL (no forward-validation) → MODEL %, no VERIFIED pill.
+  // ============================================================
+  function nflBoom(item){ var c=item.comp||{}; return (num(c.p75)!=null && num(c.median)!=null && num(c.p25)!=null && (c.p75-c.median) > 1.4*(c.median-c.p25)); }
+  function killReason(item){
+    var v = item.verdict || {}, f = v.filters || {}, c = item.comp || {}, line = num(v.line), b = v.blocked || [];
+    for (var i=0;i<b.length;i++){ if (/is OUT|not expected to play/i.test(b[i])) return 'player OUT \u2014 no action'; }
+    if (v.routingOverride) return 'routing \u2014 the yardage moves off this prop';
+    if (f.scriptClear === false){ var gs = explOf(item,'Game script'); return 'game script \u2014 ' + ((gs&&gs.text)||'blowout / abandonment risk'); }
+    if (num(c.p75)!=null && line!=null && c.p75 < line) return 'even a top-quartile game (' + c.p75 + ') falls short of ' + line;
+    var opp = explOf(item,'Opponent');
+    if (opp && opp.dir==='-' && num(c.lineSoftness)!=null && c.lineSoftness<=0) return 'opponent stifles this \u2014 the line sits at/above the model';
+    var e = explOf(item,'Conditions');
+    if (e && e.dir==='-') return 'conditions \u2014 ' + (e.text || 'weather suppresses this over');
+    return null;
+  }
+  var NFL_MODEL_FLOOR = 0.58; // PROVISIONAL — replace with a backtested hit-rate floor before any badge
+  function isBettable(item){
+    var v = item.verdict||{}, pAdj = pAdjOf(v), tier = v.tier_candidate||'none';
+    if (nflBoom(item) && num(v.edge)!=null && v.edge>=0.06 && v.filters && v.filters.scriptClear) return true;
+    if (tier==='none') return false;
+    if (pAdj==null || pAdj<NFL_MODEL_FLOOR) return false;
+    return true;
+  }
+  window.LyridNflJudgment = { killReason: killReason, isBettable: isBettable };
+  function pickScore(item){ var v=item.verdict||{}, pAdj=pAdjOf(v)||0, tw=RANK[v.tier_candidate||'none']*0.05, edge=num(v.edge)||0; return pAdj+tw+edge*0.5; }
+  function gameKey(p){ return [String(p.team||''),String(p.opponent||'')].sort().join('@'); }
+
+  // ============================================================
+  // RENDER — Tonight's Card (hero)
+  // ============================================================
+  function renderJudgment(picks){
+    var host = document.getElementById('nflJudgmentCard'); if (!host) return;
+    var clean=[], flagged=[];
+    (picks||[]).forEach(function(p){
+      var r = killReason(p);
+      if (r){ flagged.push({p:p, reason:r}); return; }
+      if (!isBettable(p)){ flagged.push({p:p, reason:'below the bar \u2014 model ' + Math.round((pAdjOf(p.verdict)||0)*100) + '%, tier ' + ((p.verdict&&p.verdict.tier_candidate)||'none')}); return; }
+      clean.push(p);
+    });
+    clean.sort(function(a,b){ return pickScore(b)-pickScore(a); });
+    var perGame={}, card=[];
+    for (var i=0;i<clean.length && card.length<5;i++){ var g=gameKey(clean[i]); if ((perGame[g]||0)>=2) continue; perGame[g]=(perGame[g]||0)+1; card.push(clean[i]); }
+
+    var flaggedHtml = flagged.length
+      ? '<details class="nflx-flagged"><summary>\u26A0 Flagged \u2014 skip (' + flagged.length + ')</summary>' +
+        flagged.map(function(f){ var v=f.p.verdict||{}; return '<div class="nflx-fl-row"><span class="nflx-fl-who">' + esc(f.p.player) + ' \u00b7 ' + esc(f.p.propLabel) + ' <span class="ln">' + esc(v.line) + '</span></span><span class="nflx-fl-reason">' + esc(f.reason) + '</span></div>'; }).join('') +
+        '</details>' : '';
+
+    if (!card.length){
+      host.innerHTML = '<div class="nflx-card"><div class="nflx-empty"><div class="nflx-empty-t">No card tonight</div>' +
+        '<div class="nflx-empty-s">Nothing on this slate cleared every veto. A pass is a position.</div></div>' + flaggedHtml + '</div>';
+      return;
+    }
+    var rows = card.map(function(p, i){
+      var v=p.verdict||{}, c=p.comp||{}, pAdj=pAdjOf(v)||0, tier=v.tier_candidate||'none';
+      var dir = v.pick==='lower'?'down':'up';
+      var chips = '<span class="nflx-chip ' + (TIER_CLASS[tier]||'gold') + '">' + esc(tier) + '</span><span class="nflx-chip prov">provisional</span>' + (nflBoom(p)?'<span class="nflx-chip ceiling">\u25C7 ceiling</span>':'');
+      var why = (p.card && p.card.summary) ? '<div class="nflx-why">' + esc(p.card.summary) + '</div>' : '';
+      return '<div class="nflx-pick"><div class="nflx-pick-rank">' + (i+1) + '</div><div class="nflx-pick-body">' +
+        '<div class="nflx-pick-name">' + esc(p.player) + '</div>' +
+        '<div class="nflx-pick-line"><span class="nflx-dir ' + dir + '">' + (dir==='up'?'Higher':'Lower') + '</span> <span class="nflx-prop-market">' + esc(p.propLabel) + '</span> <span class="nflx-linev">' + esc(v.line) + '</span></div>' +
+        '<div class="nflx-pick-mu">' + esc(p.position||'') + (p.position?' \u00b7 ':'') + esc(p.team||'') + (p.opponent?' vs ' + esc(p.opponent):'') + '</div>' +
+        projTrack(c, v.line) +
+        '<div class="nflx-metarow"><div class="nflx-pct"><span class="v">' + Math.round(pAdj*100) + '%</span><span class="k">model</span></div>' + chips + '</div>' + why +
+      '</div></div>';
+    }).join('');
+
+    host.innerHTML = '<div class="nflx-card"><div class="nflx-card-head"><div class="nflx-card-top"><div class="nflx-card-title">Tonight\u2019s card</div><div class="nflx-card-count">' + card.length + '</div></div>' +
+      '<div class="nflx-card-sub">The only props that survived every veto tonight, ranked by conviction. Everything filtered out is listed below with the reason it was cut.</div>' +
+      '<div class="nflx-card-note">Provisional \u2014 this is the model\u2019s number, not a verified cash rate</div></div>' +
+      rows + flaggedHtml + '</div>';
+  }
+
+  // ============================================================
+  // RENDER — one prop card (redesign) + game-grouped list
+  // ============================================================
+  function renderPropCard(item){
+    var v=item.verdict||{}, c=item.comp||{}, f=v.filters||{};
+    var tier=v.tier_candidate||'none', noPlay=tier==='none';
+    var pAdj = pAdjOf(v)||0, dir = v.pick==='lower'?'down':'up';
+    var chips = noPlay ? '<span class="nflx-chip prov">No play</span>'
+      : '<span class="nflx-chip ' + (TIER_CLASS[tier]||'gold') + '">' + esc(tier) + '</span><span class="nflx-chip prov">provisional</span>';
+    if (nflBoom(item)) chips += '<span class="nflx-chip ceiling">\u25C7 ceiling</span>';
+    var filt = function(l,ok){ return '<span class="nflx-filt ' + (ok?'pass':'fail') + '"><span class="dot">' + (ok?'\u2713':'\u2715') + '</span>' + l + '</span>'; };
+    var filters = '<div class="nflx-filters">' + filt('Soft line', f.softLine) + filt('Volume-secure', f.volumeSecure) + filt('Script-clear', f.scriptClear) + '</div>';
+    var blocked = (v.blocked && v.blocked.length) ? '<div class="nflx-blocked">' + esc(v.blocked[0]) + '</div>' : '';
+    var ex = (item.card && item.card.explanations) || [];
+    var drivers = ex.length ? '<div class="nflx-drivers">' + ex.slice(0,6).map(function(e){
+        var cls = e.dir==='+'?'pos':(e.dir==='-'?'neg':'neu'), ic = e.dir==='+'?'\u25B2':(e.dir==='-'?'\u25BC':'\u25CF');
+        return '<div class="nflx-drv ' + cls + '"><span class="w">' + ic + '</span><span class="f"><b>' + esc(e.label) + '</b> ' + esc(e.text) + '</span></div>';
+      }).join('') + '</div>' : '';
+    var why = (item.card && item.card.summary) ? '<div class="nflx-why">' + esc(item.card.summary) + '</div>' : '';
+    return '<div class="nflx-prop">' +
+      '<div class="nflx-prop-top"><div><div class="nflx-prop-name">' + esc(item.player||'') + '</div>' +
+        '<div class="nflx-pick-line"><span class="nflx-dir ' + dir + (noPlay?' muted':'') + '">' + (dir==='up'?'Higher':'Lower') + '</span> <span class="nflx-prop-market">' + esc(item.propLabel||'') + '</span> <span class="nflx-linev">' + esc(v.line) + '</span></div></div>' +
+        '<div class="nflx-prop-sub">' + esc(item.position||'') + (item.position&&item.team?' \u00b7 ':'') + esc(item.team||'') + (item.opponent?' vs ' + esc(item.opponent):'') + '</div></div>' +
+      projTrack(c, v.line) +
+      '<div class="nflx-metarow"><div class="nflx-pct"><span class="v">' + Math.round(pAdj*100) + '%</span><span class="k">model</span></div>' + chips + '</div>' +
+      filters + blocked + drivers + why +
+    '</div>';
+  }
+  window.renderNflCard = renderPropCard; // back-compat alias
+
+  function scriptChipFor(g){
+    for (var i=0;i<g.picks.length;i++){ var v=g.picks[i].verdict||{}; if (v.scriptLean){ var m=({pass_script:['pass','pass script'],run_script:['run','run script'],neutral_script:['close','close']})[v.scriptLean]; if (m) return '<span class="nflx-script ' + m[0] + '">' + m[1] + '</span>'; } }
+    return '';
+  }
+  function groupByGame(picks){
+    var m={}, order=[];
+    (picks||[]).forEach(function(p){ var k=gameKey(p); if(!m[k]){ m[k]={key:k, teams:{}, picks:[], tally:{GUARANTEED:0,PLATINUM:0,GOLD:0,none:0}}; order.push(k); } if(p.team)m[k].teams[p.team]=1; if(p.opponent)m[k].teams[p.opponent]=1; m[k].picks.push(p); m[k].tally[(p.verdict&&p.verdict.tier_candidate)||'none']++; });
+    var groups = order.map(function(k){ var g=m[k]; g.teamList=Object.keys(g.teams); g.qualifying=g.tally.GUARANTEED+g.tally.PLATINUM+g.tally.GOLD;
+      g.picks.sort(function(a,b){ return (RANK[(b.verdict&&b.verdict.tier_candidate)||'none']-RANK[(a.verdict&&a.verdict.tier_candidate)||'none']) || (((b.verdict&&b.verdict.edge)||0)-((a.verdict&&a.verdict.edge)||0)); }); return g; });
+    groups.sort(function(a,b){ return (b.qualifying-a.qualifying) || (b.picks.length-a.picks.length); });
+    return groups;
+  }
+  function renderGames(picks){
+    var host=document.getElementById('nflGamesList'); if(!host) return;
+    var groups=groupByGame(picks);
+    var cnt=document.getElementById('nflGamesCount'); if(cnt) cnt.textContent = groups.length + ' \u00b7 tap to analyze';
+    host.innerHTML = groups.map(function(g,i){
+      var mu = g.teamList.length>=2 ? (g.teamList[0]+' vs '+g.teamList[1]) : (g.teamList[0]||'Game');
+      var tally=[]; if(g.tally.GUARANTEED)tally.push(g.tally.GUARANTEED+' GUAR'); if(g.tally.PLATINUM)tally.push(g.tally.PLATINUM+' PLAT'); if(g.tally.GOLD)tally.push(g.tally.GOLD+' GOLD');
+      var edge = g.qualifying ? ('<span class="edge">'+tally.join(' \u00b7 ')+'</span>') : '<span>no edge</span>';
+      return '<details class="nflx-game"' + (i===0?' open':'') + '><summary class="nflx-game-row">' +
+        '<span class="nflx-game-mu">' + esc(mu) + '</span>' + scriptChipFor(g) +
+        '<span class="nflx-game-meta"><span>' + g.picks.length + ' props</span>' + edge + '<span class="nflx-game-chev">\u203A</span></span>' +
+        '</summary><div class="nflx-game-body">' + g.picks.map(renderPropCard).join('') + '</div></details>';
+    }).join('');
+  }
+
+  // ---- load the slate ----
   window.loadNflSlate = async function () {
     var list = document.getElementById('nflGamesList');
+    var judge = document.getElementById('nflJudgmentCard');
     var analysis = document.getElementById('nflAnalysisContainer');
     var meta = document.getElementById('nflMeta');
     if (!nflState.date) nflState.date = todayStr();
     setNflDateDisplay();
-    if (analysis) analysis.innerHTML = '<div class="lyrid-empty"><div class="lyrid-empty-text">Loading NFL slate\u2026</div></div>';
-    if (list) list.innerHTML = '';
+    if (judge) judge.innerHTML = '';
+    if (list) list.innerHTML = '<div class="nflx-empty"><div class="nflx-empty-s">Loading NFL slate\u2026</div></div>';
+    if (analysis) analysis.innerHTML = '';
 
     var data = null;
-    for (var i = 0; i < 1; i++) {
-      try {
-        var res = await fetch('/api/nfl/slate?date=' + encodeURIComponent(nflState.date), { cache: 'no-store' });
-        if (res.ok) { data = await res.json(); break; }
-      } catch (_) { /* endpoint not deployed yet */ }
-    }
+    try { var res = await fetch('/api/nfl/slate?date=' + encodeURIComponent(nflState.date), { cache: 'no-store' }); if (res.ok) data = await res.json(); }
+    catch (_) { /* endpoint not deployed yet */ }
     nflState.loaded = true;
 
-    // off-season / no endpoint yet — honest empty state, never a fake pick.
-    // Surface the actual fetched date + source + any server note so the reason
-    // for an empty slate is visible, not guessed.
     if (!data || !Array.isArray(data.picks) || !data.picks.length) {
-      var why = data && data.note ? data.note
-        : 'NFL props run in-season (Sept\u2013Feb). The engine is live once the slate posts.';
+      var why = data && data.note ? data.note : 'NFL props run in-season (Sept\u2013Feb). The engine is live once the slate posts.';
       var src = data && data.source ? data.source : 'no response';
-      if (analysis) analysis.innerHTML =
-        '<div class="lyrid-empty"><div class="lyrid-empty-text">No NFL slate for ' + nflState.date + '.</div>' +
-        '<div class="lyrid-empty-sub">' + why + '</div>' +
-        '<div class="lyrid-empty-sub" style="opacity:.6">source: ' + src + '</div></div>';
+      if (list) list.innerHTML = '<div class="nflx-card"><div class="nflx-empty"><div class="nflx-empty-t">No slate for ' + esc(nflState.date) + '</div>' +
+        '<div class="nflx-empty-s">' + esc(why) + '</div><div class="nflx-empty-s" style="opacity:.6">source: ' + esc(src) + '</div></div></div>';
       if (meta) meta.textContent = '';
       return;
     }
 
-    if (meta) meta.textContent = data.picks.length + ' props \u00b7 ' + (data.source || 'engine');
-    if (analysis) analysis.innerHTML = data.picks.map(renderNflCard).join('');
+    var games = groupByGame(data.picks).length;
+    if (meta) meta.textContent = data.picks.length + ' props \u00b7 ' + games + ' games \u00b7 ' + (data.source || 'engine');
+    renderJudgment(data.picks);
+    renderGames(data.picks);
 
     // feed qualifying picks into the shared parlay builder (same seam as MLB/WNBA)
     try {
@@ -23782,14 +24005,14 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
             var v = p.verdict || {};
             var pOver = (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver) || 0;
             var side = (v.pick === 'lower') ? 'under' : 'over';
-            var rate = (side === 'under') ? (1 - pOver) : pOver;   // cash prob for the chosen side
+            var rate = (side === 'under') ? (1 - pOver) : pOver;
             var g = [String(p.team || ''), String(p.opponent || '')].sort().join('@');
             return {
               id: ['nfl', nflState.date, (p.player_key || p.player), (p.propLabel || ''), side].join(':'),
               sport: 'nfl', date: nflState.date, gameId: 'nfl-' + g,
               team: p.team, opponent: p.opponent, player: p.player,
               market: p.propLabel, side: side, line: v.line,
-              tier: 'GOLD', cashRate: +Number(rate).toFixed(4), edge: v.edge,
+              tier: v.tier_candidate || 'GOLD', cashRate: +Number(rate).toFixed(4), edge: v.edge,
               why: (p.card && p.card.summary) || (side === 'under' ? 'Model under edge on a soft line' : 'Model over edge on a soft line'),
               matchupContext: [],
               flags: { antiCalibrated: false, highScoringGame: false, started: false, bookProhibited: false, lineStatus: 'standard' }
@@ -23801,7 +24024,6 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   };
 
   // ---- lazy-load hook: wrap switchTab WITHOUT replacing it ----
-  // (idempotent — wraps the existing generic router so NFL loads on first open)
   var _prevSwitchTab = window.switchTab;
   window.switchTab = function (tabName) {
     if (typeof _prevSwitchTab === 'function') _prevSwitchTab(tabName);

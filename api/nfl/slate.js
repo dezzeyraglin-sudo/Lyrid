@@ -25,6 +25,7 @@
 
 import {
   parsePrizePicks, normalizeLines, getUnmappedStats, clearUnmappedStats,
+  getAltLinesDropped, clearAltLinesDropped,
 } from '../../lib/nfl/nflLineAdapters.js';
 
 const PP_URL = 'https://partner-api.prizepicks.com/projections?league_id=9&per_page=1000';
@@ -65,6 +66,7 @@ export default async function handler(req, res) {
 
   // 2) normalize + filter to the requested ET date
   clearUnmappedStats();
+  clearAltLinesDropped();
   let lines = normalizeLines(parsePrizePicks(ppJson));
   lines = lines.map(l => {
     const st = l._start_time || l.start_time || null;
@@ -148,6 +150,7 @@ export default async function handler(req, res) {
     date, count: picks.length, picks,
     diagnostics: {
       unmappedStatTypes: getUnmappedStats(),
+      altLinesDropped: getAltLinesDropped(),
       propFamilies: Array.from(new Set(lines.map(l => l.prop_type))),
       baselineResolved: ready ? Object.keys(E.featByKey).length : 0,
       availabilityOk: ready ? !!(E.availability && E.availability.ok) : false,
