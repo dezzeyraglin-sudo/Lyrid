@@ -6006,6 +6006,7 @@ function loadState() {
   state.bestBetHistory = state.bestBetHistory || {};
   state.wnbaPropHistory = state.wnbaPropHistory || {};
   state.wnbaGameBets = state.wnbaGameBets || {};
+  state.nflPropHistory = state.nflPropHistory || {};
   state.hrAudit = state.hrAudit || { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } };
   state.hrAudit.entries = state.hrAudit.entries || [];
   state.hrAudit.byTier = state.hrAudit.byTier || { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} };
@@ -6245,6 +6246,7 @@ function saveState() {
     localStorage.setItem(LS_CRITICAL_KEY, JSON.stringify({
       wnbaGameBets: state.wnbaGameBets || {},
       wnbaPropHistory: state.wnbaPropHistory || {},
+      nflPropHistory: state.nflPropHistory || {},
       picks: state.picks || {},
       _v: 1,
     }));
@@ -13407,7 +13409,7 @@ function importJsonState(text) {
   }
 
   // Sanity check the shape — should have at least one expected top-level key
-  const expectedKeys = ['picks', 'taggedHitters', 'projectionAudit', 'gameLineBets', 'firstInningBets', 'pitcherPropBets', 'nbaPropHistory', 'wnbaPropHistory', 'wnbaGameBets'];
+  const expectedKeys = ['picks', 'taggedHitters', 'projectionAudit', 'gameLineBets', 'firstInningBets', 'pitcherPropBets', 'nbaPropHistory', 'wnbaPropHistory', 'wnbaGameBets', 'nflPropHistory'];
   const hasExpectedShape = expectedKeys.some(k => k in parsed);
   if (!hasExpectedShape) {
     alert('JSON does not look like a Lyrid state backup. None of the expected keys (picks, taggedHitters, projectionAudit, etc.) are present.');
@@ -13481,6 +13483,12 @@ function importJsonState(text) {
         if (entries && typeof entries === 'object') {
           state.nbaPropHistory[d] = Object.assign({}, state.nbaPropHistory[d] || {}, entries);
         }
+      }
+    }
+    if (parsed.nflPropHistory && typeof parsed.nflPropHistory === 'object') {
+      state.nflPropHistory = state.nflPropHistory || {};
+      for (const [d, entries] of Object.entries(parsed.nflPropHistory)) {
+        if (entries && typeof entries === 'object') state.nflPropHistory[d] = Object.assign({}, state.nflPropHistory[d] || {}, entries);
       }
     }
     if (parsed.wnbaPropHistory && typeof parsed.wnbaPropHistory === 'object') {
@@ -17309,12 +17317,75 @@ function renderHistory() {
       <button class="history-subnav-btn ${historyView==='picks'?'active':''}" data-hist-view="picks" onclick="switchHistoryView('picks')">$ MY BETS</button>
       <button class="history-subnav-btn ${historyView==='wnba'?'active':''}" data-hist-view="wnba" onclick="switchHistoryView('wnba')">★ WNBA BEST BETS</button>
       <button class="history-subnav-btn ${historyView==='wnbagames'?'active':''}" data-hist-view="wnbagames" onclick="switchHistoryView('wnbagames')">◈ WNBA GAME BETS</button>
-      ${historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'wnbagames' ? `<button class="btn sm" onclick="gradeWnbaGameBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="backfillInningData()" style="margin-left:6px" title="Fetch per-inning data for already-graded games (one-time backfill)">⊕ BACKFILL INNINGS</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
+      <button class="history-subnav-btn ${historyView==='nfl'?'active':''}" data-hist-view="nfl" onclick="switchHistoryView('nfl')">▲ NFL PROPS</button>
+      ${historyView === 'nfl' ? `<button class="btn sm" onclick="gradeNflProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'wnbagames' ? `<button class="btn sm" onclick="gradeWnbaGameBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="backfillInningData()" style="margin-left:6px" title="Fetch per-inning data for already-graded games (one-time backfill)">⊕ BACKFILL INNINGS</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
       <button class="btn sm" onclick="gradeAllBestBets()" style="margin-left:6px">⚡ GRADE ALL</button>`}
     </div>
   `;
 
   // WNBA PROPS view — in-depth prediction tracking to sharpen the engine
+  if (historyView === 'nfl') {
+    const all = [];
+    Object.keys(state.nflPropHistory || {}).forEach(d => { Object.values(state.nflPropHistory[d]).forEach(e => all.push(e)); });
+    if (all.length === 0) {
+      container.innerHTML = subnavHtml + `<div class="empty"><div class="empty-icon">◌</div><div>No NFL predictions tracked yet.<br><br>The model's actionable plays are auto-captured when you open the NFL tab and load a slate.<br>After games finish, tap ⚡ GRADE ALL (or reopen the app) to score them against ESPN box scores.<br><br><span style="opacity:.7">Tiers stay provisional until this record builds — this is the forward-validation they're waiting on.</span></div></div>`;
+      return;
+    }
+    const fmtRate = (r) => r == null ? '—' : (r * 100).toFixed(1) + '%';
+    const rateClass = (r) => r == null ? 'neutral' : r >= 0.55 ? 'hot' : r <= 0.45 ? 'cold' : 'neutral';
+    const fmtMae = (m) => m == null ? '—' : m.toFixed(1);
+    const rec = (s) => `${s.wins}-${s.losses}`;
+    const overall = computeNflPropStats(all);
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 21);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+    const recent = computeNflPropStats(all.filter(e => e.date >= cutoffStr));
+    const statsBar = `
+      <div class="bb-stats-grid">
+        <div class="bb-stat-card featured">
+          <div class="bb-stat-val">${rec(overall)}</div>
+          <div class="bb-stat-lbl">RECORD</div>
+          ${overall.winRate !== null ? `<div class="bb-stat-pct ${rateClass(overall.winRate)}">${fmtRate(overall.winRate)}</div>` : `<div class="bb-stat-pct neutral">${overall.pending || 0} live</div>`}
+        </div>
+        <div class="bb-stat-card featured" style="border-color:var(--heat);background:linear-gradient(135deg,rgba(255,122,61,0.1),rgba(255,122,61,0.02))">
+          <div class="bb-stat-val">${fmtMae(overall.mae)}</div>
+          <div class="bb-stat-lbl" style="color:var(--heat)">PROJECTION MAE</div>
+          <div class="bb-stat-pct small neutral">${overall.bias != null ? (overall.bias > 0 ? '+' : '') + overall.bias.toFixed(1) + ' yds bias' : ''}</div>
+        </div>
+        <div class="bb-stat-card">
+          <div class="bb-stat-val">${rec(recent)}</div>
+          <div class="bb-stat-lbl">LAST 3 WEEKS</div>
+          ${recent.winRate !== null ? `<div class="bb-stat-pct small ${rateClass(recent.winRate)}">${fmtRate(recent.winRate)}</div>` : ''}
+        </div>
+        <div class="bb-stat-card">
+          <div class="bb-stat-val">${overall.pending}</div>
+          <div class="bb-stat-lbl">PENDING</div>
+        </div>
+      </div>`;
+    const sliceTable = (title, note, groups) => {
+      const rows = groups.filter(g => g.stats.n > 0).map(g => {
+        const s = g.stats;
+        return `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(g.label)}</span><span class="rollup-prop-rate ${rateClass(s.winRate)}">${fmtRate(s.winRate)}</span><span class="rollup-prop-vol">${rec(s)} · MAE ${fmtMae(s.mae)} · ${s.n}</span></div>`;
+      }).join('');
+      return rows ? `<h3 class="rollup-section-title">${esc(title)}</h3>${note ? `<div class="rollup-tier-note">${esc(note)}</div>` : ''}<div class="rollup-prop-list">${rows}</div>` : '';
+    };
+    const byTier = sliceTable('BY MODEL TIER', 'Provisional tiers — GUARANTEED/PLATINUM should out-hit GOLD once the sample builds. This is the calibration the tiers are waiting on before any badge ships.', [
+      { label: 'GUARANTEED', stats: computeNflPropStats(all.filter(e => e.tier === 'guaranteed')) },
+      { label: 'PLATINUM', stats: computeNflPropStats(all.filter(e => e.tier === 'platinum')) },
+      { label: 'GOLD', stats: computeNflPropStats(all.filter(e => e.tier === 'gold')) },
+    ]);
+    const markets = [...new Set(all.map(e => e.market))];
+    const byMarket = sliceTable('BY MARKET', 'Lower MAE = sharper projections for that family.', markets.map(m => ({ label: String(m).toUpperCase(), stats: computeNflPropStats(all.filter(e => e.market === m)) })));
+    const resPill = (e) => { const c = e.result === 'win' ? 'var(--data-positive,#2D7A3E)' : e.result === 'loss' ? 'var(--data-negative,#A33B2A)' : 'var(--text-muted,#9A9A93)'; const t = e.result ? e.result.toUpperCase() : '—'; return `<span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${c}">${t}</span>`; };
+    const row = (e) => `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(e.player)} · ${esc(e.market)} ${e.lean === 'OVER' ? 'o' : 'u'}${esc(e.line)}</span><span class="rollup-prop-rate ${rateClass(e.probOver)}">${e.probOver != null ? Math.round(e.probOver * 100) + '%' : '—'}</span><span class="rollup-prop-vol">proj ${e.projection}${e.actual != null ? ' · actual ' + e.actual : ''} · ${resPill(e)}</span></div>`;
+    const graded = all.filter(e => e.graded).sort((a, b) => (b.date + b.player).localeCompare(a.date + a.player));
+    const pending = all.filter(e => !e.graded).sort((a, b) => ((b.edge ?? 0) - (a.edge ?? 0)));
+    container.innerHTML = subnavHtml + statsBar +
+      `<div class="rollup-tier-note" style="margin:10px 0">Model probability shown — provisional, not a verified cash rate. Graded off ESPN box scores.</div>` +
+      byTier + byMarket +
+      (pending.length ? `<h3 class="rollup-section-title">PENDING (${pending.length})</h3><div class="rollup-prop-list">${pending.slice(0, 40).map(row).join('')}</div>` : '') +
+      (graded.length ? `<h3 class="rollup-section-title">GRADED (${graded.length})</h3><div class="rollup-prop-list">${graded.slice(0, 60).map(row).join('')}</div>` : '');
+    return;
+  }
   if (historyView === 'wnba') {
     const all = [];
     Object.keys(state.wnbaPropHistory || {}).forEach(d => {
@@ -19148,7 +19219,7 @@ function saveNotes() {
 function confirmReset() {
   if (!confirm('Reset ALL data?')) return;
   if (!confirm('Are you sure? Cannot be undone.')) return;
-  state = { picks:{}, banned:{pitchers:[],hitters:[],teams:[]}, notes:'', currentDate:getTodayStr(), researchTags:{}, tracking:{}, bestBetHistory:{}, hrAudit: { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } }, gameLineBets: {}, firstInningBets: {}, projectionAudit: {}, nbaPropHistory: {}, wnbaPropHistory: {}, secretFilter: { enabled: false } };
+  state = { picks:{}, banned:{pitchers:[],hitters:[],teams:[]}, notes:'', currentDate:getTodayStr(), researchTags:{}, tracking:{}, bestBetHistory:{}, hrAudit: { entries: [], byTier: { elite:{hits:0,misses:0}, strong:{hits:0,misses:0}, solid:{hits:0,misses:0} } }, gameLineBets: {}, firstInningBets: {}, projectionAudit: {}, nbaPropHistory: {}, wnbaPropHistory: {}, nflPropHistory: {}, secretFilter: { enabled: false } };
   saveState();
   location.reload();
 }
@@ -19748,6 +19819,8 @@ async function autoGradeOnAppOpen() {
   try { if (typeof gradePitcherPropBets === 'function') await gradePitcherPropBets({ silent: true }); }
   catch(err) { console.warn('[autoGrade] pitcher prop bets failed:', err.message); }
 
+  try { if (typeof window.gradeNflProps === 'function') await window.gradeNflProps({ silent: true }); }
+  catch(err) { console.warn('[autoGrade] nfl props failed:', (err&&err.message)||err); }
   try { if (typeof window.gradeWnbaProps === 'function') await window.gradeWnbaProps({ silent: true }); }
   catch(err) { console.warn('[autoGrade] wnba props failed:', err.message); }
 
@@ -23994,6 +24067,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (meta) meta.textContent = data.picks.length + ' props \u00b7 ' + games + ' games \u00b7 ' + (data.source || 'engine');
     renderJudgment(data.picks);
     renderGames(data.picks);
+    try { if (typeof window.logNflBets === 'function') window.logNflBets(data.picks, nflState.date); } catch (_) {}
 
     // feed qualifying picks into the shared parlay builder (same seam as MLB/WNBA)
     try {
@@ -24030,6 +24104,116 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (tabName === 'nfl' && !nflState.loaded) window.loadNflSlate();
   };
 })();
+</script>
+
+<!-- ===== LYRID NFL BET LOGGING (mirrors WNBA prop history) ===== -->
+<script>
+// Auto-captures the model's actionable NFL plays into state.nflPropHistory on slate
+// load, and grades them against ESPN box scores (/api/nfl/results). Same shape and
+// flow as gradeWnbaProps so the History tab, backup, and auto-grade all work the same.
+// Every logged number is the MODEL's — tiers are provisional until this record builds.
+(function () {
+  'use strict';
+  var FAM = { 'Passing Yards': 'passing_yards', 'Rushing Yards': 'rushing_yards', 'Receiving Yards': 'receiving_yards' };
+  function nfNorm(s){ return String(s||'').toLowerCase().replace(/[.'`]/g,'').replace(/\b(jr|sr|ii|iii|iv|v)\b/g,'').replace(/[^a-z ]/g,'').replace(/\s+/g,' ').trim(); }
+
+  // Capture the model's actionable plays (tier != none) for a loaded slate.
+  window.logNflBets = function (picks, date) {
+    if (!Array.isArray(picks) || !picks.length) return;
+    date = date || (window.getTodayStr ? getTodayStr() : new Date().toISOString().slice(0,10));
+    state.nflPropHistory = state.nflPropHistory || {};
+    var day = state.nflPropHistory[date] = state.nflPropHistory[date] || {};
+    var added = 0;
+    picks.forEach(function (p) {
+      var v = p.verdict || {}, c = p.comp || {};
+      if (!v.tier_candidate || v.tier_candidate === 'none') return;   // only actionable plays
+      var propType = FAM[p.propLabel]; if (!propType) return;         // gradeable yardage families
+      var proj = c.median; if (proj == null || v.line == null) return;
+      var key = (p.player_key || p.player) + '_' + propType;
+      var existing = day[key];
+      if (existing && existing.graded) return;                        // never overwrite a graded result
+      var lean = Number(proj) >= Number(v.line) ? 'OVER' : 'UNDER';
+      day[key] = Object.assign({}, existing, {
+        date: date, player: p.player, team: p.team || null, opponent: p.opponent || null,
+        market: p.propLabel, propType: propType, line: Number(v.line),
+        projection: Number(Number(proj).toFixed(1)),
+        p25: c.p25 != null ? c.p25 : null, p75: c.p75 != null ? c.p75 : null,
+        edge: (v.edge != null) ? Number(Number(v.edge).toFixed(4)) : null,
+        lean: lean, probOver: (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver) != null ? (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver) : null,
+        tier: (v.tier_candidate || '').toLowerCase(),
+        ceiling: !!p.ceiling,
+        reasonText: (p.card && p.card.summary) || '',
+        dataCompleteness: (p.dataCompleteness != null) ? p.dataCompleteness : null,
+        lineSource: 'provided',
+        capturedAt: (existing && existing.capturedAt) || new Date().toISOString(),
+        actual: (existing && existing.actual != null) ? existing.actual : null,
+        result: (existing && existing.result) || null,
+        error: (existing && existing.error != null) ? existing.error : null,
+        graded: (existing && existing.graded) || false
+      });
+      added++;
+    });
+    if (added > 0) {
+      saveState();
+      if (typeof historyView !== 'undefined' && historyView === 'nfl' && document.getElementById('historyList')) {
+        try { renderHistory(); } catch (_) {}
+      }
+    }
+  };
+
+  // Grade logged NFL props against ESPN box scores (/api/nfl/results).
+  window.gradeNflProps = async function (opts) {
+    opts = opts || {};
+    var silent = opts.silent;
+    state.nflPropHistory = state.nflPropHistory || {};
+    var dates = opts.date ? [opts.date]
+      : Object.keys(state.nflPropHistory).filter(function (d) {
+          return Object.values(state.nflPropHistory[d]).some(function (e) { return !e.graded; });
+        });
+    if (dates.length === 0) { if (!silent && window.showToast) showToast('Nothing to grade'); return; }
+    var today = window.getTodayStr ? getTodayStr() : new Date().toISOString().slice(0,10);
+    var gradedCount = 0;
+    for (var i = 0; i < dates.length; i++) {
+      var date = dates[i];
+      try {
+        var res = await fetch('/api/nfl/results?date=' + encodeURIComponent(date));
+        var data = await res.json();
+        if (!data.ok || !data.byPlayer) continue;
+        var day = state.nflPropHistory[date];
+        Object.values(day).forEach(function (e) {
+          if (e.graded) return;
+          var box = data.byPlayer[nfNorm(e.player)];
+          if (!box) return;                          // player not posted yet
+          if (!box.final && date === today) return;  // game still live today
+          var actual = box[e.propType];
+          if (actual == null) { if (box.final) { e.result = 'dnp'; e.actual = 0; e.graded = true; gradedCount++; } return; }
+          e.actual = actual;
+          e.error = Number((e.projection - actual).toFixed(1));   // signed projection error (yds)
+          var overHit = actual > e.line, push = actual === e.line;
+          e.result = push ? 'push' : ((e.lean === 'OVER') === overHit ? 'win' : 'loss');
+          e.graded = true; gradedCount++;
+        });
+      } catch (err) { if (!silent) console.warn('[gradeNflProps]', date, (err && err.message) || err); }
+    }
+    if (gradedCount > 0) { saveState(); if (typeof renderHistory === 'function') renderHistory(); }
+    if (!silent && window.showToast) showToast(gradedCount > 0 ? ('Graded ' + gradedCount + ' NFL props') : 'No newly final results');
+  };
+})();
+
+// Stats roll-up over a list of graded NFL entries (mirrors computeWnbaPropStats).
+function computeNflPropStats(entries) {
+  entries = entries || [];
+  var graded = entries.filter(function (e) { return e.graded && (e.result === 'win' || e.result === 'loss'); });
+  var wins = graded.filter(function (e) { return e.result === 'win'; }).length;
+  var losses = graded.filter(function (e) { return e.result === 'loss'; }).length;
+  var total = wins + losses;
+  var winRate = total > 0 ? wins / total : null;
+  var withErr = entries.filter(function (e) { return e.graded && e.error != null; });
+  var mae = withErr.length > 0 ? withErr.reduce(function (s, e) { return s + Math.abs(e.error); }, 0) / withErr.length : null;
+  var bias = withErr.length > 0 ? withErr.reduce(function (s, e) { return s + e.error; }, 0) / withErr.length : null;
+  var pending = entries.filter(function (e) { return !e.graded; }).length;
+  return { wins: wins, losses: losses, total: total, winRate: winRate, mae: mae, bias: bias, pending: pending, n: entries.length };
+}
 </script>
 
 <script>
