@@ -3724,7 +3724,7 @@
       <button class="lyrid-date-btn" type="button" onclick="tennisChangeDate('today')" style="margin-left:4px">Today</button>
     </div>
     <button class="lyrid-btn primary" id="loadTennisBtn" onclick="loadTennisSlate()">Refresh</button>
-    <button class="lyrid-btn" id="tennisCEBtn" onclick="sweepTennisCleanestEdges()" style="margin-left:6px">★ Find cleanest edges</button>
+    <button class="lyrid-btn" id="tennisCEBtn" onclick="analyzeAllTennis()" style="margin-left:6px">★ Find cleanest edges</button>
     <span id="tennisMeta" class="lyrid-eyebrow" style="margin-left:auto"></span>
   </div>
   <div id="tennisBanner"></div>
@@ -23888,76 +23888,78 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 
 
 
-  // ===== TENNIS CLEANEST EDGES — slate-wide ranked board (mirrors MLB gatherCleanestEdges) =====
-  // Analyzes every match on the slate, extracts each one's best play, ranks into validation bands
-  // (VERIFIED > MODEL), and renders the board. Validated beats modeled, always. Feeds the parlay
-  // bridge like MLB does. Today all plays are MODEL/provisional until priors-log grades a cohort.
-  const tennisCE = { rows: [], sweeping: false };
+  // ===== TENNIS CLEANEST EDGES (MLB pattern) =====
+  // Mirrors MLB exactly: analyzeTennisMatch caches each read into tennisAnalysisCache, then calls
+  // refreshTennisCleanestEdges(), which renders the board SYNCHRONOUSLY from the accumulated cache.
+  // The board fills in as you analyze matches — no click-time fetching, no separate sweep. Same as
+  // MLB's analysisCache + refreshCleanestEdges(). "Analyze all" is a convenience that taps each match.
+  const tennisAnalysisCache = {};   // { matchId: { match, read, gradeStatus, date } }
 
-  async function sweepTennisCleanestEdges() {
-    if (tennisCE.sweeping || !tennisState.slate || !tennisState.slate.length) return;
-    if (!window.LyridTennisCleanestEdges) return;
-    tennisCE.sweeping = true;
+  function refreshTennisCleanestEdges() {
     const mount = document.getElementById('tennisCleanestEdges');
-    if (mount) mount.innerHTML = '<div class="tce-loading">Sweeping ' + tennisState.slate.length + ' matches for the cleanest edges…</div>';
-    const analyzed = [];
-    // Only PP matches are bettable AND give us lines to grade against — the props only populate when
-    // analyze receives lines, so we fetch each match's PrizePicks lines and pass them through. Non-PP
-    // matches have nothing to rank (no market), so we skip them.
-    const slate = tennisState.slate.filter(m => m.hasPP).slice(0, 20);
-    for (const m of slate) {
-      try {
-        // 1) get this match's PrizePicks lines
-        let lineQs = '';
-        try {
-          const ppr = await fetch('/api/tennis/prizepicks?a=' + encodeURIComponent(m.playerA) + '&b=' + encodeURIComponent(m.playerB), { cache: 'no-store' });
-          if (ppr.ok) {
-            const pj = await ppr.json();
-            const L = pj.lines || pj || {};
-            for (const [k, v] of Object.entries(L)) {
-              if (v != null && LINE_KEYS.includes(k)) lineQs += '&' + k + '=' + encodeURIComponent(v);
-            }
-          }
-        } catch (_) {}
-        // 2) analyze WITH the lines so props populate
-        const qs = '?a=' + encodeURIComponent(m.playerA) + '&b=' + encodeURIComponent(m.playerB) + '&surface=' + (m.surface||'Hard') + lineQs;
-        const r = await fetch('/api/tennis/analyze' + qs, { cache: 'no-store' });
-        if (!r.ok) continue;
-        const j = await r.json();
-        if (j.read) analyzed.push({ match: m, read: j.read, gradeStatus: j.gradeStatus });
-      } catch (_) {}
-    }
-    tennisCE.rows = window.LyridTennisCleanestEdges.gather(analyzed);
-    if (mount) mount.innerHTML = renderTennisCleanestEdges();
-    // feed the parlay maker like MLB
-    try { if (window.LyridParlayBridge && window.LyridParlayBridge.pushTennis) window.LyridParlayBridge.pushTennis(tennisCE.rows, tennisState.date); } catch (_) {}
-    tennisCE.sweeping = false;
+    if (!mount || !window.LyridTennisCleanestEdges) return;
+    const date = tennisState.date || null;
+    const analyzed = Object.values(tennisAnalysisCache).filter(a => a && a.read && (!date || !a.date || a.date === date));
+    const rows = window.LyridTennisCleanestEdges.gather(analyzed);
+    mount.innerHTML = renderTennisCleanestEdges(rows);
+    try { if (window.LyridParlayBridge && window.LyridParlayBridge.pushTennis) window.LyridParlayBridge.pushTennis(rows, date); } catch (_) {}
   }
 
-  function renderTennisCleanestEdges() {
-    const rows = tennisCE.rows || [];
-    if (!rows.length) return '<div class="tce-empty">No clean edges yet — tap “Find cleanest edges” to sweep the slate.</div>';
+  function renderTennisCleanestEdges(rows) {
+    rows = rows || [];
+    if (!rows.length) return '';   // MLB renders empty-state only when a slate is loaded; keep quiet until matches analyzed
     const verifiedCount = rows.filter(r => !r.provisional).length;
     const head = '<div class="tce-head"><span class="tce-title">Cleanest Edges</span>' +
       '<span class="tce-sub">' + (verifiedCount ? verifiedCount + ' verified · ' : '') + rows.length + ' plays, ranked</span></div>' +
       (verifiedCount === 0 ? '<div class="tce-note">All plays are MODEL / provisional — Tennis has no graded cohorts yet. They graduate to VERIFIED once the priors log clears the Wilson floor, same as MLB.</div>' : '');
     const body = rows.map((r, i) => {
-      const chips = (r.ctxChips||[]).map(c => '<span class="tce-chip">' + esc(c) + '</span>').join('');
-      const ev = (r.evidence||[]).map(e => '<div class="tce-ev"><span>' + esc(e[0]) + '</span><span>' + esc(e[1]) + '</span></div>').join('');
-      return '<div class="tce-row tce-' + (r.dir==='more'?'go':'fade') + '">' +
-        '<div class="tce-rank">' + (i+1) + '</div>' +
+      const chips = (r.ctxChips || []).map(c => '<span class="tce-chip">' + esc(c) + '</span>').join('');
+      const ev = (r.evidence || []).map(e => '<div class="tce-ev"><span>' + esc(e[0]) + '</span><span>' + esc(e[1]) + '</span></div>').join('');
+      return '<div class="tce-row tce-' + (r.dir === 'more' ? 'go' : 'fade') + '">' +
+        '<div class="tce-rank">' + (i + 1) + '</div>' +
         '<div class="tce-main">' +
           '<div class="tce-verdict">' + esc(r.verb) + ' · <span class="tce-tier tce-tier-' + r.tier.toLowerCase() + '">' + esc(r.tier) + '</span> · ' + r.wr + '%</div>' +
           '<div class="tce-play">' + esc(r.who || r.match) + ' — ' + esc(r.market) + ' ' + esc(r.lean) + ' ' + esc(r.line) + '</div>' +
-          '<div class="tce-match">' + esc(r.match) + ' · ' + esc(r.surface||'') + '</div>' +
+          '<div class="tce-match">' + esc(r.match) + ' · ' + esc(r.surface || '') + '</div>' +
           '<div class="tce-plain">' + esc(r.plain) + '</div>' +
           (chips ? '<div class="tce-chips">' + chips + '</div>' : '') +
           '<div class="tce-evwrap">' + ev + '</div>' +
         '</div></div>';
     }).join('');
-    return head + '<div class="tce-list">' + body + '</div>';
+    return '<div class="cleanest-edges">' + head + '<div class="tce-list">' + body + '</div></div>';
   }
-  window.sweepTennisCleanestEdges = sweepTennisCleanestEdges;
+
+  // Convenience: analyze every PP match on the slate to fill the board in one action (each tap caches
+  // + refreshes, exactly like tapping them one by one). This is what the button triggers.
+  async function analyzeAllTennis() {
+    if (!tennisState.slate || !tennisState.slate.length) return;
+    const btn = document.getElementById('tennisCEBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Analyzing slate…'; }
+    const mount = document.getElementById('tennisCleanestEdges');
+    if (mount) mount.innerHTML = '<div class="tce-loading">Analyzing the slate for cleanest edges…</div>';
+    const ppMatches = tennisState.slate.filter(m => m.hasPP).slice(0, 20);
+    for (const m of ppMatches) {
+      try {
+        // pull PP lines so props populate (that's what makes a match rankable)
+        let lines = {};
+        try {
+          const ppr = await fetch('/api/tennis/prizepicks?a=' + encodeURIComponent(m.playerA) + '&b=' + encodeURIComponent(m.playerB), { cache: 'no-store' });
+          if (ppr.ok) { const pj = await ppr.json(); const L = pj.lines || pj || {}; for (const k of LINE_KEYS) if (L[k] != null) lines[k] = L[k]; }
+        } catch (_) {}
+        const qs = new URLSearchParams({ a: m.playerA, b: m.playerB, surface: m.surface || 'Hard' });
+        for (const [k, v] of Object.entries(lines)) qs.set(k, v);
+        const r = await fetch('/api/tennis/analyze?' + qs.toString(), { cache: 'no-store' });
+        if (!r.ok) continue;
+        const j = await r.json();
+        if (j.read) { tennisAnalysisCache[String(m.matchId)] = { match: m, read: j.read, gradeStatus: j.gradeStatus, date: tennisState.date || null }; refreshTennisCleanestEdges(); }
+      } catch (_) {}
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '\u2605 Find cleanest edges'; }
+    const finalMount = document.getElementById('tennisCleanestEdges');
+    if (finalMount && !finalMount.innerHTML.trim()) finalMount.innerHTML = '<div class="tce-empty">No clean edges on this slate — every play is inside the noise.</div>';
+  }
+  window.analyzeAllTennis = analyzeAllTennis;
+  window.refreshTennisCleanestEdges = refreshTennisCleanestEdges;
 
   async function analyzeTennisMatch(matchId, lines) {
     tennisState.selectedMatchId = matchId;
@@ -24003,6 +24005,14 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         try { container.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { container.scrollIntoView(); }
         // if real lines were graded, log them as validation data (silent, fail-soft, bet:false)
         if (lines && Object.keys(lines).length && j.read && j.read.props) logGradedLines(m, j.read, cur);
+        // (MLB pattern) cache this analysis + refresh Cleanest Edges — the board fills in as each
+        // match is analyzed, reading from the accumulated cache. Same as MLB's refreshCleanestEdges().
+        try {
+          if (j.read) {
+            tennisAnalysisCache[String(matchId)] = { match: m, read: j.read, gradeStatus: j.gradeStatus, date: tennisState.date || null };
+            refreshTennisCleanestEdges();
+          }
+        } catch (_) {}
       }
     } catch (e) {
       if (container) container.innerHTML = `<div class="lyrid-empty"><div class="lyrid-empty-title">Analysis unavailable</div><div class="lyrid-empty-text">${esc(String(e.message || e))}</div></div>`;
