@@ -3724,6 +3724,7 @@
       <button class="lyrid-date-btn" type="button" onclick="tennisChangeDate('today')" style="margin-left:4px">Today</button>
     </div>
     <button class="lyrid-btn primary" id="loadTennisBtn" onclick="loadTennisSlate()">Refresh</button>
+    <button class="lyrid-btn" id="tennisCEBtn" onclick="sweepTennisCleanestEdges()" style="margin-left:6px">★ Find cleanest edges</button>
     <span id="tennisMeta" class="lyrid-eyebrow" style="margin-left:auto"></span>
   </div>
   <div id="tennisBanner"></div>
@@ -23900,11 +23901,26 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     const mount = document.getElementById('tennisCleanestEdges');
     if (mount) mount.innerHTML = '<div class="tce-loading">Sweeping ' + tennisState.slate.length + ' matches for the cleanest edges…</div>';
     const analyzed = [];
-    // limit concurrency to respect API; analyze PP matches first (they're bettable)
-    const slate = [...tennisState.slate].sort((a,b) => (b.hasPP?1:0) - (a.hasPP?1:0)).slice(0, 24);
+    // Only PP matches are bettable AND give us lines to grade against — the props only populate when
+    // analyze receives lines, so we fetch each match's PrizePicks lines and pass them through. Non-PP
+    // matches have nothing to rank (no market), so we skip them.
+    const slate = tennisState.slate.filter(m => m.hasPP).slice(0, 20);
     for (const m of slate) {
       try {
-        const qs = '?a=' + encodeURIComponent(m.playerA) + '&b=' + encodeURIComponent(m.playerB) + '&surface=' + (m.surface||'Hard');
+        // 1) get this match's PrizePicks lines
+        let lineQs = '';
+        try {
+          const ppr = await fetch('/api/tennis/prizepicks?a=' + encodeURIComponent(m.playerA) + '&b=' + encodeURIComponent(m.playerB), { cache: 'no-store' });
+          if (ppr.ok) {
+            const pj = await ppr.json();
+            const L = pj.lines || pj || {};
+            for (const [k, v] of Object.entries(L)) {
+              if (v != null && LINE_KEYS.includes(k)) lineQs += '&' + k + '=' + encodeURIComponent(v);
+            }
+          }
+        } catch (_) {}
+        // 2) analyze WITH the lines so props populate
+        const qs = '?a=' + encodeURIComponent(m.playerA) + '&b=' + encodeURIComponent(m.playerB) + '&surface=' + (m.surface||'Hard') + lineQs;
         const r = await fetch('/api/tennis/analyze' + qs, { cache: 'no-store' });
         if (!r.ok) continue;
         const j = await r.json();
