@@ -3727,6 +3727,7 @@
     <span id="tennisMeta" class="lyrid-eyebrow" style="margin-left:auto"></span>
   </div>
   <div id="tennisBanner"></div>
+  <div id="tennisCleanestEdges"></div>
   <div id="tennisGamesList"></div>
   <div id="tennisAnalysisContainer"></div>
 </div>
@@ -23559,6 +23560,29 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   #tennis-panel .lyr-tier-lean{background:#3a3520;color:#e0c97e}
   #tennis-panel .lyr-tier-coinflip{background:#3a2320;color:#e0947e}
   #tennis-panel .lyrid-tennis-prop-mkt{font-size:11px;color:#e0947e;margin-top:4px;line-height:1.4}
+
+  #tennis-panel .tce-loading,#tennis-panel .tce-empty{padding:16px;color:#8a8f98;font-size:13px;text-align:center}
+  #tennis-panel .tce-head{display:flex;align-items:baseline;gap:10px;margin:12px 0 4px}
+  #tennis-panel .tce-title{font-size:16px;font-weight:800;color:#1c2c4c}
+  #tennis-panel .tce-sub{font-size:12px;color:#8a8f98}
+  #tennis-panel .tce-note{font-size:11.5px;color:#9a5b1a;background:#faf3e6;border-radius:8px;padding:8px 10px;margin:6px 0 10px;line-height:1.45}
+  #tennis-panel .tce-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+  #tennis-panel .tce-row{display:flex;gap:10px;background:#fff;border:0.5px solid var(--border-hairline,#e2e6ec);border-radius:12px;padding:11px 13px}
+  #tennis-panel .tce-row.tce-go{border-left:3px solid #1a7a3a}
+  #tennis-panel .tce-row.tce-fade{border-left:3px solid #c2410c}
+  #tennis-panel .tce-rank{font-size:15px;font-weight:800;color:#b8bfca;min-width:22px}
+  #tennis-panel .tce-main{flex:1}
+  #tennis-panel .tce-verdict{font-size:11px;font-weight:700;letter-spacing:.04em;color:#5a6472;margin-bottom:2px}
+  #tennis-panel .tce-tier{padding:1px 6px;border-radius:10px;font-size:10px;font-weight:800}
+  #tennis-panel .tce-tier-verified{background:#1a7a3a;color:#fff}
+  #tennis-panel .tce-tier-model{background:#eef1f5;color:#7a8194}
+  #tennis-panel .tce-play{font-size:14px;font-weight:700;color:#1c2c4c}
+  #tennis-panel .tce-match{font-size:11.5px;color:#8a8f98;margin:1px 0 4px}
+  #tennis-panel .tce-plain{font-size:12.5px;color:#3a4256;line-height:1.45}
+  #tennis-panel .tce-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  #tennis-panel .tce-chip{font-size:10px;font-weight:600;background:#f2f4f7;color:#5a6472;padding:2px 7px;border-radius:10px}
+  #tennis-panel .tce-evwrap{margin-top:6px;border-top:0.5px solid #eef1f5;padding-top:5px}
+  #tennis-panel .tce-ev{display:flex;justify-content:space-between;font-size:11px;color:#6a7280;padding:1px 0}
 </style>
 <script>
 (function () {
@@ -23648,6 +23672,9 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       ${propRow('Fantasy — ' + names[1], read.props && read.props.fantasyB)}
       ${propRow('Games Won — ' + names[0], read.props && read.props.gamesWonA)}
       ${propRow('Games Won — ' + names[1], read.props && read.props.gamesWonB)}
+      ${propRow('Break Points Won — ' + names[0], read.props && read.props.breakPointsWonA)}
+      ${propRow('Break Points Won — ' + names[1], read.props && read.props.breakPointsWonB)}
+      ${propRow('Total Tie Breaks', read.props && read.props.totalTieBreaks)}
       ${drivers.length ? `<details class="lyrid-tennis-drivers"><summary>why</summary><ul>${drivers.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></details>` : ''}
       ${chips.length ? `<div class="lyrid-tennis-gates">${chips.map((c) => `<span class="lyrid-chip warn">${esc(c)}</span>`).join('')}</div>` : ''}
       <div class="lyrid-tennis-footer">Priors only — not bets, until a slate is graded. ${esc((read.note || ''))}</div></div>`;
@@ -23731,7 +23758,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }
   }
 
-  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB', 'gamesWonA', 'gamesWonB'];
+  const LINE_KEYS = ['acesA', 'acesB', 'dfA', 'totalGames', 'fantasyA', 'fantasyB', 'gamesWonA', 'gamesWonB', 'breakPointsWonA', 'breakPointsWonB', 'totalTieBreaks'];
 
   // Pull the standard PrizePicks lines for this matchup so the inputs prefill. Fails soft — if
   // PrizePicks is unreachable or the shape changed, you just type them as before.
@@ -23743,6 +23770,63 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     } catch { return null; }
   }
 
+
+
+  // ===== TENNIS CLEANEST EDGES — slate-wide ranked board (mirrors MLB gatherCleanestEdges) =====
+  // Analyzes every match on the slate, extracts each one's best play, ranks into validation bands
+  // (VERIFIED > MODEL), and renders the board. Validated beats modeled, always. Feeds the parlay
+  // bridge like MLB does. Today all plays are MODEL/provisional until priors-log grades a cohort.
+  const tennisCE = { rows: [], sweeping: false };
+
+  async function sweepTennisCleanestEdges() {
+    if (tennisCE.sweeping || !tennisState.slate || !tennisState.slate.length) return;
+    if (!window.LyridTennisCleanestEdges) return;
+    tennisCE.sweeping = true;
+    const mount = document.getElementById('tennisCleanestEdges');
+    if (mount) mount.innerHTML = '<div class="tce-loading">Sweeping ' + tennisState.slate.length + ' matches for the cleanest edges…</div>';
+    const analyzed = [];
+    // limit concurrency to respect API; analyze PP matches first (they're bettable)
+    const slate = [...tennisState.slate].sort((a,b) => (b.hasPP?1:0) - (a.hasPP?1:0)).slice(0, 24);
+    for (const m of slate) {
+      try {
+        const qs = '?a=' + encodeURIComponent(m.playerA) + '&b=' + encodeURIComponent(m.playerB) + '&surface=' + (m.surface||'Hard');
+        const r = await fetch('/api/tennis/analyze' + qs, { cache: 'no-store' });
+        if (!r.ok) continue;
+        const j = await r.json();
+        if (j.read) analyzed.push({ match: m, read: j.read, gradeStatus: j.gradeStatus });
+      } catch (_) {}
+    }
+    tennisCE.rows = window.LyridTennisCleanestEdges.gather(analyzed);
+    if (mount) mount.innerHTML = renderTennisCleanestEdges();
+    // feed the parlay maker like MLB
+    try { if (window.LyridParlayBridge && window.LyridParlayBridge.pushTennis) window.LyridParlayBridge.pushTennis(tennisCE.rows, tennisState.date); } catch (_) {}
+    tennisCE.sweeping = false;
+  }
+
+  function renderTennisCleanestEdges() {
+    const rows = tennisCE.rows || [];
+    if (!rows.length) return '<div class="tce-empty">No clean edges yet — tap “Find cleanest edges” to sweep the slate.</div>';
+    const verifiedCount = rows.filter(r => !r.provisional).length;
+    const head = '<div class="tce-head"><span class="tce-title">Cleanest Edges</span>' +
+      '<span class="tce-sub">' + (verifiedCount ? verifiedCount + ' verified · ' : '') + rows.length + ' plays, ranked</span></div>' +
+      (verifiedCount === 0 ? '<div class="tce-note">All plays are MODEL / provisional — Tennis has no graded cohorts yet. They graduate to VERIFIED once the priors log clears the Wilson floor, same as MLB.</div>' : '');
+    const body = rows.map((r, i) => {
+      const chips = (r.ctxChips||[]).map(c => '<span class="tce-chip">' + esc(c) + '</span>').join('');
+      const ev = (r.evidence||[]).map(e => '<div class="tce-ev"><span>' + esc(e[0]) + '</span><span>' + esc(e[1]) + '</span></div>').join('');
+      return '<div class="tce-row tce-' + (r.dir==='more'?'go':'fade') + '">' +
+        '<div class="tce-rank">' + (i+1) + '</div>' +
+        '<div class="tce-main">' +
+          '<div class="tce-verdict">' + esc(r.verb) + ' · <span class="tce-tier tce-tier-' + r.tier.toLowerCase() + '">' + esc(r.tier) + '</span> · ' + r.wr + '%</div>' +
+          '<div class="tce-play">' + esc(r.who || r.match) + ' — ' + esc(r.market) + ' ' + esc(r.lean) + ' ' + esc(r.line) + '</div>' +
+          '<div class="tce-match">' + esc(r.match) + ' · ' + esc(r.surface||'') + '</div>' +
+          '<div class="tce-plain">' + esc(r.plain) + '</div>' +
+          (chips ? '<div class="tce-chips">' + chips + '</div>' : '') +
+          '<div class="tce-evwrap">' + ev + '</div>' +
+        '</div></div>';
+    }).join('');
+    return head + '<div class="tce-list">' + body + '</div>';
+  }
+  window.sweepTennisCleanestEdges = sweepTennisCleanestEdges;
 
   async function analyzeTennisMatch(matchId, lines) {
     tennisState.selectedMatchId = matchId;
@@ -23798,7 +23882,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   async function logGradedLines(m, read, cur) {
     try {
       const P = read.props || {};
-      const map = { totalGames:'Total Games', gamesWonA:'Games Won A', gamesWonB:'Games Won B',
+      const map = { totalGames:'Total Games', gamesWonA:'Games Won A', gamesWonB:'Games Won B', breakPointsWonA:'Break Points Won A', breakPointsWonB:'Break Points Won B', totalTieBreaks:'Total Tie Breaks',
         acesA:'Aces A', acesB:'Aces B', dfA:'Double Faults A', fantasyA:'Fantasy A', fantasyB:'Fantasy B' };
       const props = [];
       for (const k of Object.keys(map)) {
