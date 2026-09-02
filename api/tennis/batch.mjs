@@ -69,8 +69,7 @@ export default async function handler(req, res) {
     const schedR = await fetch(`${origin}/api/tennis/schedule${q.date ? `?date=${encodeURIComponent(q.date)}` : ''}`, { cache: 'no-store' });
     const sched = schedR.ok ? await schedR.json() : { matches: [] };
     let matches = (sched.matches || []).filter((m) => !(m.playerA || '').includes(' / ') && !(m.playerB || '').includes(' / '));
-    if (q.ppOnly === '1') matches = matches.filter((m) => m.hasPP);
-    matches = matches.slice(0, max);
+    matches = matches.slice(0, max * 2);   // take extra; we'll filter to PP-having after matching
 
     // 2) pull all PP lines once (single call), index by matchup
     let ppByKey = {};
@@ -97,12 +96,16 @@ export default async function handler(req, res) {
       }
     } catch {}
 
-    // 3) analyze each match (reusing the index + Elo), attaching PP lines
+    // 3) analyze each match (reusing the index + Elo), attaching PP lines.
+    // Filter to matches that ACTUALLY have PP lines (don't trust schedule's hasPP flag — it's
+    // unreliable; match on the PP data we just fetched instead).
     const index = loadIndex();
     const E = index.elo ? eloFromJSON(index.elo) : null;
     const analyzed = [];
-    for (const m of matches) {
-      const key = [norm(m.playerA), norm(m.playerB)].sort().join('|');
+    let withPP = matches.map((m) => ({ m, key: [norm(m.playerA), norm(m.playerB)].sort().join('|') }))
+      .filter((x) => q.ppOnly !== '1' || ppByKey[x.key]);
+    withPP = withPP.slice(0, max);
+    for (const { m, key } of withPP) {
       const lines = ppByKey[key] || {};
       try {
         const read = analyzeOne(index, E, m, lines);

@@ -12,13 +12,16 @@ const CACHE_MS = 30 * 60 * 1000;
 // cross-reference live PrizePicks names to flag which matches have PP props
 async function hasPPSet(origin) {
   try {
-    const r = await fetch(`${origin}/api/tennis/prizepicks`, { cache: 'no-store' });
+    const r = await fetch(`${origin}/api/tennis/prizepicks?debug=1`, { cache: 'no-store' });
     if (!r.ok) return new Set();
     const j = await r.json();
     const names = new Set();
-    for (const p of (j.projections || j.data || [])) {
-      const n = (p.player || p.name || '').toLowerCase();
-      if (n) names.add(n.split(' ').pop());   // last name
+    // the endpoint returns { players: { key: {name, opponent, ...} } } — read that shape
+    const players = j.players || {};
+    for (const [, p] of Object.entries(players)) {
+      for (const nm of [p.name, p.opponent]) {
+        if (nm) names.add(String(nm).toLowerCase().split(' ').pop());   // last name
+      }
     }
     return names;
   } catch { return new Set(); }
