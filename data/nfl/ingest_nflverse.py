@@ -84,7 +84,7 @@ def build_rows(stats, snaps, ngs_rec, ngs_pass, ngs_rush, season):
             'player_key': gsis,
             'player_name': r.get('player_display_name'),
             'position': r.get('position'),
-            'team_abbr': r.get('recent_team'),
+            'team_abbr': r.get('team') or r.get('recent_team'),  # nflverse renamed recent_team -> team in stats_player_week
             'opponent_abbr': r.get('opponent_team'),
             'season': int(season),
             'week': int(wk) if pd.notna(wk) else None,
