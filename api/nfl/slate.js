@@ -129,9 +129,25 @@ export default async function handler(req, res) {
       result.verdict.scriptMargin = -s;
     }
 
+    // ---- STALENESS GATE: cap the tier when the read rests on a role that changed ----
+    // A new team, a depth-chart demotion, or a non-starter QB means the historical
+    // baseline no longer describes this player's situation — cap it, never GUARANTEED.
+    const stale = computeStaleness(base, l, E);
+    if (stale.severity !== 'none' && result.verdict) {
+      const ORD = { GUARANTEED: 3, PLATINUM: 2, GOLD: 1, none: 0 };
+      const v = result.verdict, cap = stale.capTier;
+      if (ORD[v.tier_candidate] > ORD[cap]) {
+        v.stalenessOverride = { demotedFrom: v.tier_candidate, to: cap };
+        v.tier_candidate = cap;
+        v.blocked = ['stale role \u2014 ' + (stale.reasons[0] || 'situation changed'), ...(v.blocked || [])];
+      }
+      v.stale = { severity: stale.severity, teamChanged: stale.teamChanged, roleNote: stale.roleNote, reasons: stale.reasons };
+    }
+
     return {
       ...base,
       verdict: result.verdict,
+      stale: (result.verdict && result.verdict.stale) || null,
       outlook: result.outlook || null,
       comp: result.comp || null,
       card: result.card || null,
@@ -226,7 +242,14 @@ function buildCtx(E, l, base) {
     weather: null, roofStatus: null,
     // comp
     compPool: E.compPoolByPos[poolPos] || [],
-    features: famRow.features,
+    features: (() => {
+      const skill = famRow.features || {};
+      const envTeam = (team && E.curTeamEnvZ && E.curTeamEnvZ[team]) || {};
+      const envQbKey = fam === 'passing_yards' ? gsis : (team ? E.teamQbKey[team] : null);
+      const envQb = (envQbKey && E.curQbEnvZ && E.curQbEnvZ[envQbKey]) || {};
+      const ms = (E.milestoneByKey && E.milestoneByKey[gsis] && E.milestoneByKey[gsis][fam]) || 0;
+      return { ...skill, ...envTeam, ...envQb, milestone_pull: ms };  // player's OWN skill + TONIGHT'S environment
+    })(),
     // explosive / chunk-play inputs
     receiverExpl: fam === 'receiving_yards' ? (E.recExplByKey[gsis] || null) : null,
     qbDeep: qbKey ? (E.qbDeepByKey[qbKey] || null) : null,
@@ -248,6 +271,8 @@ async function loadEngineData(lines, date, fetchAvailability) {
   if (!url || !key) return null;
 
   const b = url.replace(/\/$/, '');
+  let cumByKey = {}, playedWeeks = {}, milestoneByKey = {};
+  const CURY = Number(String(date).slice(0, 4)) || 0;
   const H = { apikey: key, Authorization: `Bearer ${key}` };
   const q = async (path) => { const r = await fetch(`${b}/rest/v1/${path}`, { headers: H }); if (!r.ok) throw new Error(`supabase ${r.status} on ${path}`); return r.json(); };
   const qSafe = async (path) => { try { return await q(path); } catch (_) { return []; } };
@@ -256,7 +281,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
   const firstBy = (rows, kf) => { const m = {}; for (const r of rows) { const k = kf(r); if (!(k in m)) m[k] = r; } return m; };
 
   // ---- ESPN scoreboard: opponent + spread + total + home team ----
-  const oddsByTeam = {}, oppByTeam = {}, homeByTeam = {};
+  const oddsByTeam = {}, oppByTeam = {}, homeByTeam = {}, espnIdByAbbr = {};
   try {
     const ymd = String(date).replace(/-/g, '');
     const sb = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=${ymd}`).then(r => r.ok ? r.json() : null);
@@ -272,11 +297,19 @@ async function loadEngineData(lines, date, fetchAvailability) {
       if (ha && aa) {
         oppByTeam[ha] = aa; oppByTeam[aa] = ha;
         homeByTeam[ha] = ha; homeByTeam[aa] = ha;
+        if (home?.team?.id) espnIdByAbbr[ha] = home.team.id;
+        if (away?.team?.id) espnIdByAbbr[aa] = away.team.id;
         oddsByTeam[ha] = { spread: homeFav ? -absSpread : absSpread, total };
         oddsByTeam[aa] = { spread: homeFav ? absSpread : -absSpread, total };
       }
     }
   } catch (_) {}
+
+  // ---- ESPN depth charts: current role + team (the staleness cross-reference) ----
+  const seasonYear = Number(String(date).slice(0, 4)) || new Date().getFullYear();
+  const liveTeams = [...new Set(lines.map(l => fixAbbr(l.team)).filter(Boolean))];
+  let roleByName = {};
+  try { roleByName = await fetchDepthChartRoles(liveTeams, espnIdByAbbr, seasonYear); } catch (_) {}
 
   // ---- day-of availability (best-effort; kills OUT players via gateProp) ----
   let availability = null;
@@ -294,6 +327,11 @@ async function loadEngineData(lines, date, fetchAvailability) {
     for (const r of rows) {
       const k = r.player_key;
       latestSeason = Math.max(latestSeason, Number(r.season) || 0);
+      if (Number(r.season) === CURY) {
+        const cb = (cumByKey[k] ||= { passing_yards: 0, rushing_yards: 0, receiving_yards: 0 });
+        cb.passing_yards += num(r.passing_yards) || 0; cb.rushing_yards += num(r.rushing_yards) || 0; cb.receiving_yards += num(r.receiving_yards) || 0;
+        (playedWeeks[k] ||= new Set()).add(Number(r.week));
+      }
       if (!nameToKey[r.player_name]) {
         nameToKey[r.player_name] = k;
         if (r.team_abbr) nameToTeam[r.player_name] = fixAbbr(r.team_abbr);
@@ -313,6 +351,16 @@ async function loadEngineData(lines, date, fetchAvailability) {
       trailingByKey[k] = arr.slice(0, 8);
       const t = arr.slice(0, 6).map(g => g.targets).filter(Number.isFinite);
       recentTargetsByKey[k] = t.length ? Math.round(t.reduce((a, x) => a + x, 0) / t.length) : null;
+    }
+    // current-season cumulative -> milestone pull per family (context-conditioning channel)
+    for (const k of Object.keys(cumByKey)) {
+      const played = (playedWeeks[k] && playedWeeks[k].size) || 0;
+      const gl = Math.max(0, 17 - played);
+      milestoneByKey[k] = {
+        receiving_yards: milestonePull(cumByKey[k].receiving_yards, gl, 'receiving_yards'),
+        rushing_yards: milestonePull(cumByKey[k].rushing_yards, gl, 'rushing_yards'),
+        passing_yards: 0,
+      };
     }
     // season totals (latest season only) for archetype
     const bySeasonKey = {};
@@ -353,6 +401,29 @@ async function loadEngineData(lines, date, fetchAvailability) {
   }
   const qbKeys = [...new Set(Object.values(teamQbKey).filter(Boolean))];
 
+  // ---- CURRENT environment (trailed to now) + norms — the context-conditioned target ----
+  // z-score TONIGHT'S env with the IDENTICAL norms the pool build persisted, else the
+  // distance metric is comparing different scales. env = mean of the last <=6 weekly rows.
+  let normsByMetric = {}, curTeamEnvZ = {}, curQbEnvZ = {};
+  try {
+    for (const r of await qSafe(`nfl_env_norms?select=metric,mean,sd`)) normsByMetric[r.metric] = { mean: num(r.mean), sd: num(r.sd) };
+    const zf = (v, metric) => { const n = normsByMetric[metric]; if (!n || n.sd == null || v == null) return null; return +(((v - n.mean) / n.sd)).toFixed(4); };
+    const avgLast6 = (arr, key) => { const xs = arr.slice(0, 6).map(x => num(x[key])).filter(Number.isFinite); return xs.length ? xs.reduce((a, x) => a + x, 0) / xs.length : null; };
+    const twe = allTeams.length ? await qSafe(`nfl_team_week_env?team_abbr=in.(${inList(allTeams)})&order=season.desc,week.desc&select=team_abbr,season,week,proe,plays,sack_rate_allowed`) : [];
+    const twByTeam = {}; for (const r of twe) (twByTeam[r.team_abbr] ||= []).push(r);
+    for (const [t, arr] of Object.entries(twByTeam)) {
+      const sackZ = zf(avgLast6(arr, 'sack_rate_allowed'), 'sack');
+      curTeamEnvZ[t] = { env_proe: zf(avgLast6(arr, 'proe'), 'proe'), env_pace: zf(avgLast6(arr, 'plays'), 'pace'), env_passblock: sackZ == null ? null : +(-sackZ).toFixed(4) };
+    }
+    const qkeys = [...new Set([...slateKeys, ...qbKeys])];
+    const qwe = qkeys.length ? await qSafe(`nfl_qb_week_env?player_key=in.(${inList(qkeys)})&order=season.desc,week.desc&select=player_key,season,week,adot,deep_comp_pct,cpoe`) : [];
+    const qwByKey = {}; for (const r of qwe) (qwByKey[r.player_key] ||= []).push(r);
+    for (const [k, arr] of Object.entries(qwByKey)) {
+      curQbEnvZ[k] = { env_qb_adot: zf(avgLast6(arr, 'adot'), 'qb_adot'), env_qb_deepconnect: zf(avgLast6(arr, 'deep_comp_pct'), 'qb_deep'), env_qb_cpoe: zf(avgLast6(arr, 'cpoe'), 'qb_cpoe') };
+    }
+  } catch (_) {}
+
+
   // ---- feature rows for the slate players (target features; position) ----
   const feats = await qSafe(`nfl_feature_vectors?player_key=in.(${inList(slateKeys)})&order=season.desc,week.desc&select=player_key,prop_type,volume_floor_score,feature_json`);
   // Keep the most-recent row PER (player, family). A QB has both passing and
@@ -366,7 +437,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     if (perFam[fam]) continue; // first = most recent for THIS family
     const fj = r.feature_json || {};
     perFam[fam] = {
-      features: { volume_floor: num(r.volume_floor_score), recent_form: num(fj.recent_form) },
+      features: { volume_floor: num(r.volume_floor_score), recent_form: num(fj.recent_form), skill_tshare: num(fj.skill_tshare), skill_ays: num(fj.skill_ays), skill_carry: num(fj.skill_carry) },
       recentTargets: recentTargetsByKey[r.player_key] ?? null,
     };
     if (!featByKey[r.player_key]) featByKey[r.player_key] = perFam[fam];
@@ -451,7 +522,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
         const fj = r.feature_json || {};
         const outcome = Number(fj.outcome_yards ?? fj.trailing_yards);
         if (!Number.isFinite(outcome)) continue;
-        compPoolByPos[pos].push({ position: pos, features: { volume_floor: num(r.volume_floor_score), recent_form: num(fj.recent_form) }, outcome });
+        compPoolByPos[pos].push({ position: pos, features: poolFeatures(r.volume_floor_score, fj), outcome });
       }
       if (chunk.length < 1000) break;
     }
@@ -463,11 +534,106 @@ async function loadEngineData(lines, date, fetchAvailability) {
     ready: true, season: latestSeason || null,
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
-    oddsByTeam, oppByTeam, homeByTeam, availability,
+    oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
     tendByTeam, supByTeam, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };
+}
+
+// ---- name normalizer shared by the depth-chart + staleness helpers ----
+function _norm(s) {
+  return String(s || '').toLowerCase().replace(/[.'`]/g, '').replace(/\b(jr|sr|ii|iii|iv|v)\b/g, '')
+    .replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// ---- ESPN depth charts -> current role map: name -> { team, posGroup, rank } ----
+// roster (site API: id->name) + depthcharts (core API: ordered $refs). Best-effort;
+// a failed team is skipped and the gate falls back to the free team-change signal.
+// CONFIRM the two endpoint shapes against a live response before trusting.
+async function fetchDepthChartRoles(teams, idByAbbr, seasonYear) {
+  const roleByName = {};
+  const POSG = { qb: 'QB', rb: 'RB', wr: 'WR', te: 'TE', fb: 'RB' };
+  const yr = seasonYear || new Date().getFullYear();
+  await Promise.all((teams || []).map(async (abbr) => {
+    const id = idByAbbr && idByAbbr[abbr];
+    if (!id) return;
+    try {
+      const roster = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${id}/roster`).then(r => r.ok ? r.json() : null);
+      const idToName = {};
+      for (const grp of (roster?.athletes || [])) for (const a of (grp.items || [])) { if (a && a.id) idToName[String(a.id)] = a.displayName || a.fullName || null; }
+      const dc = await fetch(`https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${yr}/teams/${id}/depthcharts?lang=en&region=us`).then(r => r.ok ? r.json() : null);
+      for (const item of (dc?.items || [])) {
+        const positions = item.positions || {};
+        for (const posKey of Object.keys(positions)) {
+          const pg = POSG[String(posKey).toLowerCase()];
+          if (!pg) continue;
+          const ats = (positions[posKey].athletes || []).slice().sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
+          ats.forEach((entry, i) => {
+            const ref = entry && entry.athlete && entry.athlete.$ref;
+            const m = ref && String(ref).match(/athletes\/(\d+)/);
+            const nm = m && idToName[m[1]];
+            if (!nm) return;
+            const key = _norm(nm);
+            const rank = entry.rank != null ? entry.rank : (i + 1);
+            if (!roleByName[key] || rank < roleByName[key].rank) roleByName[key] = { team: abbr, posGroup: pg, rank };
+          });
+        }
+      }
+    } catch (_) {}
+  }));
+  return roleByName;
+}
+
+// ---- staleness: does the historical baseline still describe this player's situation? ----
+function computeStaleness(base, l, E) {
+  const fam = l.prop_type, name = l.player_name;
+  const reasons = [];
+  let sev = 'none', teamChanged = false, roleNote = null;
+  const baseTeam = (E.nameToTeam && E.nameToTeam[name]) || null;
+  const role = (E.roleByName && E.roleByName[_norm(name)]) || null;
+  const liveTeam = (role && role.team) || l.team || base.team || null;
+  if (baseTeam && liveTeam && baseTeam !== liveTeam) {
+    teamChanged = true;
+    reasons.push(`new team (${baseTeam} \u2192 ${liveTeam}) \u2014 the baseline is last season's role and scheme`);
+    sev = 'moderate';
+  }
+  if (role && role.rank != null) {
+    if (fam === 'passing_yards' && role.posGroup === 'QB' && role.rank > 1) {
+      reasons.unshift(`listed QB${role.rank} on the depth chart \u2014 not the current starter`); sev = 'high'; roleNote = 'non-starter QB';
+    } else if (fam === 'rushing_yards' && role.posGroup === 'RB' && role.rank >= 2) {
+      if (role.rank >= 3) { reasons.unshift(`listed RB${role.rank} \u2014 deep in the backfield now`); sev = 'high'; }
+      else { reasons.unshift(`listed RB2 behind the current lead back \u2014 trailing carries reflect a larger role than he holds now`); if (sev !== 'high') sev = 'moderate'; }
+      roleNote = 'backfield demotion';
+    } else if (fam === 'receiving_yards' && ((role.posGroup === 'WR' && role.rank >= 4) || (role.posGroup === 'TE' && role.rank >= 3))) {
+      reasons.push(`listed ${role.posGroup}${role.rank} \u2014 a reduced target role`); if (sev !== 'high') sev = 'moderate'; roleNote = 'target-share demotion';
+    }
+  }
+  const capTier = sev === 'high' ? 'none' : (sev === 'moderate' ? 'GOLD' : 'none');
+  return { severity: sev, capTier, reasons, teamChanged, roleNote };
+}
+
+// pool-row feature extraction — expose ALL context-conditioning channels (null keys
+// are skipped by the distance metric, so pre-rebuild pools stay compatible).
+function poolFeatures(volFloorScore, fj) {
+  fj = fj || {};
+  return {
+    volume_floor: num(volFloorScore), recent_form: num(fj.recent_form),
+    skill_tshare: num(fj.skill_tshare), skill_ays: num(fj.skill_ays), skill_carry: num(fj.skill_carry),
+    env_proe: num(fj.env_proe), env_pace: num(fj.env_pace), env_passblock: num(fj.env_passblock),
+    env_qb_adot: num(fj.env_qb_adot), env_qb_deepconnect: num(fj.env_qb_deepconnect), env_qb_cpoe: num(fj.env_qb_cpoe),
+    milestone_pull: num(fj.milestone_pull),
+  };
+}
+
+// milestone pull — mirrors build_feature_vectors.milestone_pull exactly (must stay in sync).
+function milestonePull(cum, gamesLeft, fam) {
+  if (fam === 'passing_yards') return 0;
+  if (cum == null || gamesLeft == null || gamesLeft <= 0 || gamesLeft > 4) return 0;
+  if (cum >= 1000) return 0;
+  const per = (1000 - cum) / gamesLeft;
+  if (per < 30 || per > 130) return 0;
+  return +Math.max(0, Math.min(1, (1 - Math.abs(per - 80) / 80) * (1 - (gamesLeft - 1) / 4))).toFixed(3);
 }
 
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
