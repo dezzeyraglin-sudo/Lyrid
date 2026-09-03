@@ -39,11 +39,18 @@ def fetch_table(table, select='*'):
         r = requests.get(f"{SB}/rest/v1/{table}",
                          headers={**H, 'Range-Unit': 'items', 'Range': f'{start}-{start+999}'},
                          params={'select': select}, timeout=60)
-        try: b = r.json()
-        except Exception: break
-        if not isinstance(b, list) or not b: break
+        if r.status_code >= 300:
+            print(f"  [fetch_table:{table}] HTTP {r.status_code}: {r.text[:200]}")
+            break
+        try:
+            b = r.json()
+        except Exception as e:
+            print(f"  [fetch_table:{table}] bad json: {e}"); break
+        if not isinstance(b, list) or not b:
+            break
         rows += b
-        if len(b) < 1000: break
+        if len(b) < 1000:
+            break
         start += 1000
     return pd.DataFrame(rows)
 
@@ -92,7 +99,7 @@ def milestone_pull(cum, games_left, family):
     pull = (1.0 - abs(per_game - 80) / 80) * (1.0 - (games_left - 1) / 4)
     return round(max(0.0, min(1.0, pull)), 3)
 
-def build(seasons):
+def build(seasons, persist=False):
     pg = fetch_table('nfl_player_games')
     if pg.empty:
         print("  no player_games in DB — run ingest_nflverse.py first"); return pd.DataFrame()
@@ -117,9 +124,11 @@ def build(seasons):
     pg['games_left'] = (18 - pg['week']).clip(lower=0)   # entering week w of a 17-game season
 
     # ---- ENVIRONMENT: team-week + qb-week, trailed, z-scored vs league ----
-    tw = fetch_table('nfl_team_week_env')
-    qw = fetch_table('nfl_qb_week_env')
+    tw = fetch_table('nfl_team_week_env', 'team_abbr,season,week,proe,plays,sack_rate_allowed')
+    qw = fetch_table('nfl_qb_week_env', 'player_key,season,week,attempts,adot,deep_comp_pct,cpoe')
+    print(f"  [env] team-week rows: {len(tw)}   qb-week rows: {len(qw)}")
     teamEnvZ, qbEnvZ, primaryQB = {}, {}, {}
+    TS, QS = {}, {}
     if not tw.empty:
         tw = tw.sort_values(['team_abbr', 'season', 'week'])
         for c in ['proe', 'pass_rate', 'plays', 'sack_rate_allowed']: tw[c] = pd.to_numeric(tw.get(c), errors='coerce')
@@ -152,6 +161,8 @@ def build(seasons):
             idx = qw.dropna(subset=['team_abbr']).groupby(['team_abbr', 'season', 'week'])['attempts'].idxmax()
             for _, r in qw.loc[idx].iterrows():
                 primaryQB[(r['team_abbr'], int(r['season']), int(r['week']))] = r['player_key']
+
+    if persist and (TS or QS): _write_env_norms(TS, QS)
 
     empty_env_team = {'env_proe': None, 'env_pace': None, 'env_passblock': None}
     empty_env_qb = {'env_qb_adot': None, 'env_qb_deepconnect': None, 'env_qb_cpoe': None}
@@ -203,6 +214,18 @@ def build(seasons):
             })
     return pd.DataFrame(out)
 
+def _write_env_norms(TS, QS):
+    # persist the z-norms so slate.js standardizes TONIGHT'S env identically to the pool
+    m = {'proe': TS.get('proe'), 'pace': TS.get('pace'), 'sack': TS.get('sack'),
+         'qb_adot': QS.get('adot'), 'qb_deep': QS.get('deep'), 'qb_cpoe': QS.get('cpoe')}
+    rows = [{'metric': k, 'mean': round(v[0], 6), 'sd': round(v[1], 6)}
+            for k, v in m.items() if v and v[0] is not None and v[1]]
+    if not rows: return
+    r = requests.post(f"{SB}/rest/v1/nfl_env_norms?on_conflict=metric",
+                      headers={**H, 'Prefer': 'resolution=merge-duplicates,return=minimal'},
+                      data=json.dumps(rows, allow_nan=False), timeout=60)
+    print(f"  env_norms: {r.status_code} ({len(rows)} metrics)")
+
 def upsert(df):
     def clean(v, as_int=False):
         if v is None: return None
@@ -225,7 +248,7 @@ def upsert(df):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(); ap.add_argument('--seasons', nargs='+', type=int, required=True)
     ap.add_argument('--dry-run', action='store_true'); a = ap.parse_args()
-    df = build(a.seasons)
+    df = build(a.seasons, persist=not a.dry_run)
     print(f"built {len(df)} context-conditioned feature vectors across {len(a.seasons)} seasons")
     if a.dry_run:
         if len(df):
