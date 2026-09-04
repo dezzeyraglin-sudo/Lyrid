@@ -34,7 +34,7 @@ const PROP_LABEL = {
   receiving_yards: 'Receiving Yards', rush_rec_yards: 'Rush + Rec Yards',
   pass_rush_yards: 'Pass + Rush Yards',
 };
-const FAM_TO_POS = { passing_yards: 'QB', rushing_yards: 'RB', receiving_yards: 'WR' };
+const FAM_TO_POS = { passing_yards: 'QB', rushing_yards: 'RB', receiving_yards: 'WR', pass_rush_yards: 'QBC', rush_rec_yards: 'RBC' };  // QBC/RBC = combo pools
 // ESPN scoreboard uses a few abbreviations the aggregate tables don't. Normalize.
 const ESPN_ABBR = { WSH: 'WAS', JAC: 'JAX', LA: 'LAR', OAK: 'LV', SD: 'LAC', STL: 'LAR' };
 const fixAbbr = a => (a ? (ESPN_ABBR[a] || a) : a);
@@ -245,7 +245,7 @@ function buildCtx(E, l, base) {
     features: (() => {
       const skill = famRow.features || {};
       const envTeam = (team && E.curTeamEnvZ && E.curTeamEnvZ[team]) || {};
-      const envQbKey = fam === 'passing_yards' ? gsis : (team ? E.teamQbKey[team] : null);
+      const envQbKey = (fam === 'passing_yards' || fam === 'pass_rush_yards') ? gsis : (team ? E.teamQbKey[team] : null);
       const envQb = (envQbKey && E.curQbEnvZ && E.curQbEnvZ[envQbKey]) || {};
       const ms = (E.milestoneByKey && E.milestoneByKey[gsis] && E.milestoneByKey[gsis][fam]) || 0;
       return { ...skill, ...envTeam, ...envQb, milestone_pull: ms };  // player's OWN skill + TONIGHT'S environment
@@ -508,8 +508,8 @@ async function loadEngineData(lines, date, fetchAvailability) {
   }
 
   // ---- comp pool (deterministic full paging; 2D features + realized outcome) ----
-  const compPoolByPos = { QB: [], RB: [], WR: [], TE: [] };
-  for (const [fam, pos] of [['passing_yards', 'QB'], ['rushing_yards', 'RB'], ['receiving_yards', 'WR']]) {
+  const compPoolByPos = { QB: [], RB: [], WR: [], TE: [], QBC: [], RBC: [] };
+  for (const [fam, pos] of [['passing_yards', 'QB'], ['rushing_yards', 'RB'], ['receiving_yards', 'WR'], ['pass_rush_yards', 'QBC'], ['rush_rec_yards', 'RBC']]) {
     for (let start = 0; start < 60000; start += 1000) {
       let chunk = [];
       try {

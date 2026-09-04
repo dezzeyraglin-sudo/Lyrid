@@ -29,9 +29,13 @@ SB = os.environ.get('SUPABASE_URL', '').rstrip('/')
 KEY = os.environ.get('SUPABASE_SERVICE_KEY', '')
 H = {'apikey': KEY, 'Authorization': f'Bearer {KEY}', 'Content-Type': 'application/json'}
 
-PROP_COLS = {'passing_yards': 'passing_yards', 'rushing_yards': 'rushing_yards', 'receiving_yards': 'receiving_yards'}
-YARDS_COL = {'receiving_yards': 'tr_rec', 'rushing_yards': 'tr_rush', 'passing_yards': 'tr_pass'}
-MIN_TRAIL = {'receiving_yards': 5.0, 'rushing_yards': 5.0, 'passing_yards': 50.0}
+PROP_COLS = {'passing_yards': 'passing_yards', 'rushing_yards': 'rushing_yards', 'receiving_yards': 'receiving_yards',
+             'pass_rush_yards': 'pass_rush_yards', 'rush_rec_yards': 'rush_rec_yards'}   # combos summed in build()
+YARDS_COL = {'receiving_yards': 'tr_rec', 'rushing_yards': 'tr_rush', 'passing_yards': 'tr_pass',
+             'pass_rush_yards': 'tr_pass_rush', 'rush_rec_yards': 'tr_rush_rec'}
+MIN_TRAIL = {'receiving_yards': 5.0, 'rushing_yards': 5.0, 'passing_yards': 50.0,
+             'pass_rush_yards': 120.0, 'rush_rec_yards': 30.0}   # QB combo / RB combo participation floors
+COMBO_POS = {'pass_rush_yards': ('QB',), 'rush_rec_yards': ('RB', 'FB')}   # keep combo pools position-clean
 
 def fetch_table(table, select='*'):
     rows, start = [], 0
@@ -90,7 +94,7 @@ def milestone_pull(cum, games_left, family):
     """Raise-only late-season 1000-yard chase. Models PROXIMITY (not raw total), so it
     can't re-encode talent. ~0 for most players/most weeks; lights up only when a
     reachable round number is within a late-season push."""
-    if family == 'passing_yards': return 0.0
+    if family in ('passing_yards', 'pass_rush_yards'): return 0.0
     if cum is None or games_left is None or games_left <= 0 or games_left > 4: return 0.0
     target = 1000.0
     if cum >= target: return 0.0                       # clinched (raise-only; coast-down pending audit)
@@ -108,6 +112,9 @@ def build(seasons, persist=False):
               'rush_attempts', 'target_share', 'air_yards_share']:
         if c in pg.columns: pg[c] = pd.to_numeric(pg[c], errors='coerce')
     carry_col = 'carries' if 'carries' in pg.columns else 'rush_attempts'
+    # combo outcomes = sum of components (per game)
+    pg['pass_rush_yards'] = pd.to_numeric(pg.get('passing_yards'), errors='coerce').fillna(0) + pd.to_numeric(pg.get('rushing_yards'), errors='coerce').fillna(0)
+    pg['rush_rec_yards']  = pd.to_numeric(pg.get('rushing_yards'), errors='coerce').fillna(0) + pd.to_numeric(pg.get('receiving_yards'), errors='coerce').fillna(0)
 
     # ---- SKILL: trailing (pre-kickoff) player signals ----
     pg['tr_tshare'] = trailing(pg, 'player_key', 'target_share')
@@ -116,6 +123,8 @@ def build(seasons, persist=False):
     pg['tr_rush'] = trailing(pg, 'player_key', 'rushing_yards')
     pg['tr_pass'] = trailing(pg, 'player_key', 'passing_yards')
     pg['tr_carries'] = trailing(pg, 'player_key', carry_col)
+    pg['tr_pass_rush'] = trailing(pg, 'player_key', 'pass_rush_yards')
+    pg['tr_rush_rec']  = trailing(pg, 'player_key', 'rush_rec_yards')
 
     # ---- MILESTONE: trailing cumulative family yards + games left ----
     for fam, col in PROP_COLS.items():
@@ -172,6 +181,8 @@ def build(seasons, persist=False):
         yc = YARDS_COL[fam]; thr = MIN_TRAIL[fam]
         sub = pg[pg[col].notna()].copy()
         sub = sub[sub[yc].notna() & (sub[yc] >= thr)]   # real role in THIS family
+        if fam in COMBO_POS and 'position' in sub.columns:
+            sub = sub[sub['position'].isin(COMBO_POS[fam])]   # combos: QB / RB only
         for _, r in sub.iterrows():
             # --- SKILL: family-appropriate volume floor (unchanged logic) ---
             if fam == 'receiving_yards':
@@ -180,22 +191,25 @@ def build(seasons, persist=False):
             elif fam == 'rushing_yards':
                 vf = _z(r.get('tr_carries'), 12, 6)
                 if vf is None: vf = _z(r.get('tr_rush'), 40, 30)
-            else:
+            elif fam == 'rush_rec_yards':                       # RB combo — carries + pass-game role
+                vf = _z(r.get('tr_carries'), 12, 6)
+                if vf is None: vf = _z(r.get('tr_rush_rec'), 65, 35)
+            else:                                               # passing_yards or pass_rush_yards (QB)
                 vf = _z(r.get('tr_pass'), 230, 60)
             if vf is not None: vf = max(-3.0, min(3.0, vf))
 
             team = r.get('team_abbr'); season = int(r['season']); week = int(r['week'])
             envT = teamEnvZ.get((team, season, week), empty_env_team)
-            env_qb_pid = r['player_key'] if fam == 'passing_yards' else primaryQB.get((team, season, week))
+            env_qb_pid = r['player_key'] if fam in ('passing_yards', 'pass_rush_yards') else primaryQB.get((team, season, week))
             envQ = qbEnvZ.get((env_qb_pid, season, week), empty_env_qb)
 
             feat = {
                 # SKILL channel
                 'volume_floor': _safe(vf),                                   # (kept key for back-compat)
                 'recent_form': _safe(_z(r.get(yc), None, None)),            # trailing yards in family
-                'skill_tshare': _safe(_z(r.get('tr_tshare'), 0.14, 0.07)) if fam == 'receiving_yards' else None,
-                'skill_ays': _safe(_z(r.get('tr_ays'), 0.12, 0.09)) if fam == 'receiving_yards' else None,
-                'skill_carry': _safe(_z(r.get('tr_carries'), 12, 6)) if fam == 'rushing_yards' else None,
+                'skill_tshare': _safe(_z(r.get('tr_tshare'), 0.14, 0.07)) if fam in ('receiving_yards', 'rush_rec_yards') else None,
+                'skill_ays': _safe(_z(r.get('tr_ays'), 0.12, 0.09)) if fam in ('receiving_yards', 'rush_rec_yards') else None,
+                'skill_carry': _safe(_z(r.get('tr_carries'), 12, 6)) if fam in ('rushing_yards', 'rush_rec_yards') else None,
                 # ENVIRONMENT channel (team-rolling + QB-specific)
                 'env_proe': envT['env_proe'], 'env_pace': envT['env_pace'], 'env_passblock': envT['env_passblock'],
                 'env_qb_adot': envQ['env_qb_adot'], 'env_qb_deepconnect': envQ['env_qb_deepconnect'], 'env_qb_cpoe': envQ['env_qb_cpoe'],
