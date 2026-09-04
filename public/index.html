@@ -24571,5 +24571,23 @@ function renderNbaBoard(out) {
 }
 
 </script>
+<script>
+// NBA slate date defaults to the current date (on load + each time the NBA tab opens)
+(function () {
+  function todayYMD() {
+    try { if (typeof ymdToday === 'function') return ymdToday(); } catch (_) {}
+    try { if (typeof getTodayStr === 'function') return getTodayStr(); } catch (_) {}
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function setNbaToday() { var el = document.getElementById('nba-date'); if (el) el.value = todayYMD(); }
+  function init() {
+    setNbaToday();
+    var btn = document.querySelector('.lyrid-nav-btn[data-tab="nba"]');
+    if (btn) btn.addEventListener('click', setNbaToday);
+  }
+  if (document.readyState !== 'loading') init(); else document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
 </body>
 </html>
