@@ -88,6 +88,28 @@ export default async function handler(req, res) {
       diagnostics: { unmappedStatTypes: getUnmappedStats(), datesSeen: datesSeen.slice(0, 12) } });
   }
 
+  // 2b) LINE-HISTORY CAPTURE (best-effort) — bank every distinct line we see so a real
+  // archive builds going forward (no free historical prop-line source exists). One row per
+  // distinct (player, prop, date, line); ignore-duplicates preserves first-seen, so
+  // re-fetches are no-ops and genuine line moves append. Never blocks the response.
+  try {
+    const SBU = (process.env.SUPABASE_URL || '').replace(/\/$/, ''), SBK = process.env.SUPABASE_SERVICE_KEY;
+    if (SBU && SBK) {
+      const rows = lines.map(l => ({
+        player_key: l.player_name, player_name: l.player_name, team: l.team || null,
+        prop_type: l.prop_type, game_date: l.game_date || date, line: Number(l.line),
+        captured_at: new Date().toISOString(),
+      })).filter(r => Number.isFinite(r.line));
+      if (rows.length) {
+        await fetch(`${SBU}/rest/v1/nfl_line_history?on_conflict=player_key,prop_type,game_date,line`, {
+          method: 'POST',
+          headers: { apikey: SBK, Authorization: `Bearer ${SBK}`, 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
+          body: JSON.stringify(rows),
+        });
+      }
+    }
+  } catch (_) {}
+
   // 3) dynamically load the engine (degrade to LINES if any module/data is missing)
   let analyzeProp = null, fetchAvailability = null, engineError = null;
   try {
@@ -127,6 +149,29 @@ export default async function handler(req, res) {
       const s = od.spread;
       result.verdict.scriptLean = Math.abs(s) < 3 ? 'neutral_script' : (s < 0 ? 'run_script' : 'pass_script');
       result.verdict.scriptMargin = -s;
+    }
+
+    // ---- NEAR-MEDIAN GUARD: an edge smaller than the model's own resolution is a coin
+    // flip, not an edge — the #1 way narrow-miss legs die (Kamara 72 vs 73.5, Darnold
+    // 213 vs 223.5). Force no-play when the line sits within a family-scaled noise floor
+    // of the projected median. Direction-agnostic, so it protects unders when they ship.
+    {
+      const c = result.comp || {};
+      const ln = result.verdict && result.verdict.line;
+      if (c.median != null && ln != null) {
+        const NM_FLOOR = { receiving_yards: 5, rushing_yards: 5, rush_rec_yards: 6, passing_yards: 14, pass_rush_yards: 16 };
+        const margin = Math.abs(Number(c.median) - Number(ln));
+        const floor = NM_FLOOR[l.prop_type] || 5;
+        if (margin < floor && result.verdict) {
+          const v = result.verdict;
+          if (v.tier_candidate && v.tier_candidate !== 'none') {
+            v.nearMedianOverride = { demotedFrom: v.tier_candidate, margin: +margin.toFixed(1), floor };
+            v.tier_candidate = 'none';
+            v.blocked = [`near-median coin flip — proj ${Number(c.median).toFixed(0)} vs line ${Number(ln)} within model noise (${margin.toFixed(1)} < ${floor} yds)`, ...(v.blocked || [])];
+          }
+          v.nearMedian = true;
+        }
+      }
     }
 
     // ---- STALENESS GATE: cap the tier when the read rests on a role that changed ----
