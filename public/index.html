@@ -17318,6 +17318,7 @@ function renderHistory() {
       <button class="history-subnav-btn ${historyView==='rollup'?'active':''}" data-hist-view="rollup" onclick="switchHistoryView('rollup')">∑ ROLLUP</button>
       <button class="history-subnav-btn ${historyView==='picks'?'active':''}" data-hist-view="picks" onclick="switchHistoryView('picks')">$ MY BETS</button>
       <button class="history-subnav-btn ${historyView==='wnba'?'active':''}" data-hist-view="wnba" onclick="switchHistoryView('wnba')">★ WNBA BEST BETS</button>
+      <button class="history-subnav-btn ${historyView==='nba'?'active':''}" data-hist-view="nba" onclick="switchHistoryView('nba')">★ NBA BEST BETS</button>
       <button class="history-subnav-btn ${historyView==='wnbagames'?'active':''}" data-hist-view="wnbagames" onclick="switchHistoryView('wnbagames')">◈ WNBA GAME BETS</button>
       <button class="history-subnav-btn ${historyView==='nfl'?'active':''}" data-hist-view="nfl" onclick="switchHistoryView('nfl')">▲ NFL PROPS</button>
       ${historyView === 'nfl' ? `<button class="btn sm" onclick="gradeNflProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'wnbagames' ? `<button class="btn sm" onclick="gradeWnbaGameBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="backfillInningData()" style="margin-left:6px" title="Fetch per-inning data for already-graded games (one-time backfill)">⊕ BACKFILL INNINGS</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
@@ -17388,16 +17389,15 @@ function renderHistory() {
       (graded.length ? `<h3 class="rollup-section-title">GRADED (${graded.length})</h3><div class="rollup-prop-list">${graded.slice(0, 60).map(row).join('')}</div>` : '');
     return;
   }
-  if (historyView === 'wnba') {
+  if (historyView === 'wnba' || historyView === 'nba') {
+    const propStore = historyView === 'nba' ? state.nbaPropHistory : state.wnbaPropHistory;
+    const sportLbl = historyView === 'nba' ? 'NBA' : 'WNBA';
     const all = [];
-    Object.keys(state.wnbaPropHistory || {}).forEach(d => {
-      Object.values(state.wnbaPropHistory[d]).forEach(e => all.push(e));
-    });
-    Object.keys(state.nbaPropHistory || {}).forEach(d => {
-      Object.values(state.nbaPropHistory[d]).forEach(e => all.push(e));
+    Object.keys(propStore || {}).forEach(d => {
+      Object.values(propStore[d]).forEach(e => all.push(e));
     });
     if (all.length === 0) {
-      container.innerHTML = subnavHtml + `<div class="empty"><div class="empty-icon">◌</div><div>No WNBA predictions tracked yet.<br><br>Predictions are auto-captured when you open the WNBA tab and load a slate.<br>After games finish, tap ⚡ GRADE ALL (or reopen the app) to score them against actual box scores.</div></div>`;
+      container.innerHTML = subnavHtml + `<div class="empty"><div class="empty-icon">◌</div><div>No ${sportLbl} predictions tracked yet.<br><br>Predictions are auto-captured when you open the ${sportLbl} tab and load a slate.<br>After games finish, tap ⚡ GRADE ALL (or reopen the app) to score them against actual box scores.</div></div>`;
       return;
     }
 
