@@ -3401,6 +3401,7 @@
 .nflx-datenav button{width:28px;height:28px;border:0;background:transparent;color:var(--text-secondary);cursor:pointer;border-radius:var(--radius-sm);font-size:15px;line-height:1}
 .nflx-datenav button:hover{background:var(--surface-muted);color:var(--text-primary)}
 .nflx-datenav .cur{font-size:var(--size-caption);font-weight:var(--weight-medium);padding:0 var(--space-2);color:var(--text-primary)}
+.nflx-datenav .nflx-datepick{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0);border:0;padding:0;margin:-1px}
 
 .nflx-sect{display:flex;align-items:center;gap:var(--space-3);margin:var(--space-7) 0 var(--space-4)}
 .nflx-sect-t{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-medium);letter-spacing:var(--tracking-tight);white-space:nowrap}
@@ -3748,6 +3749,8 @@
           <span class="cur" id="nflDateDisplay">Today</span>
           <button type="button" onclick="nflChangeDate(1)" aria-label="Next day">›</button>
           <button type="button" onclick="nflChangeDate('today')" title="Jump to today" aria-label="Today">•</button>
+          <button type="button" onclick="nflOpenDatePicker()" title="Pick a date" aria-label="Pick a date">📅</button>
+          <input type="date" id="nflDatePicker" class="nflx-datepick" onchange="nflPickDate(this.value)" aria-label="Pick a date" />
         </div>
         <button class="lyrid-btn primary" id="loadNflBtn" onclick="loadNflSlate()">Refresh</button>
       </div>
@@ -24131,6 +24134,20 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     else { var d = new Date(base + 'T00:00:00'); d.setDate(d.getDate() + delta); nflState.date = d.toISOString().slice(0, 10); }
     setNflDateDisplay();
     window.loadNflSlate();
+  };
+  // jump straight to a calendar-picked date — one fetch, no stepping through days
+  window.nflPickDate = function (v) {
+    if (!v) return;
+    nflState.date = v;
+    setNflDateDisplay();
+    window.loadNflSlate();
+  };
+  window.nflOpenDatePicker = function () {
+    var inp = document.getElementById('nflDatePicker');
+    if (!inp) return;
+    inp.value = nflState.date || todayStr();
+    if (typeof inp.showPicker === 'function') { try { inp.showPicker(); return; } catch (_) {} }
+    inp.focus(); inp.click();
   };
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
