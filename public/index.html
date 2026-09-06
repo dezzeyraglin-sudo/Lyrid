@@ -3416,6 +3416,13 @@
 .nflx-card-count{font-family:var(--font-mono);font-size:var(--size-h3);color:var(--brand-primary)}
 .nflx-card-sub{font-size:var(--size-body-sm);color:var(--text-secondary);margin-top:var(--space-2);max-width:62ch}
 .nflx-card-note{display:inline-flex;align-items:center;gap:6px;margin-top:var(--space-3);font-size:var(--size-caption);color:var(--data-warning);background:var(--data-warning-surface);border-radius:var(--radius-pill);padding:3px 10px}
+.nflx-injury{display:flex;flex-direction:column;gap:3px;margin:var(--space-3) 0;padding:6px 10px;border-radius:var(--radius-sm);font-size:var(--size-caption)}
+.nflx-injury .nflx-injury-tag{font-weight:var(--weight-semibold);display:inline-flex;align-items:center;gap:5px}
+.nflx-injury-blurb{font-size:var(--size-eyebrow);line-height:1.45;color:var(--text-secondary);font-weight:var(--weight-regular)}
+.nflx-injury.out{background:var(--data-negative-surface);color:var(--data-negative)}
+.nflx-injury.q{background:var(--data-warning-surface);color:var(--data-warning)}
+.nflx-injury.info{background:var(--surface-muted);color:var(--text-secondary)}
+.nflx-chip.inj{background:var(--data-warning-surface);color:var(--data-warning)}
 
 .nflx-pick{display:grid;grid-template-columns:auto 1fr;gap:var(--space-3) var(--space-4);padding:var(--space-5);border-bottom:1px solid var(--border-hairline)}
 .nflx-pick:last-child{border-bottom:0}
@@ -24240,7 +24247,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var rows = card.map(function(p, i){
       var v=p.verdict||{}, c=p.comp||{}, pAdj=pAdjOf(v)||0, tier=v.tier_candidate||'none';
       var dir = v.pick==='lower'?'down':'up';
-      var chips = '<span class="nflx-chip ' + (TIER_CLASS[tier]||'gold') + '">' + esc(tier) + '</span><span class="nflx-chip prov">provisional</span>' + (nflBoom(p)?'<span class="nflx-chip ceiling">\u25C7 ceiling</span>':'');
+      var chips = '<span class="nflx-chip ' + (TIER_CLASS[tier]||'gold') + '">' + esc(tier) + '</span><span class="nflx-chip prov">provisional</span>' + (nflBoom(p)?'<span class="nflx-chip ceiling">\u25C7 ceiling</span>':'') + nflInjuryChip(p);
       var why = (p.card && p.card.summary) ? '<div class="nflx-why">' + esc(p.card.summary) + '</div>' : '';
       return '<div class="nflx-pick"><div class="nflx-pick-rank">' + (i+1) + '</div><div class="nflx-pick-body">' +
         '<div class="nflx-pick-name">' + esc(p.player) + '</div>' +
@@ -24260,6 +24267,26 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   // ============================================================
   // RENDER — one prop card (redesign) + game-grouped list
   // ============================================================
+  // injury banner from pick.injury ({status,statusRaw,detail,blurb,side}); status is
+  // 'out' | 'doubtful' (questionable/doubtful) | 'active' (listed but expected to play).
+  function nflInjuryBanner(item){
+    var inj = item && item.injury;
+    if (!inj || !inj.status || inj.status === 'unknown') return '';
+    var sevCls = inj.status === 'out' ? 'out' : (inj.status === 'doubtful' ? 'q' : 'info');
+    var head = inj.status === 'out' ? 'OUT'
+      : (inj.status === 'doubtful' ? String(inj.statusRaw || 'Questionable').toUpperCase()
+        : (inj.detail ? esc(inj.detail) : 'On injury report'));
+    var det = (inj.status !== 'active' && inj.detail) ? ' \u00b7 ' + esc(inj.detail) : '';
+    var tail = inj.status === 'active' ? ' \u00b7 expected to play' : '';
+    var blurb = inj.blurb ? '<div class="nflx-injury-blurb">' + esc(inj.blurb) + '</div>' : '';
+    return '<div class="nflx-injury ' + sevCls + '"><span class="nflx-injury-tag">\u2695 ' + esc(head) + det + tail + '</span>' + blurb + '</div>';
+  }
+  function nflInjuryChip(item){
+    var inj = item && item.injury;
+    if (!inj || !inj.status || inj.status === 'unknown' || inj.status === 'active') return '';
+    return '<span class="nflx-chip inj">\u2695 ' + esc(inj.status === 'out' ? 'OUT' : (inj.statusRaw || 'Q')) + '</span>';
+  }
+
   function renderPropCard(item){
     var v=item.verdict||{}, c=item.comp||{}, f=v.filters||{};
     var tier=v.tier_candidate||'none', noPlay=tier==='none';
@@ -24280,6 +24307,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       '<div class="nflx-prop-top"><div><div class="nflx-prop-name">' + esc(item.player||'') + '</div>' +
         '<div class="nflx-pick-line"><span class="nflx-dir ' + dir + (noPlay?' muted':'') + '">' + (dir==='up'?'Higher':'Lower') + '</span> <span class="nflx-prop-market">' + esc(item.propLabel||'') + '</span> <span class="nflx-linev">' + esc(v.line) + '</span></div></div>' +
         '<div class="nflx-prop-sub">' + esc(item.position||'') + (item.position&&item.team?' \u00b7 ':'') + esc(item.team||'') + (item.opponent?' vs ' + esc(item.opponent):'') + '</div></div>' +
+      nflInjuryBanner(item) +
       projTrack(c, v.line) +
       '<div class="nflx-metarow"><div class="nflx-pct"><span class="v">' + Math.round(pAdj*100) + '%</span><span class="k">model</span></div>' + chips + '</div>' +
       filters + blocked + drivers + why +

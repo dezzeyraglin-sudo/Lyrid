@@ -111,10 +111,10 @@ export default async function handler(req, res) {
   } catch (_) {}
 
   // 3) dynamically load the engine (degrade to LINES if any module/data is missing)
-  let analyzeProp = null, fetchAvailability = null, engineError = null;
+  let analyzeProp = null, fetchAvailability = null, playerStatus = null, engineError = null;
   try {
     ({ analyzeProp } = await import('../../lib/nfl/nflAnalyze.js'));
-    try { ({ fetchAvailability } = await import('../../lib/nfl/nflInactives.js')); } catch (_) { fetchAvailability = null; }
+    try { ({ fetchAvailability, playerStatus } = await import('../../lib/nfl/nflInactives.js')); } catch (_) { fetchAvailability = null; }
   } catch (e) { engineError = String((e && e.message) || e); analyzeProp = null; }
 
   // 4) gather all engine inputs (Supabase + ESPN). null => LINES mode.
@@ -189,10 +189,33 @@ export default async function handler(req, res) {
       v.stale = { severity: stale.severity, teamChanged: stale.teamChanged, roleNote: stale.roleNote, reasons: stale.reasons };
     }
 
+    // ---- INJURY / RETURN-RISK: surface status + ESPN blurb, and cap the tier for a
+    // questionable/doubtful player. A soft line on an injured player is usually the market
+    // pricing reduced volume (Kittle back from injury at 39.5), not a free edge — so a
+    // real injury designation can't carry a top tier. A listed-but-active player gets an
+    // informational tag only (no cap): the model can't see rust, but you should.
+    let injury = null;
+    if (playerStatus && E.availability && E.availability.ok) {
+      const s = playerStatus(E.availability, base.player);
+      if (s && s.status && s.status !== 'unknown') {
+        injury = { status: s.status, statusRaw: s.statusRaw || null, detail: s.detail || null, blurb: s.blurb || null, side: s.side || null };
+        if (s.status === 'doubtful' && result.verdict) {   // 'doubtful' bucket = questionable OR doubtful
+          const ORD = { GUARANTEED: 3, PLATINUM: 2, GOLD: 1, none: 0 };
+          const v = result.verdict;
+          if (ORD[v.tier_candidate] > ORD['GOLD']) {
+            v.injuryOverride = { demotedFrom: v.tier_candidate, to: 'GOLD', status: s.statusRaw };
+            v.tier_candidate = 'GOLD';
+            v.blocked = [`injury risk — listed ${s.statusRaw || 'questionable'}; soft line likely prices reduced volume`, ...(v.blocked || [])];
+          }
+        }
+      }
+    }
+
     return {
       ...base,
       verdict: result.verdict,
       stale: (result.verdict && result.verdict.stale) || null,
+      injury,
       outlook: result.outlook || null,
       comp: result.comp || null,
       card: result.card || null,
