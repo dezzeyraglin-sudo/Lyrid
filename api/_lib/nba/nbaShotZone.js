@@ -82,4 +82,14 @@ export function openZoneRead(playerProf, teamAllowed) {
   return { score: +score.toFixed(3), detail, thin: false };
 }
 
-export default { classifyZone, playerShotProfile, teamAllowedProfile, openZoneRead };
+// keep only shots from the most recent N distinct game dates (shots must carry gameDate;
+// buildShotZoneIndex tags them). Lets shot-zone reads track recent form, not just season.
+export function lastNGameShots(shots, n) {
+  const dated = (shots || []).filter((x) => x.gameDate);
+  if (!dated.length) return shots || [];
+  const dates = [...new Set(dated.map((x) => x.gameDate))].sort().reverse().slice(0, n);
+  const keep = new Set(dates);
+  return dated.filter((x) => keep.has(x.gameDate));
+}
+
+export default { classifyZone, playerShotProfile, teamAllowedProfile, openZoneRead, lastNGameShots };
