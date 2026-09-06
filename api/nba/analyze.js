@@ -11,7 +11,7 @@ import { fetchNbaProps } from '../_lib/nba/prizepicks.js';
 import { buildRosterIndex } from '../_lib/nba/espnRoster.js';
 import { mergePlayer } from '../_lib/nba/normalizeMerge.js';
 import { projectMinutes } from '../_lib/nba/minutesModel.js';
-import { evaluateSlate, rankBestBets, toCandidates } from '../_lib/nba/nbaBestBets.js';
+import { rankBestBets, toCandidates } from '../_lib/nba/nbaBestBets.js';
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function yyyymmdd(iso) { return iso.replace(/-/g, ''); }
@@ -86,12 +86,9 @@ export async function analyzeSlate(io) {
     merged.push(m);
   }
 
-  // Evaluate the whole slate ONCE; the board shows all players, logging uses the bets.
-  const allRows = evaluateSlate(merged, ppIndex, { league: 'NBA' });
-  const slatePlayers = toCandidates(allRows, { date });                 // full informational slate
-  const ranked = allRows.filter((r) => r.isBet).sort((a, b) => b.edge - a.edge);
-  const candidates = toCandidates(ranked, { date });                    // LEAN+ bets (logged)
-  return { date, count: candidates.length, candidates, players: slatePlayers, ranked, mergedCount: merged.length };
+  const ranked = rankBestBets(merged, ppIndex, { league: 'NBA' });
+  const candidates = toCandidates(ranked, { date });
+  return { date, count: candidates.length, candidates, ranked, mergedCount: merged.length };
 }
 
 // Vercel handler
@@ -116,6 +113,8 @@ export default async function handler(req, res) {
       fetchGameLog: espn.fetchPlayerGameLog,
     });
 
+    // Optional: upsert out.candidates into Supabase parlay_log here (PENDING),
+    // mirroring the other sports' logBestBets. Left to the app's existing writer.
     res.status(200).json(out);
   } catch (e) {
     res.status(500).json({ error: String(e && e.message || e) });

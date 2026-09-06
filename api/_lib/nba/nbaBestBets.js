@@ -23,13 +23,9 @@ function minutesReasons(mp) {
 
 // mergedPlayers: normalizeMerge output (ideally with projMinutes/minutesCV/minutes.flags
 // from the minutes model, and optionally .cadenceShares + .gameScript for the cadence stage).
-// Evaluate EVERY player x market that has a standard line -> rows tagged with isBet.
-// This is the informational slate the board renders; bets are just the isBet===true
-// subset. decide() computes the projection/distribution for all of them, so non-bet
-// rows still carry projection/floor/ceiling for the recency gauge.
-export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
-  const { league = 'NBA', markets = ['points', 'rebounds', 'assists'], gradedHistory = [] } = opts;
-  const rows = [];
+export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
+  const { league = 'NBA', minEdge = null, markets = ['points', 'rebounds', 'assists', 'pra', 'pts_rebs', 'pts_asts', 'rebs_asts'], gradedHistory = [] } = opts;
+  const ranked = [];
   for (const mp of mergedPlayers || []) {
     for (const market of markets) {
       const ln = byPlayerMarket ? lookupLine(byPlayerMarket, mp.name, market)
@@ -37,29 +33,22 @@ export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
       if (!ln || ln.isStandard === false || ln.line == null) continue;
 
       const v = decide(mp, market, ln.line, {
-        league, gradedHistory, cadenceShares: mp.cadenceShares, gameScript: mp.gameScript,
+        league, gradedHistory, cadenceShares: mp.cadenceShares, gameScript: mp.gameScript, shotZone: mp.shotZone,
       });
-      if (!v.ok) continue;                       // couldn't evaluate (no projection) -> skip entirely
-      const isBet = v.lean !== 'pass' && v.edge >= 0.08;
-      const tier = isBet ? provisionalTier(v.edge) : 'PASS';
+      if (!v.ok || v.lean === 'pass') continue;
+      if (minEdge != null && v.edge < minEdge) continue;
+      const tier = provisionalTier(v.edge);
+      if (tier === 'PASS') continue;
 
       const why = [...new Set([...minutesReasons(mp), ...v.reasons])];
-      rows.push({
+      ranked.push({
         player: mp.name, playerId: mp.id, team: mp.currentTeam, opponent: mp.opponent,
         gameId: mp.gameId || '', date: mp.date || null,
-        market, side: v.side, line: ln.line, prob: v.prob, edge: v.edge, tier, isBet,
+        market, side: v.side, line: ln.line, prob: v.prob, edge: v.edge, tier,
         lineStatus: ln.lineStatus || 'standard', started: mp.starter ?? null, why, _v: v,
       });
     }
   }
-  return rows;
-}
-
-// Best bets = the LEAN-or-better subset of the evaluated slate, ranked by edge.
-export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
-  const { minEdge = null } = opts;
-  const ranked = evaluateSlate(mergedPlayers, byPlayerMarket, opts)
-    .filter((r) => r.isBet && !(minEdge != null && r.edge < minEdge));
   ranked.sort((a, b) => b.edge - a.edge);
   return ranked;
 }
@@ -72,7 +61,6 @@ export function toCandidates(ranked, data = {}) {
     sport: 'nba', date, gameId: String(r.gameId || ''),
     team: r.team, opponent: r.opponent, player: r.player, playerId: r.playerId || null,
     market: r.market, side: r.side, line: r.line,
-    isBet: r.isBet !== false,
     tier: r.tier, cashRate: r.prob, edgeType: 'nba-' + r.market, sampleN: null,
     // fields the History (nbaPropHistory) entry needs — mirrors wnbaPropHistory shape:
     edge: r.edge, probOver: r.side === 'over' ? r.prob : +(1 - r.prob).toFixed(3),
@@ -89,4 +77,4 @@ export function toCandidates(ranked, data = {}) {
   }));
 }
 
-export default { evaluateSlate, rankBestBets, toCandidates };
+export default { rankBestBets, toCandidates };
