@@ -644,7 +644,7 @@ function computeStaleness(base, l, E) {
     sev = 'moderate';
   }
   if (role && role.rank != null) {
-    if (fam === 'passing_yards' && role.posGroup === 'QB' && role.rank > 1) {
+    if ((fam === 'passing_yards' || fam === 'pass_rush_yards') && role.posGroup === 'QB' && role.rank > 1) {
       reasons.unshift(`listed QB${role.rank} on the depth chart \u2014 not the current starter`); sev = 'high'; roleNote = 'non-starter QB';
     } else if ((fam === 'rushing_yards' || fam === 'rush_rec_yards') && role.posGroup === 'RB' && role.rank >= 2) {
       if (role.rank >= 3) { reasons.unshift(`listed RB${role.rank} \u2014 deep in the backfield now`); sev = 'high'; }

@@ -3401,7 +3401,8 @@
 .nflx-datenav button{width:28px;height:28px;border:0;background:transparent;color:var(--text-secondary);cursor:pointer;border-radius:var(--radius-sm);font-size:15px;line-height:1}
 .nflx-datenav button:hover{background:var(--surface-muted);color:var(--text-primary)}
 .nflx-datenav .cur{font-size:var(--size-caption);font-weight:var(--weight-medium);padding:0 var(--space-2);color:var(--text-primary)}
-.nflx-datenav .nflx-datepick{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0);border:0;padding:0;margin:-1px}
+.nflx-datenav .nflx-datepick{appearance:none;-webkit-appearance:none;background:var(--surface-muted);border:1px solid var(--border-hairline);border-radius:var(--radius-sm);color:var(--text-primary);font-family:inherit;font-size:var(--size-caption);font-weight:var(--weight-medium);padding:3px 6px;margin-left:4px;min-height:28px;cursor:pointer}
+.nflx-datenav .nflx-datepick::-webkit-calendar-picker-indicator{opacity:.6;cursor:pointer}
 
 .nflx-sect{display:flex;align-items:center;gap:var(--space-3);margin:var(--space-7) 0 var(--space-4)}
 .nflx-sect-t{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-medium);letter-spacing:var(--tracking-tight);white-space:nowrap}
@@ -3749,8 +3750,7 @@
           <span class="cur" id="nflDateDisplay">Today</span>
           <button type="button" onclick="nflChangeDate(1)" aria-label="Next day">›</button>
           <button type="button" onclick="nflChangeDate('today')" title="Jump to today" aria-label="Today">•</button>
-          <button type="button" onclick="nflOpenDatePicker()" title="Pick a date" aria-label="Pick a date">📅</button>
-          <input type="date" id="nflDatePicker" class="nflx-datepick" onchange="nflPickDate(this.value)" aria-label="Pick a date" />
+          <input type="date" id="nflDatePicker" class="nflx-datepick" onchange="nflPickDate(this.value)" aria-label="Choose a date to analyze" />
         </div>
         <button class="lyrid-btn primary" id="loadNflBtn" onclick="loadNflSlate()">Refresh</button>
       </div>
@@ -24125,8 +24125,11 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     catch (_) { return new Date().toISOString().slice(0, 10); }
   }
   function setNflDateDisplay() {
+    var d = nflState.date || todayStr();
     var el = document.getElementById('nflDateDisplay');
     if (el) el.textContent = (nflState.date === todayStr() || !nflState.date) ? 'Today' : nflState.date;
+    var inp = document.getElementById('nflDatePicker');
+    if (inp) inp.value = d;
   }
   window.nflChangeDate = function (delta) {
     var base = nflState.date || todayStr();
