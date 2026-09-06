@@ -24165,6 +24165,45 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   function pAdjOf(v){ v=v||{}; return num(v.pOverAdjusted!=null?v.pOverAdjusted:v.pOver); }
   function explOf(item,label){ var a=(item.card&&item.card.explanations)||[]; for (var i=0;i<a.length;i++){ if (a[i].label===label) return a[i]; } return null; }
 
+  // ---- CLIENT-SIDE injury feed. ESPN 403s our Vercel IP, but the browser's residential
+  // IP reads it fine (CORS-open) — same pattern as MLB's client-side statsapi calls. We
+  // fetch the league injury report here, key it by normalized name, and the card renderers
+  // read it. Fail-soft: any error just means cards render without injury info.
+  var nflInjuriesByName = {}, nflInjLoaded = false;
+  function nfNorm(s){ return String(s||'').toLowerCase().replace(/[.'`]/g,'').replace(/\b(jr|sr|ii|iii|iv|v)\b/g,'').replace(/[^a-z ]/g,'').replace(/\s+/g,' ').trim(); }
+  var NFL_OUT = { out:1, inactive:1, 'injured reserve':1, ir:1, suspended:1, suspension:1, 'did not play':1 };
+  var NFL_DOUBT = { doubtful:1, questionable:1 };
+  async function fetchNflInjuries(){
+    if (nflInjLoaded) return nflInjuriesByName;
+    try {
+      var r = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries', { cache:'no-store' });
+      if (!r.ok) throw new Error('ESPN ' + r.status);
+      var d = await r.json(), blocks = (d && d.injuries) || [], map = {};
+      for (var i=0;i<blocks.length;i++){
+        var list = (blocks[i] && blocks[i].injuries) || [];
+        for (var j=0;j<list.length;j++){
+          var e = list[j], nm = e && e.athlete && e.athlete.displayName; if (!nm) continue;
+          var st = String(e.status||'').trim().toLowerCase();
+          var status = NFL_OUT[st] ? 'out' : (NFL_DOUBT[st] ? 'doubtful' : 'active');
+          var detail = (e.details && (e.details.type || e.details.detail)) || null;
+          var blurb = e.shortComment || e.longComment || null;
+          map[nfNorm(nm)] = { status:status, statusRaw:e.status||null, detail:detail, blurb:blurb };
+        }
+      }
+      nflInjuriesByName = map; nflInjLoaded = true;
+    } catch (_) { nflInjLoaded = true; }
+    return nflInjuriesByName;
+  }
+  function nflInjuryFor(item){ if (!item || !item.player) return null; return nflInjuriesByName[nfNorm(item.player)] || item.injury || null; }
+  // displayed-tier cap: Questionable/Doubtful -> GOLD, Out -> no play. A soft line on an
+  // injured player usually prices reduced volume, so it can't carry a top tier.
+  function nflInjCapTier(tier, inj){
+    if (!inj || !inj.status) return tier;
+    if (inj.status === 'out') return 'none';
+    if (inj.status === 'doubtful') return RANK[tier] > RANK['GOLD'] ? 'GOLD' : tier;
+    return tier;
+  }
+
   // ============================================================
   // SIGNATURE — projection track: p25–median–p75 band vs the line
   // ============================================================
@@ -24245,7 +24284,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       return;
     }
     var rows = card.map(function(p, i){
-      var v=p.verdict||{}, c=p.comp||{}, pAdj=pAdjOf(v)||0, tier=v.tier_candidate||'none';
+      var v=p.verdict||{}, c=p.comp||{}, pAdj=pAdjOf(v)||0, tier=nflInjCapTier(v.tier_candidate||'none', nflInjuryFor(p));
       var dir = v.pick==='lower'?'down':'up';
       var chips = '<span class="nflx-chip ' + (TIER_CLASS[tier]||'gold') + '">' + esc(tier) + '</span><span class="nflx-chip prov">provisional</span>' + (nflBoom(p)?'<span class="nflx-chip ceiling">\u25C7 ceiling</span>':'') + nflInjuryChip(p);
       var why = (p.card && p.card.summary) ? '<div class="nflx-why">' + esc(p.card.summary) + '</div>' : '';
@@ -24270,7 +24309,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   // injury banner from pick.injury ({status,statusRaw,detail,blurb,side}); status is
   // 'out' | 'doubtful' (questionable/doubtful) | 'active' (listed but expected to play).
   function nflInjuryBanner(item){
-    var inj = item && item.injury;
+    var inj = nflInjuryFor(item);
     if (!inj || !inj.status || inj.status === 'unknown') return '';
     var sevCls = inj.status === 'out' ? 'out' : (inj.status === 'doubtful' ? 'q' : 'info');
     var head = inj.status === 'out' ? 'OUT'
@@ -24282,21 +24321,22 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     return '<div class="nflx-injury ' + sevCls + '"><span class="nflx-injury-tag">\u2695 ' + esc(head) + det + tail + '</span>' + blurb + '</div>';
   }
   function nflInjuryChip(item){
-    var inj = item && item.injury;
+    var inj = nflInjuryFor(item);
     if (!inj || !inj.status || inj.status === 'unknown' || inj.status === 'active') return '';
     return '<span class="nflx-chip inj">\u2695 ' + esc(inj.status === 'out' ? 'OUT' : (inj.statusRaw || 'Q')) + '</span>';
   }
 
   function renderPropCard(item){
     var v=item.verdict||{}, c=item.comp||{}, f=v.filters||{};
-    var tier=v.tier_candidate||'none', noPlay=tier==='none';
+    var _inj=nflInjuryFor(item); var _rawTier=v.tier_candidate||'none'; var tier=nflInjCapTier(_rawTier,_inj); var noPlay=tier==='none'; var _injCapped=(_rawTier!=='none' && tier!==_rawTier);
     var pAdj = pAdjOf(v)||0, dir = v.pick==='lower'?'down':'up';
     var chips = noPlay ? '<span class="nflx-chip prov">No play</span>'
       : '<span class="nflx-chip ' + (TIER_CLASS[tier]||'gold') + '">' + esc(tier) + '</span><span class="nflx-chip prov">provisional</span>';
     if (nflBoom(item)) chips += '<span class="nflx-chip ceiling">\u25C7 ceiling</span>';
     var filt = function(l,ok){ return '<span class="nflx-filt ' + (ok?'pass':'fail') + '"><span class="dot">' + (ok?'\u2713':'\u2715') + '</span>' + l + '</span>'; };
     var filters = '<div class="nflx-filters">' + filt('Soft line', f.softLine) + filt('Volume-secure', f.volumeSecure) + filt('Script-clear', f.scriptClear) + '</div>';
-    var blocked = (v.blocked && v.blocked.length) ? '<div class="nflx-blocked">' + esc(v.blocked[0]) + '</div>' : '';
+    var _injMsg = _injCapped ? ('injury risk \u2014 listed ' + esc(_inj.statusRaw||_inj.status) + (_inj.detail?(' ('+esc(_inj.detail)+')'):'') + '; soft line likely prices reduced volume') : '';
+    var blocked = _injMsg ? '<div class="nflx-blocked">' + _injMsg + '</div>' : ((v.blocked && v.blocked.length) ? '<div class="nflx-blocked">' + esc(v.blocked[0]) + '</div>' : '');
     var ex = (item.card && item.card.explanations) || [];
     var drivers = ex.length ? '<div class="nflx-drivers">' + ex.slice(0,6).map(function(e){
         var cls = e.dir==='+'?'pos':(e.dir==='-'?'neg':'neu'), ic = e.dir==='+'?'\u25B2':(e.dir==='-'?'\u25BC':'\u25CF');
@@ -24358,6 +24398,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     try { var res = await fetch('/api/nfl/slate?date=' + encodeURIComponent(nflState.date), { cache: 'no-store' }); if (res.ok) data = await res.json(); }
     catch (_) { /* endpoint not deployed yet */ }
     nflState.loaded = true;
+    await fetchNflInjuries();  // client-side ESPN injuries (bypasses the Vercel 403)
 
     if (!data || !Array.isArray(data.picks) || !data.picks.length) {
       var why = data && data.note ? data.note : 'NFL props run in-season (Sept\u2013Feb). The engine is live once the slate posts.';
