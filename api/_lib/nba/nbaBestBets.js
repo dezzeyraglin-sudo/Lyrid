@@ -33,7 +33,7 @@ export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
       if (!ln || ln.isStandard === false || ln.line == null) continue;
 
       const v = decide(mp, market, ln.line, {
-        league, gradedHistory, cadenceShares: mp.cadenceShares, gameScript: mp.gameScript,
+        league, gradedHistory, cadenceShares: mp.cadenceShares, gameScript: mp.gameScript, shotZone: mp.shotZone,
       });
       if (!v.ok || v.lean === 'pass') continue;
       if (minEdge != null && v.edge < minEdge) continue;

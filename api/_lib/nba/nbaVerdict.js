@@ -77,16 +77,28 @@ export function decide(mp, market, line, ctx = {}) {
     : (cfg.markets?.[market]?.minEdge ?? 0.06);
   const lean = (rec.formKill || rec.lean === 'pass' || rec.edge < marketMinEdge) ? 'pass' : rec.side;
 
+  // shot-zone shadow reads (location-based; log alongside, no projection change until graded)
+  const szReasons = []; let szRead = null;
+  if (ctx.shotZone) {
+    const prof = ctx.shotZone.profile, oz = ctx.shotZone.openZone;
+    if (prof && prof.hotGap != null && prof.hotGap > 0.06 && rec.side === 'over') szReasons.push('shooting above shot quality — regression risk');
+    if (oz && oz.score != null && !oz.thin) {
+      if (oz.score > 0.02) szReasons.push('defense concedes his shot zones');
+      else if (oz.score < -0.02) szReasons.push('defense takes away his shot zones');
+    }
+    szRead = { shotQuality: prof?.shotQuality ?? null, hotGap: prof?.hotGap ?? null, openZone: oz?.score ?? null };
+  }
+
   const reasons = [...(res.recNotes || []), res.flags?.confidentOverFaded ? 'confident over faded' : null,
     res.flags?.lineAboveCeiling ? 'line above ceiling' : null,
-    rec.formNote, cadenceNote, bc.n ? `bias-corrected ${bc.bias > 0 ? '+' : ''}${bc.bias} (n${bc.n})` : null,
+    rec.formNote, cadenceNote, ...szReasons, bc.n ? `bias-corrected ${bc.bias > 0 ? '+' : ''}${bc.bias} (n${bc.n})` : null,
   ].filter(Boolean);
 
   return {
     ok: true, market, line, effLine: +effLine.toFixed(1),
     side: rec.side, prob: rec.prob, edge: +rec.edge.toFixed(3), lean,
     distribution: res.distribution, bias: bc.bias, cadence: cadenceClass,
-    formKill: !!rec.formKill, engine: res, reasons,
+    formKill: !!rec.formKill, shotZone: szRead, engine: res, reasons,
   };
 }
 
