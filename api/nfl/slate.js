@@ -238,6 +238,9 @@ export default async function handler(req, res) {
       propFamilies: Array.from(new Set(lines.map(l => l.prop_type))),
       baselineResolved: ready ? Object.keys(E.featByKey).length : 0,
       availabilityOk: ready ? !!(E.availability && E.availability.ok) : false,
+      availabilitySources: (ready && E.availability && E.availability.sources) || [],
+      injuryCount: (ready && E.availability && E.availability.injuryCount) || 0,
+      availabilityError: (ready && E.availability && (E.availability.leagueError || E.availability.error)) || null,
       engineError: engineError || undefined,
     },
     note: ready ? undefined
