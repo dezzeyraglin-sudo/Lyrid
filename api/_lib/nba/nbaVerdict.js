@@ -11,6 +11,8 @@
 import NBA, { CONFIGS } from './leagueConfig.js';
 import { analyzePoints } from './pointsEngine.js';
 import { analyzeCounting } from './reboundsAssistsEngine.js';
+import { analyzeCombo } from './comboEngine.js';
+const COMBO_SET = new Set(['pra', 'pts_rebs', 'pts_asts', 'rebs_asts']);
 import { formFloor } from './formFloor.js';
 import { biasCorrection } from './biasCorrection.js';
 import { classifyCadence, applyCadence } from './cadenceEngine.js';
@@ -32,7 +34,9 @@ function recentAvgFor(profile, market) {
 
 function runEngine(mp, market, line, league) {
   const withLine = { ...mp, line: { market, line } };
-  return market === 'points' ? analyzePoints(withLine, league) : analyzeCounting(withLine, market, league);
+  if (market === 'points') return analyzePoints(withLine, league);
+  if (COMBO_SET.has(market)) return analyzeCombo(withLine, market, league);
+  return analyzeCounting(withLine, market, league);
 }
 
 // decide one prop. ctx: { league, gradedHistory, cadenceShares (per-market 2nd-half
@@ -68,7 +72,9 @@ export function decide(mp, market, line, ctx = {}) {
   }
 
   // 5) finalize
-  const marketMinEdge = market === 'points' ? cfg.edge.minEdge : (cfg.markets?.[market]?.minEdge ?? 0.06);
+  const marketMinEdge = market === 'points' ? cfg.edge.minEdge
+    : COMBO_SET.has(market) ? (cfg.combo?.minEdge ?? 0.07)
+    : (cfg.markets?.[market]?.minEdge ?? 0.06);
   const lean = (rec.formKill || rec.lean === 'pass' || rec.edge < marketMinEdge) ? 'pass' : rec.side;
 
   const reasons = [...(res.recNotes || []), res.flags?.confidentOverFaded ? 'confident over faded' : null,

@@ -65,6 +65,10 @@ export const NBA = {
     assists:  { k: 6,  minEdge: 0.06 },
   },
 
+  // combo markets (P+R, P+A, R+A, PRA): convolution over shared minutes; slightly
+  // higher min edge + thin-gap auto-pass to respect residual correlation risk. TUNE.
+  combo: { minEdge: 0.07, thinGap: 1.5 },
+
   edge: { minEdge: 0.04 }, // min |p-0.5| to surface a lean (NBA points lines are large)
 
   posture: 'shadow', // shadow-then-launch: emit probabilities, NOT conviction tiers,
