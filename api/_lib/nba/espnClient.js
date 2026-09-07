@@ -254,7 +254,7 @@ export async function injuryIndex() {
 }
 
 // Per-game log, newest first (recent form + shot-profile source).
-export async function fetchPlayerGameLog(athleteId) {
+export async function fetchPlayerGameLog(athleteId, { regularSeasonOnly = true } = {}) {
   const gl = await espnGet(`${COMMON}/athletes/${athleteId}/gamelog`);
   const names = gl?.names || [];
   const meta  = gl?.events || {};
@@ -286,8 +286,16 @@ export async function fetchPlayerGameLog(athleteId) {
       }
     }
   }
-  rows.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-  return rows;
+  // exclude preseason + postseason from the recency window (regime discipline: never
+  // pool playoffs with regular season). Off-season, this pulls last season's final
+  // regular-season games instead of the playoffs — the right prior for an opener.
+  let out = rows;
+  if (regularSeasonOnly) {
+    const reg = rows.filter((r) => /regular season/i.test(r.seasonType || ''));
+    if (reg.length) out = reg; // fall back to all rows only if no regular-season games exist
+  }
+  out.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  return out;
 }
 
 // Player vs a specific opponent — returns the aggregate + n + thin flag.
