@@ -12,7 +12,7 @@
 const SITE   = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
 const COMMONV3 = 'https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba';
 const CORE   = 'https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba';
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
+const UA = 'curl/8.5.0';  // ESPN blocks browser-like UAs; curl passes (verified)
 
 async function get(url, { timeout = 12000 } = {}) {
   const ctrl = new AbortController();
