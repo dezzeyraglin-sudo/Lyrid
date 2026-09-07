@@ -23,6 +23,35 @@ function minutesReasons(mp) {
 
 // mergedPlayers: normalizeMerge output (ideally with projMinutes/minutesCV/minutes.flags
 // from the minutes model, and optionally .cadenceShares + .gameScript for the cadence stage).
+// Evaluate EVERY player x market on the slate, tagging each row with isBet. The board
+// shows all rows; logging uses the ones where isBet is true. Same shape rankBestBets
+// produces, so toCandidates works on either.
+export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
+  const { league = 'NBA', markets = ['points', 'rebounds', 'assists', 'pra', 'pts_rebs', 'pts_asts', 'rebs_asts'], gradedHistory = [] } = opts;
+  const rows = [];
+  for (const mp of mergedPlayers || []) {
+    for (const market of markets) {
+      const ln = byPlayerMarket ? lookupLine(byPlayerMarket, mp.name, market)
+        : (mp.line && mp.line.market === market ? mp.line : null);
+      if (!ln || ln.isStandard === false || ln.line == null) continue;
+      const v = decide(mp, market, ln.line, {
+        league, gradedHistory, cadenceShares: mp.cadenceShares, gameScript: mp.gameScript, shotZone: mp.shotZone,
+      });
+      if (!v.ok) continue;
+      const tier = provisionalTier(v.edge);
+      const isBet = v.lean !== 'pass' && tier !== 'PASS';
+      const why = [...new Set([...minutesReasons(mp), ...v.reasons])];
+      rows.push({
+        player: mp.name, playerId: mp.id, team: mp.currentTeam, opponent: mp.opponent,
+        gameId: mp.gameId || '', date: mp.date || null,
+        market, side: v.side, line: ln.line, prob: v.prob, edge: v.edge, tier, isBet,
+        lineStatus: ln.lineStatus || 'standard', started: mp.starter ?? null, why, _v: v,
+      });
+    }
+  }
+  return rows;
+}
+
 export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
   const { league = 'NBA', minEdge = null, markets = ['points', 'rebounds', 'assists', 'pra', 'pts_rebs', 'pts_asts', 'rebs_asts'], gradedHistory = [] } = opts;
   const ranked = [];
