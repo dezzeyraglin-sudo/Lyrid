@@ -69,6 +69,24 @@ export const NBA = {
   // higher min edge + thin-gap auto-pass to respect residual correlation risk. TUNE.
   combo: { minEdge: 0.07, thinGap: 1.5 },
 
+  // role-change over/under guard: when role is unconfirmed AND the market line disagrees
+  // strongly with our (stale) projection, neutralize the lean — the projection can't be
+  // trusted through a role change. gapPct = |proj-line|/line that triggers it. TUNE.
+  roleGuard: { gapPct: 0.18 },
+
+  // opponent-defense adjustment (modest, capped). League baselines + coefficients are
+  // TUNE placeholders. effCoef*ΔoppFG% -> make-rate mult; paceCoef*Δpace% -> volume mult.
+  opponent: {
+    leagueOppFgPct: 0.470, leaguePace: 99.5, leagueOppFg3aRate: 0.420,
+    effCoef: 0.6, effCap: 0.04,     // make rates: max ±4%
+    paceCoef: 0.5, paceCap: 0.04,   // shot volume: max ±4%
+    rebEnvCoef: 0.4, rebEnvCap: 0.05,
+    // defensive activity (ESPN/bbref): blocks -> rim scoring, steals -> assists
+    leagueBlocksPerG: 5.0, leagueStealsPerG: 7.8,
+    blockCoef: 0.4, blockCap: 0.03,  // 2P% suppression: max ±3%
+    stealCoef: 0.4, stealCap: 0.04,  // assist suppression: max ±4%
+  },
+
   edge: { minEdge: 0.04 }, // min |p-0.5| to surface a lean (NBA points lines are large)
 
   posture: 'shadow', // shadow-then-launch: emit probabilities, NOT conviction tiers,

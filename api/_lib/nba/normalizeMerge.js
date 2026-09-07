@@ -82,6 +82,7 @@ export async function mergePlayer(ppLine, { rosterIndex, bbrefAdv, bbrefTeams, i
 
     matchup: opp ? {
       defRtg: opp.defRtg, oppFgPct: opp.oppFgPct,
+      blocksPerG: opp.blocksPerG, stealsPerG: opp.stealsPerG,
       oppFg3aRate: opp.oppFg3aRate, oppFg3aPerG: opp.oppFg3aPerG, pace: opp.pace,
     } : null,
 

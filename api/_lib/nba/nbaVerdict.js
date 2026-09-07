@@ -71,6 +71,22 @@ export function decide(mp, market, line, ctx = {}) {
     rec = applied; cadenceClass = applied.cadence; cadenceNote = applied.cadenceNote;
   }
 
+  // role-change guard: an unconfirmed role change + a market line that disagrees strongly
+  // with our (stale) projection => the market is pricing a role shift we can't see. Don't
+  // lean either way on a projection we can't trust — neutralize to PASS (symmetric).
+  let roleGuarded = false;
+  if (res.flags?.roleUncertain && rec.lean !== 'pass' && !rec.formKill) {
+    const mean = res.distribution?.mean;
+    if (mean != null && line > 0) {
+      const relGap = Math.abs(mean - line) / line;
+      const leanFollowsProjection = (rec.side === 'over' && mean > line) || (rec.side === 'under' && mean < line);
+      if (leanFollowsProjection && relGap >= (cfg.roleGuard?.gapPct ?? 0.18)) {
+        rec = { ...rec, edge: 0, prob: 0.5, lean: 'pass' };
+        roleGuarded = true;
+      }
+    }
+  }
+
   // 5) finalize
   const marketMinEdge = market === 'points' ? cfg.edge.minEdge
     : COMBO_SET.has(market) ? (cfg.combo?.minEdge ?? 0.07)
@@ -89,16 +105,24 @@ export function decide(mp, market, line, ctx = {}) {
     szRead = { shotQuality: prof?.shotQuality ?? null, hotGap: prof?.hotGap ?? null, openZone: oz?.score ?? null };
   }
 
+  const matchupReasons = [];
+  if (mp.oppAdj) {
+    var oa = mp.oppAdj;
+    if (oa.effMult <= 0.985) matchupReasons.push('tough matchup (opponent D)');
+    else if (oa.effMult >= 1.015) matchupReasons.push('soft matchup (opponent D)');
+    if (oa.blockMult != null && oa.blockMult <= 0.98) matchupReasons.push('rim-protecting defense');
+    if (oa.stealMult != null && oa.stealMult <= 0.975) matchupReasons.push('ball-pressure defense');
+  }
   const reasons = [...(res.recNotes || []), res.flags?.confidentOverFaded ? 'confident over faded' : null,
     res.flags?.lineAboveCeiling ? 'line above ceiling' : null,
-    rec.formNote, cadenceNote, ...szReasons, bc.n ? `bias-corrected ${bc.bias > 0 ? '+' : ''}${bc.bias} (n${bc.n})` : null,
+    rec.formNote, cadenceNote, ...matchupReasons, roleGuarded ? 'role change + market disagreement — lean neutralized (stale projection risk)' : null, ...szReasons, bc.n ? `bias-corrected ${bc.bias > 0 ? '+' : ''}${bc.bias} (n${bc.n})` : null,
   ].filter(Boolean);
 
   return {
     ok: true, market, line, effLine: +effLine.toFixed(1),
     side: rec.side, prob: rec.prob, edge: +rec.edge.toFixed(3), lean,
     distribution: res.distribution, bias: bc.bias, cadence: cadenceClass,
-    formKill: !!rec.formKill, shotZone: szRead, engine: res, reasons,
+    formKill: !!rec.formKill, roleGuarded, shotZone: szRead, engine: res, reasons,
   };
 }
 

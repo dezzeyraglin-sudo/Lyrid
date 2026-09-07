@@ -15,6 +15,8 @@ import { evaluateSlate, rankBestBets, toCandidates } from '../_lib/nba/nbaBestBe
 import { assignArchetype } from '../_lib/nba/nbaArchetype.js';
 import { playerShotProfile, teamAllowedProfile, openZoneRead, lastNGameShots } from '../_lib/nba/nbaShotZone.js';
 import { recentForm } from '../_lib/nba/recentForm.js';
+import { adjustProfile } from '../_lib/nba/opponentAdjust.js';
+import { CONFIGS } from '../_lib/nba/leagueConfig.js';
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function yyyymmdd(iso) { return iso.replace(/-/g, ''); }
@@ -70,6 +72,38 @@ export function buildShotZoneIndex(gameSummaries) {
   return { byPlayer, teamAllowed };
 }
 
+// Group the evaluated slate into ONE card per player, carrying the player-level
+// archetype + recent form and every prop's projection/line/lean. Cards and props are
+// sorted by edge so the strongest reads surface first.
+export function buildPlayerCards(rows) {
+  const MKT = { points: 'PTS', rebounds: 'REB', assists: 'AST', pra: 'PRA', pts_rebs: 'P+R', pts_asts: 'P+A', rebs_asts: 'R+A', threes: '3PT' };
+  const byKey = {};
+  for (const r of rows || []) {
+    const key = String(r.playerId || r.player);
+    if (!byKey[key]) byKey[key] = {
+      playerId: r.playerId, player: r.player, team: r.team, opponent: r.opponent,
+      gameId: r.gameId, date: r.date, archetype: r.archetype || null, recentForm: r.recentForm || null,
+      matchup: r.matchup || null, oppAdj: r.oppAdj || null,
+      props: [],
+    };
+    byKey[key].props.push({
+      market: r.market, marketLabel: MKT[r.market] || String(r.market || '').toUpperCase(),
+      side: r.side, line: r.line,
+      projection: r.projection, floor: r.floor, ceiling: r.ceiling,
+      prob: r.cashRate, edge: r.edge, tier: r.tier, isBet: r.tier !== 'PASS',
+      why: r.why,
+    });
+  }
+  const cards = Object.values(byKey);
+  for (const c of cards) {
+    c.props.sort((a, b) => (b.edge || 0) - (a.edge || 0));
+    c.topEdge = c.props.length ? (c.props[0].edge || 0) : 0;
+    c.bets = c.props.filter((p) => p.isBet).length;
+  }
+  cards.sort((a, b) => b.topEdge - a.topEdge);
+  return cards;
+}
+
 // PURE CORE — inject fetchers/data so this is testable offline.
 export async function analyzeSlate(io) {
   const {
@@ -114,6 +148,12 @@ export async function analyzeSlate(io) {
     m.gameId = game.gameId; m.date = date;
     if (mm.ok) { m.projMinutes = mm.projMinutes; m.minutesCV = mm.cv; m.minutes = { flags: mm.flags }; }
 
+    // --- opponent-defense adjustment on the shot profile (modest, capped) ---
+    if (m.matchup && m.shotProfile) {
+      m.shotProfile = adjustProfile(m.shotProfile, m.matchup, CONFIGS.NBA);
+      m.oppAdj = m.shotProfile._oppAdj;
+    }
+
     // --- recent-form panel (L5/L10 effectiveness from the game log) -> player card ---
     m.recentForm = recentForm(gameLog);
 
@@ -144,10 +184,10 @@ export async function analyzeSlate(io) {
   // attach archetype + shot-zone read onto the output rows by player id (so the card
   // has them even though toCandidates doesn't know about them)
   const metaById = {};
-  for (const m of merged) if (m.id) metaById[String(m.id)] = { archetype: m.archetype, shotZone: m.shotZone || null, recentForm: m.recentForm || null };
+  for (const m of merged) if (m.id) metaById[String(m.id)] = { archetype: m.archetype, shotZone: m.shotZone || null, recentForm: m.recentForm || null, oppAdj: m.oppAdj || null, matchup: m.matchup || null };
   const attach = (arr) => (arr || []).map((c) => {
     const meta = c.playerId != null ? metaById[String(c.playerId)] : null;
-    return meta ? { ...c, archetype: meta.archetype, shotZone: meta.shotZone, recentForm: meta.recentForm } : c;
+    return meta ? { ...c, archetype: meta.archetype, shotZone: meta.shotZone, recentForm: meta.recentForm, oppAdj: meta.oppAdj, matchup: meta.matchup } : c;
   });
 
   // diagnostics: make an empty slate self-explanatory (which stage is empty?)
@@ -174,11 +214,14 @@ export async function analyzeSlate(io) {
     }
   }
 
+  const candOut = attach(candidates);
+  const slateOut = attach(slatePlayers);
   return {
     date,
     count: candidates.length,
-    candidates: attach(candidates),
-    players: attach(slatePlayers),
+    candidates: candOut,
+    players: slateOut,
+    playerCards: buildPlayerCards(slateOut),
     ranked,
     mergedCount: merged.length,
     diagnostics,

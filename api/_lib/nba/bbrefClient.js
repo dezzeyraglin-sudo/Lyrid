@@ -142,6 +142,7 @@ export async function fetchTeamContext(season) {
   const html = await bbrefGet(`/leagues/NBA_${season}.html`);
   const adv = parseTable(html, 'advanced-team');   // pace, off/def rtg, efg, opp_efg
   const opp = parseTable(html, 'per_game-opponent'); // what each team ALLOWS, per game
+  const own = parseTable(html, 'per_game-team');      // the team's OWN per-game (blk/stl = defensive activity)
 
   const teams = {};
   for (const r of adv) {
@@ -168,6 +169,12 @@ export async function fetchTeamContext(season) {
       oppDrbPerG: num(r.opp_drb), oppOrbPerG: num(r.opp_orb), oppTrbPerG: num(r.opp_trb),
       oppFg3aRate: num(r.opp_fg3a) != null && num(r.opp_fga) ? num(r.opp_fg3a) / num(r.opp_fga) : null,
     });
+  }
+  for (const r of own) {
+    const t = resolveTeam(r.team);
+    if (!t || !teams[t]) continue;
+    teams[t].blocksPerG = num(r.blk);
+    teams[t].stealsPerG = num(r.stl);
   }
   const out = { season, teams };
   _cache.set(ck, out);
