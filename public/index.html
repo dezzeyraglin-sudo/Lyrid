@@ -24597,65 +24597,68 @@ function logNbaBestBets(candidates) {
   try { if (typeof saveState === 'function') saveState(); } catch (_) {}
 }
 function renderNbaBoard(out) {
-  const el = document.getElementById('nba-results'); if (!el) return;
-  const cands = (out && (out.players || out.candidates)) || [];   // full slate when present, else bets
-  const st = document.getElementById('nba-status');
-  const gameCount = new Set(cands.map(function (c) { return [c.team, c.opponent].sort().join('@'); })).size;
-  var betN = cands.filter(function(x){return x.isBet !== false && x.tier;}).length;
-  if (st) st.textContent = cands.length ? (cands.length + ' player' + (cands.length>1?'s':'') + ' \u00B7 ' + gameCount + ' game' + (gameCount>1?'s':'') + (betN? ' \u00B7 ' + betN + ' flagged':'')) : '';
-  if (!cands.length) { el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans)">No NBA plays on this slate yet \u2014 lines may not be posted, or no player cleared the board.</p>'; return; }
-  // group candidates by game (normalized team pair)
-  const games = {};
-  cands.forEach(function (c) {
-    const key = [c.team, c.opponent].sort().join(' \u00B7 ');
-    (games[key] = games[key] || { teams: [c.team, c.opponent].sort(), rows: [] }).rows.push(c);
-  });
-  const U = '#2E6B4E', O = '#8E3B3B', INK = 'var(--text-primary)', MUT = 'var(--text-muted)', SEC = 'var(--text-secondary)', BR = 'var(--brass,#93683A)';
-  // signature: recency gauge from the model's floor/ceiling range, line tick, projection dot
-  function gauge(c) {
-    const lo = Number(c.floor), hi = Number(c.ceiling), ln = Number(c.line), pj = Number(c.projection);
-    if (!(isFinite(lo) && isFinite(hi) && isFinite(ln) && isFinite(pj)) || hi <= lo) return '<div style="height:20px"></div>';
-    const pos = function (v) { return Math.max(2, Math.min(98, ((v - lo) / (hi - lo)) * 100)); };
-    const under = pj < ln;
-    return '<div style="position:relative;height:20px;margin-top:2px">'
-      + '<div style="position:absolute;top:9px;left:0;right:0;height:2px;background:rgba(0,0,0,0.12)"></div>'
-      + '<div style="position:absolute;top:4px;left:' + pos(ln) + '%;width:1.5px;height:12px;background:' + INK + '"></div>'
-      + '<div style="position:absolute;top:6px;left:' + pos(pj) + '%;width:9px;height:9px;border-radius:50%;transform:translateX(-50%);border:2px solid var(--surface-card);background:' + (under ? U : O) + '"></div>'
-      + '</div>';
+  var el = document.getElementById('nba-results'); if (!el) return;
+  function cardsFrom(o) {
+    if (o && o.playerCards && o.playerCards.length) return o.playerCards;
+    var rows = (o && (o.players || o.candidates)) || [];
+    var MKT = { points: 'PTS', rebounds: 'REB', assists: 'AST', pra: 'PRA', pts_rebs: 'P+R', pts_asts: 'P+A', rebs_asts: 'R+A', threes: '3PT' };
+    var byKey = {};
+    rows.forEach(function (r) {
+      var key = String(r.playerId || r.player);
+      if (!byKey[key]) byKey[key] = { playerId: r.playerId, player: r.player, team: r.team, opponent: r.opponent, archetype: r.archetype || null, recentForm: r.recentForm || null, matchup: r.matchup || null, oppAdj: r.oppAdj || null, props: [] };
+      byKey[key].props.push({ market: r.market, marketLabel: MKT[r.market] || String(r.market || '').toUpperCase(), side: r.side, line: r.line, projection: r.projection, floor: r.floor, ceiling: r.ceiling, prob: r.cashRate, edge: r.edge, tier: r.tier, isBet: r.tier !== 'PASS', why: r.why });
+    });
+    var cards = Object.keys(byKey).map(function (k) { return byKey[k]; });
+    cards.forEach(function (c) { c.props.sort(function (a, b) { return (b.edge || 0) - (a.edge || 0); }); c.topEdge = c.props.length ? (c.props[0].edge || 0) : 0; c.bets = c.props.filter(function (p) { return p.isBet; }).length; });
+    cards.sort(function (a, b) { return b.topEdge - a.topEdge; });
+    return cards;
   }
-  el.innerHTML = Object.keys(games).map(function (k) {
-    const g = games[k];
-    const rows = g.rows.map(function (c) {
-      const under = c.side === 'under' || Number(c.projection) < Number(c.line);
-      const arrow = under ? '\u25BC' : '\u25B2';
-      const col = under ? U : O;
-      const pct = c.cashRate != null ? Math.round(c.cashRate * 100) + '% cash' : '';
-      var isBet = (c.isBet !== false) && c.tier;
-      var lead = isBet ? 'border-left:2px solid var(--brass,#93683A);' : 'border-left:2px solid transparent;';
-      return '<div style="border-bottom:1px solid var(--border-hairline);' + lead + '">'
-        + '<div style="display:grid;grid-template-columns:1.5fr 0.85fr 1.15fr 0.5fr;gap:12px;align-items:center;padding:11px 4px;cursor:pointer" '
-        + 'onclick="var d=this.parentNode.querySelector(\'.nba-detail\');d.style.display=d.style.display===\'block\'?\'none\':\'block\'">'
-        + '<div style="font:600 15px var(--font-serif);color:' + INK + '">' + c.player
-        + '<div style="font:400 10px var(--font-mono);letter-spacing:.06em;color:' + MUT + ';text-transform:uppercase;margin-top:1px">' + c.team + '</div></div>'
-        + '<div style="font:10px var(--font-mono);text-transform:uppercase;letter-spacing:.06em;color:' + SEC + '">' + c.market
-        + '<div style="font:600 16px var(--font-serif);color:' + INK + ';font-variant-numeric:tabular-nums">' + c.line + '</div></div>'
-        + '<div>' + gauge(c) + '</div>'
-        + '<div style="text-align:right;font:10px var(--font-mono);letter-spacing:.08em;color:' + BR + '">Analyze \u2192</div>'
-        + '</div>'
-        + '<div class="nba-detail" style="display:none;padding:2px 4px 14px">'
-        + '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'
-        + '<span style="font:600 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;padding:4px 9px;border-radius:3px;background:' + (under ? 'rgba(46,107,78,0.12)' : 'rgba(142,59,59,0.10)') + ';color:' + col + '">' + arrow + ' ' + (under ? 'under' : 'over') + ' ' + c.line + '</span>'
-        + '<span style="font:13px var(--font-sans);color:' + SEC + '">projects <b style="font-family:var(--font-mono)">' + (c.projection != null ? c.projection : '\u2014') + '</b>'
-        + (isFinite(Number(c.floor)) && isFinite(Number(c.ceiling)) ? ' <span style="color:' + MUT + '">(range ' + c.floor + '\u2013' + c.ceiling + ')</span>' : '')
-        + (pct ? ' \u00B7 ' + pct : '') + (c.tier ? ' \u00B7 ' + c.tier : '') + '</span></div>'
-        + (c.why ? '<div style="font:13px var(--font-sans);color:' + SEC + ';margin-top:6px;line-height:1.5">' + c.why + '</div>' : '')
-        + '</div></div>';
+  var cards = cardsFrom(out);
+  var st = document.getElementById('nba-status');
+  if (st) st.textContent = (out && out.reason) ? out.reason : (cards.length + ' player' + (cards.length === 1 ? '' : 's'));
+  if (!cards.length) {
+    el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans)">' + ((out && out.reason) || 'No NBA players on this slate.') + '</p>';
+    return;
+  }
+  function tierCol(t) {
+    if (t === 'STRONG') return ['var(--tier-strong-fill)', 'var(--tier-strong-text)'];
+    if (t === 'LEAN') return ['var(--tier-solid-fill)', 'var(--tier-solid-text)'];
+    return ['var(--surface-muted)', 'var(--text-muted)'];
+  }
+  function gauge(p) {
+    if (p.floor == null || p.ceiling == null || p.ceiling <= p.floor || p.projection == null || p.line == null) return '';
+    var span = p.ceiling - p.floor, clamp = function (x) { return Math.max(0, Math.min(100, x)); };
+    var linePct = clamp(((p.line - p.floor) / span) * 100), projPct = clamp(((p.projection - p.floor) / span) * 100);
+    var col = tierCol(p.tier), lo = Math.min(linePct, projPct), hi = Math.max(linePct, projPct);
+    return '<div style="position:relative;height:6px;background:var(--surface-muted);border-radius:var(--radius-pill);margin-top:7px">'
+      + '<div style="position:absolute;left:' + lo + '%;width:' + (hi - lo) + '%;top:0;bottom:0;background:' + col[0] + ';border-radius:var(--radius-pill)"></div>'
+      + '<div style="position:absolute;left:' + linePct + '%;top:-3px;bottom:-3px;width:2px;background:var(--text-primary);transform:translateX(-1px)" title="line ' + p.line + '"></div>'
+      + '<div style="position:absolute;left:' + projPct + '%;top:50%;width:8px;height:8px;background:' + col[1] + ';border:1.5px solid var(--surface-card);border-radius:50%;transform:translate(-50%,-50%)" title="projection ' + p.projection + '"></div></div>';
+  }
+  el.innerHTML = cards.map(function (c) {
+    var a = c.archetype || {}, rf = c.recentForm || {}, l5 = rf.l5 || {}, trend = rf.trend || {};
+    var tArrow = trend.state === 'heating' ? '\u25B2' : trend.state === 'cooling' ? '\u25BC' : '\u2192';
+    var props = (c.props || []).map(function (p) {
+      var col = tierCol(p.tier), arrow = p.side === 'under' ? '\u25BC' : '\u25B2';
+      var range = (p.floor != null && p.ceiling != null) ? '<span style="color:var(--text-muted)">' + p.floor + '\u2013' + p.ceiling + '</span>' : '';
+      var badge = p.isBet
+        ? '<span style="background:' + col[0] + ';color:' + col[1] + ';font:500 10px var(--font-sans);letter-spacing:.04em;padding:1px 6px;border-radius:var(--radius-pill)">' + p.tier + '</span>'
+        : '<span style="color:var(--text-muted);font:11px var(--font-sans)">' + (p.side === 'under' ? 'U' : 'O') + '</span>';
+      var row = '<div style="display:grid;grid-template-columns:42px 1fr auto auto;gap:10px;align-items:baseline">'
+        + '<div style="font:600 12px var(--font-sans);color:var(--text-secondary);letter-spacing:.04em">' + p.marketLabel + '</div>'
+        + '<div style="font:14px var(--font-sans);color:var(--text-primary)"><span style="font-family:var(--font-mono);font-variant-numeric:tabular-nums">' + arrow + ' ' + p.side + ' ' + p.line + '</span>'
+        + ' <span style="color:var(--text-muted);font-size:12px">\u00B7 proj <b style="font-family:var(--font-mono);color:var(--text-primary)">' + (p.projection != null ? p.projection : '\u2014') + '</b> ' + range + '</span></div>'
+        + '<div style="font:12px var(--font-mono);color:var(--text-muted)">' + Math.round((p.prob || 0) * 100) + '%</div>'
+        + '<div>' + badge + '</div></div>';
+      return '<div style="padding:8px 0;border-top:0.5px solid var(--border-hairline)">' + row + gauge(p) + '</div>';
     }).join('');
-    return '<div style="margin-bottom:20px">'
-      + '<div style="display:flex;align-items:baseline;gap:10px;padding:0 2px 8px;border-bottom:1.5px solid var(--text-primary);margin-bottom:2px">'
-      + '<span style="font:600 16px var(--font-serif);color:' + INK + '">' + g.teams.join(' \u00B7 ') + '</span>'
-      + '<span style="font:10px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:' + MUT + ';margin-left:auto">' + g.rows.length + ' play' + (g.rows.length > 1 ? 's' : '') + '</span>'
-      + '</div>' + rows + '</div>';
+    return '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-4);margin-bottom:var(--space-4)">'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline">'
+      + '<div style="font:600 17px var(--font-serif);color:var(--text-primary)">' + c.player + (c.bets ? ' <span style="font:500 11px var(--font-sans);color:var(--tier-strong-text)">\u2605' + c.bets + '</span>' : '') + '</div>'
+      + '<div style="font:12px var(--font-sans);color:var(--text-secondary)">' + c.team + ' vs ' + c.opponent + '</div></div>'
+      + (a.archetype ? '<div style="font:12px var(--font-sans);color:var(--text-secondary);margin-top:2px">' + a.archetype + (a.signalHint ? ' \u00B7 <span style="color:var(--text-muted)">' + a.signalHint + '</span>' : '') + '</div>' : '')
+      + (rf.l5 ? '<div style="font:12px var(--font-sans);color:var(--text-muted);margin-top:4px">L5 <b style="font-family:var(--font-mono);color:var(--text-secondary)">' + l5.ppg + '</b> ppg \u00B7 ' + Math.round((l5.tsPct || 0) * 100) + '% TS \u00B7 ' + tArrow + ' ' + (trend.state || '') + '</div>' : '')
+      + '<div style="margin-top:var(--space-3)">' + props + '</div></div>';
   }).join('');
 }
 
