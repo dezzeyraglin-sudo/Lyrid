@@ -8,10 +8,13 @@
 import * as espn from '../_lib/nba/espnClient.js';
 import { fetchPlayerAdvanced, fetchTeamContext } from '../_lib/nba/bbrefClient.js';
 import { fetchNbaProps } from '../_lib/nba/prizepicks.js';
-import { buildRosterIndex } from '../_lib/nba/espnRoster.js';
+import { buildRosterIndex, fetchTeamsMap } from '../_lib/nba/espnRoster.js';
 import { mergePlayer } from '../_lib/nba/normalizeMerge.js';
 import { projectMinutes } from '../_lib/nba/minutesModel.js';
-import { rankBestBets, toCandidates } from '../_lib/nba/nbaBestBets.js';
+import { evaluateSlate, rankBestBets, toCandidates } from '../_lib/nba/nbaBestBets.js';
+import { assignArchetype } from '../_lib/nba/nbaArchetype.js';
+import { playerShotProfile, teamAllowedProfile, openZoneRead, lastNGameShots } from '../_lib/nba/nbaShotZone.js';
+import { recentForm } from '../_lib/nba/recentForm.js';
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function yyyymmdd(iso) { return iso.replace(/-/g, ''); }
@@ -40,11 +43,38 @@ function teammatesOutFor(teamAbbr, rosterIndex, injuryIdx) {
   return n;
 }
 
+// Build the shot-zone cache from a set of ESPN game summaries. Run this in a cron
+// (like the roster index) and cache the result — it fetches many summaries, so it
+// must NOT run on the analyze hot path. Returns { byPlayer:{id->profile},
+// teamAllowed:{ABBR->profile} }.
+export function buildShotZoneIndex(gameSummaries) {
+  const { idToAbbr } = fetchTeamsMap();
+  const allShots = [];
+  for (const sm of gameSummaries || []) {
+    const shots = sm.shots || [];
+    const teams = [...new Set(shots.map((s) => s.teamId).filter(Boolean))];
+    for (const s of shots) allShots.push({ ...s, defTeamId: teams.find((t) => t !== s.teamId), gameDate: sm.date || null });
+  }
+  const byPlayer = {}; const teamAllowed = {};
+  for (const pid of new Set(allShots.map((s) => s.shooterId).filter(Boolean))) {
+    const pShots = allShots.filter((s) => String(s.shooterId) === String(pid));
+    byPlayer[String(pid)] = {
+      season: playerShotProfile(allShots, pid),
+      l10: playerShotProfile(lastNGameShots(pShots, 10), pid),  // recency window
+    };
+  }
+  for (const tid of new Set(allShots.map((s) => s.defTeamId).filter(Boolean))) {
+    const abbr = idToAbbr[String(tid)] || String(tid);
+    teamAllowed[abbr] = teamAllowedProfile(allShots, tid);
+  }
+  return { byPlayer, teamAllowed };
+}
+
 // PURE CORE — inject fetchers/data so this is testable offline.
 export async function analyzeSlate(io) {
   const {
     date = todayISO(), season, props, schedule, rosterIndex, injuryIdx,
-    bbrefAdv, bbrefTeams, fetchGameLog,
+    bbrefAdv, bbrefTeams, fetchGameLog, shotZoneIndex = null,
   } = io;
 
   const byTeam = gamesByTeam(schedule);
@@ -83,12 +113,77 @@ export async function analyzeSlate(io) {
 
     m.gameId = game.gameId; m.date = date;
     if (mm.ok) { m.projMinutes = mm.projMinutes; m.minutesCV = mm.cv; m.minutes = { flags: mm.flags }; }
+
+    // --- recent-form panel (L5/L10 effectiveness from the game log) -> player card ---
+    m.recentForm = recentForm(gameLog);
+
+    // --- shot-type archetype (bbref rates, sharpened by shot-zone if cached) -> player card ---
+    const szEntry = (shotZoneIndex && roster?.id) ? shotZoneIndex.byPlayer?.[String(roster.id)] || null : null;
+    const szProfile = szEntry
+      ? ((szEntry.l10 && !szEntry.l10.insufficient) ? szEntry.l10 : (szEntry.season || szEntry.l10 || szEntry))
+      : null;
+    m.archetype = assignArchetype(
+      { fg3aRate: adv?.fg3aRate, ftr: adv?.ftr, usgPct: adv?.usgPct, astPct: adv?.astPct, trbPct: adv?.trbPct, pos: m.pos },
+      szProfile,
+    );
+    // --- shot-zone read vs opponent defense (shadow) -> verdict + card ---
+    if (shotZoneIndex) {
+      const allowed = shotZoneIndex.teamAllowed?.[game.opponent] || null;
+      m.shotZone = { profile: szProfile, openZone: (szProfile && allowed) ? openZoneRead(szProfile, allowed) : null };
+    }
+
     merged.push(m);
   }
 
-  const ranked = rankBestBets(merged, ppIndex, { league: 'NBA' });
-  const candidates = toCandidates(ranked, { date });
-  return { date, count: candidates.length, candidates, ranked, mergedCount: merged.length };
+  // Evaluate the whole slate ONCE; the board shows all players, logging uses the bets.
+  const allRows = evaluateSlate(merged, ppIndex, { league: 'NBA' });
+  const slatePlayers = toCandidates(allRows, { date });                 // full informational slate
+  const ranked = allRows.filter((r) => r.isBet).sort((a, b) => b.edge - a.edge);
+  const candidates = toCandidates(ranked, { date });                    // LEAN+ bets (logged)
+
+  // attach archetype + shot-zone read onto the output rows by player id (so the card
+  // has them even though toCandidates doesn't know about them)
+  const metaById = {};
+  for (const m of merged) if (m.id) metaById[String(m.id)] = { archetype: m.archetype, shotZone: m.shotZone || null, recentForm: m.recentForm || null };
+  const attach = (arr) => (arr || []).map((c) => {
+    const meta = c.playerId != null ? metaById[String(c.playerId)] : null;
+    return meta ? { ...c, archetype: meta.archetype, shotZone: meta.shotZone, recentForm: meta.recentForm } : c;
+  });
+
+  // diagnostics: make an empty slate self-explanatory (which stage is empty?)
+  const diagnostics = {
+    scheduleGames: schedule.length,
+    ppStandardLines: props.lines.length,
+    playersWithLine: players.length,
+    merged: merged.length,
+    bets: candidates.length,
+    pp: props._debug || null,
+  };
+  const ppDbg = props._debug || {};
+  let reason = null;
+  if (candidates.length === 0) {
+    if (!schedule.length) {
+      reason = 'No games scheduled for this date (or the ESPN fetch failed — confirm espnClient UA is curl/8.5.0).';
+    } else if (!props.lines.length) {
+      if (!ppDbg.rawProjections) reason = `${schedule.length} game(s) scheduled, but the PrizePicks feed returned 0 projections — check PP_NBA_LEAGUE_ID (used ${ppDbg.leagueId}) and the partner base/key.`;
+      else reason = `PrizePicks returned ${ppDbg.rawProjections} projections but 0 parsed as standard bettable lines — likely a stat_type/odds_type mapping mismatch. odds seen: [${(ppDbg.oddsTypesSeen||[]).join(', ')}]; unmapped stat_types: [${(ppDbg.unmappedStatTypes||[]).join(', ')}].`;
+    } else if (!merged.length) {
+      reason = `${props.lines.length} line(s) posted (${ppDbg.linesWithPlayer||0} with a player name), but none matched a rostered player on this slate — roster/name-match. Check buildRosterIndex + nameKey.`;
+    } else {
+      reason = `${merged.length} player(s) evaluated, none cleared the bet threshold (all PASS).`;
+    }
+  }
+
+  return {
+    date,
+    count: candidates.length,
+    candidates: attach(candidates),
+    players: attach(slatePlayers),
+    ranked,
+    mergedCount: merged.length,
+    diagnostics,
+    reason,
+  };
 }
 
 // Vercel handler
@@ -107,14 +202,18 @@ export default async function handler(req, res) {
       espn.injuryIndex(),
     ]);
 
+    // shot-zone cache is written by a cron (buildShotZoneIndex over recent summaries);
+    // read it here when available. Null is fine — archetype falls back to bbref rates
+    // and the shot-zone verdict reads stay dormant until the cache exists.
+    const shotZoneIndex = null; // TODO: load from Supabase/KV (cron output)
+
     const out = await analyzeSlate({
       date, season, props, schedule, rosterIndex, injuryIdx,
       bbrefAdv: advPack.byKey, bbrefTeams: teamPack.teams,
       fetchGameLog: espn.fetchPlayerGameLog,
+      shotZoneIndex,
     });
 
-    // Optional: upsert out.candidates into Supabase parlay_log here (PENDING),
-    // mirroring the other sports' logBestBets. Left to the app's existing writer.
     res.status(200).json(out);
   } catch (e) {
     res.status(500).json({ error: String(e && e.message || e) });
