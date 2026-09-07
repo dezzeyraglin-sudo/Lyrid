@@ -103,7 +103,20 @@ export async function fetchNbaProps(opts = {}) {
   const byPlayerMarket = {};
   for (const l of lines) byPlayerMarket[`${l.playerKey}|${l.market}`] = l;
 
-  return { lines, alt, byPlayerMarket, count: lines.length, altCount: alt.length };
+  // diagnostics: when 0 lines come out, this says WHY (league id vs parsing vs player join)
+  const _debug = {
+    leagueId: cfg.leagueId, base: cfg.apiBase, hasKey: !!cfg.apiKey,
+    rawProjections: (payload && payload.data ? payload.data.length : 0),
+    parsed: all.length,
+    oddsTypesSeen: [...new Set(all.map((l) => l.oddsType))],
+    statTypesSeen: [...new Set(all.map((l) => l.statType))].slice(0, 25),
+    unmappedStatTypes: [...new Set(all.filter((l) => !l.market).map((l) => l.statType))].slice(0, 25),
+    standardBettable: lines.length,
+    linesWithPlayer: lines.filter((l) => l.playerKey).length,
+    droppedNoMarket: all.filter((l) => l.isStandard && l.line != null && !l.market).length,
+    droppedNonStandard: alt.length,
+  };
+  return { lines, alt, byPlayerMarket, count: lines.length, altCount: alt.length, _debug };
 }
 
 // Look up a standard line for a player+market from a prefetched index.
