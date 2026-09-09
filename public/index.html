@@ -3423,6 +3423,15 @@
 .nflx-injury.q{background:var(--data-warning-surface);color:var(--data-warning)}
 .nflx-injury.info{background:var(--surface-muted);color:var(--text-secondary)}
 .nflx-chip.inj{background:var(--data-warning-surface);color:var(--data-warning)}
+.nflx-total{background:var(--surface-card);border:1px solid var(--border-hairline);border-radius:var(--radius-lg);box-shadow:var(--elevation-hover);padding:var(--space-5);margin-bottom:var(--space-3)}
+.nflx-total-top{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap}
+.nflx-total-teams{font-family:var(--font-serif);font-size:var(--size-h3);font-weight:var(--weight-medium)}
+.nflx-total-line{font-family:var(--font-mono);display:flex;align-items:baseline;gap:6px}
+.nflx-total-proj{font-size:var(--size-h3);font-weight:var(--weight-semibold);color:var(--text-primary)}
+.nflx-total-k{font-size:var(--size-eyebrow);text-transform:uppercase;color:var(--text-muted)}
+.nflx-total-vs{font-size:var(--size-caption);color:var(--text-secondary);margin-left:6px}
+.nflx-total-vs .ov{color:var(--data-positive)}
+.nflx-total-vs .un{color:var(--data-negative)}
 
 .nflx-pick{display:grid;grid-template-columns:auto 1fr;gap:var(--space-3) var(--space-4);padding:var(--space-5);border-bottom:1px solid var(--border-hairline)}
 .nflx-pick:last-child{border-bottom:0}
@@ -3767,6 +3776,7 @@
     <div id="nflJudgmentCard"></div>
     <section class="nflx-sect"><span class="nflx-sect-t">Games</span><span class="nflx-sect-rule"></span><span class="nflx-sect-n" id="nflGamesCount">tap to analyze</span></section>
     <div id="nflGamesList"></div>
+    <div id="nflTotalsContainer"></div>
     <div id="nflAnalysisContainer" style="display:none"></div>
   </div>
 </div>
@@ -24382,6 +24392,31 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }).join('');
   }
 
+  var TOTAL_TC = { GUARANTEED:'guar', PLATINUM:'plat', GOLD:'gold', none:'none' };
+  function renderNflTotals(totals){
+    var el = document.getElementById('nflTotalsContainer'); if (!el) return;
+    var t = (totals || []).filter(function(x){ return x && x.line != null && x.projected != null; });
+    if (!t.length) { el.innerHTML = ''; return; }
+    var cards = t.map(function(x){
+      var lean = String(x.lean||'').toUpperCase(), tier = x.tier_candidate || 'none';
+      var chip = tier === 'none' ? '<span class="nflx-chip prov">No play</span>'
+        : '<span class="nflx-chip ' + (TOTAL_TC[tier]||'gold') + '">' + esc(tier) + '</span><span class="nflx-chip prov">provisional</span>';
+      var ledger = (x.factors || []).map(function(f){
+        var cls = f.dir === 'over' ? 'pos' : 'neg', ic = f.dir === 'over' ? '\u25B2' : '\u25BC';
+        return '<div class="nflx-drv ' + cls + '"><span class="w">' + ic + '</span><span class="f"><b>' + esc(f.label) + '</b> ' + (f.pts > 0 ? '+' : '') + f.pts + ' pts' + (f.note ? ' \u00b7 ' + esc(f.note) : '') + '</span></div>';
+      }).join('');
+      return '<div class="nflx-total">' +
+        '<div class="nflx-total-top"><div class="nflx-total-teams">' + esc(x.awayTeam) + ' @ ' + esc(x.homeTeam) + '</div>' +
+          '<div class="nflx-total-line"><span class="nflx-total-proj">' + x.projected + '</span><span class="nflx-total-k">proj</span>' +
+          '<span class="nflx-total-vs">vs ' + x.line + ' \u00b7 <b class="' + (lean === 'OVER' ? 'ov' : 'un') + '">' + lean + '</b></span></div></div>' +
+        '<div class="nflx-metarow">' + chip + '</div>' +
+        (ledger ? '<div class="nflx-drivers">' + ledger + '</div>' : '') +
+        (x.summary ? '<div class="nflx-why">' + esc(x.summary) + '</div>' : '') +
+      '</div>';
+    }).join('');
+    el.innerHTML = '<div class="nflx-sect"><div class="nflx-sect-t">Game Totals</div><div class="nflx-sect-rule"></div><div class="nflx-sect-n">' + t.length + '</div></div>' + cards;
+  }
+
   // ---- load the slate ----
   window.loadNflSlate = async function () {
     var list = document.getElementById('nflGamesList');
@@ -24393,6 +24428,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (judge) judge.innerHTML = '';
     if (list) list.innerHTML = '<div class="nflx-empty"><div class="nflx-empty-s">Loading NFL slate\u2026</div></div>';
     if (analysis) analysis.innerHTML = '';
+    var totalsEl = document.getElementById('nflTotalsContainer'); if (totalsEl) totalsEl.innerHTML = '';
 
     var data = null;
     try { var res = await fetch('/api/nfl/slate?date=' + encodeURIComponent(nflState.date), { cache: 'no-store' }); if (res.ok) data = await res.json(); }
@@ -24413,6 +24449,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (meta) meta.textContent = data.picks.length + ' props \u00b7 ' + games + ' games \u00b7 ' + (data.source || 'engine');
     renderJudgment(data.picks);
     renderGames(data.picks);
+    try { renderNflTotals(data.totals); } catch (_) {}
     try { if (typeof window.logNflBets === 'function') window.logNflBets(data.picks, nflState.date); } catch (_) {}
 
     // feed qualifying picks into the shared parlay builder (same seam as MLB/WNBA)

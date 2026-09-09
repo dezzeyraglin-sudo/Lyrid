@@ -111,9 +111,10 @@ export default async function handler(req, res) {
   } catch (_) {}
 
   // 3) dynamically load the engine (degrade to LINES if any module/data is missing)
-  let analyzeProp = null, fetchAvailability = null, playerStatus = null, engineError = null;
+  let analyzeProp = null, analyzeTotal = null, fetchAvailability = null, playerStatus = null, engineError = null;
   try {
     ({ analyzeProp } = await import('../../lib/nfl/nflAnalyze.js'));
+    try { ({ analyzeTotal } = await import('../../lib/nfl/nflTotalAnalysis.js')); } catch (_) { analyzeTotal = null; }
     try { ({ fetchAvailability, playerStatus } = await import('../../lib/nfl/nflInactives.js')); } catch (_) { fetchAvailability = null; }
   } catch (e) { engineError = String((e && e.message) || e); analyzeProp = null; }
 
@@ -229,9 +230,30 @@ export default async function handler(req, res) {
     (rank[b.verdict.tier_candidate] - rank[a.verdict.tier_candidate]) ||
     ((b.verdict.edge || 0) - (a.verdict.edge || 0)));
 
+  // ---- GAME TOTALS (team-level over/under with the compounding-factors ledger) ----
+  let totals = [];
+  if (ready && analyzeTotal && E.scoringByTeam) {
+    const seen = new Set();
+    for (const home of Object.values(E.homeByTeam || {})) {
+      if (!home || seen.has(home)) continue; seen.add(home);
+      const away = E.oppByTeam[home]; if (!away) continue;
+      const od = E.oddsByTeam[home] || {};
+      try {
+        totals.push(analyzeTotal({
+          line: od.total != null && isFinite(od.total) ? od.total : null,
+          homeTeam: home, awayTeam: away,
+          scoringByTeam: E.scoringByTeam, suppressionByTeam: E.supByTeam,
+          spread: od.spread, roof: null, weather: null,
+        }));
+      } catch (_) {}
+    }
+    const tr = { GUARANTEED: 3, PLATINUM: 2, GOLD: 1, none: 0 };
+    totals.sort((a, b) => (tr[b.tier_candidate] - tr[a.tier_candidate]) || (Math.abs(b.softness || 0) - Math.abs(a.softness || 0)));
+  }
+
   return res.status(200).json({
     source: ready ? 'prizepicks+engine' : 'prizepicks',
-    date, count: picks.length, picks,
+    date, count: picks.length, picks, totals,
     diagnostics: {
       unmappedStatTypes: getUnmappedStats(),
       altLinesDropped: getAltLinesDropped(),
@@ -529,6 +551,8 @@ async function loadEngineData(lines, date, fetchAvailability) {
 
   const tendByTeam = firstBy(tendRows, r => r.team_abbr);
   const supByTeam = firstBy(supRows, r => r.team_abbr);
+  const scoringRows = await qSafe(`nfl_team_scoring?select=team_abbr,season,points_for_pg,points_against_pg,off_epa_play,plays_pg&order=season.desc${teamFilter}`);
+  const scoringByTeam = firstBy(scoringRows, r => r.team_abbr);
   const schemeByTeam = firstBy(schemeRows, r => r.team_abbr);
   const penByTeam = firstBy(penRows, r => r.team_abbr);
   const teamPressByTeam = firstBy(teamPressRows, r => r.team_abbr);
@@ -606,7 +630,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };
