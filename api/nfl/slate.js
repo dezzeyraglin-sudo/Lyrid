@@ -156,6 +156,23 @@ export default async function handler(req, res) {
     return { delta: +(hp + ap).toFixed(1), factors };
   }
 
+  // per-team DEFENSIVE WEAKNESS by type (impact-weighted sum of OUT/doubtful defenders).
+  // Summing naturally captures BOTH corners (CB1 + CB2) when both are out. Feeds each prop:
+  // an opposing defense weak in coverage/pass-rush lifts receiving/passing; weak in run
+  // lifts rushing. (Residual to the season-level suppression channel — these are OUT NOW.)
+  const defWeaknessByTeam = {};
+  if (ready) for (const team of Object.keys(E.defImpByTeam || {})) {
+    const w = { pass_rush: 0, coverage: 0, run: 0, out: [] };
+    for (const d of (E.defImpByTeam[team] || [])) {
+      const r = (E.injuryByName || {})[_norm(d.player_name)]; if (!r || r.status === 'active') continue;
+      const sev = r.status === 'out' ? 1 : 0.5;
+      const c = Math.max(0, (Number(d.impact_score) || 0) * (Number(d.snap_share) || 0.5) * sev);
+      if (c >= 0.4) { w[d.impact_type] = (w[d.impact_type] || 0) + c; w.out.push(d.player_name + ' \u00b7 ' + d.impact_type); }
+    }
+    if (w.out.length) defWeaknessByTeam[team] = w;
+  }
+  if (ready) E.defWeaknessByTeam = defWeaknessByTeam;
+
   let totals = [];
   if (ready && analyzeTotal && E.scoringByTeam) {
     const seen = new Set(); const projectedTotalByTeam = {};
@@ -363,6 +380,7 @@ function buildCtx(E, l, base) {
     spread: od ? od.spread : null,
     gameTotal: od ? od.total : null,
     projectedTotal: (E.projectedTotalByTeam && E.projectedTotalByTeam[team]) || null,
+    oppDefWeakness: (E.defWeaknessByTeam && team && E.oppByTeam[team] && E.defWeaknessByTeam[E.oppByTeam[team]]) || null,
     homeTeam: team ? E.homeByTeam[team] || null : null,
     weather: null, roofStatus: null,
     // comp
