@@ -12,7 +12,7 @@ Run this whenever you refresh the slate (or on a game-day cron). It's one ESPN c
 
 Reads: ESPN /nfl/injuries. Writes: nfl_injuries (current snapshot, DDL footer).
 """
-import os, json, re, requests
+import os, json, re, subprocess, requests
 
 SB = os.environ.get('SUPABASE_URL', '').rstrip('/')
 KEY = os.environ.get('SUPABASE_SERVICE_KEY', '')
@@ -43,9 +43,22 @@ def norm_name(s):
     return re.sub(r'\s+', ' ', s).strip()
 
 def fetch():
-    r = requests.get(ESPN, headers=UA, timeout=30)
-    r.raise_for_status()
-    return r.json()
+    # ESPN fingerprints Python's requests library and 403s it even from a residential IP,
+    # but curl (and browsers) pass. Shell out to curl for the ESPN fetch; Supabase writes
+    # below still use requests (Supabase has no such bot protection).
+    try:
+        r = requests.get(ESPN, headers=UA, timeout=30)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    out = subprocess.run(
+        ['curl', '-s', '--max-time', '30', '-H', 'User-Agent: ' + UA['User-Agent'],
+         '-H', 'Accept: application/json', ESPN],
+        capture_output=True, text=True, timeout=40)
+    if out.returncode != 0 or not out.stdout.strip():
+        raise RuntimeError(f'ESPN fetch failed (curl rc={out.returncode}): {(out.stderr or "")[:200]}')
+    return json.loads(out.stdout)
 
 def rows_from(data):
     out = []
