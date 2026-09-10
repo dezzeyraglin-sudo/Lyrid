@@ -140,13 +140,28 @@ def enrich(df, snaps, rosters):
         return (s - s.mean()) / sd
     for comp in ['pass_rush_raw', 'coverage_raw', 'run_raw']:
         df[comp.replace('_raw', '_score')] = df.groupby('pos_group')[comp].transform(zscore).fillna(0).round(3)
-    # overall impact: best component, weighted up by snap share (starters matter more)
-    comp_cols = ['pass_rush_score', 'coverage_score', 'run_score']
-    df['impact_type'] = df[comp_cols].idxmax(axis=1).map(
-        {'pass_rush_score': 'pass_rush', 'coverage_score': 'coverage', 'run_score': 'run'})
-    best = df[comp_cols].max(axis=1)
+    # ---- impact TYPE: anchor on position/role, not idxmax-of-noise ----
+    # Type routes which OPPOSING props an absence afflicts, so it must reflect the player's
+    # JOB. A pass rusher with a few run tackles is still pass_rush; a lineman who bats a pass
+    # is not 'coverage'. Corners cover, edges rush, interior linemen rush-or-stuff, LBs
+    # cover-or-stuff, safeties cover-or-box. Pass-rush production (sacks/hits) gets priority
+    # for the front seven because that's what defines a rusher.
+    def classify(r):
+        pg, pr, cov, run = r['pos_group'], r['pass_rush_score'], r['coverage_score'], r['run_score']
+        if pg == 'CB': return 'coverage'
+        if pg == 'S':  return 'coverage' if cov >= run - 0.5 else 'run'
+        if pg == 'EDGE': return 'pass_rush'
+        if pg == 'DL':  return 'pass_rush' if pr >= 1.0 else 'run'
+        if pg == 'LB':
+            if cov >= pr and cov >= run: return 'coverage'
+            return 'pass_rush' if pr >= 1.5 else 'run'
+        return 'pass_rush' if pr >= max(cov, run) else ('coverage' if cov >= run else 'run')
+    df['impact_type'] = df.apply(classify, axis=1)
+    # impact SCORE = the player's score in the thing they actually do (their type), snap-weighted
+    tcol = {'pass_rush': 'pass_rush_score', 'coverage': 'coverage_score', 'run': 'run_score'}
+    df['type_score'] = df.apply(lambda r: r[tcol[r['impact_type']]], axis=1)
     share = df['snap_share'].fillna(0.5)
-    df['impact_score'] = (best * (0.5 + 0.5 * share)).round(3)
+    df['impact_score'] = (df['type_score'] * (0.5 + 0.5 * share)).round(3)
     return df
 
 def load_rosters(season):
