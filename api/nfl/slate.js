@@ -125,6 +125,58 @@ export default async function handler(req, res) {
   }
   const ready = !!(analyzeProp && E && E.ready);
 
+  // ---- GAME TOTALS up front: computed BEFORE props so the projected total feeds each
+  // pick's game-script (projected shootout lifts receiving/passing overs and fades rushing;
+  // a projected slog does the reverse) ----
+  const _norm = s => String(s || '').toLowerCase().replace(/[.'`]/g, '').replace(/\b(jr|sr|ii|iii|iv|v)\b/g, '').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
+  const qbNameByTeam = {};
+  if (ready && E.posByName) for (const nm of Object.keys(E.posByName)) { if (E.posByName[nm] === 'QB' && E.nameToTeam[nm] && !qbNameByTeam[E.nameToTeam[nm]]) qbNameByTeam[E.nameToTeam[nm]] = nm; }
+  function gameInjuryAdj(home, away) {
+    const inj = (E && E.injuryByName) || {}, imp = (E && E.defImpByTeam) || {};
+    const factors = []; let hp = 0, ap = 0;
+    for (const team of [home, away]) {                              // QB out (offense) -> team scores less
+      const qb = qbNameByTeam[team]; if (!qb) continue;
+      const r = inj[_norm(qb)]; if (!r || r.status === 'active') continue;
+      const pen = r.status === 'out' ? -7 : -3.5;
+      if (team === home) hp += pen; else ap += pen;
+      factors.push({ label: 'QB ' + (r.status === 'out' ? 'OUT' : 'Q'), pts: pen, dir: 'under', note: qb + ' (' + team + ')' });
+    }
+    for (const team of [home, away]) {                             // key defender out (defense) -> OPPONENT scores more
+      const opp = team === home ? away : home;
+      let dp = 0; const who = [];
+      for (const d of (imp[team] || [])) {
+        const r = inj[_norm(d.player_name)]; if (!r || r.status === 'active') continue;
+        const sev = r.status === 'out' ? 1 : 0.5;
+        const c = Math.max(0, Math.min(4, (Number(d.impact_score) || 0) * (Number(d.snap_share) || 0.5) * 1.5 * sev));
+        if (c >= 0.5) { dp += c; who.push(d.player_name + ' \u00b7 ' + d.impact_type); }
+      }
+      dp = Math.min(6, dp);
+      if (dp >= 0.5) { if (opp === home) hp += dp; else ap += dp; factors.push({ label: 'Defense out', pts: +dp.toFixed(1), dir: 'over', note: team + ' missing ' + who.slice(0, 2).join(', ') + ' \u2192 ' + opp + ' +' + dp.toFixed(1) }); }
+    }
+    return { delta: +(hp + ap).toFixed(1), factors };
+  }
+
+  let totals = [];
+  if (ready && analyzeTotal && E.scoringByTeam) {
+    const seen = new Set(); const projectedTotalByTeam = {};
+    for (const home of Object.values(E.homeByTeam || {})) {
+      if (!home || seen.has(home)) continue; seen.add(home);
+      const away = E.oppByTeam[home]; if (!away) continue;
+      const od = E.oddsByTeam[home] || {};
+      try {
+        const ia = gameInjuryAdj(home, away);
+        const tt = analyzeTotal({ line: od.total != null && isFinite(od.total) ? od.total : null,
+          homeTeam: home, awayTeam: away, scoringByTeam: E.scoringByTeam, suppressionByTeam: E.supByTeam,
+          spread: od.spread, roof: null, weather: null, injuryDelta: ia.delta, injuryFactors: ia.factors });
+        totals.push(tt);
+        if (tt.projected != null) { projectedTotalByTeam[home] = tt.projected; projectedTotalByTeam[away] = tt.projected; }
+      } catch (_) {}
+    }
+    const tr = { GUARANTEED: 3, PLATINUM: 2, GOLD: 1, none: 0 };
+    totals.sort((a, b) => (tr[b.tier_candidate] - tr[a.tier_candidate]) || (Math.abs(b.softness || 0) - Math.abs(a.softness || 0)));
+    E.projectedTotalByTeam = projectedTotalByTeam;
+  }
+
   // 5) build picks
   const picks = lines.map(l => {
     const propLabel = PROP_LABEL[l.prop_type] || l.raw_stat || l.prop_type;
@@ -230,27 +282,6 @@ export default async function handler(req, res) {
     (rank[b.verdict.tier_candidate] - rank[a.verdict.tier_candidate]) ||
     ((b.verdict.edge || 0) - (a.verdict.edge || 0)));
 
-  // ---- GAME TOTALS (team-level over/under with the compounding-factors ledger) ----
-  let totals = [];
-  if (ready && analyzeTotal && E.scoringByTeam) {
-    const seen = new Set();
-    for (const home of Object.values(E.homeByTeam || {})) {
-      if (!home || seen.has(home)) continue; seen.add(home);
-      const away = E.oppByTeam[home]; if (!away) continue;
-      const od = E.oddsByTeam[home] || {};
-      try {
-        totals.push(analyzeTotal({
-          line: od.total != null && isFinite(od.total) ? od.total : null,
-          homeTeam: home, awayTeam: away,
-          scoringByTeam: E.scoringByTeam, suppressionByTeam: E.supByTeam,
-          spread: od.spread, roof: null, weather: null,
-        }));
-      } catch (_) {}
-    }
-    const tr = { GUARANTEED: 3, PLATINUM: 2, GOLD: 1, none: 0 };
-    totals.sort((a, b) => (tr[b.tier_candidate] - tr[a.tier_candidate]) || (Math.abs(b.softness || 0) - Math.abs(a.softness || 0)));
-  }
-
   return res.status(200).json({
     source: ready ? 'prizepicks+engine' : 'prizepicks',
     date, count: picks.length, picks, totals,
@@ -331,6 +362,7 @@ function buildCtx(E, l, base) {
     // script + environment
     spread: od ? od.spread : null,
     gameTotal: od ? od.total : null,
+    projectedTotal: (E.projectedTotalByTeam && E.projectedTotalByTeam[team]) || null,
     homeTeam: team ? E.homeByTeam[team] || null : null,
     weather: null, roofStatus: null,
     // comp
@@ -553,6 +585,12 @@ async function loadEngineData(lines, date, fetchAvailability) {
   const supByTeam = firstBy(supRows, r => r.team_abbr);
   const scoringRows = await qSafe(`nfl_team_scoring?select=team_abbr,season,points_for_pg,points_against_pg,off_epa_play,plays_pg&order=season.desc${teamFilter}`);
   const scoringByTeam = firstBy(scoringRows, r => r.team_abbr);
+  // injuries (server-side, from the ingest — ESPN 403s Vercel directly) + defender impact
+  const injRows = await qSafe(`nfl_injuries?select=player_key,player_name,team_abbr,position,status,status_raw,detail`);
+  const injuryByName = {}; for (const r of injRows) injuryByName[r.player_key] = r;
+  const defImpRows = allTeams.length ? await qSafe(`nfl_defender_impact?team=in.(${inList(allTeams)})&order=season.desc,impact_score.desc&select=player_id,player_name,team,pos_group,season,snap_share,impact_score,impact_type`) : [];
+  const defImpByTeam = {}; const _defSeen = new Set();
+  for (const r of defImpRows) { if (_defSeen.has(r.player_id)) continue; _defSeen.add(r.player_id); if (!r.team) continue; (defImpByTeam[r.team] ||= []).push(r); }
   const schemeByTeam = firstBy(schemeRows, r => r.team_abbr);
   const penByTeam = firstBy(penRows, r => r.team_abbr);
   const teamPressByTeam = firstBy(teamPressRows, r => r.team_abbr);
@@ -630,7 +668,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };

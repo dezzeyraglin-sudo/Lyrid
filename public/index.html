@@ -24393,25 +24393,47 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   }
 
   var TOTAL_TC = { GUARANTEED:'guar', PLATINUM:'plat', GOLD:'gold', none:'none' };
-  function renderNflTotals(totals){
+  function renderNflTotals(totals, picks){
     var el = document.getElementById('nflTotalsContainer'); if (!el) return;
     var t = (totals || []).filter(function(x){ return x && x.line != null && x.projected != null; });
     if (!t.length) { el.innerHTML = ''; return; }
+    // derive each team's QB from the props, so the CLIENT injury feed can adjust the total
+    // (a starting QB out drops a team's projected points ~7). The server total can't see
+    // injuries — ESPN 403s it — so the adjustment happens here, where the injury map lives.
+    var qbByTeam = {};
+    (picks || []).forEach(function(p){ if (p && p.position === 'QB' && p.team && !qbByTeam[p.team]) qbByTeam[p.team] = p.player; });
+    function qbInjDelta(team){
+      var qb = qbByTeam[team]; if (!qb) return null;
+      var inj = nflInjuriesByName[nfNorm(qb)]; if (!inj || !inj.status) return null;
+      if (inj.status === 'out') return { pts:-7, label:'QB OUT', who:qb, team:team, raw:inj.statusRaw||'Out' };
+      if (inj.status === 'doubtful') return { pts:-3.5, label:'QB '+(inj.statusRaw||'Questionable'), who:qb, team:team, raw:inj.statusRaw||'Questionable' };
+      return null;
+    }
     var cards = t.map(function(x){
-      var lean = String(x.lean||'').toUpperCase(), tier = x.tier_candidate || 'none';
+      var injF = x.injuryApplied ? [] : [ qbInjDelta(x.homeTeam), qbInjDelta(x.awayTeam) ].filter(Boolean);  // server-first: if the server folded injuries, don't re-apply client-side
+      var injDelta = injF.reduce(function(s,f){ return s + f.pts; }, 0);
+      var proj = +(x.projected + injDelta).toFixed(1);
+      var soft = +(proj - x.line).toFixed(1), lean = (soft >= 0 ? 'OVER' : 'UNDER');
+      var tier = x.tier_candidate || 'none';
+      if (injDelta !== 0 && Math.abs(soft) < 3) tier = 'none';   // injury pushed it near the line -> no play
       var chip = tier === 'none' ? '<span class="nflx-chip prov">No play</span>'
         : '<span class="nflx-chip ' + (TOTAL_TC[tier]||'gold') + '">' + esc(tier) + '</span><span class="nflx-chip prov">provisional</span>';
-      var ledger = (x.factors || []).map(function(f){
+      var injLedger = injF.map(function(f){
+        return '<div class="nflx-drv neg"><span class="w">\u25BC</span><span class="f"><b>' + esc(f.label) + '</b> ' + f.pts + ' pts \u00b7 ' + esc(f.who) + ' (' + esc(f.team) + ')</span></div>';
+      }).join('');
+      var ledger = injLedger + (x.factors || []).map(function(f){
         var cls = f.dir === 'over' ? 'pos' : 'neg', ic = f.dir === 'over' ? '\u25B2' : '\u25BC';
         return '<div class="nflx-drv ' + cls + '"><span class="w">' + ic + '</span><span class="f"><b>' + esc(f.label) + '</b> ' + (f.pts > 0 ? '+' : '') + f.pts + ' pts' + (f.note ? ' \u00b7 ' + esc(f.note) : '') + '</span></div>';
       }).join('');
+      var summ = x.summary || '';
+      if (injDelta !== 0) summ = 'Adjusted for injury (' + injF.map(function(f){ return f.who + ' ' + f.raw; }).join(', ') + '): projected ' + proj + ' vs ' + x.line + ' \u2014 lean ' + lean + '. ' + summ;
       return '<div class="nflx-total">' +
         '<div class="nflx-total-top"><div class="nflx-total-teams">' + esc(x.awayTeam) + ' @ ' + esc(x.homeTeam) + '</div>' +
-          '<div class="nflx-total-line"><span class="nflx-total-proj">' + x.projected + '</span><span class="nflx-total-k">proj</span>' +
+          '<div class="nflx-total-line"><span class="nflx-total-proj">' + proj + '</span><span class="nflx-total-k">proj</span>' +
           '<span class="nflx-total-vs">vs ' + x.line + ' \u00b7 <b class="' + (lean === 'OVER' ? 'ov' : 'un') + '">' + lean + '</b></span></div></div>' +
         '<div class="nflx-metarow">' + chip + '</div>' +
         (ledger ? '<div class="nflx-drivers">' + ledger + '</div>' : '') +
-        (x.summary ? '<div class="nflx-why">' + esc(x.summary) + '</div>' : '') +
+        (summ ? '<div class="nflx-why">' + esc(summ) + '</div>' : '') +
       '</div>';
     }).join('');
     el.innerHTML = '<div class="nflx-sect"><div class="nflx-sect-t">Game Totals</div><div class="nflx-sect-rule"></div><div class="nflx-sect-n">' + t.length + '</div></div>' + cards;
@@ -24449,7 +24471,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (meta) meta.textContent = data.picks.length + ' props \u00b7 ' + games + ' games \u00b7 ' + (data.source || 'engine');
     renderJudgment(data.picks);
     renderGames(data.picks);
-    try { renderNflTotals(data.totals); } catch (_) {}
+    try { renderNflTotals(data.totals, data.picks); } catch (_) {}
     try { if (typeof window.logNflBets === 'function') window.logNflBets(data.picks, nflState.date); } catch (_) {}
 
     // feed qualifying picks into the shared parlay builder (same seam as MLB/WNBA)
