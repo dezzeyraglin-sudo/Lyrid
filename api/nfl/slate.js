@@ -288,6 +288,7 @@ export default async function handler(req, res) {
       injury,
       outlook: result.outlook || null,
       comp: result.comp || null,
+      defInjury: result.defInjury || null,
       card: result.card || null,
       routing: result.routing || null,
       dataCompleteness: result.dataCompleteness ?? null,
