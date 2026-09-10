@@ -52,13 +52,16 @@ def fetch():
             return r.json()
     except Exception:
         pass
-    out = subprocess.run(
-        ['curl', '-s', '--max-time', '30', '-H', 'User-Agent: ' + UA['User-Agent'],
-         '-H', 'Accept: application/json', ESPN],
-        capture_output=True, text=True, timeout=40)
-    if out.returncode != 0 or not out.stdout.strip():
-        raise RuntimeError(f'ESPN fetch failed (curl rc={out.returncode}): {(out.stderr or "")[:200]}')
-    return json.loads(out.stdout)
+    # plain curl with its DEFAULT user-agent — this is what works from your machine. Adding a
+    # browser UA makes ESPN 403 it ("curl pretending to be a browser"); the default UA passes.
+    out = subprocess.run(['curl', '-s', '--max-time', '30', ESPN],
+                         capture_output=True, text=True, timeout=40)
+    body = (out.stdout or '').strip()
+    if out.returncode != 0 or not body:
+        raise RuntimeError(f'ESPN fetch failed (curl rc={out.returncode}, stderr={(out.stderr or "")[:150]})')
+    if not body.lstrip().startswith('{'):
+        raise RuntimeError(f'ESPN returned non-JSON (first 120 chars): {body[:120]}')
+    return json.loads(body)
 
 def rows_from(data):
     out = []
