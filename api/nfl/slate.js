@@ -39,12 +39,12 @@ const FAM_TO_POS = { passing_yards: 'QB', rushing_yards: 'RB', receiving_yards: 
 const ESPN_ABBR = { WSH: 'WAS', JAC: 'JAX', LA: 'LAR', OAK: 'LV', SD: 'LAC', STL: 'LAR' };
 const fixAbbr = a => (a ? (ESPN_ABBR[a] || a) : a);
 
-function pendingVerdict(line, pick) {
+function pendingVerdict(line, pick, reason) {
   return {
     pick: pick || 'higher', line, tier_candidate: 'none',
     filters: { softLine: false, volumeSecure: false, scriptClear: false },
     pOver: null, pOverAdjusted: null, edge: null, reasons: [],
-    blocked: ['baseline pending — run the nflverse ingest to enable analysis'],
+    blocked: [reason || 'analysis pending — slate data still loading'],
     provisional: true,
   };
 }
@@ -207,7 +207,7 @@ export default async function handler(req, res) {
     if (!ready) return { ...base, verdict: pendingVerdict(l.line, 'higher') };
 
     const ctx = buildCtx(E, l, base);
-    if (!ctx) return { ...base, verdict: pendingVerdict(l.line, 'higher'), note: 'no historical baseline for this player yet' };
+    if (!ctx) return { ...base, verdict: pendingVerdict(l.line, 'higher', 'no prior-season baseline (rookie or insufficient history)'), note: 'no prior-season baseline (rookie or insufficient history)' };
 
     let result;
     try { result = analyzeProp(ctx); }
@@ -499,7 +499,16 @@ async function loadEngineData(lines, date, fetchAvailability) {
   const trailingByKey = {}, seasonByKey = {}, recentTargetsByKey = {};
   let latestSeason = 0;
   if (names.length) {
-    const orExpr = names.map(n => `player_name.eq.${enc(n)}`).join(',');
+    // Fetch BOTH the exact PP name AND its suffix-stripped form — the DB stores clean base
+    // names ('Aaron Jones') while PP sends 'Aaron Jones Sr.', so the exact query alone never
+    // loads the row and the resolver has nothing to match. Add the stripped variant here.
+    const nameVariants = new Set();
+    for (const n of names) {
+      nameVariants.add(n);
+      const stripped = String(n).replace(/\s+(jr|sr|ii|iii|iv|v)\.?$/i, '').trim();
+      if (stripped && stripped !== n) nameVariants.add(stripped);
+    }
+    const orExpr = [...nameVariants].map(n => `player_name.eq.${enc(n)}`).join(',');
     // PAGED — limit=8000 is silently capped at 1000, stranding players past the cap as pending.
     let rows = [];
     for (let start = 0; start < 40000; start += 1000) {
