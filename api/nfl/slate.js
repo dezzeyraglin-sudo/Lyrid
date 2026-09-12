@@ -281,6 +281,23 @@ export default async function handler(req, res) {
       }
     }
 
+    // UNDER CANDIDATE — mirror of the soft-line: model median comfortably BELOW the line.
+    // The classifier is over-only, so it won't tier an under; we FLAG the strongest ones so
+    // they're visible and the audit can slice their graded hit-rate — building the evidence
+    // to validate an unders model before ever recommending one. (Already logged via lean.)
+    {
+      const c = result.comp || {}, ln = result.verdict && result.verdict.line;
+      if (c.median != null && ln != null) {
+        const underSoft = +(Number(ln) - Number(c.median)).toFixed(1);
+        const FL = { receiving_yards: 5, rushing_yards: 5, rush_rec_yards: 6, passing_yards: 14, pass_rush_yards: 16 };
+        const floor = FL[l.prop_type] || 5;
+        if (underSoft >= floor && result.verdict) {
+          const pUnder = result.verdict.pOverAdjusted != null ? +(1 - result.verdict.pOverAdjusted).toFixed(4) : null;
+          result.verdict.underCandidate = { softnessUnder: underSoft, pUnder, strength: underSoft >= floor * 2 ? 'strong' : 'moderate' };
+        }
+      }
+    }
+
     const featured = computeFeatured(result, ctx);
 
     return {
@@ -325,6 +342,40 @@ export default async function handler(req, res) {
         }
       }
     }
+  }
+
+  // ---- COMBO FALLBACK ----
+  // No combo vector but both components projected? Project the combo = sum of components
+  // (reuses the consistency principle) instead of stranding it as 'pending'. Conservative:
+  // tiers only when the summed line is soft AND both parts are volume-secure + script-clear.
+  for (const p of picks) {
+    const comps = COMBO[p.propType]; if (!comps) continue;
+    const isPend = (!p.comp || p.comp.median == null) && p.verdict && Array.isArray(p.verdict.blocked) &&
+      p.verdict.blocked.some(b => /has vectors .* but not/.test(String(b)));
+    if (!isPend) continue;
+    const c1 = picks.find(x => x.player_key === p.player_key && x.propType === comps[0] && x.comp && x.comp.median != null);
+    const c2 = picks.find(x => x.player_key === p.player_key && x.propType === comps[1] && x.comp && x.comp.median != null);
+    if (!c1 || !c2) continue;
+    const median = +(c1.comp.median + c2.comp.median).toFixed(1);
+    const ln = p.verdict.line, soft = ln != null ? +(median - ln).toFixed(1) : null;
+    p.comp = {
+      median,
+      p25: (c1.comp.p25 != null && c2.comp.p25 != null) ? +(c1.comp.p25 + c2.comp.p25).toFixed(1) : null,
+      p75: (c1.comp.p75 != null && c2.comp.p75 != null) ? +(c1.comp.p75 + c2.comp.p75).toFixed(1) : null,
+      lineSoftness: soft, fromComponents: true,
+    };
+    const bothSecure = !!((c1.verdict && c1.verdict.filters && c1.verdict.filters.volumeSecure) && (c2.verdict && c2.verdict.filters && c2.verdict.filters.volumeSecure));
+    const scriptClear = !!(c1.verdict && c1.verdict.filters && c1.verdict.filters.scriptClear);
+    const v = {
+      pick: 'higher', line: ln, tier_candidate: 'none',
+      filters: { softLine: soft != null && soft >= 3, volumeSecure: bothSecure, scriptClear },
+      pOver: null, pOverAdjusted: null, edge: null,
+      reasons: ['projected from components (' + Math.round(c1.comp.median) + ' + ' + Math.round(c2.comp.median) + ' = ' + Math.round(median) + ')'],
+      blocked: [], provisional: true, fromComponents: true,
+    };
+    if (soft != null && soft >= 3 && bothSecure && scriptClear) v.tier_candidate = 'GOLD';
+    p.verdict = v;
+    p.featured = { ok: false, why: 'combo projected from components' };
   }
 
   const rank = { GUARANTEED: 3, PLATINUM: 2, GOLD: 1, none: 0 };

@@ -17401,13 +17401,20 @@ function renderHistory() {
     ]);
     const markets = [...new Set(all.map(e => e.market))];
     const byMarket = sliceTable('BY MARKET', 'Lower MAE = sharper projections for that family.', markets.map(m => ({ label: String(m).toUpperCase(), stats: computeNflPropStats(all.filter(e => e.market === m)) })));
+    // UNDER WATCH — the tool doesn't recommend unders yet, but every under-lean is logged and
+    // graded by direction. This record is the evidence that will validate an unders model.
+    const byLean = sliceTable('UNDER WATCH (not yet recommended)', 'The model leans under on these; the classifier does not tier them. If this record beats breakeven as the sample grows, an unders model is earned.', [
+      { label: 'ALL UNDER LEANS', stats: computeNflPropStats(all.filter(e => e.lean === 'UNDER')) },
+      { label: 'STRONG UNDERS', stats: computeNflPropStats(all.filter(e => e.lean === 'UNDER' && (e.underStrength === 'strong'))) },
+      { label: 'OVER LEANS (ref)', stats: computeNflPropStats(all.filter(e => e.lean === 'OVER')) },
+    ]);
     const resPill = (e) => { const c = e.result === 'win' ? 'var(--data-positive,#2D7A3E)' : e.result === 'loss' ? 'var(--data-negative,#A33B2A)' : 'var(--text-muted,#9A9A93)'; const t = e.result ? e.result.toUpperCase() : '—'; return `<span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${c}">${t}</span>`; };
     const row = (e) => `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(e.player)} · ${esc(e.market)} ${e.lean === 'OVER' ? 'o' : 'u'}${esc(e.line)}</span><span class="rollup-prop-rate ${rateClass(e.probOver)}">${e.probOver != null ? Math.round(e.probOver * 100) + '%' : '—'}</span><span class="rollup-prop-vol">proj ${e.projection}${e.actual != null ? ' · actual ' + e.actual : ''} · ${resPill(e)}</span></div>`;
     const graded = all.filter(e => e.graded).sort((a, b) => (b.date + b.player).localeCompare(a.date + a.player));
     const pending = all.filter(e => !e.graded).sort((a, b) => ((b.edge ?? 0) - (a.edge ?? 0)));
     container.innerHTML = subnavHtml + statsBar +
       `<div class="rollup-tier-note" style="margin:10px 0">Model probability shown — provisional, not a verified cash rate. Graded off ESPN box scores.</div>` +
-      byTier + byMarket +
+      byTier + byMarket + byLean +
       (pending.length ? `<h3 class="rollup-section-title">PENDING (${pending.length})</h3><div class="rollup-prop-list">${pending.slice(0, 40).map(row).join('')}</div>` : '') +
       (graded.length ? `<h3 class="rollup-section-title">GRADED (${graded.length})</h3><div class="rollup-prop-list">${graded.slice(0, 60).map(row).join('')}</div>` : '');
     return;
@@ -24553,6 +24560,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         edge: (v.edge != null) ? Number(Number(v.edge).toFixed(4)) : null,
         lean: lean, probOver: (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver),
         tier: tier, isBet: tier !== 'none',   // every pick logged; isBet marks the actionable ones for the record
+        underStrength: (v.underCandidate && v.underCandidate.strength) || null,
         ceiling: !!p.ceiling,
         reasonText: (p.card && p.card.summary) || '',
         dataCompleteness: (p.dataCompleteness != null) ? p.dataCompleteness : null,
