@@ -17361,10 +17361,10 @@ function renderHistory() {
     const rateClass = (r) => r == null ? 'neutral' : r >= 0.55 ? 'hot' : r <= 0.45 ? 'cold' : 'neutral';
     const fmtMae = (m) => m == null ? '—' : m.toFixed(1);
     const rec = (s) => `${s.wins}-${s.losses}`;
-    const overall = computeNflPropStats(all);
+    const overall = computeNflPropStats(all.filter(e => e.tier && e.tier !== 'none'));  // bet record = actionable only
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 21);
     const cutoffStr = cutoff.toISOString().split('T')[0];
-    const recent = computeNflPropStats(all.filter(e => e.date >= cutoffStr));
+    const recent = computeNflPropStats(all.filter(e => e.date >= cutoffStr && e.tier && e.tier !== 'none'));
     const statsBar = `
       <div class="bb-stats-grid">
         <div class="bb-stat-card featured">
@@ -24520,7 +24520,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 // Every logged number is the MODEL's — tiers are provisional until this record builds.
 (function () {
   'use strict';
-  var FAM = { 'Passing Yards': 'passing_yards', 'Rushing Yards': 'rushing_yards', 'Receiving Yards': 'receiving_yards' };
+  var FAM = { 'Passing Yards': 'passing_yards', 'Rushing Yards': 'rushing_yards', 'Receiving Yards': 'receiving_yards', 'Pass + Rush Yards': 'pass_rush_yards', 'Rush + Rec Yards': 'rush_rec_yards' };
   function nfNorm(s){ return String(s||'').toLowerCase().replace(/[.'`]/g,'').replace(/\b(jr|sr|ii|iii|iv|v)\b/g,'').replace(/[^a-z ]/g,'').replace(/\s+/g,' ').trim(); }
 
   // Capture the model's actionable plays (tier != none) for a loaded slate.
@@ -24532,31 +24532,27 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var added = 0;
     picks.forEach(function (p) {
       var v = p.verdict || {}, c = p.comp || {};
-      if (!v.tier_candidate || v.tier_candidate === 'none') return;   // only actionable plays
-      var propType = FAM[p.propLabel]; if (!propType) return;         // gradeable yardage families
-      var proj = c.median; if (proj == null || v.line == null) return;
+      var propType = FAM[p.propLabel]; if (!propType) return;          // gradeable families (incl combos)
+      var proj = c.median; if (proj == null || v.line == null) return; // needs a projection + line to grade
       var key = (p.player_key || p.player) + '_' + propType;
-      var existing = day[key];
-      if (existing && existing.graded) return;                        // never overwrite a graded result
+      if (day[key]) return;   // LOG ONCE — first capture wins. Lines move near game time, so we lock the
+                              // line (and tier) we first flagged rather than overwriting it on a later load.
       var lean = Number(proj) >= Number(v.line) ? 'OVER' : 'UNDER';
-      day[key] = Object.assign({}, existing, {
+      var tier = (v.tier_candidate || 'none').toLowerCase();
+      day[key] = {
         date: date, player: p.player, team: p.team || null, opponent: p.opponent || null,
         market: p.propLabel, propType: propType, line: Number(v.line),
         projection: Number(Number(proj).toFixed(1)),
         p25: c.p25 != null ? c.p25 : null, p75: c.p75 != null ? c.p75 : null,
         edge: (v.edge != null) ? Number(Number(v.edge).toFixed(4)) : null,
-        lean: lean, probOver: (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver) != null ? (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver) : null,
-        tier: (v.tier_candidate || '').toLowerCase(),
+        lean: lean, probOver: (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver),
+        tier: tier, isBet: tier !== 'none',   // every pick logged; isBet marks the actionable ones for the record
         ceiling: !!p.ceiling,
         reasonText: (p.card && p.card.summary) || '',
         dataCompleteness: (p.dataCompleteness != null) ? p.dataCompleteness : null,
-        lineSource: 'provided',
-        capturedAt: (existing && existing.capturedAt) || new Date().toISOString(),
-        actual: (existing && existing.actual != null) ? existing.actual : null,
-        result: (existing && existing.result) || null,
-        error: (existing && existing.error != null) ? existing.error : null,
-        graded: (existing && existing.graded) || false
-      });
+        lineSource: 'provided', capturedAt: new Date().toISOString(),
+        actual: null, result: null, error: null, graded: false
+      };
       added++;
     });
     if (added > 0) {
@@ -24592,6 +24588,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
           if (!box) return;                          // player not posted yet
           if (!box.final && date === today) return;  // game still live today
           var actual = box[e.propType];
+          if (actual == null && e.propType === 'pass_rush_yards') { var _p = box.passing_yards, _r = box.rushing_yards; if (_p != null || _r != null) actual = (Number(_p) || 0) + (Number(_r) || 0); }
+          if (actual == null && e.propType === 'rush_rec_yards') { var _ru = box.rushing_yards, _re = box.receiving_yards; if (_ru != null || _re != null) actual = (Number(_ru) || 0) + (Number(_re) || 0); }
           if (actual == null) { if (box.final) { e.result = 'dnp'; e.actual = 0; e.graded = true; gradedCount++; } return; }
           e.actual = actual;
           e.error = Number((e.projection - actual).toFixed(1));   // signed projection error (yds)
