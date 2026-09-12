@@ -569,7 +569,22 @@ async function loadEngineData(lines, date, fetchAvailability) {
 
 
   // ---- feature rows for the slate players (target features; position) ----
-  const feats = await qSafe(`nfl_feature_vectors?player_key=in.(${inList(slateKeys)})&order=season.desc,week.desc&select=player_key,prop_type,volume_floor_score,feature_json`);
+  // PAGED — a single request caps at 1000 rows, which silently dropped players whose
+  // vectors sorted past the cap and made them read 'baseline pending' despite having data.
+  // Page fully (ordered by player_key so each player's rows group; season/week desc so the
+  // FIRST row per player+family below is the most recent).
+  let feats = [];
+  for (let start = 0; start < 40000; start += 1000) {
+    let chunk = [];
+    try {
+      chunk = await fetch(`${b}/rest/v1/nfl_feature_vectors?player_key=in.(${inList(slateKeys)})&order=player_key.asc,season.desc,week.desc&select=player_key,prop_type,volume_floor_score,feature_json`, {
+        headers: { ...H, 'Range-Unit': 'items', Range: `${start}-${start + 999}` },
+      }).then(r => r.ok ? r.json() : []);
+    } catch (_) { chunk = []; }
+    if (!Array.isArray(chunk) || !chunk.length) break;
+    feats = feats.concat(chunk);
+    if (chunk.length < 1000) break;
+  }
   // Keep the most-recent row PER (player, family). A QB has both passing and
   // rushing vectors; his passing prop must search the passing pool with his
   // passing features, his rushing prop the rushing pool — not one shared row.
