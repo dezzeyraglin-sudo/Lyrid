@@ -281,9 +281,13 @@ export default async function handler(req, res) {
       }
     }
 
+    const featured = computeFeatured(result, ctx);
+
     return {
       ...base,
+      propType: l.prop_type,
       verdict: result.verdict,
+      featured,
       stale: (result.verdict && result.verdict.stale) || null,
       injury,
       outlook: result.outlook || null,
@@ -294,6 +298,34 @@ export default async function handler(req, res) {
       dataCompleteness: result.dataCompleteness ?? null,
     };
   });
+
+  // ---- COMBO CONSISTENCY GUARD ----
+  // A combo can't credibly project ABOVE the sum of its component projections — that's the
+  // Purdy/Bucky over-projection (combo pool reads high while the parts read low). Cap the
+  // combo median at (component1 + component2), recompute line-softness, and if it no longer
+  // clears the soft-line bar, demote it and pull it from featured.
+  const medByPF = {};
+  for (const p of picks) { const c = p.comp; if (c && c.median != null && p.propType) (medByPF[p.player_key] ||= {})[p.propType] = c.median; }
+  const COMBO = { pass_rush_yards: ['passing_yards', 'rushing_yards'], rush_rec_yards: ['rushing_yards', 'receiving_yards'] };
+  for (const p of picks) {
+    const comps = COMBO[p.propType]; if (!comps || !p.comp || p.comp.median == null) continue;
+    const fm = medByPF[p.player_key] || {}, m1 = fm[comps[0]], m2 = fm[comps[1]];
+    if (m1 == null || m2 == null) continue;
+    const sum = +(m1 + m2).toFixed(1);
+    if (p.comp.median > sum + 0.5) {
+      p.comp.medianRaw = p.comp.median; p.comp.median = sum; p.comp.comboCapped = true;
+      const ln = p.verdict && p.verdict.line;
+      if (ln != null) {
+        p.comp.lineSoftness = +(sum - ln).toFixed(1);
+        p.verdict.comboCap = { from: p.comp.medianRaw, to: sum, components: comps };
+        if (p.comp.lineSoftness < 3 && p.verdict.tier_candidate && p.verdict.tier_candidate !== 'none') {
+          p.verdict.tier_candidate = 'none';
+          p.verdict.blocked = ['combo capped at components (' + Math.round(m1) + '+' + Math.round(m2) + '=' + Math.round(sum) + ') \u2014 not soft vs line ' + ln, ...(p.verdict.blocked || [])];
+          if (p.featured && p.featured.ok) p.featured = { ok: false, why: 'combo capped below soft-line bar' };
+        }
+      }
+    }
+  }
 
   const rank = { GUARANTEED: 3, PLATINUM: 2, GOLD: 1, none: 0 };
   picks.sort((a, b) =>
@@ -750,6 +782,36 @@ async function fetchDepthChartRoles(teams, idByAbbr, seasonYear) {
     } catch (_) {}
   }));
   return roleByName;
+}
+
+// ---- FEATURED gate: which picks EARN a Tonight's-Card spot (stricter than the tier) ----
+// Receivers: stable, high target share. RBs: steady carries (not committee) + a supportive
+// script OR a favorable matchup. QBs: stand down on overs (they keep going under — unders
+// model pending). Stale reads and thin data never feature. Everything still shows in the
+// game cards; this only controls what gets PROMOTED.
+function computeFeatured(result, ctx) {
+  const v = result.verdict, fam = ctx.propFamily;
+  if (!v || !v.tier_candidate || v.tier_candidate === 'none') return { ok: false, why: 'not a qualifying tier' };
+  if (v.stale) return { ok: false, why: 'stale role — not featured' };
+  const dc = result.dataCompleteness;
+  if (dc != null && dc < 0.6) return { ok: false, why: 'thin data — not featured' };
+  if (fam === 'passing_yards' || fam === 'pass_rush_yards') return { ok: false, why: 'QB overs stand down (unders model pending)' };
+  const vol = (result.signals && result.signals.volume) || {};
+  const d = vol.detail || {}, arch = vol.archetype;
+  if (fam === 'receiving_yards') {
+    const stable = arch === 'volume_possession' || (d.tsMean != null && d.tsMean >= 0.18 && d.tsCv != null && d.tsCv <= 0.45);
+    return stable ? { ok: true, why: 'stable target share' } : { ok: false, why: 'target share not stable enough' };
+  }
+  if (fam === 'rushing_yards' || fam === 'rush_rec_yards') {
+    const steady = arch === 'bellcow' || (d.carryMean != null && d.carryMean >= 12 && d.carryCv != null && d.carryCv <= 0.40);
+    if (!steady) return { ok: false, why: 'committee / unsteady carries' };
+    const script = (result.signals && result.signals.script) || {};
+    const supportive = script.side === 'favored' || (script.side !== 'underdog' && !script.flag);
+    const favorable = ctx.oppDefWeakness && Number(ctx.oppDefWeakness.run) > 0.5;
+    return (supportive || favorable) ? { ok: true, why: supportive ? 'steady carries + supportive script' : 'steady carries + favorable matchup' }
+                                     : { ok: false, why: 'no supportive script or favorable matchup' };
+  }
+  return { ok: false, why: 'family not featured' };
 }
 
 // ---- staleness: does the historical baseline still describe this player's situation? ----

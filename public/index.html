@@ -24260,11 +24260,17 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   }
   var NFL_MODEL_FLOOR = 0.58; // PROVISIONAL — replace with a backtested hit-rate floor before any badge
   function isBettable(item){
+    // FEATURED gate (server-computed): receivers need a stable target share; RBs need
+    // steady carries + supportive script/matchup; QB overs stand down; stale reads and
+    // combo-capped picks are excluded. Only featured picks earn a Tonight's-Card spot.
+    if (item.featured && item.featured.ok === false) return false;
     var v = item.verdict||{}, pAdj = pAdjOf(v), tier = v.tier_candidate||'none';
-    if (nflBoom(item) && num(v.edge)!=null && v.edge>=0.06 && v.filters && v.filters.scriptClear) return true;
+    if (nflBoom(item) && num(v.edge)!=null && v.edge>=0.06 && v.filters && v.filters.scriptClear && !(item.featured && item.featured.ok===false)) return true;
     if (tier==='none') return false;
     if (pAdj==null || pAdj<NFL_MODEL_FLOOR) return false;
-    return true;
+    // if the server marked it featured, honor that; if the field is absent (older API), fall through
+    if (item.featured && item.featured.ok) return true;
+    return item.featured ? false : true;
   }
   window.LyridNflJudgment = { killReason: killReason, isBettable: isBettable };
   function pickScore(item){ var v=item.verdict||{}, pAdj=pAdjOf(v)||0, tw=RANK[v.tier_candidate||'none']*0.05, edge=num(v.edge)||0; return pAdj+tw+edge*0.5; }
