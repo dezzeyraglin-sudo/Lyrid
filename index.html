@@ -3472,6 +3472,7 @@
 .nflx-chip.platinum{background:var(--tier-strong-fill);color:var(--tier-strong-text)}
 .nflx-chip.gold{background:var(--tier-solid-fill);color:var(--tier-solid-text)}
 .nflx-chip.ceiling{background:var(--surface-muted);color:var(--text-secondary)}
+.nflx-chip.under-test{background:var(--data-warning-surface);color:var(--data-warning);border:1px solid var(--data-warning)}
 .nflx-chip.prov{background:transparent;color:var(--text-muted);border:1px solid var(--border-hairline)}
 .nflx-why{font-size:var(--size-body-sm);color:var(--text-secondary);line-height:var(--line-body);margin-top:var(--space-3)}
 .nflx-blocked{font-size:var(--size-caption);color:var(--data-warning);background:var(--data-warning-surface);border-radius:var(--radius-sm);padding:var(--space-2) var(--space-3);margin-top:var(--space-3)}
@@ -24356,9 +24357,12 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var v=item.verdict||{}, c=item.comp||{}, f=v.filters||{};
     var _inj=nflInjuryFor(item); var _rawTier=v.tier_candidate||'none'; var tier=nflInjCapTier(_rawTier,_inj); var noPlay=tier==='none'; var _injCapped=(_rawTier!=='none' && tier!==_rawTier);
     var pAdj = pAdjOf(v)||0, dir = v.pick==='lower'?'down':'up';
-    var chips = noPlay ? '<span class="nflx-chip prov">No play</span>'
-      : '<span class="nflx-chip ' + (TIER_CLASS[tier]||'gold') + '">' + esc(tier) + '</span><span class="nflx-chip prov">provisional</span>';
-    if (nflBoom(item)) chips += '<span class="nflx-chip ceiling">\u25C7 ceiling</span>';
+    var isUnder = !!(v.underPlay && v.underPlay.call);
+    var chips = isUnder
+      ? '<span class="nflx-chip under-test">\u2193 UNDER \u00b7 TESTING</span><span class="nflx-chip prov">unvalidated</span>'
+      : (noPlay ? '<span class="nflx-chip prov">No play</span>'
+        : '<span class="nflx-chip ' + (TIER_CLASS[tier]||'gold') + '">' + esc(tier) + '</span><span class="nflx-chip prov">provisional</span>');
+    if (nflBoom(item) && !isUnder) chips += '<span class="nflx-chip ceiling">\u25C7 ceiling</span>';
     var filt = function(l,ok){ return '<span class="nflx-filt ' + (ok?'pass':'fail') + '"><span class="dot">' + (ok?'\u2713':'\u2715') + '</span>' + l + '</span>'; };
     var filters = '<div class="nflx-filters">' + filt('Soft line', f.softLine) + filt('Volume-secure', f.volumeSecure) + filt('Script-clear', f.scriptClear) + '</div>';
     var _injMsg = _injCapped ? ('injury risk \u2014 listed ' + esc(_inj.statusRaw||_inj.status) + (_inj.detail?(' ('+esc(_inj.detail)+')'):'') + '; soft line likely prices reduced volume') : '';
@@ -24371,12 +24375,12 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var why = (item.card && item.card.summary) ? '<div class="nflx-why">' + esc(item.card.summary) + '</div>' : '';
     return '<div class="nflx-prop">' +
       '<div class="nflx-prop-top"><div><div class="nflx-prop-name">' + esc(item.player||'') + '</div>' +
-        '<div class="nflx-pick-line"><span class="nflx-dir ' + dir + (noPlay?' muted':'') + '">' + (dir==='up'?'Higher':'Lower') + '</span> <span class="nflx-prop-market">' + esc(item.propLabel||'') + '</span> <span class="nflx-linev">' + esc(v.line) + '</span></div></div>' +
+        '<div class="nflx-pick-line"><span class="nflx-dir ' + (isUnder?'down':(dir + (noPlay?' muted':''))) + '">' + (isUnder?'Lower':(dir==='up'?'Higher':'Lower')) + '</span> <span class="nflx-prop-market">' + esc(item.propLabel||'') + '</span> <span class="nflx-linev">' + esc(v.line) + '</span></div></div>' +
         '<div class="nflx-prop-sub">' + esc(item.position||'') + (item.position&&item.team?' \u00b7 ':'') + esc(item.team||'') + (item.opponent?' vs ' + esc(item.opponent):'') + '</div></div>' +
       nflInjuryBanner(item) +
       projTrack(c, v.line) +
-      '<div class="nflx-metarow"><div class="nflx-pct"><span class="v">' + Math.round(pAdj*100) + '%</span><span class="k">model</span></div>' + chips + '</div>' +
-      filters + blocked + drivers + why +
+      '<div class="nflx-metarow"><div class="nflx-pct"><span class="v">' + Math.round((isUnder && v.underPlay.pUnder!=null ? v.underPlay.pUnder : pAdj)*100) + '%</span><span class="k">' + (isUnder?'model \u00b7 under':'model') + '</span></div>' + chips + '</div>' +
+      filters + (isUnder ? '<div class="nflx-blocked" style="color:var(--data-warning);background:var(--data-warning-surface)">Take the <b>UNDER</b> \u2014 still testing. Model projects ' + Math.round(c.median) + ' vs line ' + esc(v.line) + ', ceiling (p75) ' + Math.round(v.underPlay.ceiling) + ' stays contained. Unvalidated \u2014 logged to build the unders record, not yet a rated play.</div>' : blocked) + drivers + why +
     '</div>';
   }
   window.renderNflCard = renderPropCard; // back-compat alias

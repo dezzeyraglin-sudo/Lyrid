@@ -293,7 +293,17 @@ export default async function handler(req, res) {
         const floor = FL[l.prop_type] || 5;
         if (underSoft >= floor && result.verdict) {
           const pUnder = result.verdict.pOverAdjusted != null ? +(1 - result.verdict.pOverAdjusted).toFixed(4) : null;
-          result.verdict.underCandidate = { softnessUnder: underSoft, pUnder, strength: underSoft >= floor * 2 ? 'strong' : 'moderate' };
+          const strong = underSoft >= floor * 2;
+          result.verdict.underCandidate = { softnessUnder: underSoft, pUnder, strength: strong ? 'strong' : 'moderate' };
+          // UNDER PLAY (TESTING): a real under needs a CONTAINED ceiling — the player's p75
+          // upside can't blow through the line (that's what separates an under from a boom-bust
+          // trap). Surface the call only when it's a strong under AND the ceiling is contained
+          // AND pUnder clears the GOLD-equivalent bar. Flagged 'testing' — never a real tier.
+          const p75 = c.p75 != null ? Number(c.p75) : null;
+          const ceilingContained = p75 != null && p75 <= Number(ln) + floor;
+          if (strong && ceilingContained && pUnder != null && pUnder >= 0.57) {
+            result.verdict.underPlay = { call: true, testing: true, pUnder, softnessUnder: underSoft, ceiling: p75 };
+          }
         }
       }
     }
