@@ -356,7 +356,7 @@ export default async function handler(req, res) {
 // buildCtx — shape one analyzeProp() context from the loaded lookups
 // ===========================================================================
 function buildCtx(E, l, base) {
-  const gsis = E.nameToKey[l.player_name];
+  const gsis = (E.resolveKey && E.resolveKey(l.player_name, l.prop_type)) || E.nameToKey[l.player_name];
   if (!gsis) return null;
   const fam = l.prop_type;
   const perFam = E.featByKeyFam[gsis];
@@ -494,11 +494,25 @@ async function loadEngineData(lines, date, fetchAvailability) {
   // ---- resolve names -> key/team/position + trailing game rows ----
   const names = [...new Set(lines.map(l => l.player_name).filter(Boolean))];
   const nameToKey = {}, nameToTeam = {}, posByName = {}, posByKey = {}, cpoeByKey = {};
+  const candsByNorm = {};   // normalized name -> { key -> {key, position} } for suffix/collision-safe resolution
+  const normName = s => String(s || '').toLowerCase().replace(/[.'`]/g, '').replace(/\b(jr|sr|ii|iii|iv|v)\b/g, '').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
   const trailingByKey = {}, seasonByKey = {}, recentTargetsByKey = {};
   let latestSeason = 0;
   if (names.length) {
     const orExpr = names.map(n => `player_name.eq.${enc(n)}`).join(',');
-    const rows = await qSafe(`nfl_player_games?or=(${orExpr})&order=season.desc,week.desc&select=player_key,player_name,team_abbr,position,season,week,passing_yards,rushing_yards,receiving_yards,pass_attempts,rush_attempts,targets,receptions,target_share,air_yards_share,cpoe&limit=8000`);
+    // PAGED — limit=8000 is silently capped at 1000, stranding players past the cap as pending.
+    let rows = [];
+    for (let start = 0; start < 40000; start += 1000) {
+      let chunk = [];
+      try {
+        chunk = await fetch(`${b}/rest/v1/nfl_player_games?or=(${orExpr})&order=player_name.asc,season.desc,week.desc&select=player_key,player_name,team_abbr,position,season,week,passing_yards,rushing_yards,receiving_yards,pass_attempts,rush_attempts,targets,receptions,target_share,air_yards_share,cpoe`, {
+          headers: { ...H, 'Range-Unit': 'items', Range: `${start}-${start + 999}` },
+        }).then(r => r.ok ? r.json() : []);
+      } catch (_) { chunk = []; }
+      if (!Array.isArray(chunk) || !chunk.length) break;
+      rows = rows.concat(chunk);
+      if (chunk.length < 1000) break;
+    }
     const cpoeAccum = {};
     for (const r of rows) {
       const k = r.player_key;
@@ -514,6 +528,9 @@ async function loadEngineData(lines, date, fetchAvailability) {
         if (r.position) posByName[r.player_name] = r.position;
       }
       if (!posByKey[k] && r.position) posByKey[k] = r.position;
+      const _nn = normName(r.player_name);
+      const _cb = (candsByNorm[_nn] ||= {});
+      if (!_cb[k]) _cb[k] = { key: k, position: r.position || posByKey[k] || null };
       // trailing games for volumeSecurity (map carries->rush_attempts already named)
       (trailingByKey[k] ||= []).push({
         targets: num(r.targets), target_share: num(r.target_share), air_yards_share: num(r.air_yards_share),
@@ -729,8 +746,19 @@ async function loadEngineData(lines, date, fetchAvailability) {
   compPoolByPos.TE = compPoolByPos.WR;
   if (!compPoolByPos.QB.length && !compPoolByPos.RB.length && !compPoolByPos.WR.length) return null;
 
+  const _famPos = fam => (fam === 'passing_yards' || fam === 'pass_rush_yards') ? ['QB']
+    : (fam === 'rushing_yards' || fam === 'rush_rec_yards') ? ['RB', 'FB', 'QB']
+    : (fam === 'receiving_yards') ? ['WR', 'TE', 'RB', 'FB'] : [];
+  // suffix- and collision-tolerant resolver: prefers the position the prop implies
+  const resolveKey = (name, fam) => {
+    const cb = candsByNorm[normName(name)]; if (!cb) return null;
+    const arr = Object.values(cb); if (arr.length === 1) return arr[0].key;
+    const want = _famPos(fam); const m = want.length ? arr.find(c => want.includes(c.position)) : null;
+    return (m || arr[0]).key;
+  };
+
   return {
-    ready: true, season: latestSeason || null,
+    ready: true, season: latestSeason || null, resolveKey,
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
