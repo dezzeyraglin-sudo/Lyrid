@@ -207,7 +207,7 @@ export default async function handler(req, res) {
     if (!ready) return { ...base, verdict: pendingVerdict(l.line, 'higher') };
 
     const ctx = buildCtx(E, l, base);
-    if (!ctx) return { ...base, verdict: pendingVerdict(l.line, 'higher', 'no prior-season baseline (rookie or insufficient history)'), note: 'no prior-season baseline (rookie or insufficient history)' };
+    if (!ctx) { const _r = base._pend || 'no prior-season baseline (rookie or insufficient history)'; delete base._pend; return { ...base, verdict: pendingVerdict(l.line, 'higher', _r), note: _r }; }
 
     let result;
     try { result = analyzeProp(ctx); }
@@ -357,11 +357,16 @@ export default async function handler(req, res) {
 // ===========================================================================
 function buildCtx(E, l, base) {
   const gsis = (E.resolveKey && E.resolveKey(l.player_name, l.prop_type)) || E.nameToKey[l.player_name];
-  if (!gsis) return null;
+  if (!gsis) { base._pend = 'name did not resolve to a key'; return null; }
   const fam = l.prop_type;
   const perFam = E.featByKeyFam[gsis];
   const famRow = perFam && perFam[fam];
-  if (!famRow) return null; // no baseline for THIS family -> pending (honest, not a wrong pool)
+  if (!famRow) {
+    base._pend = perFam
+      ? ('resolved key ' + gsis + ' has vectors [' + Object.keys(perFam).join(',') + '] but not ' + fam)
+      : ('resolved key ' + gsis + ' not in fetched vectors (in nameToKey values: ' + (Object.values(E.nameToKey).includes(gsis)) + ')');
+    return null;
+  }
 
   // poolPos = which family-partitioned comp pool to search (passing→QB pool,
   // rushing→RB pool, receiving→WR pool). rosterPos = the player's actual position,
