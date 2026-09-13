@@ -148,10 +148,10 @@ export default async function handler(req, res) {
         const r = inj[_norm(d.player_name)]; if (!r || r.status === 'active') continue;
         const sev = r.status === 'out' ? 1 : 0.5;
         const c = Math.max(0, Math.min(4, (Number(d.impact_score) || 0) * (Number(d.snap_share) || 0.5) * 1.5 * sev));
-        if (c >= 0.5) { dp += c; who.push(d.player_name + ' \u00b7 ' + d.impact_type); }
+        if (c >= 0.5) { dp += c; who.push(d.player_name + ' · ' + d.impact_type); }
       }
       dp = Math.min(6, dp);
-      if (dp >= 0.5) { if (opp === home) hp += dp; else ap += dp; factors.push({ label: 'Defense out', pts: +dp.toFixed(1), dir: 'over', note: team + ' missing ' + who.slice(0, 2).join(', ') + ' \u2192 ' + opp + ' +' + dp.toFixed(1) }); }
+      if (dp >= 0.5) { if (opp === home) hp += dp; else ap += dp; factors.push({ label: 'Defense out', pts: +dp.toFixed(1), dir: 'over', note: team + ' missing ' + who.slice(0, 2).join(', ') + ' → ' + opp + ' +' + dp.toFixed(1) }); }
     }
     return { delta: +(hp + ap).toFixed(1), factors };
   }
@@ -167,7 +167,7 @@ export default async function handler(req, res) {
       const r = (E.injuryByName || {})[_norm(d.player_name)]; if (!r || r.status === 'active') continue;
       const sev = r.status === 'out' ? 1 : 0.5;
       const c = Math.max(0, (Number(d.impact_score) || 0) * (Number(d.snap_share) || 0.5) * sev);
-      if (c >= 0.4) { w[d.impact_type] = (w[d.impact_type] || 0) + c; w.out.push(d.player_name + ' \u00b7 ' + d.impact_type); }
+      if (c >= 0.4) { w[d.impact_type] = (w[d.impact_type] || 0) + c; w.out.push(d.player_name + ' · ' + d.impact_type); }
     }
     if (w.out.length) defWeaknessByTeam[team] = w;
   }
@@ -270,7 +270,7 @@ export default async function handler(req, res) {
       if (ORD[v.tier_candidate] > ORD[cap]) {
         v.stalenessOverride = { demotedFrom: v.tier_candidate, to: cap };
         v.tier_candidate = cap;
-        v.blocked = ['stale role \u2014 ' + (stale.reasons[0] || 'situation changed'), ...(v.blocked || [])];
+        v.blocked = ['stale role — ' + (stale.reasons[0] || 'situation changed'), ...(v.blocked || [])];
       }
       v.stale = { severity: stale.severity, teamChanged: stale.teamChanged, roleNote: stale.roleNote, reasons: stale.reasons };
     }
@@ -363,7 +363,7 @@ export default async function handler(req, res) {
         p.verdict.comboCap = { from: p.comp.medianRaw, to: sum, components: comps };
         if (p.comp.lineSoftness < 3 && p.verdict.tier_candidate && p.verdict.tier_candidate !== 'none') {
           p.verdict.tier_candidate = 'none';
-          p.verdict.blocked = ['combo capped at components (' + Math.round(m1) + '+' + Math.round(m2) + '=' + Math.round(sum) + ') \u2014 not soft vs line ' + ln, ...(p.verdict.blocked || [])];
+          p.verdict.blocked = ['combo capped at components (' + Math.round(m1) + '+' + Math.round(m2) + '=' + Math.round(sum) + ') — not soft vs line ' + ln, ...(p.verdict.blocked || [])];
           if (p.featured && p.featured.ok) p.featured = { ok: false, why: 'combo capped below soft-line bar' };
         }
       }
@@ -496,7 +496,6 @@ function buildCtx(E, l, base) {
     gameTotal: od ? od.total : null,
     projectedTotal: (E.projectedTotalByTeam && E.projectedTotalByTeam[team]) || null,
     oppDefWeakness: (E.defWeaknessByTeam && team && E.oppByTeam[team] && E.defWeaknessByTeam[E.oppByTeam[team]]) || null,
-    position: (ready && E.posByName && E.posByName[base.player]) || l.position || null,
     qbCompetent: (E.qbCompetentByTeam && team && E.qbCompetentByTeam[team]) || null,
     homeTeam: team ? E.homeByTeam[team] || null : null,
     weather: null, roofStatus: null,
@@ -966,18 +965,18 @@ function computeStaleness(base, l, E) {
   const liveTeam = (role && role.team) || l.team || base.team || null;
   if (baseTeam && liveTeam && baseTeam !== liveTeam) {
     teamChanged = true;
-    reasons.push(`new team (${baseTeam} \u2192 ${liveTeam}) \u2014 the baseline is last season's role and scheme`);
+    reasons.push(`new team (${baseTeam} → ${liveTeam}) — the baseline is last season's role and scheme`);
     sev = 'moderate';
   }
   if (role && role.rank != null) {
     if ((fam === 'passing_yards' || fam === 'pass_rush_yards') && role.posGroup === 'QB' && role.rank > 1) {
-      reasons.unshift(`listed QB${role.rank} on the depth chart \u2014 not the current starter`); sev = 'high'; roleNote = 'non-starter QB';
+      reasons.unshift(`listed QB${role.rank} on the depth chart — not the current starter`); sev = 'high'; roleNote = 'non-starter QB';
     } else if ((fam === 'rushing_yards' || fam === 'rush_rec_yards') && role.posGroup === 'RB' && role.rank >= 2) {
-      if (role.rank >= 3) { reasons.unshift(`listed RB${role.rank} \u2014 deep in the backfield now`); sev = 'high'; }
-      else { reasons.unshift(`listed RB2 behind the current lead back \u2014 trailing carries reflect a larger role than he holds now`); if (sev !== 'high') sev = 'moderate'; }
+      if (role.rank >= 3) { reasons.unshift(`listed RB${role.rank} — deep in the backfield now`); sev = 'high'; }
+      else { reasons.unshift(`listed RB2 behind the current lead back — trailing carries reflect a larger role than he holds now`); if (sev !== 'high') sev = 'moderate'; }
       roleNote = 'backfield demotion';
     } else if (fam === 'receiving_yards' && ((role.posGroup === 'WR' && role.rank >= 4) || (role.posGroup === 'TE' && role.rank >= 3))) {
-      reasons.push(`listed ${role.posGroup}${role.rank} \u2014 a reduced target role`); if (sev !== 'high') sev = 'moderate'; roleNote = 'target-share demotion';
+      reasons.push(`listed ${role.posGroup}${role.rank} — a reduced target role`); if (sev !== 'high') sev = 'moderate'; roleNote = 'target-share demotion';
     }
   }
   const capTier = sev === 'high' ? 'none' : (sev === 'moderate' ? 'GOLD' : 'none');
@@ -1006,5 +1005,3 @@ function milestonePull(cum, gamesLeft, fam) {
   if (per < 30 || per > 130) return 0;
   return +Math.max(0, Math.min(1, (1 - Math.abs(per - 80) / 80) * (1 - (gamesLeft - 1) / 4))).toFixed(3);
 }
-
-function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
