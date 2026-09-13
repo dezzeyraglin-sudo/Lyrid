@@ -24582,6 +24582,43 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   };
 
   // Grade logged NFL props against ESPN box scores (/api/nfl/results).
+  // Client-side box scores — ESPN 403s Vercel's datacenter IP, so /api/nfl/results comes back
+  // empty. The browser (residential IP, CORS-open) can reach ESPN directly. Fetch the scoreboard,
+  // then each COMPLETED game's summary, and build the byPlayer map the grader expects.
+  async function fetchNflBoxScores(dateStr) {
+    var espnDate = String(dateStr || '').replace(/-/g, '');
+    var ESPN = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
+    var byPlayer = {};
+    var sb;
+    try { sb = await fetch(ESPN + '/scoreboard?dates=' + espnDate).then(function (r) { return r.json(); }); }
+    catch (e) { return byPlayer; }
+    var events = (sb.events || []).filter(function (e) { return (((e.status || {}).type) || {}).completed; });
+    await Promise.all(events.map(async function (ev) {
+      try {
+        var sum = await fetch(ESPN + '/summary?event=' + ev.id).then(function (r) { return r.json(); });
+        var teams = ((sum.boxscore || {}).players) || [];
+        teams.forEach(function (t) {
+          (t.statistics || []).forEach(function (cat) {
+            var nm = (cat.name || '').toLowerCase();
+            var fam = nm === 'passing' ? 'passing_yards' : nm === 'rushing' ? 'rushing_yards' : nm === 'receiving' ? 'receiving_yards' : null;
+            if (!fam) return;
+            var ydsIdx = (cat.labels || []).findIndex(function (l) { return String(l).toUpperCase() === 'YDS'; });
+            if (ydsIdx < 0) return;
+            (cat.athletes || []).forEach(function (a) {
+              var pname = ((a.athlete || {}).displayName) || '';
+              if (!pname) return;
+              var key = nfNorm(pname);
+              var yds = Number((a.stats || [])[ydsIdx]);
+              if (!byPlayer[key]) byPlayer[key] = { final: true };
+              if (isFinite(yds)) byPlayer[key][fam] = yds;
+            });
+          });
+        });
+      } catch (e) { /* skip this game */ }
+    }));
+    return byPlayer;
+  }
+
   window.gradeNflProps = async function (opts) {
     opts = opts || {};
     var silent = opts.silent;
@@ -24596,13 +24633,12 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     for (var i = 0; i < dates.length; i++) {
       var date = dates[i];
       try {
-        var res = await fetch('/api/nfl/results?date=' + encodeURIComponent(date));
-        var data = await res.json();
-        if (!data.ok || !data.byPlayer) continue;
+        var byPlayer = await fetchNflBoxScores(date);
+        if (!byPlayer || !Object.keys(byPlayer).length) continue;
         var day = state.nflPropHistory[date];
         Object.values(day).forEach(function (e) {
           if (e.graded) return;
-          var box = data.byPlayer[nfNorm(e.player)];
+          var box = byPlayer[nfNorm(e.player)];
           if (!box) return;                          // player not posted yet
           if (!box.final && date === today) return;  // game still live today
           var actual = box[e.propType];
