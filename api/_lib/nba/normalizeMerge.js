@@ -26,9 +26,9 @@ function last(rows, n, key) {
 //   bbrefAdv    : fetchPlayerAdvanced(season).byKey  (Map)
 //   bbrefTeams  : fetchTeamContext(season).teams     (object)
 //   injuryIdx   : espnClient.injuryIndex()           (object)
-export async function mergePlayer(ppLine, { rosterIndex, bbrefAdv, bbrefTeams, injuryIdx, opponentAbbr, gameLog } = {}) {
+export async function mergePlayer(ppLine, { rosterIndex, bbrefAdv, bbrefTeams, injuryIdx, opponentAbbr, gameLog, roster: injectedRoster } = {}) {
   const key = nameKey(ppLine.player);
-  const roster = rosterIndex?.byNameKey?.[key] || null;
+  const roster = injectedRoster || rosterIndex?.byNameKey?.[key] || null;
 
   const dc = {
     playerResolved: !!roster, hasShotProfile: false, hasBbrefRates: false,

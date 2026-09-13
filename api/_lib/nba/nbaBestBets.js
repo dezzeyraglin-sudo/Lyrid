@@ -31,7 +31,8 @@ export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
   const rows = [];
   for (const mp of mergedPlayers || []) {
     for (const market of markets) {
-      const ln = byPlayerMarket ? lookupLine(byPlayerMarket, mp.name, market)
+      const ln = byPlayerMarket
+        ? (mp.ppKey ? byPlayerMarket[mp.ppKey + '|' + market] : lookupLine(byPlayerMarket, mp.name, market))
         : (mp.line && mp.line.market === market ? mp.line : null);
       if (!ln || ln.isStandard === false || ln.line == null) continue;
       const v = decide(mp, market, ln.line, {
@@ -57,7 +58,8 @@ export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
   const ranked = [];
   for (const mp of mergedPlayers || []) {
     for (const market of markets) {
-      const ln = byPlayerMarket ? lookupLine(byPlayerMarket, mp.name, market)
+      const ln = byPlayerMarket
+        ? (mp.ppKey ? byPlayerMarket[mp.ppKey + '|' + market] : lookupLine(byPlayerMarket, mp.name, market))
         : (mp.line && mp.line.market === market ? mp.line : null);
       if (!ln || ln.isStandard === false || ln.line == null) continue;
 

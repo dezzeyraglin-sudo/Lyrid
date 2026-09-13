@@ -104,6 +104,31 @@ export function buildPlayerCards(rows) {
   return cards;
 }
 
+// PrizePicks uses a few team abbreviations ESPN doesn't (schedule/roster use ESPN's).
+// Normalize PP -> ESPN so the schedule lookup and fallback matching line up.
+const PP_TO_ESPN = { GSW: 'GS', NOP: 'NO', NYK: 'NY', SAS: 'SA', UTA: 'UTAH', WAS: 'WSH', PHO: 'PHX', BRK: 'BKN', CHO: 'CHA' };
+function ppTeamToEspn(t) { return t ? (PP_TO_ESPN[t] || t) : null; }
+function lastKey(nk) { const p = String(nk || '').trim().split(' '); return p[p.length - 1]; }
+
+// Resolve a PP line to a roster entry: exact nameKey first, then a last-name (+team)
+// fallback so name-form differences (Jr/Sr, initials, nicknames) don't drop players.
+function resolveRoster(pl, rosterIndex) {
+  if (!rosterIndex) return null;
+  const exact = rosterIndex.byNameKey?.[pl.playerKey];
+  if (exact) return exact;
+  if (rosterIndex.byId) {
+    const last = lastKey(pl.playerKey);
+    if (last && last.length >= 3) {
+      const cands = Object.values(rosterIndex.byId).filter((x) => lastKey(x.nameKey) === last);
+      if (cands.length === 1) return cands[0];
+      const t = ppTeamToEspn(pl.team);
+      const tm = cands.filter((x) => t && x.team === t);
+      if (tm.length === 1) return tm[0];
+    }
+  }
+  return null;
+}
+
 // PURE CORE — inject fetchers/data so this is testable offline.
 export async function analyzeSlate(io) {
   const {
@@ -120,18 +145,23 @@ export async function analyzeSlate(io) {
   const players = props.lines.filter((l) => { const k = l.playerKey; if (seen.has(k)) return false; seen.add(k); return true; });
 
   const merged = [];
+  const unresolved = [];
   for (const pl of players) {
-    const roster = rosterIndex?.byNameKey?.[pl.playerKey];
-    const team = roster?.team || pl.team || null;
-    const game = team ? byTeam[team] : null;
-    if (!game) continue; // player's team not on this slate
+    const roster = resolveRoster(pl, rosterIndex);
+    const teamEspn = roster?.team || ppTeamToEspn(pl.team) || null;
+    const game = teamEspn ? byTeam[teamEspn] : null;
+    if (!game) {
+      unresolved.push({ player: pl.player, team: pl.team, reason: roster ? 'team not on slate' : 'no roster match' });
+      continue;
+    }
 
     const gameLog = roster?.id ? await fetchGameLog(roster.id).catch(() => []) : [];
     const m = await mergePlayer(
       { player: pl.player, market: pl.market, line: pl.line, side: null },
-      { rosterIndex, bbrefAdv, bbrefTeams, injuryIdx, opponentAbbr: game.opponent, gameLog },
+      { rosterIndex, roster, bbrefAdv, bbrefTeams, injuryIdx, opponentAbbr: game.opponent, gameLog },
     );
-    if (!m.resolved) continue;
+    if (!m.resolved) { unresolved.push({ player: pl.player, team: pl.team, reason: 'merge unresolved' }); continue; }
+    m.ppKey = pl.playerKey;  // original PrizePicks key — line lookups use this, not the roster name
 
     // minutes model -> attach projMinutes + cv + flags
     const adv = bbrefAdv?.get?.(pl.playerKey);
@@ -139,7 +169,7 @@ export async function analyzeSlate(io) {
       gameLog, gameDate: game.date, spread: game.spread,
       age: adv?.age ?? null,
       gsRatio: adv && adv.g ? (adv.gs || 0) / adv.g : null,
-      teammatesOut: teammatesOutFor(team, rosterIndex, injuryIdx),
+      teammatesOut: teammatesOutFor(teamEspn, rosterIndex, injuryIdx),
       roleUncertain: m.flags?.roleUncertain,
       designation: (roster?.id && injuryIdx?.[roster.id]?.status) || null,
       usgPct: adv?.usgPct ?? null,
@@ -198,6 +228,7 @@ export async function analyzeSlate(io) {
     merged: merged.length,
     bets: candidates.length,
     pp: props._debug || null,
+    unresolved: unresolved.slice(0, 40),
   };
   const ppDbg = props._debug || {};
   let reason = null;
