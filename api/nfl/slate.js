@@ -173,6 +173,22 @@ export default async function handler(req, res) {
   }
   if (ready) E.defWeaknessByTeam = defWeaknessByTeam;
 
+  // QB competency per team — a backup (starter out) or unproven QB (rookie / no passing
+  // baseline) sinks the whole receiving corps (Cam Ward -> Loveland 0 targets; Cooper Rush ->
+  // Pitts). WR featuring is gated on this.
+  const qbCompetentByTeam = {};
+  if (ready) for (const team of Object.keys(qbNameByTeam)) {
+    const qb = qbNameByTeam[team];
+    const key = E.resolveKey ? E.resolveKey(qb, 'passing_yards') : (E.nameToKey && E.nameToKey[qb]);
+    const inj = (E.injuryByName || {})[_norm(qb)];
+    const isOut = !!(inj && inj.status === 'out');
+    const hasHistory = !!(key && E.featByKeyFam[key] && E.featByKeyFam[key]['passing_yards']);
+    qbCompetentByTeam[team] = isOut ? { competent: false, reason: 'starter out (backup at QB)', qb }
+      : !hasHistory ? { competent: false, reason: 'unproven QB (rookie / no passing baseline)', qb }
+      : { competent: true, qb };
+  }
+  if (ready) E.qbCompetentByTeam = qbCompetentByTeam;
+
   let totals = [];
   if (ready && analyzeTotal && E.scoringByTeam) {
     const seen = new Set(); const projectedTotalByTeam = {};
@@ -480,6 +496,8 @@ function buildCtx(E, l, base) {
     gameTotal: od ? od.total : null,
     projectedTotal: (E.projectedTotalByTeam && E.projectedTotalByTeam[team]) || null,
     oppDefWeakness: (E.defWeaknessByTeam && team && E.oppByTeam[team] && E.defWeaknessByTeam[E.oppByTeam[team]]) || null,
+    position: (ready && E.posByName && E.posByName[base.player]) || l.position || null,
+    qbCompetent: (E.qbCompetentByTeam && team && E.qbCompetentByTeam[team]) || null,
     homeTeam: team ? E.homeByTeam[team] || null : null,
     weather: null, roofStatus: null,
     // comp
@@ -901,18 +919,39 @@ function computeFeatured(result, ctx) {
   if (fam === 'passing_yards' || fam === 'pass_rush_yards') return { ok: false, why: 'QB overs stand down (unders model pending)' };
   const vol = (result.signals && result.signals.volume) || {};
   const d = vol.detail || {}, arch = vol.archetype;
+  const pos = String(ctx.position || '').toUpperCase();
+  const script = (result.signals && result.signals.script) || {};
+  const supportive = script.side === 'favored' || (script.side !== 'underdog' && !script.flag);
+
   if (fam === 'receiving_yards') {
-    const stable = arch === 'volume_possession' || (d.tsMean != null && d.tsMean >= 0.18 && d.tsCv != null && d.tsCv <= 0.45);
-    return stable ? { ok: true, why: 'stable target share' } : { ok: false, why: 'target share not stable enough' };
+    // TEs don't feature — target-fragile, first read to vanish when the QB locks onto WRs
+    // or the script tightens (Loveland 0 targets behind a raw QB).
+    if (pos === 'TE') return { ok: false, why: 'TEs not featured (target-fragile)' };
+    // WR1 AND WR2 qualify (stable role); WR3 / slot / boom-bust do not.
+    const stableWR = arch === 'volume_possession' || (d.tsMean != null && d.tsMean >= 0.15 && d.tsCv != null && d.tsCv <= 0.50);
+    if (!stableWR) return { ok: false, why: 'target share not stable enough (WR3/boom-bust)' };
+    // a backup / unproven QB sinks the whole receiving corps — competent QB required
+    if (ctx.qbCompetent && ctx.qbCompetent.competent === false) return { ok: false, why: 'QB risk — ' + (ctx.qbCompetent.reason || 'backup/unproven QB') };
+    return { ok: true, why: 'stable WR role + competent QB' };
   }
-  if (fam === 'rushing_yards' || fam === 'rush_rec_yards') {
+  if (fam === 'rushing_yards') {
+    // pure rushing needs real carry volume (bellcow / steady)
     const steady = arch === 'bellcow' || (d.carryMean != null && d.carryMean >= 12 && d.carryCv != null && d.carryCv <= 0.40);
     if (!steady) return { ok: false, why: 'committee / unsteady carries' };
-    const script = (result.signals && result.signals.script) || {};
-    const supportive = script.side === 'favored' || (script.side !== 'underdog' && !script.flag);
     const favorable = ctx.oppDefWeakness && Number(ctx.oppDefWeakness.run) > 0.5;
     return (supportive || favorable) ? { ok: true, why: supportive ? 'steady carries + supportive script' : 'steady carries + favorable matchup' }
                                      : { ok: false, why: 'no supportive script or favorable matchup' };
+  }
+  if (fam === 'rush_rec_yards') {
+    // bellcow OR hybrid pass-catching back — the receiving floor stabilizes the combo even
+    // when the rushing script turns against him (unlike a pure committee rusher).
+    const hybrid = arch === 'pass_catching_back';
+    const steady = arch === 'bellcow' || hybrid || (d.carryMean != null && d.carryMean >= 12 && d.carryCv != null && d.carryCv <= 0.40);
+    if (!steady) return { ok: false, why: 'committee / unsteady role' };
+    const favorable = ctx.oppDefWeakness && (Number(ctx.oppDefWeakness.run) > 0.5 || Number(ctx.oppDefWeakness.coverage) > 0.5);
+    // a hybrid back's receiving floor holds even in a bad script, so it needn't clear the script gate
+    return (hybrid || supportive || favorable) ? { ok: true, why: hybrid ? 'pass-catching back (receiving floor holds)' : ('steady + ' + (supportive ? 'supportive script' : 'favorable matchup')) }
+                                               : { ok: false, why: 'no supportive script or favorable matchup' };
   }
   return { ok: false, why: 'family not featured' };
 }
