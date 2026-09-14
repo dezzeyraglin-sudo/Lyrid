@@ -189,6 +189,25 @@ export default async function handler(req, res) {
   }
   if (ready) E.qbCompetentByTeam = qbCompetentByTeam;
 
+  // Starting cornerbacks per team (from the depth chart), ranked by coverage impact — for the
+  // WR-vs-shadow estimate. WR1 -> opp's best outside corner; slot WR -> nickel; WR2 -> 2nd corner.
+  const cornersByTeam = {};
+  if (ready) {
+    const covImp = {}, covName = {};
+    for (const tm of Object.keys(E.defImpByTeam || {})) for (const dd of (E.defImpByTeam[tm] || [])) if (dd.impact_type === 'coverage') { covImp[_norm(dd.player_name)] = Number(dd.impact_score) || 0; covName[_norm(dd.player_name)] = dd.player_name; }
+    const acc = {};
+    for (const nm of Object.keys(E.roleByName || {})) {
+      const r = E.roleByName[nm];
+      if (!r || (r.posGroup !== 'CB' && r.posGroup !== 'SLOT') || (r.rank || 9) > 1) continue;  // starters only
+      (acc[r.team] ||= []).push({ name: nm, display: covName[nm] || nm, slot: r.posGroup === 'SLOT', impact: covImp[nm] || 0 });
+    }
+    for (const tm of Object.keys(acc)) cornersByTeam[tm] = {
+      outside: acc[tm].filter(c => !c.slot).sort((a, b) => b.impact - a.impact),
+      slot: acc[tm].find(c => c.slot) || null,
+    };
+    E.cornersByTeam = cornersByTeam;
+  }
+
   let totals = [];
   if (ready && analyzeTotal && E.scoringByTeam) {
     const seen = new Set(); const projectedTotalByTeam = {};
@@ -492,6 +511,18 @@ function buildCtx(E, l, base) {
     oppDefWeakness: (E.defWeaknessByTeam && team && E.oppByTeam[team] && E.defWeaknessByTeam[E.oppByTeam[team]]) || null,
     position: (E.posByName && E.posByName[base.player]) || l.position || null,
     qbCompetent: (E.qbCompetentByTeam && team && E.qbCompetentByTeam[team]) || null,
+    role: (E.roleByName && E.roleByName[_norm(l.player_name)]) || null,
+    oppCoverage: (function () {
+      if (!E.cornersByTeam || !team || !E.oppByTeam) return null;
+      const oc = E.cornersByTeam[E.oppByTeam[team]]; if (!oc) return null;
+      const rl = E.roleByName && E.roleByName[_norm(l.player_name)];
+      if (!rl || rl.posGroup !== 'WR') return null;
+      let c = null;
+      if ((rl.rank || 9) <= 1) c = oc.outside[0] || null;              // WR1 -> best outside corner
+      else if (rl.rank === 2) c = oc.outside[1] || oc.outside[0] || null; // WR2 -> 2nd corner
+      else c = oc.slot || oc.outside[1] || oc.outside[0] || null;      // slot -> nickel
+      return c ? { name: c.display, impact: c.impact, elite: c.impact >= 3.0 } : null;
+    })(),
     homeTeam: team ? E.homeByTeam[team] || null : null,
     weather: null, roofStatus: null,
     // comp
@@ -867,7 +898,7 @@ function _norm(s) {
 // CONFIRM the two endpoint shapes against a live response before trusting.
 async function fetchDepthChartRoles(teams, idByAbbr, seasonYear) {
   const roleByName = {};
-  const POSG = { qb: 'QB', rb: 'RB', wr: 'WR', te: 'TE', fb: 'RB' };
+  const POSG = { qb: 'QB', rb: 'RB', wr: 'WR', te: 'TE', fb: 'RB', lcb: 'CB', rcb: 'CB', nb: 'SLOT' };
   const yr = seasonYear || new Date().getFullYear();
   await Promise.all((teams || []).map(async (abbr) => {
     const id = idByAbbr && idByAbbr[abbr];
@@ -935,9 +966,15 @@ function computeFeatured(result, ctx) {
     if (!stableWR) return { ok: false, why: 'target share not stable enough (WR3/boom-bust)' };
     // a backup / unproven QB sinks the whole receiving corps — competent QB required
     if (ctx.qbCompetent && ctx.qbCompetent.competent === false) return { ok: false, why: 'QB risk — ' + (ctx.qbCompetent.reason || 'backup/unproven QB') };
+    // #2 estimated shadow: a WR drawing the opponent's elite matched corner (depth-chart aligned)
+    // is a coverage trap even with a good role + QB (the McLaurin/Quinyon Mitchell shape).
+    if (ctx.oppCoverage && ctx.oppCoverage.elite) return { ok: false, why: 'draws likely shadow — ' + ctx.oppCoverage.name + ' (elite coverage)' };
     return { ok: true, why: 'stable WR role + competent QB' };
   }
   if (fam === 'rushing_yards') {
+    // #3 CURRENT depth chart must still show him as the lead — catches a fresh committee/demotion
+    // the historical archetype missed (a bellcow now splitting or dropped to RB2 this week).
+    if (ctx.role && ctx.role.posGroup === 'RB' && (ctx.role.rank || 1) >= 2) return { ok: false, why: 'not the lead back on the current depth chart (committee/demotion)' };
     // pure rushing needs real carry volume (bellcow / steady)
     const steady = arch === 'bellcow' || (d.carryMean != null && d.carryMean >= 12 && d.carryCv != null && d.carryCv <= 0.40);
     if (!steady) return { ok: false, why: 'committee / unsteady carries' };
