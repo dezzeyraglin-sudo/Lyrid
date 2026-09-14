@@ -910,13 +910,22 @@ function computeFeatured(result, ctx) {
   if (v.stale) return { ok: false, why: 'stale role — not featured' };
   const dc = result.dataCompleteness;
   if (dc != null && dc < 0.6) return { ok: false, why: 'thin data — not featured' };
-  if (fam === 'passing_yards' || fam === 'pass_rush_yards') return { ok: false, why: 'QB overs stand down (unders model pending)' };
+  if (fam === 'pass_rush_yards') return { ok: false, why: 'pass+rush combo — unproven family, not featured' };
   const vol = (result.signals && result.signals.volume) || {};
   const d = vol.detail || {}, arch = vol.archetype;
   const pos = String(ctx.position || '').toUpperCase();
   const script = (result.signals && result.signals.script) || {};
   const supportive = script.side === 'favored' || (script.side !== 'underdog' && !script.flag);
 
+  if (fam === 'passing_yards') {
+    // Single-stat passing OVER — validated ~62% (Wk1-2), the tool's #2 edge. The QB stand-down
+    // was over-generalized from one game; the competent-QB gate below is what actually protects
+    // against the SF@LAR-type busts (raw/backup QBs), so we feature passing overs behind a
+    // competent, high-volume starter and let the gate exclude the Cam Ward / Cooper Rush cases.
+    if (ctx.qbCompetent && ctx.qbCompetent.competent === false) return { ok: false, why: 'QB risk — ' + (ctx.qbCompetent.reason || 'backup/unproven QB') };
+    const secure = arch === 'high_volume_passer' || arch === 'mid_volume_passer' || (v.filters && v.filters.volumeSecure);
+    return secure ? { ok: true, why: 'passing over — competent, high-volume QB' } : { ok: false, why: 'QB volume not secure' };
+  }
   if (fam === 'receiving_yards') {
     // TEs don't feature — target-fragile, first read to vanish when the QB locks onto WRs
     // or the script tightens (Loveland 0 targets behind a raw QB).
