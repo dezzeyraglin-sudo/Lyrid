@@ -937,15 +937,9 @@ function computeFeatured(result, ctx) {
                                      : { ok: false, why: 'no supportive script or favorable matchup' };
   }
   if (fam === 'rush_rec_yards') {
-    // bellcow OR hybrid pass-catching back — the receiving floor stabilizes the combo even
-    // when the rushing script turns against him (unlike a pure committee rusher).
-    const hybrid = arch === 'pass_catching_back';
-    const steady = arch === 'bellcow' || hybrid || (d.carryMean != null && d.carryMean >= 12 && d.carryCv != null && d.carryCv <= 0.40);
-    if (!steady) return { ok: false, why: 'committee / unsteady role' };
-    const favorable = ctx.oppDefWeakness && (Number(ctx.oppDefWeakness.run) > 0.5 || Number(ctx.oppDefWeakness.coverage) > 0.5);
-    // a hybrid back's receiving floor holds even in a bad script, so it needn't clear the script gate
-    return (hybrid || supportive || favorable) ? { ok: true, why: hybrid ? 'pass-catching back (receiving floor holds)' : ('steady + ' + (supportive ? 'supportive script' : 'favorable matchup')) }
-                                               : { ok: false, why: 'no supportive script or favorable matchup' };
+    // Combo family — Wk1-2 graded ~40% (worst family). Not featured until it proves out; still
+    // analyzed and shown in the game cards (labeled COMBO · UNPROVEN), just not promoted.
+    return { ok: false, why: 'combo (rush+rec) — unproven family, not featured' };
   }
   return { ok: false, why: 'family not featured' };
 }
