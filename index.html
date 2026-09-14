@@ -24202,12 +24202,12 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   // IP reads it fine (CORS-open) — same pattern as MLB's client-side statsapi calls. We
   // fetch the league injury report here, key it by normalized name, and the card renderers
   // read it. Fail-soft: any error just means cards render without injury info.
-  var nflInjuriesByName = {}, nflInjLoaded = false;
+  var nflInjuriesByName = {}, nflInjLoaded = false, nflInjLoadedAt = 0;
   function nfNorm(s){ return String(s||'').toLowerCase().replace(/[.'`]/g,'').replace(/\b(jr|sr|ii|iii|iv|v)\b/g,'').replace(/[^a-z ]/g,'').replace(/\s+/g,' ').trim(); }
   var NFL_OUT = { out:1, inactive:1, 'injured reserve':1, ir:1, suspended:1, suspension:1, 'did not play':1 };
   var NFL_DOUBT = { doubtful:1, questionable:1 };
   async function fetchNflInjuries(){
-    if (nflInjLoaded) return nflInjuriesByName;
+    if (nflInjLoaded && (Date.now() - nflInjLoadedAt) < 180000) return nflInjuriesByName;  // 3-min cache — reload near kickoff pulls fresh QB rulings
     try {
       var r = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries', { cache:'no-store' });
       if (!r.ok) throw new Error('ESPN ' + r.status);
@@ -24223,11 +24223,27 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
           map[nfNorm(nm)] = { status:status, statusRaw:e.status||null, detail:detail, blurb:blurb };
         }
       }
-      nflInjuriesByName = map; nflInjLoaded = true;
+      nflInjuriesByName = map; nflInjLoaded = true; nflInjLoadedAt = Date.now();
     } catch (_) { nflInjLoaded = true; }
     return nflInjuriesByName;
   }
   function nflInjuryFor(item){ if (!item || !item.player) return null; return nflInjuriesByName[nfNorm(item.player)] || item.injury || null; }
+  // LIVE QB gate — team's projected QB checked against the FRESH client injury feed (always
+  // current, catches a QB ruled out AFTER the server slate/ingest). Returns the out/doubtful
+  // starter so a pass-catcher behind him can be pulled from featured. This is the Loveland
+  // (Cam Ward) / Pitts (Cooper Rush) fix made automatic and always-fresh.
+  var nflQbByTeam = {};
+  function nflQbOut(team) {
+    var qb = nflQbByTeam[team]; if (!qb) return null;
+    var inj = nflInjuriesByName[nfNorm(qb)];
+    if (inj && (inj.status === 'out' || inj.status === 'doubtful')) return { qb: qb, status: inj.status };
+    return null;
+  }
+  // a prop whose output rides on the passing game (QB-dependent). Pure Rushing / Rush+Rec are not.
+  function nflIsPassDependent(item) {
+    var l = (item && item.propLabel) || '';
+    return l.indexOf('Passing') >= 0 || l.indexOf('Receiving') >= 0 || l.indexOf('Pass + Rush') >= 0;
+  }
   // displayed-tier cap: Questionable/Doubtful -> GOLD, Out -> no play. A soft line on an
   // injured player usually prices reduced volume, so it can't carry a top tier.
   function nflInjCapTier(tier, inj){
@@ -24281,9 +24297,11 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   var NFL_MODEL_FLOOR = 0.58; // PROVISIONAL — replace with a backtested hit-rate floor before any badge
   function isBettable(item){
     // FEATURED gate (server-computed): receivers need a stable target share; RBs need
-    // steady carries + supportive script/matchup; QB overs stand down; stale reads and
-    // combo-capped picks are excluded. Only featured picks earn a Tonight's-Card spot.
+    // steady carries + supportive script/matchup; combos excluded. Only featured picks feature.
     if (item.featured && item.featured.ok === false) return false;
+    // LIVE QB gate — fresh feed overrides the server: a pass-dependent pick whose team QB is
+    // OUT/doubtful right now is pulled, even if the server featured it before the ruling.
+    if (nflIsPassDependent(item) && nflQbOut(item.team)) return false;
     var v = item.verdict||{}, pAdj = pAdjOf(v), tier = v.tier_candidate||'none';
     if (nflBoom(item) && num(v.edge)!=null && v.edge>=0.06 && v.filters && v.filters.scriptClear && !(item.featured && item.featured.ok===false)) return true;
     if (tier==='none') return false;
@@ -24300,6 +24318,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   // RENDER — Tonight's Card (hero)
   // ============================================================
   function renderJudgment(picks){
+    nflQbByTeam = {}; (picks||[]).forEach(function(p){ if(p&&p.position==='QB'&&p.team&&!nflQbByTeam[p.team])nflQbByTeam[p.team]=p.player; });
     var host = document.getElementById('nflJudgmentCard'); if (!host) return;
     var clean=[], flagged=[];
     (picks||[]).forEach(function(p){
