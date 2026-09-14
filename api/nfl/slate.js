@@ -311,15 +311,9 @@ export default async function handler(req, res) {
           const pUnder = result.verdict.pOverAdjusted != null ? +(1 - result.verdict.pOverAdjusted).toFixed(4) : null;
           const strong = underSoft >= floor * 2;
           result.verdict.underCandidate = { softnessUnder: underSoft, pUnder, strength: strong ? 'strong' : 'moderate' };
-          // UNDER PLAY (TESTING): a real under needs a CONTAINED ceiling — the player's p75
-          // upside can't blow through the line (that's what separates an under from a boom-bust
-          // trap). Surface the call only when it's a strong under AND the ceiling is contained
-          // AND pUnder clears the GOLD-equivalent bar. Flagged 'testing' — never a real tier.
-          const p75 = c.p75 != null ? Number(c.p75) : null;
-          const ceilingContained = p75 != null && p75 <= Number(ln) + floor;
-          if (strong && ceilingContained && pUnder != null && pUnder >= 0.57) {
-            result.verdict.underPlay = { call: true, testing: true, pUnder, softnessUnder: underSoft, ceiling: p75 };
-          }
+          // UNDER recommendation PULLED — Week 1 graded at 42% on under leans (anti-predictive).
+          // We keep the underCandidate flag + UNDER WATCH record to LEARN which picks actually go
+          // under, but we no longer surface 'take the under' until that record earns it.
         }
       }
     }
@@ -496,7 +490,7 @@ function buildCtx(E, l, base) {
     gameTotal: od ? od.total : null,
     projectedTotal: (E.projectedTotalByTeam && E.projectedTotalByTeam[team]) || null,
     oppDefWeakness: (E.defWeaknessByTeam && team && E.oppByTeam[team] && E.defWeaknessByTeam[E.oppByTeam[team]]) || null,
-    position: (ready && E.posByName && E.posByName[base.player]) || l.position || null,
+    position: (E.posByName && E.posByName[base.player]) || l.position || null,
     qbCompetent: (E.qbCompetentByTeam && team && E.qbCompetentByTeam[team]) || null,
     homeTeam: team ? E.homeByTeam[team] || null : null,
     weather: null, roofStatus: null,
