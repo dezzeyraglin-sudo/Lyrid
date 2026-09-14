@@ -3473,6 +3473,7 @@
 .nflx-chip.gold{background:var(--tier-solid-fill);color:var(--tier-solid-text)}
 .nflx-chip.ceiling{background:var(--surface-muted);color:var(--text-secondary)}
 .nflx-chip.under-test{background:var(--data-warning-surface);color:var(--data-warning);border:1px solid var(--data-warning)}
+.nflx-chip.edge{background:var(--data-positive-surface,#e6f4ea);color:var(--data-positive);border:1px solid var(--data-positive)}
 .nflx-chip.prov{background:transparent;color:var(--text-muted);border:1px solid var(--border-hairline)}
 .nflx-why{font-size:var(--size-body-sm);color:var(--text-secondary);line-height:var(--line-body);margin-top:var(--space-3)}
 .nflx-blocked{font-size:var(--size-caption);color:var(--data-warning);background:var(--data-warning-surface);border-radius:var(--radius-sm);padding:var(--space-2) var(--space-3);margin-top:var(--space-3)}
@@ -24146,6 +24147,17 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   var nflState = { loaded: false, date: null };
   var RANK = { GUARANTEED: 3, PLATINUM: 2, GOLD: 1, none: 0 };
   var TIER_CLASS = { GUARANTEED: 'guaranteed', PLATINUM: 'platinum', GOLD: 'gold', none: 'none' };
+  // Honest display label — the GUARANTEED/PLATINUM/GOLD hierarchy isn't earned yet (Wk1-2 the
+  // top tiers under-performed the base over-lean). What the tool actually gets right is
+  // SINGLE-STAT OVERS (~60%). So a qualifying single-stat pick shows 'MODEL EDGE'; combos (which
+  // lose ~40%) show 'COMBO · UNPROVEN'. Internal tier_candidate is preserved for the TIER PROOF
+  // record so calibration data keeps accruing while we gather more sample.
+  function nflDisplayLabel(item) {
+    var v = item.verdict || {}, tier = v.tier_candidate || 'none';
+    if (tier === 'none') return null;
+    if (/\+/.test(item.propLabel || '')) return { text: 'COMBO \u00b7 UNPROVEN', cls: 'prov' };
+    return { text: 'MODEL EDGE', cls: 'edge' };
+  }
 
   // ---- date helpers ----
   function todayStr() {
@@ -24313,7 +24325,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var rows = card.map(function(p, i){
       var v=p.verdict||{}, c=p.comp||{}, pAdj=pAdjOf(v)||0, tier=nflInjCapTier(v.tier_candidate||'none', nflInjuryFor(p));
       var dir = v.pick==='lower'?'down':'up';
-      var chips = '<span class="nflx-chip ' + (TIER_CLASS[tier]||'gold') + '">' + esc(tier) + '</span><span class="nflx-chip prov">provisional</span>' + (nflBoom(p)?'<span class="nflx-chip ceiling">\u25C7 ceiling</span>':'') + nflInjuryChip(p);
+      var _lblP = nflDisplayLabel(p); var chips = (_lblP ? '<span class="nflx-chip ' + _lblP.cls + '">' + _lblP.text + '</span><span class="nflx-chip prov">provisional \u00b7 small sample</span>' : '') + (nflBoom(p)?'<span class="nflx-chip ceiling">\u25C7 ceiling</span>':'') + nflInjuryChip(p);
       var why = (p.card && p.card.summary) ? '<div class="nflx-why">' + esc(p.card.summary) + '</div>' : '';
       return '<div class="nflx-pick"><div class="nflx-pick-rank">' + (i+1) + '</div><div class="nflx-pick-body">' +
         '<div class="nflx-pick-name">' + esc(p.player) + '</div>' +
@@ -24358,10 +24370,9 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var _inj=nflInjuryFor(item); var _rawTier=v.tier_candidate||'none'; var tier=nflInjCapTier(_rawTier,_inj); var noPlay=tier==='none'; var _injCapped=(_rawTier!=='none' && tier!==_rawTier);
     var pAdj = pAdjOf(v)||0, dir = v.pick==='lower'?'down':'up';
     var isUnder = !!(v.underPlay && v.underPlay.call);
-    var chips = isUnder
-      ? '<span class="nflx-chip under-test">\u2193 UNDER \u00b7 TESTING</span><span class="nflx-chip prov">unvalidated</span>'
-      : (noPlay ? '<span class="nflx-chip prov">No play</span>'
-        : '<span class="nflx-chip ' + (TIER_CLASS[tier]||'gold') + '">' + esc(tier) + '</span><span class="nflx-chip prov">provisional</span>');
+    var _lbl = nflDisplayLabel(item);
+    var chips = noPlay ? '<span class="nflx-chip prov">No play</span>'
+      : (_lbl ? '<span class="nflx-chip ' + _lbl.cls + '">' + _lbl.text + '</span><span class="nflx-chip prov">provisional \u00b7 small sample</span>' : '<span class="nflx-chip prov">tracked</span>');
     if (nflBoom(item) && !isUnder) chips += '<span class="nflx-chip ceiling">\u25C7 ceiling</span>';
     var filt = function(l,ok){ return '<span class="nflx-filt ' + (ok?'pass':'fail') + '"><span class="dot">' + (ok?'\u2713':'\u2715') + '</span>' + l + '</span>'; };
     var filters = '<div class="nflx-filters">' + filt('Soft line', f.softLine) + filt('Volume-secure', f.volumeSecure) + filt('Script-clear', f.scriptClear) + '</div>';
