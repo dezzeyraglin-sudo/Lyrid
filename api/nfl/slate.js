@@ -183,9 +183,14 @@ export default async function handler(req, res) {
     const inj = (E.injuryByName || {})[_norm(qb)];
     const isOut = !!(inj && inj.status === 'out');
     const hasHistory = !!(key && E.featByKeyFam[key] && E.featByKeyFam[key]['passing_yards']);
+    const form = (E.qbFormByName || {})[_norm(qb)];
+    // QB_FORM_MIN — recent-form skill floor. Below it, the QB is playing at backup/washed level
+    // (Brissett ~0.27, late Rodgers ~0.43) regardless of tenure/volume -> gate the whole corps.
+    const QB_FORM_MIN = 0.45;
     qbCompetentByTeam[team] = isOut ? { competent: false, reason: 'starter out (backup at QB)', qb }
       : !hasHistory ? { competent: false, reason: 'unproven QB (rookie / no passing baseline)', qb }
-      : { competent: true, qb };
+      : (form && form.form != null && form.form < QB_FORM_MIN) ? { competent: false, reason: 'poor recent QB form (' + form.form.toFixed(2) + ')', qb, form: form.form }
+      : { competent: true, qb, form: form ? form.form : null };
   }
   if (ready) E.qbCompetentByTeam = qbCompetentByTeam;
 
@@ -798,6 +803,10 @@ async function loadEngineData(lines, date, fetchAvailability) {
   const covQualRows = await qSafe(`nfl_coverage_quality?order=season.desc&select=player_key,player_name,shadow_score,shadow_tier,rating_allowed`);
   const coverageByName = {};
   for (const r of covQualRows) if (!coverageByName[r.player_key]) coverageByName[r.player_key] = { name: r.player_name, score: Number(r.shadow_score) || 0, tier: r.shadow_tier, rating: r.rating_allowed };
+  // QB recent-form skill score (rolling last-8 dakota/EPA) — 'is he playing well NOW', not tenure
+  const qbFormRows = await qSafe(`nfl_qb_form?select=player_key,player_name,qb_form,tier`);
+  const qbFormByName = {};
+  for (const r of qbFormRows) qbFormByName[r.player_key] = { form: Number(r.qb_form), tier: r.tier };
   const defImpByTeam = {}; const _defSeen = new Set();
   for (const r of defImpRows) { if (_defSeen.has(r.player_id)) continue; _defSeen.add(r.player_id); if (!r.team) continue; (defImpByTeam[r.team] ||= []).push(r); }
   const schemeByTeam = firstBy(schemeRows, r => r.team_abbr);
@@ -888,7 +897,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };
