@@ -193,16 +193,16 @@ export default async function handler(req, res) {
   // WR-vs-shadow estimate. WR1 -> opp's best outside corner; slot WR -> nickel; WR2 -> 2nd corner.
   const cornersByTeam = {};
   if (ready) {
-    const covImp = {}, covName = {};
-    for (const tm of Object.keys(E.defImpByTeam || {})) for (const dd of (E.defImpByTeam[tm] || [])) if (dd.impact_type === 'coverage') { covImp[_norm(dd.player_name)] = Number(dd.impact_score) || 0; covName[_norm(dd.player_name)] = dd.player_name; }
+    const cov = E.coverageByName || {};
     const acc = {};
     for (const nm of Object.keys(E.roleByName || {})) {
       const r = E.roleByName[nm];
       if (!r || (r.posGroup !== 'CB' && r.posGroup !== 'SLOT') || (r.rank || 9) > 1) continue;  // starters only
-      (acc[r.team] ||= []).push({ name: nm, display: covName[nm] || nm, slot: r.posGroup === 'SLOT', impact: covImp[nm] || 0 });
+      const cq = cov[nm] || null;
+      (acc[r.team] ||= []).push({ name: nm, display: (cq && cq.name) || nm, slot: r.posGroup === 'SLOT', score: cq ? cq.score : null, rating: cq ? cq.rating : null });
     }
     for (const tm of Object.keys(acc)) cornersByTeam[tm] = {
-      outside: acc[tm].filter(c => !c.slot).sort((a, b) => b.impact - a.impact),
+      outside: acc[tm].filter(c => !c.slot).sort((a, b) => (b.score || 0) - (a.score || 0)),  // best coverage first
       slot: acc[tm].find(c => c.slot) || null,
     };
     E.cornersByTeam = cornersByTeam;
@@ -523,7 +523,7 @@ function buildCtx(E, l, base) {
       if ((rl.rank || 9) <= 1) c = oc.outside[0] || null;              // WR1 -> best outside corner
       else if (rl.rank === 2) c = oc.outside[1] || oc.outside[0] || null; // WR2 -> 2nd corner
       else c = oc.slot || oc.outside[1] || oc.outside[0] || null;      // slot -> nickel
-      return c ? { name: c.display, impact: c.impact, elite: c.impact >= 3.0 } : null;
+      return c ? { name: c.display, shadow_score: c.score, rating_allowed: c.rating, elite: (c.score != null && c.score >= 0.78) } : null;
     })(),
     homeTeam: team ? E.homeByTeam[team] || null : null,
     weather: null, roofStatus: null,
@@ -792,6 +792,12 @@ async function loadEngineData(lines, date, fetchAvailability) {
   const injRows = await qSafe(`nfl_injuries?select=player_key,player_name,team_abbr,position,status,status_raw,detail`);
   const injuryByName = {}; for (const r of injRows) injuryByName[r.player_key] = r;
   const defImpRows = allTeams.length ? await qSafe(`nfl_defender_impact?team=in.(${inList(allTeams)})&order=season.desc,impact_score.desc&select=player_id,player_name,team,pos_group,season,snap_share,impact_score,impact_type`) : [];
+  // REAL coverage quality (PFR advanced def: passer-rating/yds-per-target allowed when thrown at).
+  // Replaces the inverted event-based coverage score for the shadow gate. Keep the latest season
+  // per player (shadow_score 0..1; ~0.80+ = lockdown).
+  const covQualRows = await qSafe(`nfl_coverage_quality?order=season.desc&select=player_key,player_name,shadow_score,shadow_tier,rating_allowed`);
+  const coverageByName = {};
+  for (const r of covQualRows) if (!coverageByName[r.player_key]) coverageByName[r.player_key] = { name: r.player_name, score: Number(r.shadow_score) || 0, tier: r.shadow_tier, rating: r.rating_allowed };
   const defImpByTeam = {}; const _defSeen = new Set();
   for (const r of defImpRows) { if (_defSeen.has(r.player_id)) continue; _defSeen.add(r.player_id); if (!r.team) continue; (defImpByTeam[r.team] ||= []).push(r); }
   const schemeByTeam = firstBy(schemeRows, r => r.team_abbr);
@@ -882,7 +888,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };
