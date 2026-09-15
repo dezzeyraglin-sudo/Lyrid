@@ -71,6 +71,9 @@ def upsert(res):
         .str.replace(r'\b(jr|sr|ii|iii|iv|v)\b', '', regex=True).str.replace(r'[^a-z ]', '', regex=True)\
         .str.replace(r'\s+', ' ', regex=True).str.strip()
     r['targets'] = pd.to_numeric(r['targets'], errors='coerce').fillna(0).round().astype(int)
+    # one row per (player_key, season) — a mid-season trade lists a player twice in PFR; keep the
+    # larger-target sample so ON CONFLICT doesn't hit the same key twice in a batch.
+    r = r.sort_values('targets', ascending=False).drop_duplicates(subset=['player_key', 'season'], keep='first')
     rows = r.where(pd.notna(r), None).to_dict('records')
     for i in range(0, len(rows), 500):
         rr = requests.post(f"{SB}/rest/v1/nfl_coverage_quality?on_conflict=player_key,season",
