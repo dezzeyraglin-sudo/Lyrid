@@ -983,9 +983,9 @@ function computeFeatured(result, ctx) {
     if (!stableWR) return { ok: false, why: 'target share not stable enough (WR3/boom-bust)' };
     // a backup / unproven QB sinks the whole receiving corps — competent QB required
     if (ctx.qbCompetent && ctx.qbCompetent.competent === false) return { ok: false, why: 'QB risk — ' + (ctx.qbCompetent.reason || 'backup/unproven QB') };
-    // #2 estimated shadow: a WR drawing the opponent's elite matched corner (depth-chart aligned)
-    // is a coverage trap even with a good role + QB (the McLaurin/Quinyon Mitchell shape).
-    if (ctx.oppCoverage && ctx.oppCoverage.elite) return { ok: false, why: 'draws likely shadow — ' + ctx.oppCoverage.name + ' (elite coverage)' };
+    // #2 coverage is now a PROJECTION nudge (nflAnalyze scales the median by the matched corner's
+    // real coverage quality), not a binary drop — so a WR vs an elite corner whose ADJUSTED number
+    // still clears the line can feature. The near-median/soft-line gate keys off the adjusted proj.
     return { ok: true, why: 'stable WR role + competent QB' };
   }
   if (fam === 'rushing_yards') {
