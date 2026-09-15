@@ -70,6 +70,7 @@ def upsert(res):
     r['player_key'] = r['player_name'].str.lower().str.replace(r"[.'`]", '', regex=True)\
         .str.replace(r'\b(jr|sr|ii|iii|iv|v)\b', '', regex=True).str.replace(r'[^a-z ]', '', regex=True)\
         .str.replace(r'\s+', ' ', regex=True).str.strip()
+    r['targets'] = pd.to_numeric(r['targets'], errors='coerce').fillna(0).round().astype(int)
     rows = r.where(pd.notna(r), None).to_dict('records')
     for i in range(0, len(rows), 500):
         rr = requests.post(f"{SB}/rest/v1/nfl_coverage_quality?on_conflict=player_key,season",
