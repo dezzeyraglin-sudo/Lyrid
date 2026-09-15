@@ -344,6 +344,8 @@ export default async function handler(req, res) {
       propType: l.prop_type,
       verdict: result.verdict,
       featured,
+      oppCoverage: ctx.oppCoverage || null,   // exposed for shadow-gate diagnosis
+      role: ctx.role || null,                 // current depth-chart role (posGroup/rank)
       stale: (result.verdict && result.verdict.stale) || null,
       injury,
       outlook: result.outlook || null,
