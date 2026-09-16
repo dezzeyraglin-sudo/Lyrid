@@ -24521,6 +24521,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     renderGames(data.picks, data.totals);
     var _tc=document.getElementById('nflTotalsContainer'); if(_tc)_tc.innerHTML='';
     try { if (typeof window.logNflBets === 'function') window.logNflBets(data.picks, nflState.date); } catch (_) {}
+    try { if (typeof window.logNflTotals === 'function') window.logNflTotals(data.totals, nflState.date); } catch (_) {}
 
     // feed qualifying picks into the shared parlay builder (same seam as MLB/WNBA)
     try {
@@ -24571,6 +24572,92 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   function nfNorm(s){ return String(s||'').toLowerCase().replace(/[.'`]/g,'').replace(/\b(jr|sr|ii|iii|iv|v)\b/g,'').replace(/[^a-z ]/g,'').replace(/\s+/g,' ').trim(); }
 
   // Capture the model's actionable plays (tier != none) for a loaded slate.
+  // ---- TOTALS LOGGING (prerequisite for the game-environment gate) ----
+  // The total analyst's projection was never persisted, so we couldn't check whether it tells a
+  // slog from a shootout. Capture projected total + market line per game, first-seen locked, so
+  // it can be graded vs actual finals over the coming weeks. Only if projected-vs-actual proves
+  // the projection is DISCRIMINATIVE does the over/under-environment gate earn the right to exist.
+  window.logNflTotals = function (totals, date) {
+    if (!Array.isArray(totals) || !totals.length) return;
+    date = date || (window.getTodayStr ? getTodayStr() : new Date().toISOString().slice(0,10));
+    state.nflTotalsHistory = state.nflTotalsHistory || {};
+    var day = state.nflTotalsHistory[date] = state.nflTotalsHistory[date] || {};
+    var added = 0;
+    totals.forEach(function (t) {
+      if (!t || !t.homeTeam || !t.awayTeam || t.projected == null) return;
+      var key = [t.homeTeam, t.awayTeam].sort().join('@');
+      if (day[key]) return;   // first-seen lock
+      day[key] = {
+        date: date, home: t.homeTeam, away: t.awayTeam,
+        projected: Number(t.projected), line: (t.line != null ? Number(t.line) : null),
+        lean: (t.line != null ? (Number(t.projected) >= Number(t.line) ? 'OVER' : 'UNDER') : null),
+        capturedAt: new Date().toISOString(),
+        actual: null, error: null, result: null, graded: false
+      };
+      added++;
+    });
+    if (added) saveState();
+  };
+
+  window.gradeNflTotals = async function () {
+    state.nflTotalsHistory = state.nflTotalsHistory || {};
+    var graded = 0;
+    for (var date of Object.keys(state.nflTotalsHistory)) {
+      var day = state.nflTotalsHistory[date];
+      if (!Object.values(day).some(function (t) { return !t.graded; })) continue;
+      var espnDate = String(date).replace(/-/g, '');
+      var sb;
+      try { sb = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=' + espnDate).then(function (r) { return r.json(); }); }
+      catch (e) { continue; }
+      var finals = {};
+      (sb.events || []).forEach(function (ev) {
+        if (!(((ev.status || {}).type) || {}).completed) return;
+        var comp = (ev.competitions || [{}])[0], tms = comp.competitors || [];
+        try {
+          var tot = tms.reduce(function (s, c) { return s + (parseInt(c.score, 10) || 0); }, 0);
+          var abbrs = tms.map(function (c) { return c.team.abbreviation; }).sort();
+          finals[abbrs.join('@')] = tot;
+        } catch (e) {}
+      });
+      Object.keys(day).forEach(function (k) {
+        var t = day[k]; if (t.graded) return;
+        var actual = finals[k]; if (actual == null) return;
+        t.actual = actual; t.error = +(t.projected - actual).toFixed(1);
+        if (t.line != null) t.result = ((t.projected >= t.line) === (actual > t.line)) ? 'win' : (actual === t.line ? 'push' : 'loss');
+        t.graded = true; graded++;
+      });
+    }
+    if (graded) { saveState(); }
+    return graded;
+  };
+
+  // Totals accuracy report — run in console after a few graded weeks. Answers the real question:
+  // does the projected total DISCRIMINATE slogs from shootouts (not just get close on average)?
+  window.nflTotalsReport = function () {
+    var all = [];
+    Object.values(state.nflTotalsHistory || {}).forEach(function (day) {
+      Object.values(day).forEach(function (t) { if (t.graded && t.actual != null) all.push(t); });
+    });
+    if (all.length < 4) { console.log('nflTotalsReport: only ' + all.length + ' graded totals — need more weeks.'); return; }
+    var n = all.length;
+    var mae = all.reduce(function (s, t) { return s + Math.abs(t.error); }, 0) / n;
+    var bias = all.reduce(function (s, t) { return s + t.error; }, 0) / n;
+    var ats = all.filter(function (t) { return t.result === 'win' || t.result === 'loss'; });
+    var atsw = ats.filter(function (t) { return t.result === 'win'; }).length;
+    // discrimination: Pearson r between projected and actual totals (1 = perfectly separates highs/lows)
+    var pr = all.map(function (t) { return t.projected; }), ac = all.map(function (t) { return t.actual; });
+    var mp = pr.reduce(function (a, b) { return a + b; }, 0) / n, ma = ac.reduce(function (a, b) { return a + b; }, 0) / n;
+    var cov = 0, vp = 0, va = 0;
+    for (var i = 0; i < n; i++) { cov += (pr[i]-mp)*(ac[i]-ma); vp += (pr[i]-mp)**2; va += (ac[i]-ma)**2; }
+    var r = (vp && va) ? cov / Math.sqrt(vp*va) : 0;
+    console.log('=== NFL total projection accuracy (n=' + n + ') ===');
+    console.log('  MAE ' + mae.toFixed(1) + ' pts | bias ' + bias.toFixed(1));
+    console.log('  vs-line direction: ' + atsw + '-' + (ats.length-atsw) + ' (' + (ats.length?(100*atsw/ats.length).toFixed(0):'-') + '%)');
+    console.log('  DISCRIMINATION r(projected,actual) = ' + r.toFixed(2) + '  (>0.4 = projection separates slogs from shootouts; ~0 = it does not)');
+    console.log('  --> build the game-environment gate ONLY if r stays >~0.4 and MAE is reasonable (<~8).');
+    return { n: n, mae: +mae.toFixed(1), bias: +bias.toFixed(1), r: +r.toFixed(2), ats: atsw + '-' + (ats.length-atsw) };
+  };
+
   window.logNflBets = function (picks, date) {
     if (!Array.isArray(picks) || !picks.length) return;
     date = date || (window.getTodayStr ? getTodayStr() : new Date().toISOString().slice(0,10));
