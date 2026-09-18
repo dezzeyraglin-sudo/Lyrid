@@ -20356,7 +20356,34 @@ async function autoGradeOnAppOpen() {
   // unified model (wnbaClassify) rather than trusting any backend-stamped empTier,
   // so the highest-confidence plays populate the moment this file is deployed —
   // independent of the slate.js version.
+  // Live per-tier hit rate since the engine update (Sept 17, 2026). Re-classifies graded
+  // picks with the SAME wnbaClassify so a tier's badge reflects what it ACTUALLY hits, not
+  // the frozen June backtest. Returns { TIER: {n, h} }.
+  function wnbaLiveTierRates() {
+    const t = {};
+    try {
+      const hist = (typeof state !== 'undefined' && state.wnbaPropHistory) || {};
+      for (const dt of Object.keys(hist)) {
+        if (dt < '2026-09-17') continue;
+        for (const p of Object.values(hist[dt] || {})) {
+          const res = String(p.result || '').toUpperCase();
+          if (res !== 'WIN' && res !== 'LOSS') continue;
+          const proj = Number(p.projection), line = Number(p.line);
+          if (!isFinite(proj) || !isFinite(line)) continue;
+          const c = wnbaClassify({
+            market: String(p.market || '').toLowerCase(), lean: 'UNDER', line, projection: proj,
+            role: (p.role ?? (p.scores && p.scores.roleStability) ?? 50), player: p.player, opponent: p.opponent,
+          });
+          if (!c || !c.tier) continue;
+          (t[c.tier] = t[c.tier] || { n: 0, h: 0 }).n++; if (res === 'WIN') t[c.tier].h++;
+        }
+      }
+    } catch (e) {}
+    return t;
+  }
+
   function wnbaCleanestEdges(data) {
+    const _liveTiers = wnbaLiveTierRates();
     const pool = [
       ...(Array.isArray(data.analyses) ? data.analyses : []),
       ...(Array.isArray(data.passes) ? data.passes : []),
@@ -20413,6 +20440,16 @@ async function autoGradeOnAppOpen() {
         role: p.scores?.roleStability ?? 50, player: p.player, opponent: p.opponent,
       });
       if (to.tier !== 'GUARANTEED' && to.tier !== 'PLATINUM' && to.tier !== 'GOLD' && to.tier !== 'LEAN') continue;
+      // LIVE OVERRIDE: swap the tier's frozen backtest WR + "16-0/96%" reason for what
+      // this tier ACTUALLY hits since the engine update, once enough graded picks exist.
+      const _lt = _liveTiers[to.tier];
+      if (_lt && _lt.n >= 8) {
+        const _lr = _lt.h / _lt.n;
+        to.wr = _lr;
+        to.reason = String(to.reason || '')
+          .replace(/Inflated combo lines are 16-0 in graded history\./, `Live: ${Math.round(_lr * 100)}% on ${_lt.n} graded ${to.tier} picks since the update.`)
+          .replace(/\b\d+% historically\./, `${Math.round(_lr * 100)}% live (${_lt.n} graded).`);
+      }
       const wr = to.wr != null ? Math.round(to.wr <= 1 ? to.wr * 100 : to.wr) : null;
       const isPRA = to.isPRA || wnbaDetectPRA(m, line);
       const r = {
