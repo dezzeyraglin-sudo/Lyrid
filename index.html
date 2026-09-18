@@ -20533,8 +20533,31 @@ async function autoGradeOnAppOpen() {
       ? `<div class="ce-empty-text" style="margin:14px 2px 4px">No card tonight — every candidate was killed by the veto chain (below). A pass is a position.</div>`
       : '';
 
+    // Live validation: what the board's best bets ACTUALLY hit since the engine update
+    // (Sept 17, 2026), pulled from graded history — replaces the stale June "264" baseline.
+    const _live = (() => {
+      try {
+        const hist = (typeof state !== 'undefined' && state.wnbaPropHistory) || {};
+        let aN = 0, aH = 0, bN = 0, bH = 0;
+        for (const dt of Object.keys(hist)) {
+          if (dt < '2026-09-17') continue;
+          for (const p of Object.values(hist[dt] || {})) {
+            const r = String(p.result || '').toUpperCase();
+            if (r !== 'WIN' && r !== 'LOSS') continue;
+            const w = r === 'WIN'; aN++; if (w) aH++;
+            if (p.isBestBet) { bN++; if (w) bH++; }
+          }
+        }
+        return { aN, aH, bN, bH };
+      } catch (e) { return { aN: 0, bN: 0 }; }
+    })();
+    const _ceSub = (_live.bN >= 15)
+      ? `Ranked by hit rate — ${Math.round(_live.bH / _live.bN * 100)}% on ${_live.bN} graded best bets since the engine update. Tap any pick for the reasoning.`
+      : (_live.aN >= 30)
+        ? `Ranked by hit rate — ${Math.round(_live.aH / _live.aN * 100)}% on ${_live.aN} graded picks since the engine update. Tap any pick for the reasoning.`
+        : `Ranked by validated hit rate. Tap any pick for the reasoning.`;
     return `<div class="cleanest-edges">
-      <div class="ce-head"><div><div class="ce-eyebrow">Tonight · Live WNBA</div><div class="ce-title">Tonight's Cleanest Edges</div><div class="ce-sub">Ranked by validated hit rate (264 graded picks). Tap any pick for the reasoning.</div></div><span class="ce-count">${ranked.length}</span></div>
+      <div class="ce-head"><div><div class="ce-eyebrow">Tonight · Live WNBA</div><div class="ce-title">Tonight's Cleanest Edges</div><div class="ce-sub">${_ceSub}</div></div><span class="ce-count">${ranked.length}</span></div>
       <div class="ce-cards">${ranked.map(card).join('')}</div>
       ${allVetoedNote}
       ${trapBlock}
