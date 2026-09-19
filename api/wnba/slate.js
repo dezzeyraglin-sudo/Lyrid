@@ -70,6 +70,7 @@ import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
 import { fetchWnbaProps, fetchWnbaSeasonGames, fetchWnbaPlayerSeasonLogs, getSpin } from "../_lib/wnba/wnbaFeedEspn.js";
 import { buildEmpiricalTotals } from "../_lib/wnba/wnbaEmpiricalTotals.js";
 import { evaluatePropSignal } from "../_lib/wnba/wnbaPropSignal.js";
+import { classifyFirstHalf, cadenceGate } from "../_lib/wnba/firstHalfProfile.js";
 
 // v2 engine modules (ESM)
 import { fetchEspnWnbaInjuries } from "../_lib/basketball/injuryFeed.js";
@@ -582,6 +583,13 @@ async function generateSlate(opts = {}) {
     { mk: 'rebasts', parts: ['rebProj', 'astProj'], label: 'R+A' },
     { mk: 'pra',     parts: ['ptsProj', 'rebProj', 'astProj'], label: 'PRA' },
   ];
+  // COMBO DE-BIAS (provisional, Sept 17 graded n=28): combos underproject by ~the SUM of
+  // their component biases (pts +0.73, reb +0.26, ast +0.45). Uncorrected, the gap/edge is
+  // overstated — the return-slate combos won only because PP's lines were soft. Raise the
+  // projection toward reality so the edge is HONEST (and won't overbet when lines tighten).
+  // Shrunk 0.75x for the one-slate sample; NAMED so the calibration layer re-fits it later.
+  const COMBO_COMPONENT_BIAS = { ptsProj: 0.73, rebProj: 0.26, astProj: 0.45 };
+  const COMBO_BIAS_SHRINK = 0.75;
   // normalized PP combo-line index: { market: { normName: line } } (handles name drift)
   const ppComboByNorm = {};
   for (const cb of COMBOS) ppComboByNorm[cb.mk] = {};
@@ -608,10 +616,12 @@ async function generateSlate(opts = {}) {
       if (ppLine == null) continue;                    // only when PP posted this combo line
       const line = Number(ppLine);
       if (!Number.isFinite(line)) continue;
-      // use the vetted PRA projection for PRA; raw component sum for the two-stat combos
-      const proj = (cb.mk === 'pra' && a.praProjection != null)
+      // use the vetted PRA projection for PRA; raw component sum for the two-stat combos —
+      // then de-bias toward the component-bias sum so the edge is honest, not line-dependent.
+      const _comboBias = COMBO_BIAS_SHRINK * cb.parts.reduce((s, p) => s + (COMBO_COMPONENT_BIAS[p] || 0), 0);
+      const proj = ((cb.mk === 'pra' && a.praProjection != null)
         ? Number(a.praProjection)
-        : vals.reduce((s, v) => s + Number(v), 0);
+        : vals.reduce((s, v) => s + Number(v), 0)) + _comboBias;
       if (!Number.isFinite(proj)) continue;
       comboBuilt[bk] = 1;
       const gap = line - proj;
@@ -866,9 +876,21 @@ function buildPropReasons(ctx) {
   // Production cadence (front/back-loaded) crossed with game script.
   if (ctx.cadence) add(ctx.cadence.side === 'UNDER' ? 'UNDER' : 'CONTEXT',
     ctx.cadence.label === 'back' ? 'BACK-LOADED' : 'FRONT-LOADED', ctx.cadence.note);
-  // Blowout risk (spread-derived) — suppresses counting stats game-wide, underdog most.
-  if (blowoutRisk) add('UNDER', blowoutRisk.isUnderdog ? 'BLOWOUT RISK · UNDERDOG' : 'BLOWOUT RISK',
-    blowoutRisk.note);
+  // Blowout risk (spread-derived). VALIDATED on the FULL pre-break season (~72% under, 20+
+  // spread). I briefly demoted this to context on 2 return-from-break days (52%) — that was
+  // over-fitting to an anomaly (the return slates carried a +0.7 projection bias absent from
+  // the season-long −0.04). Restored to the season-validated UNDER lean. The only gate that
+  // survives is the fast/slow-starter read (validated on 3 weeks of cadence data): a
+  // consistent front-loader banks before the 2nd-half suppression, so its under is a trap.
+  if (blowoutRisk) {
+    const _cg = blowoutRisk.cadenceGate;
+    if (_cg && _cg.adjust === 'downgrade') {
+      add('CONTEXT', 'BLOWOUT · FAST STARTER',
+        `${blowoutRisk.note} — but ${_cg.note}. The blowout-under is a trap for a front-loader; not a lean.`);
+    } else {
+      add('UNDER', blowoutRisk.isUnderdog ? 'BLOWOUT RISK · UNDERDOG' : 'BLOWOUT RISK', blowoutRisk.note);
+    }
+  }
 
   // Adaptive shrinkage regime (points): a hot-shooting spike gets shrunk toward
   // baseline (variance → leans under vs an inflated line); a volume/role riser is
@@ -1912,6 +1934,11 @@ async function buildAndRunAnalysis({
       fgPctRecent: (recentForm?.totals && recentForm.totals.fga > 0)
         ? Number((recentForm.totals.fgm / recentForm.totals.fga).toFixed(3))
         : null,
+      // Recent per-game shot volume for the possession core's usage-from-volume fallback.
+      // FGA is available and highly predictable (reliability r=0.86); feeding it keeps the
+      // volume core ALIVE for thin-data/role-changing players instead of collapsing to the
+      // stale-PPG rate core (the loss-night underprojection).
+      fgaRecent: shootingForm?.l5?.fga ?? shootingForm?.l10?.fga ?? null,
       ...(recentForm ? {
         minutesLast5: recentForm.minutesLast5,
         minutesCv: recentForm.minutesCv,
@@ -2170,6 +2197,17 @@ async function buildAndRunAnalysis({
       const _cn = String(player.name || '').toLowerCase().normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
       const prof = cadenceProfiles[_cn];
+      // Fast/slow-starter gate on the blowout-under. A consistent front-loader banks
+      // production before 2nd-half suppression lands → the blowout under is a TRAP; a
+      // consistent back-loader loses their 2nd half → under SUPPORTED. Only fires when
+      // the read is consistent (classifyFirstHalf gates on CV<0.25), else no-op.
+      if (blowoutRisk) {
+        const _fhShares = (prof?.l10?.h1Shares && prof.l10.h1Shares.length >= 4)
+          ? prof.l10.h1Shares : (prof?.l5?.h1Shares || []);
+        const _fh = classifyFirstHalf(_fhShares);
+        blowoutRisk.firstHalfProfile = _fh;
+        blowoutRisk.cadenceGate = cadenceGate(_fh, { suppressionActive: true });
+      }
       const _pickMk = (w) => (w ? (_mk === 'rebounds' ? w.rebounds : _mk === 'assists' ? w.assists : w.points) : null);
       const c10 = _pickMk(prof?.l10), c5 = _pickMk(prof?.l5);
       const c = c10 || c5;   // signal/projection use L10 (more stable), fall back to L5
