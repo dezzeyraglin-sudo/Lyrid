@@ -20433,7 +20433,7 @@ async function autoGradeOnAppOpen() {
       const proj = Number(p.projection), line = Number(p.line);
       if (!isFinite(proj) || !isFinite(line)) continue;
       if (p.lineSource !== 'provided') continue;          // real book lines only
-      if (proj >= line || (line - proj) < 0.3) continue;  // genuine UNDER lean
+      if (proj >= line || (line - proj) < 0.3) continue;  // gate: excludes the near-zero-gap coin flips (44%); above 0.3, under-leans hit ~57-62% flat by gap
       // INLINE classification with the unified model — does not depend on backend stamping.
       const to = wnbaClassify({
         market: m, lean: 'UNDER', line, projection: proj,
