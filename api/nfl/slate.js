@@ -357,6 +357,7 @@ export default async function handler(req, res) {
       outlook: result.outlook || null,
       comp: result.comp || null,
       defInjury: result.defInjury || null,
+      cappedOpportunity: result.cappedOpportunity || null,
       card: result.card || null,
       routing: result.routing || null,
       dataCompleteness: result.dataCompleteness ?? null,

@@ -3473,6 +3473,9 @@
 .nflx-chip.gold{background:var(--tier-solid-fill);color:var(--tier-solid-text)}
 .nflx-chip.ceiling{background:var(--surface-muted);color:var(--text-secondary)}
 .nflx-chip.under-test{background:var(--data-warning-surface);color:var(--data-warning);border:1px solid var(--data-warning)}
+.nflx-banner.capped{display:flex;gap:8px;align-items:flex-start;background:var(--data-negative-surface,#fdecec);border:1px solid var(--data-negative);border-radius:var(--radius-md,10px);padding:8px 12px;margin-bottom:8px}
+.nflx-banner.capped .nflx-banner-ic{color:var(--data-negative);font-size:1.1em;line-height:1}
+.nflx-banner.capped .nflx-banner-body{font-size:var(--size-body-sm);color:var(--data-negative);line-height:1.35}
 .nflx-chip.edge{background:var(--data-positive-surface,#e6f4ea);color:var(--data-positive);border:1px solid var(--data-positive)}
 .nflx-chip.prov{background:transparent;color:var(--text-muted);border:1px solid var(--border-hairline)}
 .nflx-why{font-size:var(--size-body-sm);color:var(--text-secondary);line-height:var(--line-body);margin-top:var(--space-3)}
@@ -17414,13 +17417,19 @@ function renderHistory() {
       { label: 'STRONG UNDERS', stats: computeNflPropStats(all.filter(e => e.lean === 'UNDER' && (e.underStrength === 'strong'))) },
       { label: 'OVER LEANS (ref)', stats: computeNflPropStats(all.filter(e => e.lean === 'OVER')) },
     ]);
+    // CAPPED-OPPORTUNITY WATCH — committee/rotational picks (logged as overs). If these lose at a
+    // high rate, they GO UNDER structurally -> the under is a real play. Measuring, not yet betting.
+    const byCapped = sliceTable('CAPPED-OPPORTUNITY WATCH (committee/rotational)', 'These are logged as overs. A LOW win% here means capped-role players systematically go UNDER — which would make the under a real, earned signal (unlike the median-only unders we pulled). Needs sample before it graduates from flag to play.', [
+      { label: 'CAPPED PICKS (as over)', stats: computeNflPropStats(all.filter(e => e.capped)) },
+      { label: 'NON-CAPPED (ref)', stats: computeNflPropStats(all.filter(e => !e.capped && e.lean === 'OVER')) },
+    ]);
     const resPill = (e) => { const c = e.result === 'win' ? 'var(--data-positive,#2D7A3E)' : e.result === 'loss' ? 'var(--data-negative,#A33B2A)' : 'var(--text-muted,#9A9A93)'; const t = e.result ? e.result.toUpperCase() : '—'; return `<span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${c}">${t}</span>`; };
     const row = (e) => `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(e.player)} · ${esc(e.market)} ${e.lean === 'OVER' ? 'o' : 'u'}${esc(e.line)}</span><span class="rollup-prop-rate ${rateClass(e.probOver)}">${e.probOver != null ? Math.round(e.probOver * 100) + '%' : '—'}</span><span class="rollup-prop-vol">proj ${e.projection}${e.actual != null ? ' · actual ' + e.actual : ''} · ${resPill(e)}</span></div>`;
     const graded = all.filter(e => e.graded).sort((a, b) => (b.date + b.player).localeCompare(a.date + a.player));
     const pending = all.filter(e => !e.graded).sort((a, b) => ((b.edge ?? 0) - (a.edge ?? 0)));
     container.innerHTML = subnavHtml + statsBar +
       `<div class="rollup-tier-note" style="margin:10px 0">Model probability shown — provisional, not a verified cash rate. Graded off ESPN box scores.</div>` +
-      byTier + byMarket + byLean +
+      byTier + byMarket + byLean + byCapped +
       (pending.length ? `<h3 class="rollup-section-title">PENDING (${pending.length})</h3><div class="rollup-prop-list">${pending.slice(0, 40).map(row).join('')}</div>` : '') +
       (graded.length ? `<h3 class="rollup-section-title">GRADED (${graded.length})</h3><div class="rollup-prop-list">${graded.slice(0, 60).map(row).join('')}</div>` : '');
     return;
@@ -24454,6 +24463,13 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   // ============================================================
   // injury banner from pick.injury ({status,statusRaw,detail,blurb,side}); status is
   // 'out' | 'doubtful' (questionable/doubtful) | 'active' (listed but expected to play).
+  function nflCappedBanner(item){
+    var cap = item && item.cappedOpportunity;
+    if (!cap) return '';
+    return '<div class="nflx-banner capped"><span class="nflx-banner-ic">\u26A0</span>' +
+      '<div class="nflx-banner-body"><b>CAPPED / ROTATIONAL ROLE</b> \u2014 low floor. ' +
+      esc(cap.why || 'committee floor; over is high-risk, under is live') + '</div></div>';
+  }
   function nflInjuryBanner(item){
     var inj = nflInjuryFor(item);
     if (!inj || !inj.status || inj.status === 'unknown') return '';
@@ -24495,7 +24511,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       '<div class="nflx-prop-top"><div><div class="nflx-prop-name">' + esc(item.player||'') + '</div>' +
         '<div class="nflx-pick-line"><span class="nflx-dir ' + (isUnder?'down':(dir + (noPlay?' muted':''))) + '">' + (isUnder?'Lower':(dir==='up'?'Higher':'Lower')) + '</span> <span class="nflx-prop-market">' + esc(item.propLabel||'') + '</span> <span class="nflx-linev">' + esc(v.line) + '</span></div></div>' +
         '<div class="nflx-prop-sub">' + esc(item.position||'') + (item.position&&item.team?' \u00b7 ':'') + esc(item.team||'') + (item.opponent?' vs ' + esc(item.opponent):'') + '</div></div>' +
-      nflInjuryBanner(item) +
+      nflCappedBanner(item) + nflInjuryBanner(item) +
       projTrack(c, v.line) +
       '<div class="nflx-metarow"><div class="nflx-pct"><span class="v">' + Math.round((isUnder && v.underPlay.pUnder!=null ? v.underPlay.pUnder : pAdj)*100) + '%</span><span class="k">' + (isUnder?'model \u00b7 under':'model') + '</span></div>' + chips + '</div>' +
       filters + (isUnder ? '<div class="nflx-blocked" style="color:var(--data-warning);background:var(--data-warning-surface)">Take the <b>UNDER</b> \u2014 still testing. Model projects ' + Math.round(c.median) + ' vs line ' + esc(v.line) + ', ceiling (p75) ' + Math.round(v.underPlay.ceiling) + ' stays contained. Unvalidated \u2014 logged to build the unders record, not yet a rated play.</div>' : blocked) + drivers + why +
@@ -24770,6 +24786,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         lean: lean, probOver: (v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver),
         tier: tier, isBet: tier !== 'none',   // every pick logged; isBet marks the actionable ones for the record
         underStrength: (v.underCandidate && v.underCandidate.strength) || null,
+        capped: !!p.cappedOpportunity,
         ceiling: !!p.ceiling,
         reasonText: (p.card && p.card.summary) || '',
         dataCompleteness: (p.dataCompleteness != null) ? p.dataCompleteness : null,
