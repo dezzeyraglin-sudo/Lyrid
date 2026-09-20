@@ -241,7 +241,8 @@ export default async function handler(req, res) {
     const opponent = (ready && team && E.oppByTeam[team]) || l.opponent || null;
     const base = {
       player: l.player_name, player_key: l.player_key || l.player_name,
-      team, position: l.position || (ready ? E.posByName[l.player_name] : null) || null,
+      team, _origTeam: l.team || null,   // PP's raw posted team, before any resolution/override
+      position: l.position || (ready ? E.posByName[l.player_name] : null) || null,
       opponent, propLabel,
     };
     if (!ready) return { ...base, verdict: pendingVerdict(l.line, 'higher') };
@@ -480,10 +481,11 @@ function buildCtx(E, l, base) {
   const _rt = E.roleByName && E.roleByName[_norm(l.player_name)];
   const _roleTeam = _rt && _rt.team ? fixAbbr(_rt.team) : null;
   if (_roleTeam && _roleTeam !== team && E.oppByTeam && E.oppByTeam[_roleTeam]) {
+    const _prev = team;
     team = _roleTeam;
     opp = E.oppByTeam[_roleTeam];
     base.team = team; base.opponent = opp;                         // correct the DISPLAYED matchup
-    base.teamOverride = { from: (base._origTeam || l.team || null), to: team, source: 'depth-chart' };
+    base.teamOverride = { from: _prev, ppPosted: base._origTeam || l.team || null, to: team, source: 'depth-chart' };
   }
   const od = team ? E.oddsByTeam[team] : null;
 
