@@ -471,7 +471,20 @@ function buildCtx(E, l, base) {
   // is NOT a running back).
   const poolPos = FAM_TO_POS[fam] || 'WR';
   const rosterPos = E.posByKey[gsis] || E.posByName[l.player_name] || poolPos;
-  const team = base.team, opp = base.opponent;
+  // ROSTER-TEAM OVERRIDE — PP can post a stale team for an offseason mover (Wan'Dale NYG->TEN,
+  // Cousins, etc.). The live depth chart (roleByName.team) is current truth. When it disagrees
+  // AND that team is on this slate, rebuild team + opponent around the ACTUAL team so the whole
+  // matchup (env, QB, defense, coverage, total) is computed for his real game — not last year's.
+  // His skill history travels with his player key regardless; only the team CONTEXT is corrected.
+  let team = base.team, opp = base.opponent;
+  const _rt = E.roleByName && E.roleByName[_norm(l.player_name)];
+  const _roleTeam = _rt && _rt.team ? fixAbbr(_rt.team) : null;
+  if (_roleTeam && _roleTeam !== team && E.oppByTeam && E.oppByTeam[_roleTeam]) {
+    team = _roleTeam;
+    opp = E.oppByTeam[_roleTeam];
+    base.team = team; base.opponent = opp;                         // correct the DISPLAYED matchup
+    base.teamOverride = { from: (base._origTeam || l.team || null), to: team, source: 'depth-chart' };
+  }
   const od = team ? E.oddsByTeam[team] : null;
 
   // receiverType (approx; slot-rate data would refine WR into deep/possession)
