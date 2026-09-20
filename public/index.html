@@ -3479,6 +3479,10 @@
 .nflx-blocked{font-size:var(--size-caption);color:var(--data-warning);background:var(--data-warning-surface);border-radius:var(--radius-sm);padding:var(--space-2) var(--space-3);margin-top:var(--space-3)}
 
 .nflx-flagged{border-top:1px solid var(--border-hairline);background:var(--surface-muted)}
+.nflx-belowcap{border-top:1px solid var(--border-hairline)}
+.nflx-belowcap summary{cursor:pointer;list-style:none;padding:var(--space-4) var(--space-5);font-size:var(--size-body-sm);font-weight:var(--weight-medium);color:var(--text-secondary);display:flex;align-items:center;gap:var(--space-2)}
+.nflx-belowcap summary::-webkit-details-marker{display:none}
+.nflx-belowcap[open] summary{border-bottom:1px solid var(--border-hairline)}
 .nflx-flagged summary{cursor:pointer;list-style:none;padding:var(--space-4) var(--space-5);font-size:var(--size-body-sm);font-weight:var(--weight-medium);color:var(--data-warning);display:flex;align-items:center;gap:var(--space-2)}
 .nflx-flagged summary::-webkit-details-marker{display:none}
 .nflx-flagged[open] summary{border-bottom:1px solid var(--border-hairline)}
@@ -24377,6 +24381,22 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   // ============================================================
   // RENDER — Tonight's Card (hero)
   // ============================================================
+  // P1 — the ONE honest sentence for a non-featured pick (replaces 'below the bar').
+  // Priority: server featured gate reason (QB form / committee / shadow) -> hard veto ->
+  // the specific filter that failed -> no-tier -> model%. The strings already exist; we
+  // just surface them instead of a generic bar.
+  function nflHonestReason(p){
+    var v = (p && p.verdict) || {};
+    if (p && p.featured && p.featured.ok === false && p.featured.why) return p.featured.why;
+    if (Array.isArray(v.blocked) && v.blocked.length) return v.blocked[0];
+    var f = v.filters || {}, failed = [];
+    if (!f.softLine) failed.push('line not soft enough');
+    if (!f.volumeSecure) failed.push('volume floor too low');
+    if (!f.scriptClear) failed.push('game-script risk');
+    if (failed.length) return failed.join(' \u00b7 ');
+    if (!v.tier_candidate || v.tier_candidate === 'none') return 'no tier \u2014 line too short or no edge';
+    return 'model ' + Math.round((pAdjOf(v)||0)*100) + '%, tier ' + (v.tier_candidate||'none');
+  }
   function renderJudgment(picks){
     nflQbByTeam = {}; (picks||[]).forEach(function(p){ if(p&&p.position==='QB'&&p.team&&!nflQbByTeam[p.team])nflQbByTeam[p.team]=p.player; });
     var host = document.getElementById('nflJudgmentCard'); if (!host) return;
@@ -24384,12 +24404,20 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     (picks||[]).forEach(function(p){
       var r = killReason(p);
       if (r){ flagged.push({p:p, reason:r}); return; }
-      if (!isBettable(p)){ flagged.push({p:p, reason:'below the bar \u2014 model ' + Math.round((pAdjOf(p.verdict)||0)*100) + '%, tier ' + ((p.verdict&&p.verdict.tier_candidate)||'none')}); return; }
+      if (!isBettable(p)){ flagged.push({p:p, reason: nflHonestReason(p)}); return; }
       clean.push(p);
     });
     clean.sort(function(a,b){ return pickScore(b)-pickScore(a); });
-    var perGame={}, card=[];
-    for (var i=0;i<clean.length && card.length<5;i++){ var g=gameKey(clean[i]); if ((perGame[g]||0)>=2) continue; perGame[g]=(perGame[g]||0)+1; card.push(clean[i]); }
+    var perGame={}, card=[], belowCap=[];
+    for (var i=0;i<clean.length;i++){
+      var g=gameKey(clean[i]);
+      if (card.length<5 && (perGame[g]||0)<2){ perGame[g]=(perGame[g]||0)+1; card.push(clean[i]); }
+      else belowCap.push(clean[i]);   // qualified but past tonight's cap — NOT a cut
+    }
+    var belowCapHtml = belowCap.length
+      ? '<details class="nflx-belowcap"><summary>▸ Qualified · below tonight’s top 5 (' + belowCap.length + ')</summary>' +
+        belowCap.map(function(p){ var v=p.verdict||{}; var _l=nflDisplayLabel(p); return '<div class="nflx-fl-row"><span class="nflx-fl-who">' + esc(p.player) + ' · ' + esc(p.propLabel) + ' <span class="ln">' + esc(v.line) + '</span></span><span class="nflx-fl-reason">' + (_l?esc(_l.text):'qualified') + ' · ' + Math.round((pAdjOf(v)||0)*100) + '%</span></div>'; }).join('') +
+        '</details>' : '';
 
     var flaggedHtml = flagged.length
       ? '<details class="nflx-flagged"><summary>\u26A0 Flagged \u2014 skip (' + flagged.length + ')</summary>' +
@@ -24418,7 +24446,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     host.innerHTML = '<div class="nflx-card"><div class="nflx-card-head"><div class="nflx-card-top"><div class="nflx-card-title">Tonight\u2019s card</div><div class="nflx-card-count">' + card.length + '</div></div>' +
       '<div class="nflx-card-sub">The only props that survived every veto tonight, ranked by conviction. Everything filtered out is listed below with the reason it was cut.</div>' +
       '<div class="nflx-card-note">Provisional \u2014 this is the model\u2019s number, not a verified cash rate</div></div>' +
-      rows + flaggedHtml + '</div>';
+      rows + belowCapHtml + flaggedHtml + '</div>';
   }
 
   // ============================================================
