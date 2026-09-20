@@ -179,7 +179,7 @@ export default async function handler(req, res) {
   const qbCompetentByTeam = {};
   if (ready) for (const team of Object.keys(qbNameByTeam)) {
     const qb = qbNameByTeam[team];
-    const key = E.resolveKey ? E.resolveKey(qb, 'passing_yards') : (E.nameToKey && E.nameToKey[qb]);
+    const key = E.resolveKey ? E.resolveKey(qb, 'passing_yards', team) : (E.nameToKey && E.nameToKey[qb]);
     const inj = (E.injuryByName || {})[_norm(qb)];
     const isOut = !!(inj && inj.status === 'out');
     const hasHistory = !!(key && E.featByKeyFam[key] && E.featByKeyFam[key]['passing_yards']);
@@ -453,7 +453,7 @@ export default async function handler(req, res) {
 // buildCtx — shape one analyzeProp() context from the loaded lookups
 // ===========================================================================
 function buildCtx(E, l, base) {
-  const gsis = (E.resolveKey && E.resolveKey(l.player_name, l.prop_type)) || E.nameToKey[l.player_name];
+  const gsis = (E.resolveKey && E.resolveKey(l.player_name, l.prop_type, l.team)) || E.nameToKey[l.player_name];
   if (!gsis) { base._pend = 'name did not resolve to a key'; return null; }
   const fam = l.prop_type;
   const perFam = E.featByKeyFam[gsis];
@@ -611,6 +611,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
   const names = [...new Set(lines.map(l => l.player_name).filter(Boolean))];
   const nameToKey = {}, nameToTeam = {}, posByName = {}, posByKey = {}, cpoeByKey = {};
   const candsByNorm = {};   // normalized name -> { key -> {key, position} } for suffix/collision-safe resolution
+  const candsByLast = {};   // last name -> [{key, position, team}] — fallback when the full name doesn't match
   const normName = s => String(s || '').toLowerCase().replace(/[.'`]/g, '').replace(/\b(jr|sr|ii|iii|iv|v)\b/g, '').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
   const trailingByKey = {}, seasonByKey = {}, recentTargetsByKey = {};
   let latestSeason = 0;
@@ -656,6 +657,8 @@ async function loadEngineData(lines, date, fetchAvailability) {
       const _nn = normName(r.player_name);
       const _cb = (candsByNorm[_nn] ||= {});
       if (!_cb[k]) _cb[k] = { key: k, position: r.position || posByKey[k] || null };
+      const _last = _nn.split(' ').pop();
+      if (_last && _last.length >= 3) { const _lst = (candsByLast[_last] ||= []); if (!_lst.some(c => c.key === k)) _lst.push({ key: k, position: r.position || posByKey[k] || null, team: r.team_abbr }); }
       // trailing games for volumeSecurity (map carries->rush_attempts already named)
       (trailingByKey[k] ||= []).push({
         targets: num(r.targets), target_share: num(r.target_share), air_yards_share: num(r.air_yards_share),
@@ -885,11 +888,26 @@ async function loadEngineData(lines, date, fetchAvailability) {
     : (fam === 'rushing_yards' || fam === 'rush_rec_yards') ? ['RB', 'FB', 'QB']
     : (fam === 'receiving_yards') ? ['WR', 'TE', 'RB', 'FB'] : [];
   // suffix- and collision-tolerant resolver: prefers the position the prop implies
-  const resolveKey = (name, fam) => {
-    const cb = candsByNorm[normName(name)]; if (!cb) return null;
-    const arr = Object.values(cb); if (arr.length === 1) return arr[0].key;
-    const want = _famPos(fam); const m = want.length ? arr.find(c => want.includes(c.position)) : null;
-    return (m || arr[0]).key;
+  const resolveKey = (name, fam, team) => {
+    const nn = normName(name);
+    const cb = candsByNorm[nn];
+    if (cb) {
+      const arr = Object.values(cb); if (arr.length === 1) return arr[0].key;
+      const want = _famPos(fam); const m = want.length ? arr.find(c => want.includes(c.position)) : null;
+      return (m || arr[0]).key;
+    }
+    // FALLBACK — exact normalized name missed (PP spelling/nickname differs). Match on last name,
+    // and ACCEPT only when position or team confirms it, so we recover real players (Germie
+    // Bernard, Eli Raridon) without mis-resolving to the wrong same-last-name player.
+    const parts = nn.split(' '); const last = parts[parts.length - 1];
+    if (last && last.length >= 3 && candsByLast[last]) {
+      const want = _famPos(fam); const tm = fixAbbr(team);
+      const scored = candsByLast[last].map(c => ({ c, s: (tm && c.team === tm ? 2 : 0) + (want.includes(c.position) ? 1 : 0) }))
+                                      .sort((a, b) => b.s - a.s);
+      const best = scored[0];
+      if (best && best.s >= 1) return best.c.key;   // require position OR team agreement
+    }
+    return null;
   };
 
   return {
