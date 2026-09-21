@@ -427,6 +427,42 @@ export default async function handler(req, res) {
     p.featured = { ok: false, why: 'combo projected from components' };
   }
 
+  // ---- LINE-SANITY GUARD (PrizePicks drops/placeholders) ----
+  // PP sometimes posts placeholder lines (Kyren 3.5 rush, Stafford 3.5 pass) while a board fills
+  // or when a game is dropped. Those generate FAKE massive edges (proj 66 vs a 3.5 line = fake
+  // GUARANTEED). Hold any impossible line, and if a whole game's board looks dropped (its QB line
+  // is impossible, or several lines are), hold EVERY pick in that game — no fake edges, no bets.
+  const lineInsane = (fam, ln) => {
+    if (ln == null || !isFinite(ln)) return false;
+    if (fam === 'passing_yards' || fam === 'pass_rush_yards') return ln < 100;   // no QB line is under ~150
+    if (fam === 'rushing_yards') return ln < 6;
+    if (fam === 'receiving_yards') return ln < 6;
+    if (fam === 'rush_rec_yards') return ln < 10;
+    return false;
+  };
+  const _gkey = p => [p.team, p.opponent].sort().join('@');
+  const _gameInsane = {};
+  for (const p of picks) {
+    const ln = p.verdict && p.verdict.line, fam = p.propType;
+    if (lineInsane(fam, ln)) {
+      p._insaneLine = true;
+      const g = _gkey(p); (_gameInsane[g] ||= { count: 0, qb: false }); _gameInsane[g].count++;
+      if (fam === 'passing_yards' || fam === 'pass_rush_yards') _gameInsane[g].qb = true;
+    }
+  }
+  for (const p of picks) {
+    const g = _gkey(p), gi = _gameInsane[g];
+    const boardDropped = gi && (gi.qb || gi.count >= 3);   // QB line impossible OR many placeholders => whole board dropped
+    if (p._insaneLine || boardDropped) {
+      p.verdict = { pick: 'higher', line: (p.verdict && p.verdict.line) || null, tier_candidate: 'none',
+        filters: { softLine: false, volumeSecure: false, scriptClear: false },
+        pOver: null, pOverAdjusted: null, edge: null, reasons: [],
+        blocked: [boardDropped && !p._insaneLine ? 'lines dropped — PrizePicks board not ready for this game (hold)' : 'line unavailable — PrizePicks placeholder (not a real line)'],
+        provisional: true };
+      p.comp = null; p.featured = { ok: false, why: 'line unavailable / board not ready' };
+    }
+  }
+
   const rank = { GUARANTEED: 3, PLATINUM: 2, GOLD: 1, none: 0 };
   picks.sort((a, b) =>
     (rank[b.verdict.tier_candidate] - rank[a.verdict.tier_candidate]) ||
