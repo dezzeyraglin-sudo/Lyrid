@@ -1028,12 +1028,26 @@ async function fetchDepthChartRoles(teams, idByAbbr, seasonYear) {
 // script OR a favorable matchup. QBs: stand down on overs (they keep going under — unders
 // model pending). Stale reads and thin data never feature. Everything still shows in the
 // game cards; this only controls what gets PROMOTED.
+// PROVEN EDGES — families validated ABOVE breakeven on the graded record. Only these earn the
+// Proven Edge card. Everything else is analyzed + shown in the game cards but NOT promoted until it
+// clears breakeven. GROW this set as families validate (currently: single-stat rushing overs,
+// 53.7% over 147 graded; receiving/passing are ~breakeven and recalibrating — tracking, not proven).
+const PROVEN_EDGES = new Set(['rushing_yards']);
+const EDGE_STATUS = {
+  receiving_yards: 'receiving — ~breakeven, recalibrating (tracking, not yet a proven edge)',
+  passing_yards: 'passing — ~breakeven, recalibrating (tracking, not yet a proven edge)',
+  rush_rec_yards: 'rush+rec combo — losing family (~42%), not featured',
+  pass_rush_yards: 'pass+rush combo — losing family, not featured',
+};
+
 function computeFeatured(result, ctx) {
   const v = result.verdict, fam = ctx.propFamily;
   if (!v || !v.tier_candidate || v.tier_candidate === 'none') return { ok: false, why: 'not a qualifying tier' };
   if (v.stale) return { ok: false, why: 'stale role — not featured' };
   const dc = result.dataCompleteness;
   if (dc != null && dc < 0.6) return { ok: false, why: 'thin data — not featured' };
+  // PROVEN-EDGE GATE — only validated edges reach the Proven Edge card.
+  if (!PROVEN_EDGES.has(fam)) return { ok: false, why: EDGE_STATUS[fam] || (fam + ' — not yet a proven edge') };
   if (fam === 'pass_rush_yards') return { ok: false, why: 'pass+rush combo — unproven family, not featured' };
   const vol = (result.signals && result.signals.volume) || {};
   const d = vol.detail || {}, arch = vol.archetype;

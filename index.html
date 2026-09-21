@@ -3784,7 +3784,7 @@
       </div>
     </header>
     <div id="nflBanner"></div>
-    <section class="nflx-sect"><span class="nflx-sect-t">Tonight’s card</span><span class="nflx-sect-rule"></span><span class="nflx-sect-n">judgment-filtered</span></section>
+    <section class="nflx-sect"><span class="nflx-sect-t">Proven Edge</span><span class="nflx-sect-rule"></span><span class="nflx-sect-n">validated only</span></section>
     <div id="nflJudgmentCard"></div>
     <section class="nflx-sect"><span class="nflx-sect-t">Games</span><span class="nflx-sect-rule"></span><span class="nflx-sect-n" id="nflGamesCount">tap to analyze</span></section>
     <div id="nflGamesList"></div>
@@ -24434,8 +24434,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         '</details>' : '';
 
     if (!card.length){
-      host.innerHTML = '<div class="nflx-card"><div class="nflx-empty"><div class="nflx-empty-t">No card tonight</div>' +
-        '<div class="nflx-empty-s">Nothing on this slate cleared every veto. A pass is a position.</div></div>' + flaggedHtml + '</div>';
+      host.innerHTML = '<div class="nflx-card"><div class="nflx-empty"><div class="nflx-empty-t">No proven edge tonight</div>' +
+        '<div class="nflx-empty-s">No proven-edge play on this slate. Better no bet than an unproven one \u2014 the games below are still analyzed.</div></div>' + flaggedHtml + '</div>';
       return;
     }
     var rows = card.map(function(p, i){
@@ -24452,8 +24452,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       '</div></div>';
     }).join('');
 
-    host.innerHTML = '<div class="nflx-card"><div class="nflx-card-head"><div class="nflx-card-top"><div class="nflx-card-title">Tonight\u2019s card</div><div class="nflx-card-count">' + card.length + '</div></div>' +
-      '<div class="nflx-card-sub">The only props that survived every veto tonight, ranked by conviction. Everything filtered out is listed below with the reason it was cut.</div>' +
+    host.innerHTML = '<div class="nflx-card"><div class="nflx-card-head"><div class="nflx-card-top"><div class="nflx-card-title">Proven Edge</div><div class="nflx-card-count">' + card.length + '</div></div>' +
+      '<div class="nflx-card-sub">Only families PROVEN above breakeven on the graded record \u2014 right now that\u2019s single-stat rushing overs (53.7%). More get added as they validate. Everything else is analyzed in the games below with why it isn\u2019t (yet) a proven edge.</div>' +
       '<div class="nflx-card-note">Provisional \u2014 this is the model\u2019s number, not a verified cash rate</div></div>' +
       rows + belowCapHtml + flaggedHtml + '</div>';
   }
