@@ -352,6 +352,7 @@ export default async function handler(req, res) {
       featured,
       oppCoverage: ctx.oppCoverage || null,   // exposed for shadow-gate diagnosis
       role: ctx.role || null,                 // current depth-chart role (posGroup/rank)
+      matchupDelta: ctx.matchupDelta || null,
       stale: (result.verdict && result.verdict.stale) || null,
       injury,
       outlook: result.outlook || null,
@@ -535,6 +536,17 @@ function buildCtx(E, l, base) {
     position: (E.posByName && E.posByName[base.player]) || l.position || null,
     qbCompetent: (E.qbCompetentByTeam && team && E.qbCompetentByTeam[team]) || null,
     role: (E.roleByName && E.roleByName[_norm(l.player_name)]) || null,
+    matchupDelta: (function () {
+      // how THIS player does vs the KIND of defense the opponent is (archetype split, large sample)
+      if (!E.matchupByKey || !E.defenseArchetypeByTeam || !gsis || !opp) return null;
+      const fam = l.prop_type;
+      const axis = (fam === 'rushing_yards') ? 'run_d' : ((fam === 'passing_yards' || fam === 'receiving_yards') ? 'pass_d' : null);
+      if (!axis) return null;
+      const bucket = (E.defenseArchetypeByTeam[opp] || {})[axis];
+      const mk = ((E.matchupByKey[gsis] || {})[fam] || {})[axis];
+      const hit = mk && bucket ? mk[bucket] : null;
+      return (hit && hit.games >= 4) ? { delta: hit.delta, games: hit.games, bucket, axis } : null;
+    })(),
     oppCoverage: (function () {
       if (!E.cornersByTeam || !team || !E.oppByTeam) return null;
       const oc = E.cornersByTeam[E.oppByTeam[team]]; if (!oc) return null;
@@ -826,6 +838,36 @@ async function loadEngineData(lines, date, fetchAvailability) {
   const qbFormRows = await qSafe(`nfl_qb_form?select=player_key,player_name,qb_form,tier`);
   const qbFormByName = {};
   for (const r of qbFormRows) qbFormByName[r.player_key] = { form: Number(r.qb_form), tier: r.tier };
+  // MATCHUP HISTORY — how each player does vs a KIND of defense (large-sample archetype splits).
+  // matchupByKey[player_key][prop_family][axis][bucket] = { delta, games }
+  const mhRows = slateKeys.length ? await qSafe(`nfl_matchup_history?player_key=in.(${inList(slateKeys)})&select=player_key,prop_family,axis,bucket,games,delta_vs_self`) : [];
+  const matchupByKey = {};
+  for (const r of mhRows) { (((matchupByKey[r.player_key] ||= {})[r.prop_family] ||= {})[r.axis] ||= {})[r.bucket] = { delta: Number(r.delta_vs_self), games: r.games }; }
+  // Classify each team's DEFENSE into archetype buckets from LEAGUE-WIDE suppression + pressure
+  // (latest season), tiered by 33/67 percentile — mirrors build_matchup_history exactly so the
+  // slate looks up the right bucket. Pull all teams (not just slate) so percentiles are real.
+  const allSupp = await qSafe(`nfl_defense_suppression?order=season.desc&select=team_abbr,season,pass_epa_allowed,rush_epa_allowed`);
+  const allPress = await qSafe(`nfl_team_pressure?order=season.desc&select=team_abbr,season,pressure_rate`);
+  const defenseArchetypeByTeam = (function () {
+    const latest = allSupp.length ? Math.max(...allSupp.map(r => r.season)) : null;
+    const supp = allSupp.filter(r => r.season === latest);
+    const press = allPress.filter(r => r.season === (allPress.length ? Math.max(...allPress.map(x => x.season)) : null));
+    const pct = (arr, p) => { const s = arr.filter(x => x != null).sort((a, b) => a - b); return s.length ? s[Math.floor(p * (s.length - 1))] : null; };
+    const passVals = supp.map(r => Number(r.pass_epa_allowed)).filter(v => isFinite(v));
+    const rushVals = supp.map(r => Number(r.rush_epa_allowed)).filter(v => isFinite(v));
+    const prsVals = press.map(r => Number(r.pressure_rate)).filter(v => isFinite(v));
+    const pQ1 = pct(passVals, 0.33), pQ2 = pct(passVals, 0.67);
+    const rQ1 = pct(rushVals, 0.33), rQ2 = pct(rushVals, 0.67);
+    const gQ1 = pct(prsVals, 0.33), gQ2 = pct(prsVals, 0.67);
+    const out = {};
+    for (const r of supp) {
+      const pe = Number(r.pass_epa_allowed), re = Number(r.rush_epa_allowed);
+      (out[r.team_abbr] ||= {}).pass_d = !isFinite(pe) ? 'avg_pass_d' : (pe <= pQ1 ? 'elite_pass_d' : (pe >= pQ2 ? 'soft_pass_d' : 'avg_pass_d'));  // low EPA allowed = elite
+      out[r.team_abbr].run_d = !isFinite(re) ? 'avg_run_d' : (re <= rQ1 ? 'stout_run_d' : (re >= rQ2 ? 'soft_run_d' : 'avg_run_d'));
+    }
+    for (const r of press) { const pr = Number(r.pressure_rate); (out[r.team_abbr] ||= {}).rush_pressure = !isFinite(pr) ? 'avg_rush' : (pr <= gQ1 ? 'low_rush' : (pr >= gQ2 ? 'high_rush' : 'avg_rush')); }
+    return out;
+  })();
   const defImpByTeam = {}; const _defSeen = new Set();
   for (const r of defImpRows) { if (_defSeen.has(r.player_id)) continue; _defSeen.add(r.player_id); if (!r.team) continue; (defImpByTeam[r.team] ||= []).push(r); }
   const schemeByTeam = firstBy(schemeRows, r => r.team_abbr);
@@ -931,7 +973,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };
