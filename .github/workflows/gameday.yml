@@ -1,0 +1,55 @@
+name: gameday-recency-builds
+# Keeps every RECENCY signal current before each slate: injuries, QB form, defense form.
+# These go stale week to week and the gate silently serves old data if they aren't refreshed —
+# so they run automatically. Seasonal builds (coverage_quality, matchup_history) stay manual.
+#
+# Times are UTC (GitHub cron has no DST) and set EARLY so a run always lands BEFORE kickoff even
+# with GitHub's 5-15 min scheduling lag. Adjust if your slate times differ.
+on:
+  schedule:
+    - cron: '0 12 * * 4'   # Thu 12:00 UTC (~7-8am ET) — before Thursday Night Football
+    - cron: '0 12 * * 0'   # Sun 12:00 UTC (~7-8am ET) — before the early Sunday slate
+    - cron: '0 19 * * 1'   # Mon 19:00 UTC (~2-3pm ET) — refresh before Monday Night Football
+  workflow_dispatch: {}    # manual "Run workflow" button in the Actions tab
+
+concurrency:
+  group: gameday-recency
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: pip install --quiet pandas numpy requests pyarrow
+
+      # Each build runs even if a prior one fails, so one bad source doesn't skip the others.
+      # But the job still FAILS at the end if any step failed (see the gate) — so GitHub emails you.
+      - name: Injuries
+        id: inj
+        continue-on-error: true
+        run: python3 data/nfl/ingest_injuries.py
+
+      - name: QB form
+        id: qb
+        continue-on-error: true
+        run: python3 data/nfl/build_qb_form.py --window 8 --min-games 4
+
+      - name: Defense form
+        id: def
+        continue-on-error: true
+        run: python3 data/nfl/build_defense_form.py --window 4
+
+      # Fail loudly if ANY build failed — a silent stale gate is the whole risk we're removing.
+      - name: Fail if any build failed
+        if: steps.inj.outcome == 'failure' || steps.qb.outcome == 'failure' || steps.def.outcome == 'failure'
+        run: |
+          echo "::error::A recency build failed — injuries=${{ steps.inj.outcome }} qb=${{ steps.qb.outcome }} defense=${{ steps.def.outcome }}"
+          exit 1
