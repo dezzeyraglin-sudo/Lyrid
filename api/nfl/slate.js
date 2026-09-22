@@ -354,6 +354,8 @@ export default async function handler(req, res) {
       role: ctx.role || null,                 // current depth-chart role (posGroup/rank)
       matchupDelta: ctx.matchupDelta || null,
       oppPosCoverage: ctx.oppPosCoverage || null,
+      oppPace: ctx.oppPace || null,
+      gameEnv: ctx.gameEnv || null,
       stale: (result.verdict && result.verdict.stale) || null,
       injury,
       outlook: result.outlook || null,
@@ -503,6 +505,13 @@ export default async function handler(req, res) {
 // ===========================================================================
 // buildCtx — shape one analyzeProp() context from the loaded lookups
 // ===========================================================================
+// Crash-isolation for optional per-pick enrichments: a bug in one (matchup, position-split, form)
+// degrades THAT feature to null instead of 500-ing the entire slate. Hard-won from the 'ready is
+// not defined' outage — one bad line in one feature must never take down the board on game day.
+function safe(fn, label) {
+  try { return fn(); }
+  catch (e) { try { console.error('ctx-enrichment failed [' + label + ']:', (e && e.message) || e); } catch (_) {} return null; }
+}
 function buildCtx(E, l, base) {
   const gsis = (E.resolveKey && E.resolveKey(l.player_name, l.prop_type, l.team)) || E.nameToKey[l.player_name];
   if (!gsis) { base._pend = 'name did not resolve to a key'; return null; }
@@ -586,14 +595,23 @@ function buildCtx(E, l, base) {
     role: (E.roleByName && E.roleByName[_norm(l.player_name)]) || null,
     oppDefTier: (E.defenseArchetypeByTeam && opp && E.defenseArchetypeByTeam[opp]) || null,
     oppDefForm: (E.defFormByTeam && opp && E.defFormByTeam[opp]) || null,
-    oppPosCoverage: (function () {
+    oppPace: (E.defPaceByTeam && opp && E.defPaceByTeam[opp]) || null,
+    gameEnv: safe(function () {
+      // #4 ROOF (static, free): a dome/closed roof is mildly pass-friendly (no wind); outdoor is
+      // neutral here. LIVE WIND is a separate forecast-API integration (see nflGameEnv note) — not
+      // wired yet, so we only apply the deterministic roof signal, never a guessed wind number.
+      const roofTeam = (E.homeByTeam && base.team && E.homeByTeam[base.team]) || base.team;  // home stadium determines roof
+      const roof = (E.ROOF_BY_TEAM && E.ROOF_BY_TEAM[roofTeam]) || 'outdoor';
+      return { roof, pass_friendly: (roof === 'dome' || roof === 'closed'), wind: null /* forecast API TODO */ };
+    }, 'gameEnv'),
+    oppPosCoverage: safe(function () {
       // opponent's coverage tier vs THIS receiver's position group (WR/TE/RB)
       if (!E.posDefTierByTeam || !opp) return null;
       const pg = String((E.posByName && (E.posByName[base.player] || E.posByName[l.player_name])) || l.position || '').toUpperCase();
       const grp = (pg === 'FB') ? 'RB' : pg;
       return (E.posDefTierByTeam[opp] || {})[grp] || null;
-    })(),
-    matchupDelta: (function () {
+    }, 'oppPosCoverage'),
+    matchupDelta: safe(function () {
       // how THIS player does vs the KIND of defense the opponent is (archetype split, large sample)
       if (!E.matchupByKey || !E.defenseArchetypeByTeam || !gsis || !opp) return null;
       const fam = l.prop_type;
@@ -603,7 +621,7 @@ function buildCtx(E, l, base) {
       const mk = ((E.matchupByKey[gsis] || {})[fam] || {})[axis];
       const hit = mk && bucket ? mk[bucket] : null;
       return (hit && hit.games >= 4) ? { delta: hit.delta, games: hit.games, bucket, axis } : null;
-    })(),
+    }, 'matchupDelta'),
     oppCoverage: (function () {
       if (!E.cornersByTeam || !team || !E.oppByTeam) return null;
       const oc = E.cornersByTeam[E.oppByTeam[team]]; if (!oc) return null;
@@ -903,6 +921,9 @@ async function loadEngineData(lines, date, fetchAvailability) {
   // Classify each team's DEFENSE into archetype buckets from LEAGUE-WIDE suppression + pressure
   // (latest season), tiered by 33/67 percentile — mirrors build_matchup_history exactly so the
   // slate looks up the right bucket. Pull all teams (not just slate) so percentiles are real.
+  const defPaceRows = await qSafe(`nfl_defense_pace?select=team_abbr,pass_att_pg,plays_pg,volume_tier`);
+  const defPaceByTeam = {};
+  for (const r of defPaceRows) defPaceByTeam[r.team_abbr] = { passAttPg: num(r.pass_att_pg), playsPg: num(r.plays_pg), volumeTier: r.volume_tier };
   const defFormRows = await qSafe(`nfl_defense_form?select=team_abbr,pass_form_tier,rush_form_tier,form_pass_epa_allowed,form_rush_epa_allowed,last_week,updated_at&order=updated_at.desc`);
   const defFormByTeam = {};
   for (const r of defFormRows) defFormByTeam[r.team_abbr] = { pass: r.pass_form_tier, rush: r.rush_form_tier, passEpa: num(r.form_pass_epa_allowed), rushEpa: num(r.form_rush_epa_allowed), week: r.last_week };
@@ -1064,11 +1085,15 @@ async function loadEngineData(lines, date, fetchAvailability) {
   };
 
   return {
-    ready: true, season: latestSeason || null, resolveKey, dataFreshness,
+    ready: true, season: latestSeason || null, resolveKey, dataFreshness, homeByTeam,
+    // #4 static stadium roof (deterministic, free). dome = fixed indoor; closed = retractable
+    // (usually shut in cold/heat). Everything else outdoor. Only used for the mild pass-friendly
+    // (no-wind) signal; live wind is a forecast-API integration not yet wired.
+    ROOF_BY_TEAM: { ATL:'dome', DET:'dome', MIN:'dome', NO:'dome', LV:'dome', ARI:'closed', DAL:'closed', HOU:'closed', IND:'closed', LAR:'closed' },
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };
@@ -1175,7 +1200,12 @@ function computeFeatured(result, ctx) {
     if (!secure) return { ok: false, why: 'QB volume not secure' };
     // THE EDGE: passing overs hit vs SOFT pass D, die vs elite. Feature only in the soft matchup.
     switch (formBlend(tier.pass_d === 'soft_pass_d', tier.pass_d === 'elite_pass_d', ctx.oppDefForm && ctx.oppDefForm.pass)) {
-      case 'feature': return { ok: true, why: 'passing over vs SOFT pass D' + (ctx.oppDefForm && ctx.oppDefForm.pass === 'soft' ? ' (soft on the season AND lately)' : '') + ' — competent QB (matchup edge)' };
+      case 'feature': {
+        const pace = ctx.oppPace, env = ctx.gameEnv;
+        if (pace && pace.volumeTier === 'low_volume') return { ok: false, why: `soft pass D but LOW pass volume faced (${pace.passAttPg != null ? pace.passAttPg.toFixed(0)+' att/g' : 'run-heavy'}) — too few attempts for a clean passing over` };
+        var extra = (pace && pace.volumeTier === 'high_volume' ? ' + high volume' : '') + (env && env.pass_friendly ? ' + dome' : '');
+        return { ok: true, why: 'passing over vs SOFT pass D' + (ctx.oppDefForm && ctx.oppDefForm.pass === 'soft' ? ' (soft lately too)' : '') + extra + ' — competent QB (matchup edge)' };
+      }
       case 'fade':    return { ok: false, why: 'elite pass D — passing overs fade here (fade/under spot)' };
       case 'conflict':return { ok: false, why: 'mixed signal — season vs recent pass-D form disagree; not a clean edge' };
       default:        return { ok: false, why: 'neutral pass-D matchup — passing over not a proven edge here' };
@@ -1202,7 +1232,14 @@ function computeFeatured(result, ctx) {
     const elite = pc ? pc.tier === 'elite' : tier.pass_d === 'elite_pass_d';
     const yptStr = pc && pc.ypt != null ? ` (${pc.ypt.toFixed(1)} yd/tgt)` : '';
     switch (formBlend(soft, elite, form && form.pass)) {
-      case 'feature': return { ok: true, why: `receiving over vs a defense soft vs ${posLabel}s${yptStr}${form && form.pass === 'soft' ? ' — and soft the last few weeks too' : ''} (matchup edge)` };
+      case 'feature': {
+        const pace = ctx.oppPace, env = ctx.gameEnv;
+        // VOLUME (#3): a soft-D over is stronger where the D faces more pass attempts, weaker in a
+        // low-volume spot. ROOF (#4): a dome/closed roof is mildly pass-friendly (no wind).
+        if (pace && pace.volumeTier === 'low_volume') return { ok: false, why: `soft vs ${posLabel}s but LOW pass volume (${pace.passAttPg != null ? pace.passAttPg.toFixed(0)+' att/g faced' : 'run-heavy opponent'}) — too few chances for a clean over` };
+        var extra = (pace && pace.volumeTier === 'high_volume' ? ` + high volume (${pace.passAttPg != null ? pace.passAttPg.toFixed(0)+' att/g' : 'pass-heavy'})` : '') + (env && env.pass_friendly ? ' + dome (no wind)' : '');
+        return { ok: true, why: `receiving over vs a defense soft vs ${posLabel}s${yptStr}${form && form.pass === 'soft' ? ' — soft lately too' : ''}${extra} (matchup edge)` };
+      }
       case 'fade':    return { ok: false, why: `defense elite vs ${posLabel}s${yptStr} — receiving over fades here (fade/under)` };
       case 'conflict':return { ok: false, why: `mixed signal — season vs recent form disagree on this coverage; not a clean edge` };
       default:        return { ok: false, why: `neutral coverage vs ${posLabel}s — not a proven-edge matchup` };
