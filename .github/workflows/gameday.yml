@@ -47,9 +47,11 @@ jobs:
         continue-on-error: true
         run: python3 data/nfl/build_defense_form.py --window 4
 
-      # Fail loudly if ANY build failed — a silent stale gate is the whole risk we're removing.
-      - name: Fail if any build failed
-        if: steps.inj.outcome == 'failure' || steps.qb.outcome == 'failure' || steps.def.outcome == 'failure'
+      # Fail loudly if ANY build did not succeed — a silent stale gate is the whole risk we're
+      # removing. Check for != 'success' (not == 'failure'): a skipped/cancelled step also means the
+      # data didn't land, and this phrasing resolves reliably for continue-on-error steps.
+      - name: Fail if any build did not succeed
+        if: steps.inj.outcome != 'success' || steps.qb.outcome != 'success' || steps.def.outcome != 'success'
         run: |
-          echo "::error::A recency build failed — injuries=${{ steps.inj.outcome }} qb=${{ steps.qb.outcome }} defense=${{ steps.def.outcome }}"
+          echo "::error::A recency build did not succeed — injuries=${{ steps.inj.outcome }} qb=${{ steps.qb.outcome }} defense=${{ steps.def.outcome }}"
           exit 1
