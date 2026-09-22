@@ -574,6 +574,7 @@ function buildCtx(E, l, base) {
     qbCompetent: (E.qbCompetentByTeam && team && E.qbCompetentByTeam[team]) || null,
     role: (E.roleByName && E.roleByName[_norm(l.player_name)]) || null,
     oppDefTier: (E.defenseArchetypeByTeam && opp && E.defenseArchetypeByTeam[opp]) || null,
+    oppDefForm: (E.defFormByTeam && opp && E.defFormByTeam[opp]) || null,
     oppPosCoverage: (function () {
       // opponent's coverage tier vs THIS receiver's position group (WR/TE/RB)
       if (!E.posDefTierByTeam || !opp) return null;
@@ -891,6 +892,9 @@ async function loadEngineData(lines, date, fetchAvailability) {
   // Classify each team's DEFENSE into archetype buckets from LEAGUE-WIDE suppression + pressure
   // (latest season), tiered by 33/67 percentile — mirrors build_matchup_history exactly so the
   // slate looks up the right bucket. Pull all teams (not just slate) so percentiles are real.
+  const defFormRows = await qSafe(`nfl_defense_form?select=team_abbr,pass_form_tier,rush_form_tier,form_pass_epa_allowed,form_rush_epa_allowed,last_week`);
+  const defFormByTeam = {};
+  for (const r of defFormRows) defFormByTeam[r.team_abbr] = { pass: r.pass_form_tier, rush: r.rush_form_tier, passEpa: num(r.form_pass_epa_allowed), rushEpa: num(r.form_rush_epa_allowed), week: r.last_week };
   const allSupp = await qSafe(`nfl_defense_suppression?order=season.desc&select=team_abbr,season,pass_epa_allowed,rush_epa_allowed`);
   const allPress = await qSafe(`nfl_team_pressure?order=season.desc&select=team_abbr,season,pressure_rate`);
   const defenseArchetypeByTeam = (function () {
@@ -1039,7 +1043,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };
@@ -1106,6 +1110,22 @@ async function fetchDepthChartRoles(teams, idByAbbr, seasonYear) {
 // held against a stout run D. This is the data-driven path to receiving/passing being profitable.
 const COMBO_FAMS = new Set(['rush_rec_yards', 'pass_rush_yards']);
 
+// RECENT-FORM BLEND — season tier says what a D is; recent form says what it's BEEN lately. When
+// they DISAGREE (season-soft but tightened up, or season-elite but getting gashed), the matchup is
+// no longer clean either way -> don't feature. When they AGREE, the read is stronger. Maps season
+// buckets + form tiers onto a single decision.
+function formBlend(seasonSoft, seasonElite, formTier) {
+  // formTier: 'soft' | 'avg' | 'elite' | undefined
+  if (!formTier) return seasonSoft ? 'feature' : (seasonElite ? 'fade' : 'neutral');
+  if (seasonSoft && formTier === 'elite') return 'conflict';   // season-soft but locked-in lately
+  if (seasonElite && formTier === 'soft') return 'conflict';   // season-elite but leaking lately
+  if (seasonSoft && formTier !== 'elite') return 'feature';
+  if (seasonElite && formTier !== 'soft') return 'fade';
+  if (formTier === 'soft') return 'feature';                   // season-neutral but soft lately
+  if (formTier === 'elite') return 'fade';
+  return 'neutral';
+}
+
 function computeFeatured(result, ctx) {
   const v = result.verdict, fam = ctx.propFamily;
   if (!v || !v.tier_candidate || v.tier_candidate === 'none') return { ok: false, why: 'not a qualifying tier' };
@@ -1129,9 +1149,12 @@ function computeFeatured(result, ctx) {
     const secure = arch === 'high_volume_passer' || arch === 'mid_volume_passer' || (v.filters && v.filters.volumeSecure);
     if (!secure) return { ok: false, why: 'QB volume not secure' };
     // THE EDGE: passing overs hit vs SOFT pass D, die vs elite. Feature only in the soft matchup.
-    if (tier.pass_d === 'elite_pass_d') return { ok: false, why: 'elite pass D — passing overs fade here (fade/under spot)' };
-    if (tier.pass_d !== 'soft_pass_d') return { ok: false, why: 'neutral pass-D matchup — passing over not a proven edge here' };
-    return { ok: true, why: 'passing over vs SOFT pass D — competent QB (the proven matchup edge)' };
+    switch (formBlend(tier.pass_d === 'soft_pass_d', tier.pass_d === 'elite_pass_d', ctx.oppDefForm && ctx.oppDefForm.pass)) {
+      case 'feature': return { ok: true, why: 'passing over vs SOFT pass D' + (ctx.oppDefForm && ctx.oppDefForm.pass === 'soft' ? ' (soft on the season AND lately)' : '') + ' — competent QB (matchup edge)' };
+      case 'fade':    return { ok: false, why: 'elite pass D — passing overs fade here (fade/under spot)' };
+      case 'conflict':return { ok: false, why: 'mixed signal — season vs recent pass-D form disagree; not a clean edge' };
+      default:        return { ok: false, why: 'neutral pass-D matchup — passing over not a proven edge here' };
+    }
   }
   if (fam === 'receiving_yards') {
     // TEs don't feature — target-fragile, first read to vanish when the QB locks onto WRs
@@ -1148,16 +1171,17 @@ function computeFeatured(result, ctx) {
     // THE EDGE — position-split: feature vs a defense SOFT against THIS receiver's position (a D can
     // be elite vs outside WRs but soft vs the slot/TE). Uses the per-position tier when available,
     // else the team-wide pass_d tier. Elite-vs-this-position = fade/under; neutral = not featured.
-    const pc = ctx.oppPosCoverage;
-    if (pc && pc.tier) {
-      const posLabel = String(ctx.position || 'receiver');
-      if (pc.tier === 'elite') return { ok: false, why: `defense elite vs ${posLabel}s (${pc.ypt != null ? pc.ypt.toFixed(1)+' yd/tgt' : 'shutdown'}) — receiving over fades here` };
-      if (pc.tier !== 'soft') return { ok: false, why: `neutral coverage vs ${posLabel}s — not a proven-edge matchup` };
-      return { ok: true, why: `receiving over vs a defense SOFT against ${posLabel}s (${pc.ypt != null ? pc.ypt.toFixed(1)+' yd/tgt allowed' : 'soft'}) — the matchup edge` };
+    const pc = ctx.oppPosCoverage, form = ctx.oppDefForm;
+    const posLabel = String(ctx.position || 'receiver');
+    const soft = pc ? pc.tier === 'soft' : tier.pass_d === 'soft_pass_d';
+    const elite = pc ? pc.tier === 'elite' : tier.pass_d === 'elite_pass_d';
+    const yptStr = pc && pc.ypt != null ? ` (${pc.ypt.toFixed(1)} yd/tgt)` : '';
+    switch (formBlend(soft, elite, form && form.pass)) {
+      case 'feature': return { ok: true, why: `receiving over vs a defense soft vs ${posLabel}s${yptStr}${form && form.pass === 'soft' ? ' — and soft the last few weeks too' : ''} (matchup edge)` };
+      case 'fade':    return { ok: false, why: `defense elite vs ${posLabel}s${yptStr} — receiving over fades here (fade/under)` };
+      case 'conflict':return { ok: false, why: `mixed signal — season vs recent form disagree on this coverage; not a clean edge` };
+      default:        return { ok: false, why: `neutral coverage vs ${posLabel}s — not a proven-edge matchup` };
     }
-    if (tier.pass_d === 'elite_pass_d') return { ok: false, why: 'elite pass D — receiving overs fade here (fade/under spot)' };
-    if (tier.pass_d !== 'soft_pass_d') return { ok: false, why: 'neutral pass-D matchup — receiving over not a proven edge here' };
-    return { ok: true, why: 'receiving over vs SOFT pass D — stable WR + competent QB (the proven matchup edge)' };
   }
   if (fam === 'rushing_yards') {
     // #3 CURRENT depth chart must still show him as the lead — catches a fresh committee/demotion
@@ -1166,10 +1190,12 @@ function computeFeatured(result, ctx) {
     // pure rushing needs real carry volume (bellcow / steady)
     const steady = arch === 'bellcow' || (d.carryMean != null && d.carryMean >= 12 && d.carryCv != null && d.carryCv <= 0.40);
     if (!steady) return { ok: false, why: 'committee / unsteady carries' };
-    // rushing over FADES vs a stout run D — hold it there even for a bellcow.
-    if (tier.run_d === 'stout_run_d') return { ok: false, why: 'stout run D — rushing over fades here (fade/under spot)' };
-    const favorable = (ctx.oppDefWeakness && Number(ctx.oppDefWeakness.run) > 0.5) || tier.run_d === 'soft_run_d';
-    return (supportive || favorable) ? { ok: true, why: (tier.run_d === 'soft_run_d' ? 'steady carries + SOFT run D (matchup edge)' : (supportive ? 'steady carries + supportive script' : 'steady carries + favorable matchup')) }
+    // rushing over FADES vs a stout run D — blend the season read with recent rush form.
+    const rb = formBlend(tier.run_d === 'soft_run_d', tier.run_d === 'stout_run_d', ctx.oppDefForm && ctx.oppDefForm.rush);
+    if (rb === 'fade') return { ok: false, why: 'stout run D — rushing over fades here (fade/under spot)' };
+    if (rb === 'conflict') return { ok: false, why: 'mixed signal — season vs recent run-D form disagree; not a clean edge' };
+    const favorable = rb === 'feature' || (ctx.oppDefWeakness && Number(ctx.oppDefWeakness.run) > 0.5);
+    return (supportive || favorable) ? { ok: true, why: (rb === 'feature' ? 'steady carries + SOFT run D' + (ctx.oppDefForm && ctx.oppDefForm.rush === 'soft' ? ' (lately too)' : '') + ' (matchup edge)' : (supportive ? 'steady carries + supportive script' : 'steady carries + favorable matchup')) }
                                      : { ok: false, why: 'no supportive script or favorable matchup' };
   }
   if (fam === 'rush_rec_yards') {
