@@ -45,8 +45,8 @@ const LEAGUE_AVG_PACE = 80;            // possessions per 40 min
 const LEAGUE_AVG_MISS_RATE = 0.555;    // 1 - league avg FG% (~0.445)
 
 // Tuning constants
-const MATCHUP_PACE_CLAMP = 0.15;       // opp pace adjustment bounded at +/-15%
-const MATCHUP_MISS_RATE_CLAMP = 0.12;  // opp miss rate adjustment bounded at +/-12%
+const MATCHUP_PACE_CLAMP = 0.05;       // opp pace adj — dampened from 0.15 (rebounds vs game pace r=0.01, negligible)
+const MATCHUP_MISS_RATE_CLAMP = 0.04;  // opp miss rate adj — dampened from 0.12 (rebounds vs opp misses r=0.11, weak)
 const B2B_REBOUND_PENALTY = 0.96;      // 4% reduction on tired legs (crashing fatigue)
 const RECENT_FORM_CLAMP = 0.12;        // recent rebound rate bounded at +/-12%
 const RECENT_FORM_WEIGHT = 0.5;        // half-trust recent form

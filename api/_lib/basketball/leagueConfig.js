@@ -54,8 +54,8 @@ const WNBA = {
   weights: {
     recentFormBlend: 0.35,        // weight on last-N scoring rate vs season
     minutesRecentBlend: 0.40,     // weight on recent minutes vs season minutes
-    paceSensitivity: 0.50,        // dampening on the raw pace multiplier
-    defenseSensitivity: 0.50,     // dampening on the raw opponent-defense multiplier
+    paceSensitivity: 0.30,        // pace r=0.17 (3% of variance) — dampened from 0.50; minutes+volume drive props, not pace
+    defenseSensitivity: 0.20,     // team defense r=0.05 (noise) — dampened hard from 0.50; opponent defense barely moves player props
     whistleSensitivity: 0.30,     // dampening on the whistle multiplier
     coverageSensitivity: 0.40,    // dampening on the coaching-coverage scheme multiplier
     shootingFormSensitivity: 0.35, // dampening on recent-vs-season FG% (hot/cold hand)
@@ -72,11 +72,11 @@ const WNBA = {
   // --- Multiplier clamps (sanity rails; keep adjustments honest) ---
   clamps: {
     pace: [0.90, 1.12],
-    defense: [0.90, 1.12],
+    defense: [0.95, 1.06],        // tightened — defense signal is weak (r=0.05)
     whistle: [0.95, 1.06],
     coverage: [0.95, 1.05],       // coaching scheme effect; neutral (1.0) until coverage data exists
     shootingForm: [0.93, 1.08],   // recent FG% hot/cold adjustment to scoring efficiency
-    reboundEquity: [0.78, 1.22],  // archetype rebound-equity swing from shot geography
+    reboundEquity: [0.92, 1.08],  // tightened from ±22% — shot-geography rebound signal is weak (opportunity r=0.12); rebounds are minutes-driven
     gameLineFactor: [0.96, 1.04], // each minor defensive factor's bound (small nudge)
     gameLineCombined: [0.93, 1.07],// overall minor-factor suppression bound on a team total
     recentRate: [0.80, 1.25],
