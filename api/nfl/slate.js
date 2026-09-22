@@ -572,6 +572,7 @@ function buildCtx(E, l, base) {
     position: (E.posByName && E.posByName[base.player]) || l.position || null,
     qbCompetent: (E.qbCompetentByTeam && team && E.qbCompetentByTeam[team]) || null,
     role: (E.roleByName && E.roleByName[_norm(l.player_name)]) || null,
+    oppDefTier: (E.defenseArchetypeByTeam && opp && E.defenseArchetypeByTeam[opp]) || null,
     matchupDelta: (function () {
       // how THIS player does vs the KIND of defense the opponent is (archetype split, large sample)
       if (!E.matchupByKey || !E.defenseArchetypeByTeam || !gsis || !opp) return null;
@@ -1068,13 +1069,13 @@ async function fetchDepthChartRoles(teams, idByAbbr, seasonYear) {
 // Proven Edge card. Everything else is analyzed + shown in the game cards but NOT promoted until it
 // clears breakeven. GROW this set as families validate (currently: single-stat rushing overs,
 // 53.7% over 147 graded; receiving/passing are ~breakeven and recalibrating — tracking, not proven).
-const PROVEN_EDGES = new Set(['rushing_yards']);
-const EDGE_STATUS = {
-  receiving_yards: 'receiving — ~breakeven, recalibrating (tracking, not yet a proven edge)',
-  passing_yards: 'passing — ~breakeven, recalibrating (tracking, not yet a proven edge)',
-  rush_rec_yards: 'rush+rec combo — losing family (~42%), not featured',
-  pass_rush_yards: 'pass+rush combo — losing family, not featured',
-};
+// PROVEN EDGES are now MATCHUP-CONDITIONAL (from mining the graded record). The single biggest
+// predictor of a yardage OVER is the OPPONENT'S DEFENSE TIER, not the player:
+//   receiving/passing over -> hits vs SOFT pass D (CHI/ATL/IND ~70-83%), dies vs elite (NYJ/DEN 0-12%)
+//   rushing over           -> hits vs soft/avg run D, fades vs a STOUT run D
+// So a pass-game over only reaches the Proven Edge card in a SOFT pass-D matchup; a rushing over is
+// held against a stout run D. This is the data-driven path to receiving/passing being profitable.
+const COMBO_FAMS = new Set(['rush_rec_yards', 'pass_rush_yards']);
 
 function computeFeatured(result, ctx) {
   const v = result.verdict, fam = ctx.propFamily;
@@ -1082,9 +1083,8 @@ function computeFeatured(result, ctx) {
   if (v.stale) return { ok: false, why: 'stale role — not featured' };
   const dc = result.dataCompleteness;
   if (dc != null && dc < 0.6) return { ok: false, why: 'thin data — not featured' };
-  // PROVEN-EDGE GATE — only validated edges reach the Proven Edge card.
-  if (!PROVEN_EDGES.has(fam)) return { ok: false, why: EDGE_STATUS[fam] || (fam + ' — not yet a proven edge') };
-  if (fam === 'pass_rush_yards') return { ok: false, why: 'pass+rush combo — unproven family, not featured' };
+  if (COMBO_FAMS.has(fam)) return { ok: false, why: 'combo family — losing (~40%), not featured' };
+  const tier = ctx.oppDefTier || {};
   const vol = (result.signals && result.signals.volume) || {};
   const d = vol.detail || {}, arch = vol.archetype;
   const pos = String(ctx.position || '').toUpperCase();
@@ -1098,7 +1098,11 @@ function computeFeatured(result, ctx) {
     // competent, high-volume starter and let the gate exclude the Cam Ward / Cooper Rush cases.
     if (ctx.qbCompetent && ctx.qbCompetent.competent === false) return { ok: false, why: 'QB risk — ' + (ctx.qbCompetent.reason || 'backup/unproven QB') };
     const secure = arch === 'high_volume_passer' || arch === 'mid_volume_passer' || (v.filters && v.filters.volumeSecure);
-    return secure ? { ok: true, why: 'passing over — competent, high-volume QB' } : { ok: false, why: 'QB volume not secure' };
+    if (!secure) return { ok: false, why: 'QB volume not secure' };
+    // THE EDGE: passing overs hit vs SOFT pass D, die vs elite. Feature only in the soft matchup.
+    if (tier.pass_d === 'elite_pass_d') return { ok: false, why: 'elite pass D — passing overs fade here (fade/under spot)' };
+    if (tier.pass_d !== 'soft_pass_d') return { ok: false, why: 'neutral pass-D matchup — passing over not a proven edge here' };
+    return { ok: true, why: 'passing over vs SOFT pass D — competent QB (the proven matchup edge)' };
   }
   if (fam === 'receiving_yards') {
     // TEs don't feature — target-fragile, first read to vanish when the QB locks onto WRs
@@ -1112,7 +1116,10 @@ function computeFeatured(result, ctx) {
     // #2 coverage is now a PROJECTION nudge (nflAnalyze scales the median by the matched corner's
     // real coverage quality), not a binary drop — so a WR vs an elite corner whose ADJUSTED number
     // still clears the line can feature. The near-median/soft-line gate keys off the adjusted proj.
-    return { ok: true, why: 'stable WR role + competent QB' };
+    // THE EDGE: receiving overs hit vs SOFT pass D, die vs elite. Feature only in the soft matchup.
+    if (tier.pass_d === 'elite_pass_d') return { ok: false, why: 'elite pass D — receiving overs fade here (fade/under spot)' };
+    if (tier.pass_d !== 'soft_pass_d') return { ok: false, why: 'neutral pass-D matchup — receiving over not a proven edge here' };
+    return { ok: true, why: 'receiving over vs SOFT pass D — stable WR + competent QB (the proven matchup edge)' };
   }
   if (fam === 'rushing_yards') {
     // #3 CURRENT depth chart must still show him as the lead — catches a fresh committee/demotion
@@ -1121,8 +1128,10 @@ function computeFeatured(result, ctx) {
     // pure rushing needs real carry volume (bellcow / steady)
     const steady = arch === 'bellcow' || (d.carryMean != null && d.carryMean >= 12 && d.carryCv != null && d.carryCv <= 0.40);
     if (!steady) return { ok: false, why: 'committee / unsteady carries' };
-    const favorable = ctx.oppDefWeakness && Number(ctx.oppDefWeakness.run) > 0.5;
-    return (supportive || favorable) ? { ok: true, why: supportive ? 'steady carries + supportive script' : 'steady carries + favorable matchup' }
+    // rushing over FADES vs a stout run D — hold it there even for a bellcow.
+    if (tier.run_d === 'stout_run_d') return { ok: false, why: 'stout run D — rushing over fades here (fade/under spot)' };
+    const favorable = (ctx.oppDefWeakness && Number(ctx.oppDefWeakness.run) > 0.5) || tier.run_d === 'soft_run_d';
+    return (supportive || favorable) ? { ok: true, why: (tier.run_d === 'soft_run_d' ? 'steady carries + SOFT run D (matchup edge)' : (supportive ? 'steady carries + supportive script' : 'steady carries + favorable matchup')) }
                                      : { ok: false, why: 'no supportive script or favorable matchup' };
   }
   if (fam === 'rush_rec_yards') {
