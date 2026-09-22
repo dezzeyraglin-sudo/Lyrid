@@ -589,7 +589,7 @@ function buildCtx(E, l, base) {
     oppPosCoverage: (function () {
       // opponent's coverage tier vs THIS receiver's position group (WR/TE/RB)
       if (!E.posDefTierByTeam || !opp) return null;
-      const pg = String((ready && E.posByName[l.player_name]) || l.position || '').toUpperCase();
+      const pg = String((E.posByName && (E.posByName[base.player] || E.posByName[l.player_name])) || l.position || '').toUpperCase();
       const grp = (pg === 'FB') ? 'RB' : pg;
       return (E.posDefTierByTeam[opp] || {})[grp] || null;
     })(),
