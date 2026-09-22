@@ -472,6 +472,17 @@ export default async function handler(req, res) {
   return res.status(200).json({
     source: ready ? 'prizepicks+engine' : 'prizepicks',
     date, count: picks.length, picks, totals,
+    dataFreshness: (ready && E.dataFreshness) || null,
+    warnings: (function () {
+      const f = (ready && E.dataFreshness) || {}, out = [];
+      const label = { defenseForm: 'defense form', qbForm: 'QB form', injuries: 'injuries' };
+      for (const k of Object.keys(label)) {
+        const s = f[k];
+        if (s && s.missing) out.push(`${label[k]} data missing — the game-day build has not populated it`);
+        else if (s && s.stale) out.push(`${label[k]} is ${s.ageDays}d stale — the game-day build may have failed; reads use last week\u2019s data`);
+      }
+      return out;
+    })(),
     diagnostics: {
       unmappedStatTypes: getUnmappedStats(),
       altLinesDropped: getAltLinesDropped(),
@@ -871,7 +882,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
   const scoringRows = await qSafe(`nfl_team_scoring?select=team_abbr,season,points_for_pg,points_against_pg,off_epa_play,plays_pg&order=season.desc${teamFilter}`);
   const scoringByTeam = firstBy(scoringRows, r => r.team_abbr);
   // injuries (server-side, from the ingest — ESPN 403s Vercel directly) + defender impact
-  const injRows = await qSafe(`nfl_injuries?select=player_key,player_name,team_abbr,position,status,status_raw,detail`);
+  const injRows = await qSafe(`nfl_injuries?select=player_key,player_name,team_abbr,position,status,status_raw,detail,updated_at&order=updated_at.desc`);
   const injuryByName = {}; for (const r of injRows) injuryByName[r.player_key] = r;
   const defImpRows = allTeams.length ? await qSafe(`nfl_defender_impact?team=in.(${inList(allTeams)})&order=season.desc,impact_score.desc&select=player_id,player_name,team,pos_group,season,snap_share,impact_score,impact_type`) : [];
   // REAL coverage quality (PFR advanced def: passer-rating/yds-per-target allowed when thrown at).
@@ -881,7 +892,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
   const coverageByName = {};
   for (const r of covQualRows) if (!coverageByName[r.player_key]) coverageByName[r.player_key] = { name: r.player_name, score: Number(r.shadow_score) || 0, tier: r.shadow_tier, rating: r.rating_allowed };
   // QB recent-form skill score (rolling last-8 dakota/EPA) — 'is he playing well NOW', not tenure
-  const qbFormRows = await qSafe(`nfl_qb_form?select=player_key,player_name,qb_form,tier`);
+  const qbFormRows = await qSafe(`nfl_qb_form?select=player_key,player_name,qb_form,tier,updated_at&order=updated_at.desc`);
   const qbFormByName = {};
   for (const r of qbFormRows) qbFormByName[r.player_key] = { form: Number(r.qb_form), tier: r.tier };
   // MATCHUP HISTORY — how each player does vs a KIND of defense (large-sample archetype splits).
@@ -892,9 +903,23 @@ async function loadEngineData(lines, date, fetchAvailability) {
   // Classify each team's DEFENSE into archetype buckets from LEAGUE-WIDE suppression + pressure
   // (latest season), tiered by 33/67 percentile — mirrors build_matchup_history exactly so the
   // slate looks up the right bucket. Pull all teams (not just slate) so percentiles are real.
-  const defFormRows = await qSafe(`nfl_defense_form?select=team_abbr,pass_form_tier,rush_form_tier,form_pass_epa_allowed,form_rush_epa_allowed,last_week`);
+  const defFormRows = await qSafe(`nfl_defense_form?select=team_abbr,pass_form_tier,rush_form_tier,form_pass_epa_allowed,form_rush_epa_allowed,last_week,updated_at&order=updated_at.desc`);
   const defFormByTeam = {};
   for (const r of defFormRows) defFormByTeam[r.team_abbr] = { pass: r.pass_form_tier, rush: r.rush_form_tier, passEpa: num(r.form_pass_epa_allowed), rushEpa: num(r.form_rush_epa_allowed), week: r.last_week };
+  // DATA FRESHNESS — a recency signal is only good if the game-day build actually landed. If a
+  // table hasn't been written in over ~8 days, the automated build silently failed and the gate is
+  // running on stale data. Measure it here so the app can WARN (observable automation).
+  const _freshOf = (rows) => {
+    const ts = rows && rows.length ? rows.map(r => Date.parse(r.updated_at)).filter(x => isFinite(x)) : [];
+    if (!ts.length) return { updatedAt: null, ageDays: null, stale: true, missing: !rows || !rows.length };
+    const newest = Math.max(...ts), ageDays = (Date.now() - newest) / 86400000;
+    return { updatedAt: new Date(newest).toISOString(), ageDays: +ageDays.toFixed(1), stale: ageDays > 8, missing: false };
+  };
+  const dataFreshness = {
+    defenseForm: _freshOf(defFormRows),
+    qbForm: _freshOf(qbFormRows),
+    injuries: _freshOf(injRows),
+  };
   const allSupp = await qSafe(`nfl_defense_suppression?order=season.desc&select=team_abbr,season,pass_epa_allowed,rush_epa_allowed`);
   const allPress = await qSafe(`nfl_team_pressure?order=season.desc&select=team_abbr,season,pressure_rate`);
   const defenseArchetypeByTeam = (function () {
@@ -1039,7 +1064,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
   };
 
   return {
-    ready: true, season: latestSeason || null, resolveKey,
+    ready: true, season: latestSeason || null, resolveKey, dataFreshness,
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,

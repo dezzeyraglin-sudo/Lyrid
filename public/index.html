@@ -24406,6 +24406,18 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (!v.tier_candidate || v.tier_candidate === 'none') return 'no tier \u2014 line too short or no edge';
     return 'model ' + Math.round((pAdjOf(v)||0)*100) + '%, tier ' + (v.tier_candidate||'none');
   }
+  // Observable automation — if the game-day recency builds didn't land, the reads are running on
+  // stale data. Show it loudly instead of silently trusting last week's tiers.
+  function nflRenderFreshness(warnings){
+    var host = document.getElementById('nflJudgmentCard'); if (!host) return;
+    var slot = document.getElementById('nflFreshWarn');
+    if (!warnings || !warnings.length) { if (slot) slot.remove(); return; }
+    if (!slot) { slot = document.createElement('div'); slot.id = 'nflFreshWarn'; host.parentNode.insertBefore(slot, host); }
+    slot.innerHTML = '<div class="nflx-banner capped" style="margin-bottom:12px"><span class="nflx-banner-ic">\u26A0</span>' +
+      '<div class="nflx-banner-body"><b>STALE DATA \u2014 game-day build may have failed.</b> ' +
+      warnings.map(function(w){ return esc(w); }).join(' \u00b7 ') +
+      '. Reads below use the last data that landed \u2014 treat matchup tiers with caution until refreshed.</div></div>';
+  }
   function renderJudgment(picks){
     nflQbByTeam = {}; (picks||[]).forEach(function(p){ if(p&&p.position==='QB'&&p.team&&!nflQbByTeam[p.team])nflQbByTeam[p.team]=p.player; });
     var host = document.getElementById('nflJudgmentCard'); if (!host) return;
@@ -24621,6 +24633,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 
     var games = groupByGame(data.picks).length;
     if (meta) meta.textContent = data.picks.length + ' props \u00b7 ' + games + ' games \u00b7 ' + (data.source || 'engine');
+    nflRenderFreshness(data.warnings);
     renderJudgment(data.picks);
     renderGames(data.picks, data.totals);
     var _tc=document.getElementById('nflTotalsContainer'); if(_tc)_tc.innerHTML='';
