@@ -353,6 +353,7 @@ export default async function handler(req, res) {
       oppCoverage: ctx.oppCoverage || null,   // exposed for shadow-gate diagnosis
       role: ctx.role || null,                 // current depth-chart role (posGroup/rank)
       matchupDelta: ctx.matchupDelta || null,
+      oppPosCoverage: ctx.oppPosCoverage || null,
       stale: (result.verdict && result.verdict.stale) || null,
       injury,
       outlook: result.outlook || null,
@@ -573,6 +574,13 @@ function buildCtx(E, l, base) {
     qbCompetent: (E.qbCompetentByTeam && team && E.qbCompetentByTeam[team]) || null,
     role: (E.roleByName && E.roleByName[_norm(l.player_name)]) || null,
     oppDefTier: (E.defenseArchetypeByTeam && opp && E.defenseArchetypeByTeam[opp]) || null,
+    oppPosCoverage: (function () {
+      // opponent's coverage tier vs THIS receiver's position group (WR/TE/RB)
+      if (!E.posDefTierByTeam || !opp) return null;
+      const pg = String((ready && E.posByName[l.player_name]) || l.position || '').toUpperCase();
+      const grp = (pg === 'FB') ? 'RB' : pg;
+      return (E.posDefTierByTeam[opp] || {})[grp] || null;
+    })(),
     matchupDelta: (function () {
       // how THIS player does vs the KIND of defense the opponent is (archetype split, large sample)
       if (!E.matchupByKey || !E.defenseArchetypeByTeam || !gsis || !opp) return null;
@@ -924,6 +932,27 @@ async function loadEngineData(lines, date, fetchAvailability) {
     };
   }
   // coverage -> { team: { WR, TE, RB } }
+  // POSITION-SPLIT DEFENSE TIER — 'soft pass D' is too blunt: a defense can be elite vs outside WRs
+  // and soft vs the slot/TE. Tier each team vs each pos_group (WR/TE/RB) by yards-per-target allowed,
+  // percentiled across the league. This turns the gate from 'soft vs the pass' into 'soft vs THIS
+  // receiver's position' — the free completion of a table already loaded.
+  const posDefTierByTeam = (function () {
+    const latest = covRows.length ? Math.max(...covRows.map(r => r.season)) : null;
+    const rows = covRows.filter(r => r.season === latest);
+    const pct = (arr, p) => { const s = arr.filter(x => x != null && isFinite(x)).sort((a, b) => a - b); return s.length ? s[Math.floor(p * (s.length - 1))] : null; };
+    const out = {};
+    for (const pg of ['WR', 'TE', 'RB']) {
+      const grp = rows.filter(r => r.pos_group === pg);
+      const vals = grp.map(r => num(r.yards_per_target)).filter(v => v != null && isFinite(v));
+      const q1 = pct(vals, 0.33), q2 = pct(vals, 0.67);   // low ypt allowed = elite coverage vs that pos
+      for (const r of grp) {
+        const v = num(r.yards_per_target);
+        const tier = (v == null || !isFinite(v)) ? 'avg' : (v <= q1 ? 'elite' : (v >= q2 ? 'soft' : 'avg'));
+        ((out[r.team_abbr] ||= {})[pg] = { tier, ypt: v });
+      }
+    }
+    return out;
+  })();
   const coverageByTeam = {};
   for (const r of covRows) { const t = r.team_abbr; (coverageByTeam[t] ||= {}); if (!coverageByTeam[t][r.pos_group]) coverageByTeam[t][r.pos_group] = { yards_per_target: num(r.yards_per_target), catch_rate_allowed: num(r.catch_rate_allowed) }; }
 
@@ -1010,7 +1039,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };
@@ -1116,7 +1145,16 @@ function computeFeatured(result, ctx) {
     // #2 coverage is now a PROJECTION nudge (nflAnalyze scales the median by the matched corner's
     // real coverage quality), not a binary drop — so a WR vs an elite corner whose ADJUSTED number
     // still clears the line can feature. The near-median/soft-line gate keys off the adjusted proj.
-    // THE EDGE: receiving overs hit vs SOFT pass D, die vs elite. Feature only in the soft matchup.
+    // THE EDGE — position-split: feature vs a defense SOFT against THIS receiver's position (a D can
+    // be elite vs outside WRs but soft vs the slot/TE). Uses the per-position tier when available,
+    // else the team-wide pass_d tier. Elite-vs-this-position = fade/under; neutral = not featured.
+    const pc = ctx.oppPosCoverage;
+    if (pc && pc.tier) {
+      const posLabel = String(ctx.position || 'receiver');
+      if (pc.tier === 'elite') return { ok: false, why: `defense elite vs ${posLabel}s (${pc.ypt != null ? pc.ypt.toFixed(1)+' yd/tgt' : 'shutdown'}) — receiving over fades here` };
+      if (pc.tier !== 'soft') return { ok: false, why: `neutral coverage vs ${posLabel}s — not a proven-edge matchup` };
+      return { ok: true, why: `receiving over vs a defense SOFT against ${posLabel}s (${pc.ypt != null ? pc.ypt.toFixed(1)+' yd/tgt allowed' : 'soft'}) — the matchup edge` };
+    }
     if (tier.pass_d === 'elite_pass_d') return { ok: false, why: 'elite pass D — receiving overs fade here (fade/under spot)' };
     if (tier.pass_d !== 'soft_pass_d') return { ok: false, why: 'neutral pass-D matchup — receiving over not a proven edge here' };
     return { ok: true, why: 'receiving over vs SOFT pass D — stable WR + competent QB (the proven matchup edge)' };
