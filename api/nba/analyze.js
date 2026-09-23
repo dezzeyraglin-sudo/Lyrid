@@ -16,7 +16,10 @@ import { assignArchetype } from '../_lib/nba/nbaArchetype.js';
 import { playerShotProfile, teamAllowedProfile, openZoneRead, lastNGameShots } from '../_lib/nba/nbaShotZone.js';
 import { recentForm } from '../_lib/nba/recentForm.js';
 import { adjustProfile } from '../_lib/nba/opponentAdjust.js';
+import { projectSlateTotals } from '../_lib/nba/gameTotals.js';
 import { CONFIGS } from '../_lib/nba/leagueConfig.js';
+import { buildCalibration, gradeTier } from '../_lib/nba/calibration.js';
+import { tagRegime } from '../_lib/nba/regime.js';
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function yyyymmdd(iso) { return iso.replace(/-/g, ''); }
@@ -83,14 +86,15 @@ export function buildPlayerCards(rows) {
     if (!byKey[key]) byKey[key] = {
       playerId: r.playerId, player: r.player, team: r.team, opponent: r.opponent,
       gameId: r.gameId, date: r.date, archetype: r.archetype || null, recentForm: r.recentForm || null,
-      matchup: r.matchup || null, oppAdj: r.oppAdj || null,
+      matchup: r.matchup || null, oppAdj: r.oppAdj || null, regime: r.regime || null,
       props: [],
     };
     byKey[key].props.push({
       market: r.market, marketLabel: MKT[r.market] || String(r.market || '').toUpperCase(),
       side: r.side, line: r.line,
       projection: r.projection, floor: r.floor, ceiling: r.ceiling,
-      prob: r.cashRate, edge: r.edge, tier: r.tier, isBet: r.tier !== 'PASS',
+      prob: r.cashRate, edge: r.edge, tier: r.tier, isBet: r.isBet != null ? r.isBet : (r.tier !== 'PASS' && r.tier !== 'PROVISIONAL'),
+      liveRate: r.calibration ? r.calibration.liveRate : null, gradedN: r.calibration ? r.calibration.n : 0, provisional: r.calibration ? r.calibration.provisional : true,
       why: r.why,
     });
   }
@@ -134,9 +138,11 @@ export async function analyzeSlate(io) {
   const {
     date = todayISO(), season, props, schedule, rosterIndex, injuryIdx,
     bbrefAdv, bbrefTeams, fetchGameLog, shotZoneIndex = null,
+    gradedHistory = null, seasonStart = null, isPlayoffs = false,
   } = io;
 
   const byTeam = gamesByTeam(schedule);
+  const calibration = buildCalibration(gradedHistory, CONFIGS.NBA); // LIVE-rate guardrail (v4 §3)
   const ppIndex = {};
   for (const l of props.lines) ppIndex[`${l.playerKey}|${l.market}`] = l;
 
@@ -162,6 +168,7 @@ export async function analyzeSlate(io) {
     );
     if (!m.resolved) { unresolved.push({ player: pl.player, team: pl.team, reason: 'merge unresolved' }); continue; }
     m.ppKey = pl.playerKey;  // original PrizePicks key — line lookups use this, not the roster name
+    m.regime = tagRegime(game, { date, seasonStart, isPlayoffs }, CONFIGS.NBA).regime; // v4 §1
 
     // minutes model -> attach projMinutes + cv + flags
     const adv = bbrefAdv?.get?.(pl.playerKey);
@@ -214,10 +221,25 @@ export async function analyzeSlate(io) {
   // attach archetype + shot-zone read onto the output rows by player id (so the card
   // has them even though toCandidates doesn't know about them)
   const metaById = {};
-  for (const m of merged) if (m.id) metaById[String(m.id)] = { archetype: m.archetype, shotZone: m.shotZone || null, recentForm: m.recentForm || null, oppAdj: m.oppAdj || null, matchup: m.matchup || null };
+  for (const m of merged) if (m.id) metaById[String(m.id)] = { archetype: m.archetype, shotZone: m.shotZone || null, recentForm: m.recentForm || null, oppAdj: m.oppAdj || null, matchup: m.matchup || null, regime: m.regime || null };
   const attach = (arr) => (arr || []).map((c) => {
     const meta = c.playerId != null ? metaById[String(c.playerId)] : null;
-    return meta ? { ...c, archetype: meta.archetype, shotZone: meta.shotZone, recentForm: meta.recentForm, oppAdj: meta.oppAdj, matchup: meta.matchup } : c;
+    const regime = meta ? meta.regime : (c.regime || null);
+    const engineIsBet = c.isBet != null ? c.isBet : (c.tier && c.tier !== 'PASS' && c.lean && c.lean !== 'pass');
+    // LIVE-rate gate: only a pick the engine actually LEANS can earn a graded tier; a good
+    // cohort never elevates a no-edge pick. Badge = live cohort rate, never the engine's edge.
+    const cg = engineIsBet
+      ? gradeTier({ market: c.market, side: c.side, regime }, calibration, CONFIGS.NBA)
+      : { tier: c.tier, liveRate: null, n: 0, provisional: true, notLeaned: true };
+    const base = meta ? { ...c, archetype: meta.archetype, shotZone: meta.shotZone, recentForm: meta.recentForm, oppAdj: meta.oppAdj, matchup: meta.matchup } : { ...c };
+    return {
+      ...base,
+      regime,
+      engineTier: c.tier,                 // the engine's edge-based read (pre-calibration)
+      tier: cg.tier,                      // the badge shown: PROVISIONAL until graded, then live-rate
+      calibration: cg,                    // { tier, liveRate, n, provisional, demoted }
+      isBet: !!engineIsBet && !cg.demoted, // provisional leans still log (to accrue grades); demoted cohorts don't
+    };
   });
 
   // diagnostics: make an empty slate self-explanatory (which stage is empty?)
@@ -225,6 +247,7 @@ export async function analyzeSlate(io) {
     scheduleGames: schedule.length,
     ppStandardLines: props.lines.length,
     playersWithLine: players.length,
+    calibration: { gradedRows: calibration.n, cohorts: Object.keys(calibration.cohorts).length },
     merged: merged.length,
     bets: candidates.length,
     pp: props._debug || null,
@@ -253,6 +276,7 @@ export async function analyzeSlate(io) {
     candidates: candOut,
     players: slateOut,
     playerCards: buildPlayerCards(slateOut),
+    gameTotals: projectSlateTotals(schedule, { bbrefTeams, injuryIdx, rosterIndex, bbrefAdv }, CONFIGS.NBA),
     ranked,
     mergedCount: merged.length,
     diagnostics,
@@ -280,12 +304,16 @@ export default async function handler(req, res) {
     // read it here when available. Null is fine — archetype falls back to bbref rates
     // and the shot-zone verdict reads stay dormant until the cache exists.
     const shotZoneIndex = null; // TODO: load from Supabase/KV (cron output)
+    // graded history powers the self-calibration guardrail (v4). Frontend POSTs its graded
+    // nbaPropHistory rows; absent it, tiers stay PROVISIONAL (nothing promoted on no data).
+    const gradedHistory = (req.body && req.body.gradedHistory) || null;
+    const seasonStart = process.env.NBA_SEASON_START || null;
 
     const out = await analyzeSlate({
       date, season, props, schedule, rosterIndex, injuryIdx,
       bbrefAdv: advPack.byKey, bbrefTeams: teamPack.teams,
       fetchGameLog: espn.fetchPlayerGameLog,
-      shotZoneIndex,
+      shotZoneIndex, gradedHistory, seasonStart,
     });
 
     res.status(200).json(out);

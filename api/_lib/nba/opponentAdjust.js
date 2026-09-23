@@ -22,6 +22,11 @@ export function adjustProfile(profile, matchup, cfg) {
   if (matchup.blocksPerG != null) blockMult = capMult(1 - o.blockCoef * ((matchup.blocksPerG - o.leagueBlocksPerG) / o.leagueBlocksPerG), o.blockCap);
   if (matchup.stealsPerG != null) stealMult = capMult(1 - o.stealCoef * ((matchup.stealsPerG - o.leagueStealsPerG) / o.leagueStealsPerG), o.stealCap);
 
+  const _oppAdj = { effMult: +effMult.toFixed(3), volMult: +volMult.toFixed(3), rebMult: +rebMult.toFixed(3), blockMult: +blockMult.toFixed(3), stealMult: +stealMult.toFixed(3) };
+  // v4: opponent context barely moves player props (r~0.05). SHADOW = keep the read for the
+  // card + the calibration log, but DON'T move the projection until NBA grades earn it.
+  if (o.shadow) return { ...profile, _oppAdj };
+
   const mul = (v, m) => (v != null ? v * m : v);
   return {
     ...profile,

@@ -39,15 +39,18 @@ export async function mergePlayer(ppLine, { rosterIndex, bbrefAdv, bbrefTeams, i
   const id = roster?.id ?? null;
   const currentTeam = roster?.team ?? null;
 
-  // ESPN gamelog -> shot profile + recent form (intrinsic; survives a trade)
-  const rows = gameLog ?? (id ? await fetchPlayerGameLog(id).catch(() => []) : []);
-  const shotProfile = rows.length ? buildShotProfile(rows) : null;
-  dc.hasShotProfile = !!shotProfile && !shotProfile.insufficient;
-
-  // bbref intrinsic rates + the historical team they were earned on
+  // bbref intrinsic rates + historical team — needed BEFORE profiling to detect a role change
   const adv = bbrefAdv?.get?.(key) || null;
   dc.hasBbrefRates = !!adv;
   const historicalTeam = adv?.team ?? null;
+  const teamChange = !!(historicalTeam && currentTeam && historicalTeam !== currentTeam);
+  dc.teamChangeFlagged = teamChange;
+
+  // ESPN gamelog -> shot profile. VOLUME recency-weighted toward L5 (v4 possession-core fix),
+  // heavier for role-changers so the projection follows the new role, not stale pooled games.
+  const rows = gameLog ?? (id ? await fetchPlayerGameLog(id).catch(() => []) : []);
+  const shotProfile = rows.length ? buildShotProfile(rows, { recentWeight: teamChange ? 0.70 : 0.55 }) : null;
+  dc.hasShotProfile = !!shotProfile && !shotProfile.insufficient;
 
   // matchup context = the CURRENT opponent (from bbref team-allowed table)
   const opp = opponentAbbr ? bbrefTeams?.[opponentAbbr] || null : null;
@@ -56,10 +59,6 @@ export async function mergePlayer(ppLine, { rosterIndex, bbrefAdv, bbrefTeams, i
   // availability
   const inj = id ? injuryIdx?.[id] || null : null;
   dc.hasInjury = !!inj;
-
-  // team-change: stats earned on a different team than the player now plays for
-  const teamChange = !!(historicalTeam && currentTeam && historicalTeam !== currentTeam);
-  dc.teamChangeFlagged = teamChange;
 
   return {
     resolved: !!roster,
