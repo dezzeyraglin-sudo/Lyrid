@@ -5,7 +5,7 @@
 // POST /api/wnba/slate
 //
 // Generates a full slate of prop analyses for a day's WNBA games.
-// Top N players per team (default 10) × 3 markets (points, rebounds, assists) per player.
+// Top 4 players per team × 3 markets (points, rebounds, assists) per player.
 //
 // Caller can:
 //   - Specify a date (default: today)
@@ -14,7 +14,7 @@
 //   - Override default top-N (default: 4 per team)
 //
 // SCALING NOTES:
-//   - 6 games × 2 teams × 10 players × 3 markets = 360 analyses (heavy slate)
+//   - 6 games × 2 teams × 4 players × 3 markets = 144 analyses
 //   - 5-10 second cold-cache latency
 //   - <2 second warm-cache latency (subsequent slate calls in same hour)
 //
@@ -70,7 +70,6 @@ import { fetchWnbaGameLines } from "../_lib/wnba/oddsLines.js";
 import { fetchWnbaProps, fetchWnbaSeasonGames, fetchWnbaPlayerSeasonLogs, getSpin } from "../_lib/wnba/wnbaFeedEspn.js";
 import { buildEmpiricalTotals } from "../_lib/wnba/wnbaEmpiricalTotals.js";
 import { evaluatePropSignal } from "../_lib/wnba/wnbaPropSignal.js";
-import { classifyFirstHalf, cadenceGate } from "../_lib/wnba/firstHalfProfile.js";
 
 // v2 engine modules (ESM)
 import { fetchEspnWnbaInjuries } from "../_lib/basketball/injuryFeed.js";
@@ -124,7 +123,7 @@ const WNBA_V2_PROJECTIONS = (() => {
 // =============================================================
 
 const DEFAULT_MARKETS = ['points', 'rebounds', 'assists'];
-const DEFAULT_TOP_N = 7;   // confirmed starters + slack for context; PP-driven inclusion (below) adds every PP-lined player on top, so coverage no longer depends on this cap
+const DEFAULT_TOP_N = 4;
 const DEFAULT_SPREAD = 0;        // pick'em if no line provided
 const DEFAULT_TOTAL = 164;       // WNBA league average total
 
@@ -151,11 +150,8 @@ async function generateSlate(opts = {}) {
     timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());
   const markets = Array.isArray(opts.markets) && opts.markets.length ? opts.markets : DEFAULT_MARKETS;
-  // Floor at 5 so the whole projected starting five always shows, even if the
-  // client sends a smaller topN. A larger client value is still respected.
-  const topN = Math.max(Number(opts.topN) || DEFAULT_TOP_N, 5);
+  const topN = Number(opts.topN) || DEFAULT_TOP_N;
   const lines = opts.lines || {};
-  const playerBiasOverride = opts.playerBias || null;   // rolling per-player bias from client
   // Season also in Eastern, for the same rollover reason.
   const season = Number(opts.season) || Number(new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York', year: 'numeric',
@@ -218,39 +214,6 @@ async function generateSlate(opts = {}) {
     warnings.push(`Odds API lines fetch failed: ${err.message}`);
   }
 
-  // ESPN ODDS FALLBACK — the Odds API is quota-limited (401 OUT_OF_USAGE_CREDITS drops
-  // every game to default 164/0). ESPN's scoreboard carries pregame total + spread for
-  // free with no quota, so fill any team the Odds API didn't. Same HOME-spread convention
-  // buildBlowoutRisk expects (favoredBy = isHome ? -spread : spread). Non-fatal.
-  try {
-    const ymd = String(date).replace(/-/g, '');
-    const sb = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${ymd}`,
-      { headers: { 'User-Agent': 'curl/8.5.0' }, signal: AbortSignal.timeout(10000) })
-      .then(r => (r.ok ? r.json() : null)).catch(() => null);
-    let filled = 0;
-    for (const ev of (sb?.events || [])) {
-      const comp = (ev.competitions || [])[0] || {};
-      const cs = comp.competitors || [];
-      const home = cs.find(c => c.homeAway === 'home')?.team?.abbreviation;
-      const away = cs.find(c => c.homeAway === 'away')?.team?.abbreviation;
-      if (!home || !away) continue;
-      const odds = (comp.odds || [])[0] || {};
-      const total = Number(odds.overUnder);
-      // "GS -13.5" → favorite abbr + number; convert to the HOME team's spread line.
-      let homeSpread = null;
-      const m = typeof odds.details === 'string' ? odds.details.match(/([A-Z]{2,4})\s*(-?\d+(?:\.\d+)?)/) : null;
-      if (m) { const favAbbr = m[1], favNum = Number(m[2]); if (Number.isFinite(favNum)) homeSpread = favAbbr === home ? favNum : -favNum; }
-      const line = { spread: Number.isFinite(homeSpread) ? homeSpread : null, total: Number.isFinite(total) ? total : null, bookUsed: 'espn' };
-      if (line.spread == null && line.total == null) continue;
-      // fill only teams the Odds API didn't already provide (Odds API stays primary)
-      if (!gameLineFeed.byTeam[home]) { gameLineFeed.byTeam[home] = line; filled++; }
-      if (!gameLineFeed.byTeam[away]) { gameLineFeed.byTeam[away] = line; }
-    }
-    if (filled) warnings.push(`ESPN odds fallback: filled ${filled} game(s)`);
-  } catch (err) {
-    warnings.push(`ESPN odds fallback failed: ${err.message}`);
-  }
-
   // STEP 2d: Pre-fetch real PLAYER PROP lines ONCE (BallDontLie, GOAT tier).
   // Merged into each game's propLines below so the existing precedence holds:
   // caller-provided line > BDL prop line > engine-inferred line. Non-fatal: if
@@ -267,49 +230,6 @@ async function generateSlate(opts = {}) {
   const bdlPropLines = bdlProps.propLines || {};
   const bdlPropMeta = bdlProps.propMeta || {};
   const bdlPropsAvailable = Object.keys(bdlPropLines).length > 0;
-
-  // STEP 2d-PP: PrizePicks STANDARD lines — the real market the tool analyzes
-  // against. Fetched once, standard-only (demon/goblin are no-bets). Non-fatal: if
-  // partner-api 403s from Vercel's IP range, this stays empty and manual/inferred
-  // lines take over — the app never depends on it (per the pp-lines caveats).
-  let ppLines = { ok: false, byKey: {}, altIndex: {}, lines: [] };
-  try {
-    // Dynamic import: if ppLines.js isn't deployed, this is a catchable failure,
-    // not a load-time crash of the whole function. The slate degrades to
-    // manual/inferred lines — it must never depend on the PP module existing.
-    const { fetchWnbaPpLines } = await import("../_lib/wnba/ppLines.js");
-    ppLines = await fetchWnbaPpLines({ standardOnly: true });
-    if (!ppLines.ok) warnings.push(`PP lines unavailable: ${ppLines.reason || 'unknown'}${ppLines.blocked ? ' (IP blocked)' : ''}`);
-    else warnings.push(`PP lines: ${ppLines.standardCount} standard, ${ppLines.altCount} alt`);
-  } catch (err) {
-    warnings.push(`PP lines module unavailable: ${err.message}`);
-  }
-  const ppAltIndex = ppLines.altIndex || {};
-  // Build propLines keyed "name_market" from the STANDARD lines. The slate's
-  // existing normalized-name fallback joins these to bbref player names.
-  const ppPropLines = {}, ppPropMeta = {};
-  for (const l of (ppLines.lines || [])) {
-    if (!l.isStandard) continue;
-    const nm = l.name || l.displayName;
-    if (!nm || l.line == null) continue;
-    const key = `${nm}_${l.market}`;
-    if (!(key in ppPropLines)) {
-      ppPropLines[key] = l.line;
-      ppPropMeta[key] = { book: 'prizepicks', oddsType: l.oddsType };
-    }
-    // also key under displayName spelling if it differs
-    if (l.displayName && l.displayName !== nm) {
-      const k2 = `${l.displayName}_${l.market}`;
-      if (!(k2 in ppPropLines)) { ppPropLines[k2] = l.line; ppPropMeta[k2] = { book: 'prizepicks', oddsType: l.oddsType }; }
-    }
-  }
-  const ppPropsAvailable = Object.keys(ppPropLines).length > 0;
-
-  // PP-DRIVEN SELECTION: raw names of every PP-lined player (singles + combos), passed
-  // to getTopPlayersForTeam so those players are analyzed even outside the top-N rotation.
-  // This is what lifts PP-board coverage toward ~100% without analyzing whole rosters.
-  const ppNames = [];
-  for (const l of (ppLines.lines || [])) { if (l.name) ppNames.push(l.name); if (l.displayName) ppNames.push(l.displayName); }
 
   // STEP 2e: Season-wide player game logs from BDL (replaces the bbref scrape,
   // which Sports-Reference 429-blocks from Vercel's shared IPs). Fetched ONCE per
@@ -334,17 +254,6 @@ async function generateSlate(opts = {}) {
     }
   } catch (err) {
     warnings.push(`Defense table failed: ${err.message}`);
-  }
-
-  // Production cadence from ESPN play-by-play — when in a game each player scores
-  // (front/back-loaded). Enhancement, not critical: dynamic import inside try/catch so
-  // a missing/failing module degrades to no cadence rather than crashing the function.
-  let cadenceProfiles = null;
-  try {
-    const { buildCadenceProfiles } = await import('./wnbaCadenceFeed.js');
-    cadenceProfiles = await buildCadenceProfiles({ days: 14, maxGames: 60 });
-  } catch (err) {
-    warnings.push(`Cadence feed unavailable: ${err.message}`);
   }
 
   // Empirical team-totals evaluator (rolling team off/def vs league proxy line).
@@ -377,24 +286,18 @@ async function generateSlate(opts = {}) {
     }
 
     const gameLines = lines[game.gameId] || {};
-    // Line precedence: caller-provided (manual) > PrizePicks standard > inferred.
-    // PP is the primary market; manual entry overrides it (corrections/fallback).
-    if (ppPropsAvailable || bdlPropsAvailable) {
-      gameLines.propLines = { ...ppPropLines, ...bdlPropLines, ...(gameLines.propLines || {}) };
-      gameLines.propMeta = { ...ppPropMeta, ...bdlPropMeta, ...(gameLines.propMeta || {}) };
+    // Merge BDL player-prop lines into this game's propLines. Caller-provided
+    // lines win; BDL fills the rest. Result feeds the existing per-prop lookup
+    // (gameLines.propLines[playerName_market]) with no downstream change.
+    if (bdlPropsAvailable) {
+      gameLines.propLines = { ...bdlPropLines, ...(gameLines.propLines || {}) };
+      gameLines.propMeta = { ...bdlPropMeta, ...(gameLines.propMeta || {}) };
     }
     // Real lines from The Odds API, looked up by either team's tricode.
     const feedLine = gameLineFeed.byTeam[homeAbbr] || gameLineFeed.byTeam[awayAbbr] || null;
     // Precedence: explicit caller line > Odds API feed > default fallback.
     const spread = Number(gameLines.spread ?? feedLine?.spread ?? DEFAULT_SPREAD);
     const total = Number(gameLines.total ?? feedLine?.total ?? DEFAULT_TOTAL);
-    // Caller-provided total lines to grade against: full game + optional half lines.
-    // Any of these can be typed in per game; each drives its own over/under lean.
-    const totalLines = {
-      full: Number.isFinite(Number(gameLines.total)) ? Number(gameLines.total) : (Number.isFinite(total) ? total : null),
-      firstHalf: Number.isFinite(Number(gameLines.firstHalfTotal ?? gameLines.total1h)) ? Number(gameLines.firstHalfTotal ?? gameLines.total1h) : null,
-      secondHalf: Number.isFinite(Number(gameLines.secondHalfTotal ?? gameLines.total2h)) ? Number(gameLines.secondHalfTotal ?? gameLines.total2h) : null,
-    };
     const lineSource = Number.isFinite(Number(gameLines.spread)) ? 'caller'
       : (feedLine?.spread != null ? `odds_api:${feedLine.bookUsed}` : 'default');
 
@@ -437,19 +340,16 @@ async function generateSlate(opts = {}) {
       linesProvided: !!lines[game.gameId],
       lineSource,
       // OUR MODEL: engine-projected lines beside the book line (MLB-style).
-      gameLine,
-      // Projected game total from recent scoring rate × opponent defense, with the
-      // first-half / second-half split and a market comparison. Environment read (±13).
-      projectedTotal: estimateGameTotal(homeAbbr, awayAbbr, defenseTable, totalLines),
+      gameLine
     };
 
     // Get top players for both teams in parallel
     const teamPromise = Promise.all([
-      getTopPlayersForTeam(homeAbbr, topN, season, 'points', ppNames).catch(err => {
+      getTopPlayersForTeam(homeAbbr, topN, season, 'points').catch(err => {
         warnings.push(`Top players fetch failed for ${homeAbbr}: ${err.message}`);
         return [];
       }),
-      getTopPlayersForTeam(awayAbbr, topN, season, 'points', ppNames).catch(err => {
+      getTopPlayersForTeam(awayAbbr, topN, season, 'points').catch(err => {
         warnings.push(`Top players fetch failed for ${awayAbbr}: ${err.message}`);
         return [];
       })
@@ -500,7 +400,7 @@ async function generateSlate(opts = {}) {
               player, isHome, opponent, team, market, season, game, spread, total, date,
               recentFormPromise, allTeamStats, gameLines,
               v2Roster, v2OpponentRoster, injuryReport, defenseTable,
-              shotProfile: _shotProfile, shootingForm: _shootingForm, ppAltIndex, playerBiasOverride, cadenceProfiles
+              shotProfile: _shotProfile, shootingForm: _shootingForm
             })
           );
         }
@@ -571,88 +471,6 @@ async function generateSlate(opts = {}) {
     }
   }
 
-  // ---- STANDALONE COMBO PLAYS: P+R, P+A, R+A, PRA vs PP's posted combo lines ----
-  // PP posts all four combos (now captured by ppLines STAT_MAP). Each combo projection is
-  // built from the component projections already computed above and compared to PP's line,
-  // so the tool can see which of a player's lines is the softest under ("most unlikely").
-  // Inherits the player-level risk context so the slip maker's trap filter still applies.
-  const _normNm = (s) => String(s || '').toLowerCase().replace(/[^a-z ]/g, '').trim();
-  const COMBOS = [
-    { mk: 'ptsrebs', parts: ['ptsProj', 'rebProj'], label: 'P+R' },
-    { mk: 'ptsasts', parts: ['ptsProj', 'astProj'], label: 'P+A' },
-    { mk: 'rebasts', parts: ['rebProj', 'astProj'], label: 'R+A' },
-    { mk: 'pra',     parts: ['ptsProj', 'rebProj', 'astProj'], label: 'PRA' },
-  ];
-  // COMBO DE-BIAS (provisional, Sept 17 graded n=28): combos underproject by ~the SUM of
-  // their component biases (pts +0.73, reb +0.26, ast +0.45). Uncorrected, the gap/edge is
-  // overstated — the return-slate combos won only because PP's lines were soft. Raise the
-  // projection toward reality so the edge is HONEST (and won't overbet when lines tighten).
-  // Shrunk 0.75x for the one-slate sample; NAMED so the calibration layer re-fits it later.
-  const COMBO_COMPONENT_BIAS = { ptsProj: 0.73, rebProj: 0.26, astProj: 0.45 };
-  const COMBO_BIAS_SHRINK = 0.75;
-  // normalized PP combo-line index: { market: { normName: line } } (handles name drift)
-  const ppComboByNorm = {};
-  for (const cb of COMBOS) ppComboByNorm[cb.mk] = {};
-  for (const k of Object.keys(ppPropLines)) {
-    const us = k.lastIndexOf('_');
-    if (us < 0) continue;
-    const mk = k.slice(us + 1);
-    if (!ppComboByNorm[mk]) continue;
-    ppComboByNorm[mk][_normNm(k.slice(0, us))] = ppPropLines[k];
-  }
-  const comboAnalyses = []; const comboBuilt = {};
-  for (const a of allAnalyses) {
-    if (a.error) continue;
-    const pgKey = `${a.player}|${a.gameId || a.opponent}`;
-    const pg = praByPlayerGame[pgKey];
-    if (!pg) continue;
-    const nn = _normNm(a.player);
-    for (const cb of COMBOS) {
-      const bk = `${a.player}|${cb.mk}|${a.gameId || a.opponent}`;
-      if (comboBuilt[bk]) continue;
-      const vals = cb.parts.map((p) => pg[p]);
-      if (vals.some((v) => v == null || !Number.isFinite(Number(v)))) continue;
-      const ppLine = ppPropLines[`${a.player}_${cb.mk}`] ?? ppComboByNorm[cb.mk][nn];
-      if (ppLine == null) continue;                    // only when PP posted this combo line
-      const line = Number(ppLine);
-      if (!Number.isFinite(line)) continue;
-      // use the vetted PRA projection for PRA; raw component sum for the two-stat combos —
-      // then de-bias toward the component-bias sum so the edge is honest, not line-dependent.
-      const _comboBias = COMBO_BIAS_SHRINK * cb.parts.reduce((s, p) => s + (COMBO_COMPONENT_BIAS[p] || 0), 0);
-      const proj = ((cb.mk === 'pra' && a.praProjection != null)
-        ? Number(a.praProjection)
-        : vals.reduce((s, v) => s + Number(v), 0)) + _comboBias;
-      if (!Number.isFinite(proj)) continue;
-      comboBuilt[bk] = 1;
-      const gap = line - proj;
-      const call = proj < line ? 'UNDER' : 'OVER';
-      const sig = cb.mk === 'pra' ? (a.praSignal || null) : null;
-      let conf = Math.min(90, 50 + Math.abs(gap) * 4);
-      if (sig && sig.side === call && sig.meetsThreshold) conf = Math.min(92, conf + 6);
-      conf = Math.round(conf);
-      const signalEligible = call === 'UNDER' && Math.abs(gap) >= 1.5 && !(a.minutesModel && a.minutesModel.roleUncertain);
-      const pu = +(0.5 + Math.min(0.42, Math.abs(gap) * 0.03)).toFixed(3);
-      comboAnalyses.push({
-        player: a.player, team: a.team, opponent: a.opponent, gameId: a.gameId,
-        market: cb.mk, comboLabel: cb.label, line, projection: +proj.toFixed(2), rawProjection: proj,
-        lineBook: 'prizepicks', lineSource: 'provided', lineOdds: null,
-        confidence: conf,
-        probUnder: call === 'UNDER' ? pu : +(1 - pu).toFixed(3),
-        probOver: call === 'UNDER' ? +(1 - pu).toFixed(3) : pu,
-        edge: +(gap / (line || 1)).toFixed(3),
-        verdict: { call, side: call, edge: +(gap / (line || 1)).toFixed(3), confidence: conf, signalEligible },
-        recommendation: signalEligible ? call : 'PASS',
-        empTier: { tier: (sig && sig.tier) || 'UNGRADED' },
-        praSignal: sig, isCombo: true,
-        minutesModel: a.minutesModel || null, minutesVolatility: a.minutesVolatility || null,
-        foulProne: a.foulProne || null, blowoutRisk: a.blowoutRisk || null,
-        cadence: a.cadence || null, minutesSecurity: a.minutesSecurity || null,
-        biasVeto: false, lowSample: false,
-      });
-    }
-  }
-  if (comboAnalyses.length) allAnalyses.push(...comboAnalyses);
-
   // STEP 5: Organize output
   const successful = allAnalyses.filter(a => !a.error && a.recommendation !== 'PASS');
   const passes = allAnalyses.filter(a => a.recommendation === 'PASS');
@@ -669,30 +487,8 @@ async function generateSlate(opts = {}) {
     return (b.scores?.finalEdge || 0) - (a.scores?.finalEdge || 0);
   });
 
-  // ── COLLAPSE: every prop → one verdict (stages 2-4 + under-only routing) ──
-  // Stage 3 game guard, computed per game from the projected total vs the market total.
-  const gameGuardById = {};
-  for (const g of Object.values(gameContexts)) {
-    const pt = g.projectedTotal;
-    const gap = (pt && Number.isFinite(Number(g.total)) && Number(g.total) > 0)
-      ? Number((pt.total - Number(g.total)).toFixed(1)) : null;
-    gameGuardById[g.gameId] = (gap != null && Math.abs(gap) > GAME_GUARD_THRESHOLD)
-      ? { suppress: true, modelTotal: pt.total, marketTotal: Number(g.total), gap }
-      : { suppress: false, modelTotal: pt?.total ?? null, marketTotal: Number(g.total) || null, gap };
-    g.gameGuard = gameGuardById[g.gameId];   // surfaced on the game row
-  }
-  // Resolve one verdict per prop and stamp it as the authoritative call.
-  for (const a of successful) {
-    a.verdict = resolveVerdict(a, gameGuardById[a.gameId]);
-  }
-
-  // Signal selector (Tonight's Signal / bestPlays) obeys the SAME confidence block
-  // grading does: eligible UNDER verdicts only — never an over, a killed play, or a
-  // game with no defense data. This closes the selector gate that let a no-data game
-  // become the featured signal.
-  const bestPlays = successful
-    .filter(a => a.verdict?.call === 'UNDER' && a.verdict?.signalEligible)
-    .slice(0, 10);
+  // Top 10 across the slate
+  const bestPlays = successful.slice(0, 10);
 
   // v2 audit: roll up injury context for the slate-level summary
   const v2Summary = WNBA_V2_PROJECTIONS && injuryReport ? {
@@ -726,8 +522,6 @@ async function generateSlate(opts = {}) {
 
   return {
     date,
-    buildTag: 'role-uncertainty-signals-2026-08-24',   // deploy marker — confirms this code is live
-    ppLines: { ok: ppLines.ok, standardCount: ppLines.standardCount || 0, altCount: ppLines.altCount || 0, blocked: !!ppLines.blocked },
     season,
     games: Object.values(gameContexts),
     analyses: successful,
@@ -845,94 +639,13 @@ function buildHardFlagsFromUnified(u, player, reboundExtras) {
 // tag, text }; the card shows the ones matching the pick's lean direction.
 function buildPropReasons(ctx) {
   const { market, unified, shotProfile: sp, shotsToClear: stc, minutesSecurity: ms,
-          reboundExtras, raw, propSignal, opponent, spinRead, opponentStyle, adaptiveRead, blowoutRisk } = ctx;
+          reboundExtras, raw, propSignal, opponent, spinRead } = ctx;
   const mk = String(market || '').toLowerCase();
   const m = unified?.multipliers || {};
   const opp = opponent || 'the opponent';
   const out = [];
   const add = (dir, tag, text) => out.push({ dir, tag, text });
   const r1 = (x) => Math.round(x * 10) / 10;
-
-  // Per-player suppression correction — the model's chronic bias on this player.
-  if (ctx.lowSample) add('UNDER', 'THIN SAMPLE',
-    `Only ${ctx.lowSample.games} recent games — a rookie, call-up, return, or early-season move. Baseline is unstable; read shown but not signal-eligible.`);
-  if (ctx.biasCorrection && ctx.biasCorrection.correction) {
-    const bc = ctx.biasCorrection;
-    if (bc.correction > 0) add('UNDER', 'SUPPRESSION FADE',
-      `Model chronically under-projects this player (${bc.fromRolling ? 'recent' : 'season'} bias +${bc.bias} over ${bc.n}) — projection lifted +${bc.correction}; treat the under with caution.`);
-    else add('UNDER', 'OVER-PROJECTED',
-      `Model chronically over-projects this player (bias ${bc.bias} over ${bc.n}) — projection trimmed ${bc.correction}; the under is stronger than the raw number.`);
-  }
-  // Minutes volatility — hard-swinging minutes make the projection unreliable.
-  // RISK flag both directions (backtest: volatility doesn't predict a side), not a lean.
-  if (ctx.minutesVolatility) add('BOTH', 'MINUTES RISK', ctx.minutesVolatility.note);
-  // Foul-prone — high foul rate risks early benching / fouling out. Also a two-sided
-  // RISK flag: backtested, foul-prone does NOT predict unders — treat as variance only.
-  if (ctx.foulProne) add('BOTH', 'FOUL-PRONE', ctx.foulProne.note);
-  // Recent-form floor — projection was lifted toward the player's real recent rate.
-  if (ctx.rebFloor) { const _fm = ctx.rebFloor.market || 'rebounds';
-    add('OVER', 'FORM FLOOR',
-    `Base projected ${ctx.rebFloor.base} but they've averaged ${ctx.rebFloor.recentAvg} ${_fm} recently — lifted to ${ctx.rebFloor.floored}. The low under was a mirage; this player isn't actually cold.`); }
-  // Production cadence (front/back-loaded) crossed with game script.
-  if (ctx.cadence) add(ctx.cadence.side === 'UNDER' ? 'UNDER' : 'CONTEXT',
-    ctx.cadence.label === 'back' ? 'BACK-LOADED' : 'FRONT-LOADED', ctx.cadence.note);
-  // Blowout risk (spread-derived). VALIDATED on the FULL pre-break season (~72% under, 20+
-  // spread). I briefly demoted this to context on 2 return-from-break days (52%) — that was
-  // over-fitting to an anomaly (the return slates carried a +0.7 projection bias absent from
-  // the season-long −0.04). Restored to the season-validated UNDER lean. The only gate that
-  // survives is the fast/slow-starter read (validated on 3 weeks of cadence data): a
-  // consistent front-loader banks before the 2nd-half suppression, so its under is a trap.
-  if (blowoutRisk) {
-    const _cg = blowoutRisk.cadenceGate;
-    if (_cg && _cg.adjust === 'downgrade') {
-      add('CONTEXT', 'BLOWOUT · FAST STARTER',
-        `${blowoutRisk.note} — but ${_cg.note}. The blowout-under is a trap for a front-loader; not a lean.`);
-    } else {
-      add('UNDER', blowoutRisk.isUnderdog ? 'BLOWOUT RISK · UNDERDOG' : 'BLOWOUT RISK', blowoutRisk.note);
-    }
-  }
-
-  // Adaptive shrinkage regime (points): a hot-shooting spike gets shrunk toward
-  // baseline (variance → leans under vs an inflated line); a volume/role riser is
-  // trusted (real → leans over). Only speaks when the regime is decisive.
-  if (adaptiveRead) {
-    if (adaptiveRead.regime === 'ROLE_REANCHOR') add('OVER', 'ROLE RE-ANCHOR',
-      `Inheriting starter minutes${adaptiveRead.reanchor ? ` (~${Math.round(adaptiveRead.reanchor.projMin)} min)` : ''} — baseline re-anchored from ${adaptiveRead.baseProjection} to ${adaptiveRead.adjProjection} pts; the old form line understates the new role.`);
-    else if (adaptiveRead.regime === 'HOT_SHOOTING') add('UNDER', 'HOT-SHOOTING NOISE',
-      `Recent points are up on shooting efficiency, not shot volume — the model shrinks a hot streak toward the ${adaptiveRead.baseProjection} baseline rather than chasing it.`);
-    else if (adaptiveRead.regime === 'RISING') add('OVER', 'REAL RISER',
-      `Shot volume is up with role/opportunity support (not just a hot streak) — the form-adjusted baseline rises to ${adaptiveRead.adjProjection}.`);
-    else if (adaptiveRead.regime === 'COLD_SHOOTING') add('OVER', 'COLD-SHOOTING NOISE',
-      `Recent dip is efficiency, not lost volume — treated as variance and shrunk back toward the ${adaptiveRead.baseProjection} baseline.`);
-    // Rebounds / assists rate regimes.
-    else if (adaptiveRead.regime === 'HOT_FINISHING') add('UNDER', 'TEAMMATE-FINISHING NOISE',
-      `Assists are up on steady minutes, not more creation — an assist needs a teammate to make the shot, so this shrinks toward the ${adaptiveRead.baseProjection} baseline as likely finishing luck.`);
-    else if (adaptiveRead.regime === 'COLD_FINISHING') add('OVER', 'FINISHING VARIANCE',
-      `Assists dipped on teammate cold-shooting, not lost creation — shrunk back toward the ${adaptiveRead.baseProjection} baseline.`);
-    else if (adaptiveRead.regime === 'RATE_UP') add('OVER', 'BOARD RATE UP',
-      `Grabbing a higher rebound rate on steady minutes — rebound rate is sticky, so this is treated as mostly real (adjusted to ${adaptiveRead.adjProjection}).`);
-    else if (adaptiveRead.regime === 'MINUTES_UP') add('OVER', 'MINUTES UP',
-      `More minutes lately lift the ${mk} baseline to ${adaptiveRead.adjProjection}.`);
-  }
-
-  // Opponent style (data-grounded scheme proxy). Rebounds: a perimeter-heavy
-  // opponent generates long misses that leak to guards/wings; a paint team keeps
-  // misses short for the bigs. Under-environment: a fast/high-scoring opponent
-  // means more possessions (pressures unders); a slow/low-scoring one favors them.
-  if (opponentStyle && Array.isArray(opponentStyle.tags)) {
-    if (mk === 'rebounds') {
-      if (opponentStyle.missProfile === 'PERIMETER') add('BOTH', 'LONG MISS',
-        `${opp} is three-heavy (${opponentStyle.threePct}% of shots) — long misses carom past the paint, so boards leak to guards and wings.`);
-      else if (opponentStyle.missProfile === 'PAINT') add('BOTH', 'SHORT MISS',
-        `${opp} is paint-oriented — misses stay short in the restricted area, favoring the biggest bodies.`);
-    }
-    if (opponentStyle.underEnv === 'SUPPRESS') add('UNDER', 'SLOW ENV',
-      `${opp}'s recent games run slow/low-scoring — fewer possessions, a mildly favorable under environment.`);
-    else if (opponentStyle.underEnv === 'FAST') add('OVER', 'FAST ENV',
-      `${opp}'s recent games run fast/high-scoring — more possessions and scoring chances, which pressures unders.`);
-    if (opponentStyle.styleShift) add('BOTH', 'STYLE SHIFT',
-      `${opp} has shifted look lately (${opponentStyle.styleShift.from}→${opponentStyle.styleShift.to} over their last 5) — recent games matter more than the season here.`);
-  }
 
   // Role change from the Spin blurb — applies to ALL markets (a demotion crushes
   // points, rebounds AND assists at once). Only when the note is still fresh.
@@ -1042,386 +755,6 @@ function _numf(...vals) { for (const v of vals) { const n = Number(v); if (Numbe
  * @param {Array} games  raw game rows (sorted oldest→newest if dated)
  * @returns {Object|null} { l10:{gp,fga,fgPct,tsPct,ppg}, l5:{...} }
  */
-// ── SINGLE-VERDICT PIPELINE ──────────────────────────────────────────────────
-// Every prop enters once and exits with exactly ONE verdict — OVER, UNDER, or PASS.
-// No stage sits beside another stage's call; each can only narrow toward the verdict.
-// This collapses the two subsystems that used to co-render (bidirectional v2
-// projection + under-only validated model) so nothing can lean both ways again.
-//
-// Stage 1 (signed edge) is a.recommendation / a.edge, computed upstream.
-// Stage 2: a role/minutes veto CONSUMES the tier — it doesn't annotate it. The tier
-//   hit-rates were measured on stable-role players, so an unstable role invalidates
-//   the tier's premise (that number doesn't describe this play) → kill, one grade out.
-// Stage 3: a game-level projection guard — if the model total disagrees with the
-//   market total by more than the model's own error, that's ONE broken projection,
-//   not N edges; suppress the game's props rather than grade a cascade.
-// Stage 4: data-sufficiency floor — a prop with no defense data can't be a signal.
-// Routing: UNDER is the only validated, bettable side (June backtest found no
-//   tradeable over signal). Over gaps are computed and shown as CONTEXT, never
-//   promoted to a bettable tier. If the only edge is on the over side → PASS.
-const GAME_GUARD_THRESHOLD = 12.7;   // model-vs-market total gap that flags a broken game projection
-
-function resolveVerdict(a, gameGuard) {
-  const side = String(a.recommendation || '').toUpperCase();   // OVER | UNDER | PASS
-  const edge = a.edge;
-  // Data floor: no defense data, OR too thin a player baseline (rookie/trade/return).
-  const dataOk = !((a.hardFlags || []).includes('NO DEFENSE DATA')) && !a.lowSample;
-
-  // Stage 3 — game projection guard (runs first: a broken game invalidates all its props).
-  if (gameGuard?.suppress) {
-    return { call: 'PASS', tier: 'PASS', side, edge, signalEligible: false, killedBy: 'GAME_PROJECTION',
-      note: `Model total ${gameGuard.modelTotal} vs market ${gameGuard.marketTotal} (${gameGuard.gap > 0 ? '+' : ''}${gameGuard.gap}) — a calibrated model almost never misses a sharp total by this much, so this is one broken projection, not a slate of edges. Props suppressed for this game.` };
-  }
-
-  // Routing — overs are context only, never a bettable tier.
-  if (side === 'OVER') {
-    return { call: 'PASS', tier: 'CONTEXT', side: 'OVER', edge, signalEligible: false,
-      note: `Over gap ${edge > 0 ? '+' : ''}${edge} shown as context — there is no validated over tier (backtest found no tradeable over signal), so it is never promoted to a bet.` };
-  }
-  if (side !== 'UNDER') {
-    return { call: 'PASS', tier: 'PASS', side, edge, signalEligible: false };
-  }
-
-  // Stage 2 — veto CONSUMES the under tier. Role instability invalidates the premise.
-  const vetoes = [];
-  if (a.biasVeto) vetoes.push(`chronically under-projected (+${a.biasVeto.correction} correction lifts ${a.biasVeto.rawProjection}→line)`);
-  if (a.minutesConflict) vetoes.push('model/minutes conflict');
-  if (a.roleConflict) vetoes.push('inheriting starter minutes (role re-anchor)');
-  if (a.spinRead?.active) vetoes.push(`role change — ${a.spinRead.badge}`);
-  if (a.adaptiveRead?.regime === 'ROLE_REANCHOR') vetoes.push('minutes inherited from an absence');
-  if (a.minutesSecurity?.level === 'RISK') vetoes.push('minutes at risk');
-  if (a.benefitsFrom && Array.isArray(a.benefitsFrom.out) && a.benefitsFrom.out.length && Number(a.benefitsFrom.minGain) >= 3) {
-    vetoes.push(`role boosted by ${a.benefitsFrom.out.join(', ')} out`);
-  }
-  if (vetoes.length) {
-    return { call: 'PASS', tier: 'PASS', side: 'UNDER', edge, signalEligible: false, killedBy: 'ROLE_UNSTABLE',
-      note: `Tier premise invalid: the under hit-rate was measured on stable-role players, but ${vetoes.join('; ')} — that number doesn't describe this play. Vetoed to PASS.` };
-  }
-
-  // Survived every stage — the UNDER verdict stands as the single call. Data floor
-  // governs whether it's eligible to be surfaced as a signal.
-  return { call: 'UNDER', tier: a.tier, side: 'UNDER', edge, confidence: a.confidence, signalEligible: dataOk };
-}
-
-// ── ADAPTIVE SHRINKAGE ───────────────────────────────────────────────────────
-// Regression-to-the-mean with an evidence-driven weight. Move a BASELINE toward
-// RECENT by w = n/(n+K), where n is recent sample measured in OPPORTUNITIES (not
-// games) and K is prior skepticism. Evidence of a real regime change lowers K so
-// recent data moves the estimate fast; absent evidence, K stays high and recent is
-// shrunk hard toward baseline. This one estimator will later serve player form,
-// opponent adjustment, and projection-bias correction — three priors, one machine.
-// Seed per-player projection-bias from the 1,670-pick audit. [bias, n]; bias =
-// mean(actual - projection), + = model under-projects. FALLBACK ONLY — a rolling
-// map passed in the request supersedes this, since bias drifts (e.g. a role change
-// can flip a player's sign between months). Never hard-kill an under on seed alone.
-const PLAYER_BIAS_SEED = {
-  'aja wilson': {points:[-2.9,11], rebounds:[1.2,11]},
-  'aliyah boston': {points:[-2.6,11], assists:[-1.0,11]},
-  'allisha gray': {points:[-2.6,13], assists:[1.2,13]},
-  'alyssa thomas': {points:[-5.0,10], rebounds:[1.2,9]},
-  'aneesah morrow': {points:[-4.6,6], rebounds:[-2.6,6]},
-  'angel reese': {points:[-2.5,13], rebounds:[2.4,13]},
-  'arike ogunbowale': {points:[-2.5,11], rebounds:[1.2,11]},
-  'awa fam': {points:[-1.6,11], rebounds:[-1.0,11]},
-  'azzi fudd': {points:[-1.3,9]},
-  'breanna stewart': {points:[1.4,12]},
-  'bridget carleton': {points:[-3.0,10], rebounds:[2.1,10]},
-  'brittney griner': {points:[-1.8,6]},
-  'carla leite': {points:[-4.5,10]},
-  'chelsea gray': {points:[-2.3,12]},
-  'courtney williams': {points:[-3.3,9]},
-  'dearica hamby': {points:[-2.1,10]},
-  'dominique malonga': {rebounds:[1.2,11]},
-  'flaujae johnson': {points:[2.3,12]},
-  'gabby williams': {points:[-4.5,9]},
-  'jackie young': {points:[3.9,14]},
-  'jessica shepard': {points:[-2.3,10], assists:[-1.2,10], rebounds:[2.8,9]},
-  'jonquel jones': {points:[-2.1,13], rebounds:[-1.1,13]},
-  'kayla mcbride': {points:[3.5,12]},
-  'kelsey mitchell': {points:[1.3,11], rebounds:[1.2,11]},
-  'kiki iriafen': {rebounds:[1.4,11]},
-  'marina mabrey': {points:[-2.5,10]},
-  'michaela onyenwere': {points:[-1.6,12]},
-  'monique akoa makani': {points:[-1.5,7]},
-  'natasha howard': {points:[-3.2,12]},
-  'natisha hiedeman': {points:[-1.3,14], rebounds:[1.2,14]},
-  'nneka ogwumike': {assists:[1.4,10], rebounds:[1.3,10]},
-  'olivia miles': {points:[2.6,12], assists:[2.1,12]},
-  'paige bueckers': {points:[2.0,10]},
-  'pauline astier': {points:[-2.7,10]},
-  'rae burrell': {assists:[1.1,8]},
-  'rhyne howard': {points:[-2.4,13], rebounds:[1.0,13]},
-  'shakira austin': {points:[-5.0,12]},
-  'skylar diggins': {points:[-3.7,8]},
-  'sonia citron': {points:[-2.2,11]},
-  'sophie cunningham': {points:[-3.5,11]},
-  'sydney taylor': {assists:[1.0,6]},
-  'veronica burton': {points:[-5.2,9]},
-};
-
-// Per-player suppression correction. Look up this player+market's projection bias
-// (rolling override first, else the seed), shrink it toward zero by sample size so
-// thin data barely moves, and return the capped correction to ADD to the projection.
-// Positive lifts an under-projected player (fades their under); negative lowers an
-// over-projected one (strengthens the under). `fromRolling` marks trustworthy live
-// data vs the older seed.
-// RECENT-FORM FLOOR — a projection must not sit far below the player's own recent
-// average without a role/minutes reason. Market-aware because stickiness differs:
-// rebound rate is stable (small gap to trigger, weight recent heavily), points carry
-// shooting variance and assists teammate-finishing noise (need a bigger gap and lean
-// less on recent, so we don't chase a hot streak). Only ever LIFTS an under-projection;
-// returns null when the base is already at or above recent form.
-function recentFormFloor(mk, baseProj, shootingForm) {
-  const cfg = {
-    rebounds: { gap: 1.5, w: 0.55, key: 'reb' },
-    points:   { gap: 2.5, w: 0.45, key: 'ppg' },
-    assists:  { gap: 2.0, w: 0.40, key: 'ast' },
-  }[mk];
-  if (!cfg) return null;
-  const recent = Number(shootingForm?.l10?.[cfg.key]);
-  const base = Number(baseProj);
-  if (!Number.isFinite(recent) || !Number.isFinite(base)) return null;
-  if (recent < base + cfg.gap) return null;
-  const floored = Number((base * (1 - cfg.w) + recent * cfg.w).toFixed(1));
-  return { base: Number(base.toFixed(1)), recentAvg: Number(recent.toFixed(1)), floored, market: mk };
-}
-
-function playerBiasCorrection(name, market, override) {
-  // Own normalizer (module-scope safe) — matches how the seed keys were built:
-  // lowercase, strip accents and non-[a-z ], collapse spaces. Must NOT reference the
-  // function-local _normName inside buildAndRunAnalysis.
-  const norm = (s) => String(s || '').toLowerCase().normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
-  const key = norm(name);
-  const mk = String(market || '').toLowerCase();
-  let src = null, fromRolling = false;
-  if (override && override[key] && override[key][mk]) { src = override[key][mk]; fromRolling = true; }
-  else if (PLAYER_BIAS_SEED[key] && PLAYER_BIAS_SEED[key][mk]) { src = PLAYER_BIAS_SEED[key][mk]; }
-  if (!src) return null;
-  const bias = Number(src[0]), n = Number(src[1]);
-  if (!Number.isFinite(bias) || !Number.isFinite(n) || n < 4) return null;
-  const s = shrinkToward(0, bias, n, 10);           // K=10: n=14 keeps ~58%, n=6 ~38%
-  const correction = Math.max(-4, Math.min(4, Number(s.value.toFixed(1))));
-  return { bias, n, correction, fromRolling, weight: s.weight };
-}
-
-function shrinkToward(baseline, recent, nOpportunities, K) {
-  const n = Math.max(0, Number(nOpportunities) || 0);
-  const k = Math.max(1e-6, Number(K) || 1);
-  const w = n / (n + k);
-  const b = Number(baseline), r = Number(recent);
-  if (!Number.isFinite(b)) return { value: r, weight: 1, w };
-  if (!Number.isFinite(r)) return { value: b, weight: 0, w: 0 };
-  return { value: b + w * (r - b), weight: Number(w.toFixed(3)) };
-}
-
-// Regime evidence → a multiplier that lowers the OPPORTUNITY K (moves the estimate
-// faster). Follows the hierarchy: role change fastest, then opportunity, then
-// process, then pure outcome. Each independent signal compounds.
-function regimeEvidenceMult({ spinRead, minutesSecurity, benefitsFrom, shootingForm }) {
-  let mult = 1;
-  // ROLE change (fastest): Spin role move or an injury-driven role.
-  if (spinRead && spinRead.active) mult *= 2.2;
-  else if (benefitsFrom && Array.isArray(benefitsFrom.out) && benefitsFrom.out.length) mult *= 1.7;
-  // OPPORTUNITY change (fast): secure/elevated minutes, and PERSISTENCE — the L5
-  // volume move holding vs L10 rather than one spike game.
-  if (minutesSecurity && minutesSecurity.level === 'SECURE') mult *= 1.3;
-  const l5 = shootingForm?.l5, l10 = shootingForm?.l10;
-  if (l5 && l10 && l5.fga != null && l10.fga != null) {
-    const persist = Math.abs(l5.fga - l10.fga);   // volume shift that L10 already partly reflects
-    if (persist >= 2) mult *= 1.25;               // the change is sticking across the window
-  }
-  return Math.min(mult, 3.5);   // cap so no single pick swings wildly
-}
-
-// Points decomposition: points = FGA (opportunity, sticky) × points-per-FGA
-// (efficiency, noisy). Shrink each axis separately — opportunity with a small K
-// (trust recent volume), efficiency with a large K (hot shooting is shrunk hard) —
-// then recombine. Baseline = L10, recent = L5. ADDITIVE for now (shadow mode):
-// emits an adjusted read + regime label; does not yet override the projection.
-function buildAdaptivePoints({ shootingForm, evidence = {}, minutes = {} }) {
-  const base = shootingForm?.l10, recent = shootingForm?.l5;
-  if (!base || !recent || !(base.fga > 0) || !(recent.fga > 0)) return null;
-  let baseFga = base.fga, recentFga = recent.fga;
-  const basePps = base.ppg / base.fga, recentPps = recent.ppg / recent.fga;
-
-  // ROLE RE-ANCHOR — the Nelson-Ododa fix. When a player inherits an absent
-  // starter's minutes (benefitsFrom → projected minutes >> their baseline minutes),
-  // BOTH L10 and L5 reflect the OLD bench role. Shrinking between two stale windows
-  // can't see the new role. So scale the opportunity baseline to the projected
-  // minutes (per-minute shot rate × new minutes) BEFORE shrinkage runs. Efficiency
-  // (points-per-shot) is rate-based and role-independent, so it carries over.
-  let reanchor = null;
-  const baseMin = Number(minutes.baseline), projMin = Number(minutes.projected);
-  if (Number.isFinite(baseMin) && baseMin > 5 && Number.isFinite(projMin) && projMin > baseMin * 1.12) {
-    const fgaPerMin = baseFga / baseMin;
-    const newFga = fgaPerMin * projMin;
-    reanchor = { fromFga: Number(baseFga.toFixed(1)), toFga: Number(newFga.toFixed(1)), baseMin, projMin,
-      fromPts: Number((baseFga * basePps).toFixed(1)), toPts: Number((newFga * basePps).toFixed(1)) };
-    baseFga = newFga;                 // opportunity baseline now reflects the new role
-  }
-
-  const nOpp = recentFga * (recent.gp || 5);
-  const evMult = regimeEvidenceMult(evidence);
-  const K_OPP = 30 / evMult;
-  const K_EFF = 90;
-
-  // With a fresh re-anchor, recent volume is stale for the new role → trust the
-  // re-anchored baseline for opportunity rather than shrinking toward stale recent.
-  let oppValue, oppWeight;
-  if (reanchor) { oppValue = baseFga; oppWeight = 0; }
-  else { const o = shrinkToward(baseFga, recentFga, nOpp, K_OPP); oppValue = o.value; oppWeight = o.weight; }
-  const eff = shrinkToward(basePps, recentPps, nOpp, K_EFF);
-  const adjProjection = Number((oppValue * eff.value).toFixed(1));
-  const baseProjection = Number((base.fga * basePps).toFixed(1));   // pre-re-anchor baseline
-
-  const fgaDelta = recentFga - base.fga, ppsDelta = recentPps - basePps;
-  let regime, regimeNote;
-  if (reanchor) { regime = 'ROLE_REANCHOR'; regimeNote = `inheriting starter minutes — baseline re-anchored ${reanchor.fromPts}→${reanchor.toPts} pts at ${Math.round(projMin)} min`; }
-  else if (fgaDelta >= 2 && evMult > 1.2) { regime = 'RISING'; regimeNote = 'volume up with role/opportunity support — real riser'; }
-  else if (fgaDelta >= 2) { regime = 'VOLUME_UP'; regimeNote = 'taking more shots lately'; }
-  else if (Math.abs(fgaDelta) < 1.5 && ppsDelta >= 0.18) { regime = 'HOT_SHOOTING'; regimeNote = 'points up on efficiency, not volume — shrunk toward baseline as likely variance'; }
-  else if (Math.abs(fgaDelta) < 1.5 && ppsDelta <= -0.18) { regime = 'COLD_SHOOTING'; regimeNote = 'efficiency dip on steady volume — treated as variance'; }
-  else if (fgaDelta <= -2) { regime = 'VOLUME_DOWN'; regimeNote = 'fewer shots lately'; }
-  else { regime = 'STABLE'; regimeNote = 'no meaningful regime change'; }
-
-  return {
-    adjProjection, baseProjection,
-    delta: Number((adjProjection - baseProjection).toFixed(1)),
-    regime, regimeNote, evidenceMult: Number(evMult.toFixed(2)), reanchor,
-    opportunity: { base: Number(base.fga.toFixed(1)), reanchored: reanchor ? reanchor.toFga : null, recent: recentFga, adjusted: Number(oppValue.toFixed(1)), weight: oppWeight },
-    efficiency: { basePps: Number(basePps.toFixed(2)), recentPps: Number(recentPps.toFixed(2)), adjusted: Number(eff.value.toFixed(2)), weight: eff.weight },
-    nOpp, kOpp: Number(K_OPP.toFixed(1)), kEff: K_EFF,
-  };
-}
-
-// Rebounds / assists decomposition: STAT = minutes (opportunity, sticky) × per-minute
-// RATE. The rate is the analog of the points efficiency axis — but the two markets sit
-// at opposite ends of stickiness, so they get very different shrinkage:
-//   • Rebounds: rate (reb/min) is a stable role/physical trait — shrink LIGHTLY (small
-//     K). The noisy part is how many misses were available (game environment), which
-//     the opponent miss-profile partly explains, not the player.
-//   • Assists: rate (ast/min) carries heavy TEAMMATE-FINISHING noise — an assist only
-//     counts if a teammate makes the shot, which is out of the player's control. So a
-//     recent assist spike on flat minutes is the hot-shooting analog and is shrunk HARD
-//     (large K). Honest ceiling: without potential-assist tracking (no WNBA feed), we
-//     can't isolate creation from finishing the way FGA/TS% isolate volume from luck.
-// Minutes re-anchors to projected minutes on a role change, same as points.
-function buildAdaptiveCounting({ market, shootingForm, evidence = {}, minutes = {} }) {
-  const base = shootingForm?.l10, recent = shootingForm?.l5;
-  if (!base || !recent) return null;
-  const isReb = market === 'rebounds';
-  const statKey = isReb ? 'reb' : 'ast';
-  const rateKey = isReb ? 'rebPerMin' : 'astPerMin';
-  const baseMin = Number(base.min), recentMin = Number(recent.min);
-  if (!(baseMin > 0) || !(recentMin > 0)) return null;
-  const baseRate = Number(base[rateKey]) || 0, recentRate = Number(recent[rateKey]) || 0;
-
-  // Re-anchor minutes to projected if a role change (both windows are stale otherwise).
-  let anchorMin = baseMin, reanchor = null;
-  const projMin = Number(minutes.projected), bMin = Number(minutes.baseline) || baseMin;
-  if (Number.isFinite(projMin) && bMin > 5 && projMin > bMin * 1.12) {
-    anchorMin = projMin;
-    reanchor = { fromMin: Number(bMin.toFixed(1)), toMin: Number(projMin.toFixed(1)),
-      from: Number((baseRate * bMin).toFixed(1)), to: Number((baseRate * projMin).toFixed(1)) };
-  }
-
-  const nMin = recentMin * (recent.gp || 5);          // recent total minutes = evidence unit
-  const evMult = regimeEvidenceMult(evidence);
-  const K_RATE = isReb ? 55 : 95;                     // reb rate sticky (small K); ast rate noisy (large K)
-  const K_MIN = 120 / evMult;                         // minutes opportunity, in minute-units
-
-  let minValue, minWeight;
-  if (reanchor) { minValue = anchorMin; minWeight = 0; }
-  else { const o = shrinkToward(baseMin, recentMin, nMin, K_MIN); minValue = o.value; minWeight = o.weight; }
-  const rate = shrinkToward(baseRate, recentRate, nMin, K_RATE);
-  const adjProjection = Number((minValue * rate.value).toFixed(1));
-  const baseProjection = Number((baseMin * baseRate).toFixed(1));
-
-  const minDelta = recentMin - baseMin, rateDelta = recentRate - baseRate;
-  const ratePctUp = baseRate > 0 ? rateDelta / baseRate : 0;
-  let regime, regimeNote;
-  if (reanchor) {
-    regime = 'ROLE_REANCHOR';
-    regimeNote = `inheriting minutes — baseline re-anchored ${reanchor.from}→${reanchor.to} at ${Math.round(projMin)} min`;
-  } else if (minDelta >= 3 && evMult > 1.2) {
-    regime = 'RISING'; regimeNote = 'minutes/role up with support — real riser';
-  } else if (minDelta >= 3) {
-    regime = 'MINUTES_UP'; regimeNote = 'more minutes lately';
-  } else if (Math.abs(minDelta) < 2 && ratePctUp >= 0.20) {
-    regime = isReb ? 'RATE_UP' : 'HOT_FINISHING';
-    regimeNote = isReb
-      ? 'grabbing a higher rebound rate on steady minutes — rebound rate is sticky, treated as mostly real'
-      : 'assists up on steady minutes, not more creation — likely teammate hot-shooting, shrunk toward baseline';
-  } else if (Math.abs(minDelta) < 2 && ratePctUp <= -0.20) {
-    regime = isReb ? 'RATE_DOWN' : 'COLD_FINISHING';
-    regimeNote = isReb ? 'rebound rate dipped on steady minutes' : 'assists down on teammate cold-shooting — treated as variance';
-  } else {
-    regime = 'STABLE'; regimeNote = 'no meaningful regime change';
-  }
-
-  return {
-    market, adjProjection, baseProjection,
-    delta: Number((adjProjection - baseProjection).toFixed(1)),
-    regime, regimeNote, evidenceMult: Number(evMult.toFixed(2)), reanchor,
-    opportunity: { baseMin: Number(baseMin.toFixed(1)), recentMin: Number(recentMin.toFixed(1)), adjustedMin: Number(minValue.toFixed(1)), weight: minWeight },
-    rate: { base: Number(baseRate.toFixed(3)), recent: Number(recentRate.toFixed(3)), adjusted: Number(rate.value.toFixed(3)), weight: rate.weight, perGameBase: Number(base[statKey]), perGameRecent: Number(recent[statKey]) },
-    nMin, kRate: K_RATE,
-  };
-}
-// Project a game's total from recent team SCORING RATE (sticky) × opponent defense,
-// shrunk toward league mean so recent FG% variance (the noisy part) doesn't drive
-// it. Backtested on 101 games: corr 0.62 with actual, mean abs error ~12.7 pts,
-// beats the naive league-average baseline. Halves: WNBA 1H is ~49.4% of the total
-// empirically — essentially even, so we split near 50/50 rather than pretending to
-// a per-team half edge the data doesn't support. This is a scoring-ENVIRONMENT read
-// (and a market-total sanity check), not a precise number — carry the ±13 with it.
-const FIRST_HALF_SHARE = 0.494;   // empirical WNBA 1H share of game total
-function estimateGameTotal(homeAbbr, awayAbbr, defenseTable, totalLines) {
-  const style = defenseTable?.teamStyle || {};
-  const def = defenseTable?.teamDefense || {};
-  const offH = style[homeAbbr]?.ppg, offA = style[awayAbbr]?.ppg;
-  const allowH = def[homeAbbr]?.allowedPerGame, allowA = def[awayAbbr]?.allowedPerGame;
-  if (![offH, offA, allowH, allowA].every(v => Number.isFinite(Number(v)))) return null;
-  const ppgs = Object.values(style).map(s => s.ppg).filter(v => Number.isFinite(Number(v)));
-  const lgPPG = ppgs.length ? ppgs.reduce((a, b) => a + b, 0) / ppgs.length : 82;
-  // Shrink recent rates toward league (tames shooting variance — the FG% noise).
-  const SHRINK = 0.25;
-  const sh = (x) => x + SHRINK * (lgPPG - x);
-  // Ratio/matchup method: expected points = own offense × opponent defense / league.
-  const expHome = (sh(offH) * sh(allowA)) / lgPPG;
-  const expAway = (sh(offA) * sh(allowH)) / lgPPG;
-  const total = expHome + expAway;
-  const projFirstHalf = total * FIRST_HALF_SHARE;
-  const projSecondHalf = total * (1 - FIRST_HALF_SHARE);
-  const FULL_ERR = 12.7, HALF_ERR = 7.5;   // half error scales ~1/√2 of the full-game error
-  const out = {
-    total: Number(total.toFixed(1)),
-    home: Number(expHome.toFixed(1)),
-    away: Number(expAway.toFixed(1)),
-    firstHalf: Number(projFirstHalf.toFixed(1)),
-    secondHalf: Number(projSecondHalf.toFixed(1)),
-    error: FULL_ERR,
-    method: 'recent scoring rate (shrunk 25% to league) × opponent defense',
-    note: 'scoring-environment read, ±13; halves are near-even (~49/51), thin per-team signal',
-  };
-  // Grade the projection against each caller-provided line. A lean only fires when
-  // the gap clears that line's error band — otherwise it's inside the noise (NONE).
-  const grade = (proj, line, err) => {
-    const l = Number(line);
-    if (!Number.isFinite(l) || l <= 0) return null;
-    const diff = Number((proj - l).toFixed(1));
-    return { line: l, projected: Number(proj.toFixed(1)), diff, lean: Math.abs(diff) >= err ? (diff > 0 ? 'OVER' : 'UNDER') : 'NONE' };
-  };
-  const lines = totalLines || {};
-  out.vsLines = {
-    full: grade(total, lines.full, FULL_ERR),
-    firstHalf: grade(projFirstHalf, lines.firstHalf, HALF_ERR),
-    secondHalf: grade(projSecondHalf, lines.secondHalf, HALF_ERR),
-  };
-  return out;
-}
-
 function buildShootingForm(games) {
   if (!Array.isArray(games) || games.length === 0) return null;
   const withDate = games.every(g => g && (g.date || g.game_date));
@@ -1434,9 +767,6 @@ function buildShootingForm(games) {
     if (!g.length) return null;
     const sum = (f) => g.reduce((a, x) => a + (Number(x[f]) || 0), 0);
     const fga = sum('fga'), fgm = sum('fgm'), fta = sum('fta'), pts = sum('pts');
-    const reb = sum('reb'), ast = sum('ast'), min = sum('minutes');
-    const pf = sum('pf');
-    const foulTrouble = g.filter((x) => (Number(x.pf) || 0) >= 4).length;   // games with 4+ fouls
     return {
       gp: g.length,
       fga: Number((fga / g.length).toFixed(1)),
@@ -1444,14 +774,6 @@ function buildShootingForm(games) {
       fgPct: fga > 0 ? Math.round((fgm / fga) * 100) : null,
       tsPct: (fga + 0.44 * fta) > 0 ? Math.round((pts / (2 * (fga + 0.44 * fta))) * 100) : null,
       ppg: Number((pts / g.length).toFixed(1)),
-      reb: Number((reb / g.length).toFixed(1)),         // rebounds & assists per game
-      ast: Number((ast / g.length).toFixed(1)),
-      min: Number((min / g.length).toFixed(1)),          // minutes/game (opportunity base)
-      rebPerMin: min > 0 ? reb / min : 0,                // rate axes — stickier than shooting
-      astPerMin: min > 0 ? ast / min : 0,
-      pf: Number((pf / g.length).toFixed(1)),            // fouls per game
-      foulPer36: min > 0 ? Number(((pf / min) * 36).toFixed(1)) : 0,   // foul RATE (benching risk)
-      foulTrouble,                                       // games in this window with 4+ fouls
     };
   };
   return { l10: win(10), l5: win(5) };
@@ -1469,70 +791,6 @@ function buildShootingForm(games) {
  * Future-proof: keys off the live injury feed + returnDate, so it updates itself as
  * statuses change — no hardcoding of who's out.
  */
-// BLOWOUT RISK — a spread-derived under signal. Backtest (1,585 joined games): a
-// 20+ blowout hits the under ~72%, and it splits winner 69% / loser 76%. The
-// mechanism is NOT an NBA-style minutes cap — WNBA benches are short, so starters
-// play through blowouts. Instead, once the game is decided BOTH sides ease: the
-// winner coasts (over-perf -0.4) and the blown-out loser's offense tanks harder
-// (-1.2). So this is a game-WIDE counting-stat under nudge, weighted toward the
-// underdog (the likely loser), not gated to starters. Pre-game proxy = the spread.
-function buildBlowoutRisk({ spread, isHome, usage }) {
-  const s = Number(spread);
-  if (!Number.isFinite(s)) return null;
-  const absSpread = Math.abs(s);
-  if (absSpread < 4) return null;                 // not enough spread for real blowout risk
-  const favoredBy = isHome ? -s : s;              // + if this player's team is favored
-  const isUnderdog = favoredBy < 0;               // getting the points → likely loser → suppresses more
-  let risk;
-  if (absSpread >= 9) risk = 'HIGH';
-  else if (absSpread >= 6) risk = 'MODERATE';
-  else risk = 'MILD';
-
-  // ALPHA EXEMPTION — the primary usage option does NOT get the blowout under.
-  // WNBA benches are short, so stars play THROUGH blowouts and carry the load: the
-  // losing team's alpha fuels the comeback, the winner's alpha builds the lead.
-  // Confirmed live (ATL 97-LV 82, 15-pt blowout): Wilson 34min/18 FGA→44 PRA and
-  // Howard 39min/19 FGA→30 PRA both blew way over their unders while role player
-  // NaLyssa Smith (22min/5 FGA) faded to 16 and hit. The suppression is real — but
-  // only for role players. High recent shot volume (or a big-minute high-role star)
-  // marks the alpha, who is exempt.
-  const fga = Number(usage?.fga), minAvg = Number(usage?.minAvg), role = Number(usage?.role);
-  const bf = usage?.benefitsFrom;
-  const projMin = Number(usage?.projMinutes);
-  const reanchored = !!usage?.reanchored;
-  const establishedAlpha = (Number.isFinite(fga) && fga >= 13)
-    || (Number.isFinite(minAvg) && minAvg >= 32 && Number.isFinite(role) && role >= 85);
-  // FUTURE-PROOF: a backward FGA test is blind to a newly-minted alpha (injury
-  // fill-in, promoted starter) whose recent shot volume hasn't caught up. Fire the
-  // exemption on the FORWARD role signals too — inheriting a departed starter's
-  // minutes, a role re-anchor, or a big projected-minutes load — so tonight's alpha
-  // is caught on night one, not after ten games.
-  const emergingAlpha = reanchored
-    || (bf && Array.isArray(bf.out) && bf.out.length && Number(bf.minGain) >= 3 && Number.isFinite(projMin) && projMin >= 30)
-    || (Number.isFinite(projMin) && projMin >= 34);
-  const isAlpha = establishedAlpha || emergingAlpha;
-  if (isAlpha) {
-    const emerging = !establishedAlpha && emergingAlpha;
-    return {
-      risk, side: 'NONE', isAlpha: true, emerging, favoredBy: Number(favoredBy.toFixed(1)), isUnderdog, confBoost: 0,
-      badge: emerging ? 'BLOWOUT · new alpha exempt' : 'BLOWOUT · alpha exempt',
-      note: emerging
-        ? `${absSpread}-pt spread, but this player is projected into an alpha role tonight (${bf?.out?.length ? bf.out.join(', ') + ' out, ' : ''}${Number.isFinite(projMin) ? Math.round(projMin) + ' min' : 'elevated load'}) — new alphas carry the load through blowouts too, so the blowout under does NOT apply.`
-        : `${absSpread}-pt spread, but this is the team's primary usage option — WNBA stars play through blowouts and carry the load (comeback or lead), so the blowout under does NOT apply. Treat as neutral/over-context.`,
-    };
-  }
-
-  const base = risk === 'HIGH' ? 6 : risk === 'MODERATE' ? 4 : 2;
-  const confBoost = isUnderdog ? base + 2 : base; // underdog carries the extra weight
-  return {
-    risk, side: 'UNDER', favoredBy: Number(favoredBy.toFixed(1)), isUnderdog, confBoost, isAlpha: false,
-    badge: 'BLOWOUT RISK · leans under',
-    note: isUnderdog
-      ? `${absSpread}-pt underdog — teams that get blown out suppress hardest (76% under in 20+ blowouts) as the offense stalls once the game's decided. Counting-stat under.`
-      : `${absSpread}-pt favorite — even the winning side eases once it's out of hand (69% under in 20+ blowouts); production drops though the starters stay in. Counting-stat under.`,
-  };
-}
-
 function buildRegressionWatch({ shootingForm, seasonPpg, benefitsFrom, injuryReport, slateDate }) {
   if (!benefitsFrom || !Array.isArray(benefitsFrom.out) || !benefitsFrom.out.length) return null;
   // Match how injuryReport.byName is keyed (wnbaFeedEspn.normName): strip to [a-z ].
@@ -1609,25 +867,14 @@ function buildShotProfile(games, N = 10) {
   }
   if (mins.length === 0 || totMin <= 0) return null;
 
-  // Minutes is the master variable, so a stale baseline mis-scales every downstream
-  // projection. The flat 10-game average lags role changes (Clark trending 30→35.6,
-  // Reese 30→34) and under-projects trending-up players. Weight the baseline toward
-  // the last 5 games so current role drives it; keep minStd around the raw mean as the
-  // honest variability measure.
-  const minAvgRaw = totMin / mins.length;
-  const _l5 = mins.slice(-5);
-  const _l5avg = _l5.length ? _l5.reduce((a, b) => a + b, 0) / _l5.length : minAvgRaw;
-  const minAvg = Number((minAvgRaw * 0.45 + _l5avg * 0.55).toFixed(1));
+  const minAvg = totMin / mins.length;
   const minStd = mins.length > 1
-    ? Math.sqrt(mins.reduce((s, m) => s + (m - minAvgRaw) ** 2, 0) / (mins.length - 1)) : 4;
+    ? Math.sqrt(mins.reduce((s, m) => s + (m - minAvg) ** 2, 0) / (mins.length - 1)) : 4;
 
   // League-average fallbacks when a rate/percentage is undefined at this sample.
   return {
     gamesUsed: mins.length,
     minAvg: Number(minAvg.toFixed(1)),
-    minAvgRaw: Number(minAvgRaw.toFixed(1)),        // flat 10-game avg, before recency weighting
-    minRecent: Number(_l5avg.toFixed(1)),           // last-5 average
-    minTrend: Number((_l5avg - minAvgRaw).toFixed(1)),  // + = minutes trending up
     minStd: Number(minStd.toFixed(1)),
     minCv: Number((minStd / minAvg).toFixed(3)),
     f2aPerMin: f2a / totMin,
@@ -1666,129 +913,6 @@ function _normCdf(z) {
 // UNDER. Returns a factor that haircuts expected minutes for the distribution
 // (risky minutes → lower mean → the model itself leans under) plus a badge the
 // card/board picks up.
-
-// FOUL-PRONE — a player fouling at a high rate is at real risk of early benching or
-// fouling out, which caps minutes and (unpredictably) craters production. Two measures
-// from the recent windows: foul RATE (per 36 min) and FREQUENCY (games with 4+ fouls).
-// Thresholds from the league distribution (median ~3.7/36; p90 ~5.4). Shows L10+L5.
-function buildFoulProne(shootingForm) {
-  const l10 = shootingForm?.l10, l5 = shootingForm?.l5;
-  if (!l10) return null;
-  const rate10 = Number(l10.foulPer36), trouble10 = Number(l10.foulTrouble), gp10 = Number(l10.gp);
-  if (!Number.isFinite(rate10) || !Number.isFinite(gp10) || gp10 < 4) return null;
-  const troubleRate10 = gp10 > 0 ? trouble10 / gp10 : 0;
-  let level = null;
-  if (rate10 >= 5.0 || troubleRate10 >= 0.40) level = 'HIGH';
-  else if (rate10 >= 4.3 || troubleRate10 >= 0.30) level = 'MODERATE';
-  if (!level) return null;
-  const win = (w) => (w && Number.isFinite(Number(w.foulPer36)))
-    ? { per36: Number(w.foulPer36), trouble: Number(w.foulTrouble), games: Number(w.gp) } : null;
-  return {
-    level, l10: win(l10), l5: win(l5),
-    note: `Foul-prone — ${rate10} fouls per 36 min, ${trouble10} of last ${gp10} games in foul trouble (4+). Fragile minutes (early benching / foul-out risk). Backtested: this does NOT lean the bet either way — it's a variance flag, so widen your range and size down, don't treat it as an under.`,
-  };
-}
-
-// UNIFIED MINUTES MODEL — one projected-minutes number with a floor, ceiling, and
-// confidence, stacking the validated inputs. Minutes is the master variable and the
-// backtest is emphatic: a player who plays <75% of their average minutes hits the
-// under 87% of the time — so the FLOOR is the money number. The center starts from the
-// recency-weighted baseline, shifts up when a player absorbs an OUT teammate's role,
-// and takes a haircut for the player's own injury designation. The floor drops hard for
-// any CONFIRMED downside (a questionable/doubtful tag, foul-out risk) because those are
-// the reduced-minutes spots the 87% lives in. Note: the designation haircut magnitudes
-// are initial estimates — the framework is validated (low minutes → under), but the
-// exact multipliers need calibration once graded picks are tagged with designations.
-function buildMinutesModel({ shotProfile, injuryStatus, benefitsFrom, minutesVolatility, foulProne, blowoutRisk, role, roleChange }) {
-  const base = Number(shotProfile?.minAvg);
-  if (!Number.isFinite(base) || base <= 0) return null;
-  const std = Number(shotProfile?.minStd) || 4;
-  const cv = Number(shotProfile?.minCv);
-  const drivers = [];
-
-  // 1) Center: recency baseline, lifted if absorbing an OUT teammate's minutes.
-  let center = base;
-  if (benefitsFrom && Number.isFinite(Number(benefitsFrom.projMinutes)) && Number(benefitsFrom.projMinutes) > base) {
-    center = Number(benefitsFrom.projMinutes);
-    drivers.push({ dir: 'up', text: `absorbing minutes (${benefitsFrom.out.join(', ')} out): ${Math.round(base)}→${Math.round(center)}` });
-  }
-
-  // 2) Own injury designation → haircut to the center.
-  const st = String(injuryStatus || 'AVAILABLE').toUpperCase();
-  const HAIR = { AVAILABLE: 1.0, PROBABLE: 0.98, QUESTIONABLE: 0.88, GTD: 0.88, DOUBTFUL: 0.50, OUT: 0 };
-  const mult = HAIR[st] != null ? HAIR[st] : 1.0;
-  if (mult < 1.0 && mult > 0) {
-    const before = center; center = center * mult;
-    drivers.push({ dir: 'down', text: `${st.toLowerCase()} designation — minutes haircut ${Math.round(before)}→${Math.round(center)}` });
-  }
-
-  // 3) Floor & ceiling. Normal spread is ±1 std; a designation or foul-out risk drops
-  //    the FLOOR hard (that's the reduced-minutes, ~87%-under scenario).
-  let floor = center - std;
-  let ceiling = benefitsFrom ? center + 1.3 * std : center + std;
-  if (st === 'QUESTIONABLE' || st === 'GTD') { floor = Math.min(floor, base * 0.55); drivers.push({ dir: 'floor', text: 'designation: real chance of limited minutes — floor drops' }); }
-  else if (st === 'DOUBTFUL') { floor = 0; }
-  if (foulProne && foulProne.level === 'HIGH') { floor = Math.min(floor, center - 1.4 * std); drivers.push({ dir: 'floor', text: 'foul-out risk lowers the floor' }); }
-
-  // 3b) UNCONFIRMED ROLE CHANGE (stale starter / role bump) = uncertainty, NOT a
-  //     confident shift. The public hasn't caught up — but neither have we, and the
-  //     player may revert to the OLD role. Widen the range (raise the ceiling toward
-  //     the old-role minutes) and cut confidence, rather than committing to the under.
-  //     This is the Brink/Zandalasini lesson: both were "stale starters" and played
-  //     full minutes (25, 30) — above a too-tight ceiling — so the under lost.
-  let roleUncertain = false;
-  if (roleChange && roleChange.active) {
-    roleUncertain = true;
-    ceiling = Math.max(ceiling, center + 1.6 * std);   // could still play the old, bigger role
-    drivers.push({ dir: 'up', text: 'unconfirmed role change — may revert to old role; ceiling widened, too uncertain to lean' });
-  }
-
-  floor = Math.max(0, Math.round(floor));
-  ceiling = Math.round(ceiling);
-  center = Math.round(center);
-
-  // 4) Confidence: stable minutes → high; cut by volatility, designation, foul, role flux.
-  let conf = 82;
-  if (Number.isFinite(cv)) conf -= Math.round(cv * 55);
-  if (st === 'QUESTIONABLE' || st === 'GTD') conf -= 22;
-  else if (st === 'DOUBTFUL') conf -= 38;
-  if (minutesVolatility && minutesVolatility.level === 'HIGH') conf -= 8;
-  if (foulProne && foulProne.level === 'HIGH') conf -= 5;
-  if (roleUncertain) conf -= 15;   // genuine two-sided uncertainty
-  conf = Math.max(15, Math.min(95, conf));
-
-  return {
-    projMinutes: center, floor, ceiling, confidence: conf, baseline: Math.round(base),
-    status: st, roleUncertain, drivers,
-    floorPctOfBase: base > 0 ? Number((floor / base).toFixed(2)) : null,
-  };
-}
-
-// MINUTES VOLATILITY — flags a player whose minutes swing hard game to game, so the
-// projection (which assumes a normal night) is unreliable and a short-minutes game
-// (foul trouble, blowout benching, rest) can crater it. This is the Malonga case:
-// projected ~16, played reduced minutes, finished 8. Only fires for players with a
-// real role (minAvg ≥ 12) — deep-bench players have high CV but aren't bet, and their
-// tiny-minute swings aren't meaningful. Thresholds from the league distribution
-// (stable stars sit at CV ~0.07; a genuine swinger is ~0.30+ / std ~5+).
-function buildMinutesVolatility(shotProfile) {
-  const minAvg = Number(shotProfile?.minAvg);
-  const minStd = Number(shotProfile?.minStd);
-  const minCv = Number(shotProfile?.minCv);
-  if (![minAvg, minStd, minCv].every(Number.isFinite) || minAvg < 12) return null;
-  let level = null;
-  if (minStd >= 7 || minCv >= 0.45) level = 'HIGH';
-  else if (minStd >= 5 || minCv >= 0.30) level = 'MODERATE';
-  if (!level) return null;
-  const lo = Math.max(0, Math.round(minAvg - minStd));
-  const hi = Math.round(minAvg + minStd);
-  return {
-    level, minAvg: Number(minAvg.toFixed(1)), minStd: Number(minStd.toFixed(1)), minCv,
-    range: [lo, hi], confHaircut: level === 'HIGH' ? 6 : 3,
-    note: `Minutes swing hard — averages ${Math.round(minAvg)} but ranges ${lo}-${hi} game to game (±${Math.round(minStd)}). Projection assumes a normal night and can miss either way (backtest: volatility doesn't predict a side — but a short-minutes night is ~87% under). Higher variance — widen your range and size down.`,
-  };
-}
-
 function wnbaMinutesSecurity(role, minCv) {
   const r = Number(role);
   const cv = Number(minCv);
@@ -1847,7 +971,7 @@ function shotsToClearPoints(prof, line, security) {
 async function buildAndRunAnalysis({
   player, isHome, opponent, team, market, season, game, date,
   spread, total, recentFormPromise, allTeamStats, gameLines,
-  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile, shootingForm, ppAltIndex, playerBiasOverride, cadenceProfiles
+  v2Roster, v2OpponentRoster, injuryReport, defenseTable, shotProfile, shootingForm
 }) {
   try {
     // Get opponent team stats from the pre-fetched map
@@ -1874,10 +998,6 @@ async function buildAndRunAnalysis({
     }
     // Team-level defense always attaches when available (works on ALL-STAR now).
     const teamDef = teamDefenseFor(defenseTable, opponent);
-    // Opponent OFFENSIVE style fingerprint (three-heavy / paint / miss profile) —
-    // the data-grounded proxy for scheme; enriches matchup reads and drives the
-    // rebounds miss-environment logic without a Synergy feed.
-    const opponentStyle = defenseTable?.teamStyle?.[opponent] || null;
     // COV — coaching coverage scheme. Socket ready: if any source provides a
     // per-opponent coverage signal, expose it here and the layer turns on.
     //   e.g. opponentTeam.coverage = { scheme, vsArchetypeMultiplier }
@@ -1934,11 +1054,6 @@ async function buildAndRunAnalysis({
       fgPctRecent: (recentForm?.totals && recentForm.totals.fga > 0)
         ? Number((recentForm.totals.fgm / recentForm.totals.fga).toFixed(3))
         : null,
-      // Recent per-game shot volume for the possession core's usage-from-volume fallback.
-      // FGA is available and highly predictable (reliability r=0.86); feeding it keeps the
-      // volume core ALIVE for thin-data/role-changing players instead of collapsing to the
-      // stale-PPG rate core (the loss-night underprojection).
-      fgaRecent: shootingForm?.l5?.fga ?? shootingForm?.l10?.fga ?? null,
       ...(recentForm ? {
         minutesLast5: recentForm.minutesLast5,
         minutesCv: recentForm.minutesCv,
@@ -1991,21 +1106,10 @@ async function buildAndRunAnalysis({
     }
     const hasRealLine = Number.isFinite(Number(explicitLine));
     const line = hasRealLine ? Number(explicitLine) : inferLineFromPlayer(player, market);
-    // 'provided' = a real book/prop line (caller or PrizePicks); 'inferred' = engine guess.
+    // 'provided' = a real book/prop line (caller or BDL); 'inferred' = engine guess.
     const propLineSource = hasRealLine ? 'provided' : 'inferred';
-    // Book/vendor for a real line (e.g. "prizepicks"), surfaced to the card.
+    // Book/vendor for a real line (e.g. "fanduel"), surfaced to the card.
     const lineMeta = hasRealLine ? (gameLines.propMeta?.[matchedKey] || gameLines.propMeta?.[propLineKey] || null) : null;
-    // ALT-ONLY: no standard line, but PrizePicks lists this prop as demon/goblin.
-    // That's a no-bet under the standing rule — but a different fact from "not on
-    // the board," so the card can say which. Checked only when we had to infer.
-    let altOnly = null;
-    if (!hasRealLine && ppAltIndex) {
-      const nk = normPlayerName(player.name) + '|' + market;
-      // ppAltIndex keys are normalizeName (strips suffixes) — try a loose match too.
-      const loose = normPlayerName(player.name).replace(/\b(jr|sr|ii|iii|iv)\b/g, '').replace(/\s+/g, ' ').trim() + '|' + market;
-      const hit = ppAltIndex[nk] || ppAltIndex[loose];
-      if (hit) altOnly = hit;   // 'demon' | 'goblin'
-    }
 
     const input = {
       player: playerWithRecent,
@@ -2078,10 +1182,16 @@ async function buildAndRunAnalysis({
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
     let injuryStatus = 'AVAILABLE', injuryDetail = null;
+    let minutesUncertain = false, minutesBandDrivers = [];
     if (Array.isArray(v2Roster)) {
       const re = v2Roster.find(r => _normName(r.playerName) === _normName(player.name));
       if (re) {
         injuryStatus = re.status || 'AVAILABLE'; injuryDetail = re._injury?.detail || null;
+        // Minutes-uncertainty gate: a wide minutes band (role flux, GTD, high variance,
+        // blowout) means FGA -> points are low-conviction regardless of the projected edge.
+        // Degrades gracefully: undefined until the enhanced minutesProjection.js is deployed.
+        minutesUncertain = re.minutesUncertain || false;
+        minutesBandDrivers = re.bandDrivers || [];
         // Backfill a real usage rate for the card when the player object didn't carry
         // one (BDL season averages often omit USG_PCT). buildV2Roster computed a
         // possession-share usage from team pace; surface it as a percentage.
@@ -2112,177 +1222,6 @@ async function buildAndRunAnalysis({
     const regressionWatch = buildRegressionWatch({
       shootingForm, seasonPpg: player.seasonAvg, benefitsFrom, injuryReport, slateDate: date,
     });
-
-    // Blowout-risk under signal from the spread (game-wide, underdog-weighted),
-    // with the alpha exemption — the primary usage option plays through blowouts.
-    // ── PER-PLAYER SUPPRESSION CORRECTION ──────────────────────────────────
-    // The model chronically under-projects certain high-usage players (Young,
-    // Reese, Bueckers, and the alpha overs from live slips). Lift the projection by
-    // this player+market's shrunk bias, re-derive the edge, and — only on a
-    // meaningful, trustworthy signal — kill an under whose corrected projection now
-    // reaches the line. This is the root-cause fix under the alpha overs and the
-    // Bonner miss. Applied to the LIVE projection, not shadow.
-    const biasFix = playerBiasCorrection(player.name, market, playerBiasOverride);
-    if (biasFix && biasFix.correction && Number.isFinite(Number(unified.projection))) {
-      unified.rawProjection = unified.projection;
-      unified.projection = Number((Number(unified.projection) + biasFix.correction).toFixed(1));
-      unified.biasCorrection = biasFix;
-      const L = Number(unified.line);
-      if (Number.isFinite(L)) {
-        unified.edge = Number((unified.projection - L).toFixed(1));
-        // Kill an under the correction lifts to the line — but only when the signal
-        // is strong enough to trust (rolling data, or a solid seed): |corr|>=1.5, n>=8.
-        const lean = String(unified.recommendation || unified.lean || '').toUpperCase();
-        const trustworthy = (biasFix.fromRolling || (biasFix.n >= 8 && Math.abs(biasFix.correction) >= 1.5));
-        if (lean === 'UNDER' && biasFix.correction > 0 && trustworthy && unified.projection >= L - 0.5) {
-          unified.recommendation = 'PASS';
-          unified.tier = 'PASS';
-          unified.biasVeto = { correction: biasFix.correction, rawProjection: unified.rawProjection, line: L, n: biasFix.n, source: biasFix.fromRolling ? 'rolling' : 'seed' };
-        }
-      }
-    }
-
-    // RECENT-FORM FLOOR for rebounds & assists (points is floored after shots-to-clear
-    // sets its projection). Anchors a lowballed projection toward the player's real
-    // recent rate — catches chronic under-projection the bias correction can't reach
-    // (e.g. Bonner: reb projected 4.6 while averaging 7.4).
-    if ((market.toLowerCase() === 'rebounds' || market.toLowerCase() === 'assists')) {
-      const rf = recentFormFloor(market.toLowerCase(), unified.projection, shootingForm);
-      if (rf) {
-        unified.rebFloor = rf;
-        unified.projection = rf.floored;
-        const L = Number(unified.line);
-        if (Number.isFinite(L)) {
-          unified.edge = Number((rf.floored - L).toFixed(1));
-          const gap = rf.floored - L;
-          unified.recommendation = Math.abs(gap) < 0.5 ? 'PASS' : (gap < 0 ? 'UNDER' : 'OVER');
-        }
-      }
-    }
-
-    // baseline: a rookie, a call-up, an injury return, or an early-season trade.
-    // We don't pretend to know — flag low sample, keep them off the featured signal,
-    // and let the read show without confident endorsement. (This catches early-season
-    // trades, where the whole league is low-sample; a mid-season veteran trade with a
-    // long prior-team log is the case a per-game team field would be needed to catch,
-    // which ESPN's log doesn't expose — so we don't overclaim it.)
-    const sampleGames = Number(shotProfile?.gamesUsed) || Number(shootingForm?.l10?.gp) || 0;
-    const lowSample = sampleGames > 0 && sampleGames < 5 ? { games: sampleGames } : null;
-    const minutesVolatility = buildMinutesVolatility(shotProfile);   // hard-swinging minutes → higher risk
-    const foulProne = buildFoulProne(shootingForm);   // fouls at a high rate → benching / foul-out risk
-
-    const blowoutRisk = buildBlowoutRisk({
-      spread, isHome,
-      usage: {
-        fga: shootingForm?.l10?.fga, minAvg: shotProfile?.minAvg, role: player?.role ?? unified?.scores?.role,
-        benefitsFrom, projMinutes: benefitsFrom?.projMinutes,
-        // Same condition the role re-anchor uses — computed inline so it doesn't
-        // depend on adaptiveRead being built first (it isn't yet at this point).
-        reanchored: Number.isFinite(Number(benefitsFrom?.projMinutes)) && Number.isFinite(Number(shotProfile?.minAvg))
-          && Number(benefitsFrom.projMinutes) > Number(shotProfile.minAvg) * 1.12,
-      },
-    });
-
-    // UNIFIED MINUTES MODEL — one projected-minutes number + floor/ceiling/confidence,
-    // stacking the recency baseline, benefitsFrom (up), injury designation (haircut),
-    // and foul-out risk (lowers the floor). The floor is the ~87%-under money number.
-    const minutesModel = buildMinutesModel({ shotProfile, injuryStatus, benefitsFrom, minutesVolatility, foulProne, blowoutRisk, role: player?.role ?? unified?.scores?.role, roleChange: _spin?.read });
-
-    // PRODUCTION CADENCE (PBP) × game script. Back-loaded players need late buckets,
-    // so blowout risk turns them into strong unders; in a close game they catch up
-    // late and their unders are weak. Front-loaded players bank early and are steadier.
-    const _mk = market.toLowerCase();
-    let cadence = null, cadenceProjection = null, cadenceWindows = null;
-    if (cadenceProfiles) {
-      const _cn = String(player.name || '').toLowerCase().normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
-      const prof = cadenceProfiles[_cn];
-      // Fast/slow-starter gate on the blowout-under. A consistent front-loader banks
-      // production before 2nd-half suppression lands → the blowout under is a TRAP; a
-      // consistent back-loader loses their 2nd half → under SUPPORTED. Only fires when
-      // the read is consistent (classifyFirstHalf gates on CV<0.25), else no-op.
-      if (blowoutRisk) {
-        const _fhShares = (prof?.l10?.h1Shares && prof.l10.h1Shares.length >= 4)
-          ? prof.l10.h1Shares : (prof?.l5?.h1Shares || []);
-        const _fh = classifyFirstHalf(_fhShares);
-        blowoutRisk.firstHalfProfile = _fh;
-        blowoutRisk.cadenceGate = cadenceGate(_fh, { suppressionActive: true });
-      }
-      const _pickMk = (w) => (w ? (_mk === 'rebounds' ? w.rebounds : _mk === 'assists' ? w.assists : w.points) : null);
-      const c10 = _pickMk(prof?.l10), c5 = _pickMk(prof?.l5);
-      const c = c10 || c5;   // signal/projection use L10 (more stable), fall back to L5
-      // Both windows surfaced so the customer sees whether cadence is stable or shifting.
-      cadenceWindows = (c10 || c5) ? {
-        l10: c10 ? { label: c10.label, share2h: c10.share2h, games: prof.l10.games } : null,
-        l5: c5 ? { label: c5.label, share2h: c5.share2h, games: prof.l5.games } : null,
-      } : null;
-      // Per-quarter / per-half projection: split the projected total by cadence, so you
-      // can see roughly what they'll have by halftime and whether it's a late sweat.
-      if (c && Array.isArray(c.shares) && Number.isFinite(Number(unified.projection))) {
-        const T = Number(unified.projection);
-        const byQuarter = c.shares.map((s) => Number((T * s).toFixed(1)));
-        cadenceProjection = {
-          market: _mk, total: Number(T.toFixed(1)), games: (prof.l10?.games ?? prof.l5?.games), label: c.label,
-          byQuarter, firstHalf: Number((byQuarter[0] + byQuarter[1]).toFixed(1)),
-          secondHalf: Number((byQuarter[2] + byQuarter[3]).toFixed(1)), share2h: c.share2h,
-        };
-      }
-
-      // MARKET-SPECIFIC calibration from the split backtest — the cadence edge differs
-      // sharply by market (rebounds especially was backwards under one rule):
-      //   ASSISTS  back → strong TRAP (27% under = 73% OVER; late playmakers catch up)
-      //   REBOUNDS back → SUPPORTS the under (65-80% under — NOT a trap)
-      //   POINTS   back+blowout → mild under support (62%); back+else → mild trap (55% over)
-      //            front+close → good under (60%); front+blowout → over lean (thin)
-      // Samples small (n=5-65) so directional; scenario in {TRAP,SUPPORT,CAUTION,INFO}.
-      if (c && c.label !== 'even') {
-        // blowoutGame is spread-based (the actual game script). blowout is the
-        // alpha-adjusted version used only for the blowout-UNDER support. The cadence
-        // TRAP assumes a COMPETITIVE game, so it must gate on blowoutGame — not the
-        // alpha-adjusted flag, which was making a 20-pt-spread game read as
-        // "competitive" and firing a false trap on the primary usage option (Malonga).
-        const blowoutGame = !!(blowoutRisk && blowoutRisk.risk && blowoutRisk.risk !== 'MILD');
-        const blowout = blowoutGame && !blowoutRisk.isAlpha;
-        const p2h = Math.round(c.share2h * 100);
-        const gm = (prof.l10?.games ?? prof.l5?.games) || 0;
-        const MIN_CAD = 5;   // don't fire a betting signal on a thin cadence sample
-        let sc = null, side = 'CONTEXT', fadeUnder = false, confBoost = 0, note = '';
-        if (gm < MIN_CAD) {
-          sc = 'INFO';
-          note = `Cadence from only ${gm} game${gm === 1 ? '' : 's'} — too thin to call a trap or support. Informational; the projection stands on its own.`;
-        } else if (_mk === 'assists') {
-          if (c.label === 'back' && !blowoutGame) { sc = 'TRAP'; fadeUnder = true;
-            note = `Back-loaded assists — ${p2h}% 2nd-half (last ${gm}g). Late playmakers catch up hard (backtest 73% OVER). Strong under trap — fade.`; }
-          else if (c.label === 'back') { sc = 'INFO';
-            note = `Back-loaded assists (last ${gm}g), but blowout risk — the competitive-game catch-up doesn't apply here. Informational.`; }
-          else { sc = 'INFO'; note = `Front-loaded assists (last ${gm}g). Informational — ~neutral for betting.`; }
-        } else if (_mk === 'rebounds') {
-          if (c.label === 'back') { sc = 'SUPPORT'; side = 'UNDER'; confBoost = blowout ? 4 : 2;
-            note = `Back-loaded boards — ${p2h}% 2nd-half (last ${gm}g). Back-loaded rebounders still hit the under (backtest 65-80%). Supports the under.`; }
-          else { sc = 'INFO'; note = `Front-loaded boards (last ${gm}g). Informational — ~neutral (52%).`; }
-        } else { // points
-          if (c.label === 'back' && blowout) { sc = 'SUPPORT'; side = 'UNDER'; confBoost = 2;
-            note = `Back-loaded + blowout (last ${gm}g). Late buckets capped (backtest 62% under). Mild under support.`; }
-          else if (c.label === 'back' && blowoutGame) { sc = 'INFO';
-            note = `Back-loaded but a likely blowout AND the primary usage option — neither the competitive-game trap nor the blowout-under cleanly applies. Projection stands on its own.`; }
-          else if (c.label === 'back') { sc = 'TRAP'; fadeUnder = true;
-            note = `Back-loaded points — ${p2h}% 2nd-half (last ${gm}g). Competitive game, catches up late (~55% over). Weak under — fade.`; }
-          else if (c.label === 'front' && !blowoutGame) { sc = 'SUPPORT'; side = 'UNDER'; confBoost = 2;
-            note = `Front-loaded + close game (last ${gm}g). Banks early and holds (backtest 60% under). Supports the under.`; }
-          else { sc = 'CAUTION';
-            note = `Front-loaded + blowout (last ${gm}g). Thin sample leaned OVER (36% under). Caution on the under.`; }
-        }
-        cadence = { label: c.label, market: _mk, scenario: sc, side, fadeUnder, confBoost, games: gm, share2h: c.share2h, note };
-      }
-    }
-
-    const _adaptiveEvidence = { spinRead: _spin?.read, minutesSecurity, benefitsFrom, shootingForm };
-    const _adaptiveMinutes = { baseline: shotProfile?.minAvg, projected: benefitsFrom?.projMinutes };
-    const adaptiveRead = _mk === 'points'
-      ? buildAdaptivePoints({ shootingForm, evidence: _adaptiveEvidence, minutes: _adaptiveMinutes })
-      : (_mk === 'rebounds' || _mk === 'assists')
-        ? buildAdaptiveCounting({ market: _mk, shootingForm, evidence: _adaptiveEvidence, minutes: _adaptiveMinutes })
-        : null;
 
     // market, plus a parallel PRA signal (the fallback when standalone reb/ast props
     // aren't offered). recentForm.games is most-recent-first, so reverse to oldest→newest.
@@ -2320,41 +1259,8 @@ async function buildAndRunAnalysis({
       const conv = shotsToClear.conviction;
       const sec = minutesSecurity || { read: 'LEAN', level: 'MODERATE' };
       unified.projection = shotsToClear.mean;
-      // The suppression correction ran earlier but shots-to-clear just overwrote it.
-      // Re-apply it here so POINTS (the highest-value market) is actually corrected,
-      // then re-derive the edge and re-run the under veto from the corrected mean.
-      // Without this, the whole per-player bias correction is a no-op for points.
-      if (unified.biasCorrection && unified.biasCorrection.correction) {
-        const bc = unified.biasCorrection;
-        unified.rawProjection = Number(Number(shotsToClear.mean).toFixed(2));
-        unified.projection = Number((Number(shotsToClear.mean) + bc.correction).toFixed(1));
-        const L = Number(unified.line);
-        if (Number.isFinite(L)) {
-          const lean0 = String(unified.recommendation || unified.lean || '').toUpperCase();
-          const trust = (bc.fromRolling || (bc.n >= 8 && Math.abs(bc.correction) >= 1.5));
-          if (lean0 === 'UNDER' && bc.correction > 0 && trust && unified.projection >= L - 0.5) {
-            unified.recommendation = 'PASS'; unified.tier = 'PASS';
-            unified.biasVeto = { correction: bc.correction, rawProjection: unified.rawProjection, line: L, n: bc.n, source: bc.fromRolling ? 'rolling' : 'seed' };
-          }
-        }
-      }
-      unified.edge = Number((unified.projection - Number(unified.line)).toFixed(1));
-      // POINTS recent-form floor — after shots-to-clear + bias, catch a lowballed
-      // points projection (the Onyenwere case: projected 6, scoring more). Bigger gap
-      // and lighter recent weight than rebounds, since points carry shooting variance.
-      {
-        const rf = recentFormFloor('points', unified.projection, shootingForm);
-        if (rf) {
-          unified.rebFloor = rf;
-          unified.projection = rf.floored;
-          const L = Number(unified.line);
-          if (Number.isFinite(L)) {
-            unified.edge = Number((rf.floored - L).toFixed(1));
-            const gap = rf.floored - L;
-            unified.recommendation = Math.abs(gap) < 0.5 ? 'PASS' : (gap < 0 ? 'UNDER' : 'OVER');
-          }
-        }
-      }
+      unified.edge = Number((shotsToClear.mean - Number(unified.line)).toFixed(1));
+      unified.probOver = shotsToClear.pOver;
       unified.probUnder = Number((1 - shotsToClear.pOver).toFixed(3));
       unified.pointsEngine = 'shots-to-clear';
       unified.minutesSecurity = sec;   // badge + read surfaced to the card
@@ -2383,25 +1289,6 @@ async function buildAndRunAnalysis({
       }
     }
 
-    // ROLE RE-ANCHOR guard (all points picks, any engine): a player inheriting an
-    // absent starter's minutes whose re-anchored projection reaches the line must
-    // not get a confident UNDER. This is the Nelson-Ododa fix — she was projected
-    // 6.3 UNDER 9.5 while inheriting 32 minutes for two out bigs, and went for 21.
-    if (market.toLowerCase() === 'points' && adaptiveRead?.regime === 'ROLE_REANCHOR'
-        && (unified.recommendation === 'UNDER' || unified.lean === 'UNDER')
-        && Number.isFinite(Number(unified.line))
-        && Number.isFinite(adaptiveRead.adjProjection)
-        && adaptiveRead.adjProjection >= Number(unified.line) - 1.5) {
-      unified.recommendation = 'PASS';
-      unified.tier = 'PASS';
-      unified.confidence = Math.min(Number(unified.confidence) || 0, 40);
-      unified.roleConflict = {
-        line: Number(unified.line), baseProjection: adaptiveRead.baseProjection,
-        reanchoredProjection: adaptiveRead.adjProjection, inheriting: benefitsFrom?.out || [],
-        projMinutes: benefitsFrom?.projMinutes,
-      };
-    }
-
     return {
       gameId: game.gameId,
       player: player.name,
@@ -2416,87 +1303,28 @@ async function buildAndRunAnalysis({
       projection: unified.projection,
       edge: unified.edge,
       recommendation: isOut ? 'PASS' : unified.recommendation,
-      confidence: isOut ? 0 : (() => {
-        // Mild under-environment nudge (conservative prior, ±5%). Only touches UNDER
-        // picks; never flips a recommendation, just tilts conviction a little.
-        let c = unified.confidence;
-        const lean = String(unified.recommendation || unified.lean || '').toUpperCase();
-        const f = Number(opponentStyle?.underFactor);
-        if (lean === 'UNDER' && Number.isFinite(c) && Number.isFinite(f) && f !== 1) {
-          c = Math.max(1, Math.min(99, Math.round(c * f)));
-        }
-        // Blowout-risk boost: a big spread suppresses counting stats game-wide
-        // (underdog most). Additive conviction for unders, capped.
-        if (lean === 'UNDER' && blowoutRisk && Number.isFinite(c)) {
-          c = Math.max(1, Math.min(99, c + blowoutRisk.confBoost));
-        }
-        // Cadence: back-loaded in a competitive game went OVER ~56% (backtest) — fade
-        // that under hard. back+blowout gets a mild boost; front-loaded is neutral.
-        if (lean === 'UNDER' && cadence && Number.isFinite(c)) {
-          if (cadence.fadeUnder) c = Math.max(1, c - 5);
-          else if (cadence.side === 'UNDER') c = Math.min(99, c + cadence.confBoost);
-        }
-        // Minutes volatility: hard-swinging minutes make the projection unreliable in
-        // BOTH directions — trim conviction whatever the side.
-        if (minutesVolatility && Number.isFinite(c)) {
-          c = Math.max(1, c - minutesVolatility.confHaircut);
-        }
-        return c;
-      })(),
-      underEnv: opponentStyle?.underEnv || null,   // SUPPRESS | NEUTRAL | FAST (mild)
-      label: isOut ? 'OUT' : (isDoubtful ? 'RISK' : unified.tier),
+      confidence: isOut ? 0 : (minutesUncertain ? Math.min(Number(unified.confidence) || 0, 55) : unified.confidence),
+      label: isOut ? 'OUT' : (isDoubtful ? 'RISK' : (minutesUncertain ? 'MINUTES?' : unified.tier)),
+      minutesUncertain,
+      minutesBandDrivers,
       hitRate: unified.hitRate ?? deriveHitRate(unified),
       scores: unified.scores,
       chips: unified.chips || buildChipsFromUnified(unified, player, reboundExtras),
       hardFlags: buildHardFlagsFromUnified(unified, player, reboundExtras),
       spin: _spin || null,             // full Rotowire blurb for display on every card
       shootingForm: shootingForm || null,   // L10/L5 FGA + FG% + TS% — recent-shooting bonus read
-      opponentStyle: opponentStyle || null,   // opponent offensive fingerprint (matchup context)
       regressionWatch: regressionWatch || null,   // fill-in shelf-life / star-return read
-      blowoutRisk: blowoutRisk || null,   // spread-derived game-wide under signal
-      cadence: cadence || null,   // production cadence (front/back-loaded) × game script
-      cadenceWindows: cadenceWindows || null,   // L10 + L5 cadence labels for display
-      cadenceProjection: cadenceProjection || null,   // per-quarter/half split of the projected total
-      adaptiveRead: adaptiveRead || null,   // opportunity×efficiency shrinkage (points, shadow)
-      roleConflict: unified.roleConflict || null,   // re-anchor stood down a bad under
-      biasCorrection: unified.biasCorrection || null,   // per-player suppression correction applied
-      biasVeto: unified.biasVeto || null,   // under killed because correction lifted proj to line
-      rawProjection: unified.rawProjection ?? null,   // projection before bias correction
-      rebFloor: unified.rebFloor || null,   // rebound projection lifted toward recent form
-      lowSample: lowSample || null,   // thin baseline (rookie/trade/return) — low confidence
-      minutesVolatility: minutesVolatility || null,   // minutes swing hard — projection unreliable
-      minutesModel: minutesModel || null,   // unified projected minutes + floor/ceiling/confidence
-      foulProne: foulProne || null,   // high foul rate — benching / foul-out risk
       spinRead: _spin?.read || null,   // role-change signal (STALE STARTER / ROLE BUMP) or null
-      // SIGNAL ATTRIBUTION — a compact tag of which signals fired on this pick, so once
-      // it grades we can measure each signal's real hit rate (starting with the untested
-      // STALE STARTER, which drove the Brink/Zandalasini losses). Log this with the pick.
-      signalsFired: (() => {
-        const s = [];
-        if (_spin?.read?.active && _spin.read.side === 'UNDER') s.push('stale_starter');
-        if (_spin?.read?.active && _spin.read.side === 'OVER') s.push('role_bump');
-        if (minutesModel?.roleUncertain) s.push('role_uncertain');
-        if (minutesModel && minutesModel.floorPctOfBase != null && minutesModel.floorPctOfBase < 0.75) s.push('minutes_floor_low');
-        if (injuryStatus && injuryStatus !== 'AVAILABLE') s.push('injury_' + String(injuryStatus).toLowerCase());
-        if (foulProne?.level) s.push('foul_prone_' + String(foulProne.level).toLowerCase());
-        if (minutesVolatility?.level) s.push('minutes_vol_' + String(minutesVolatility.level).toLowerCase());
-        if (blowoutRisk?.risk && blowoutRisk.risk !== 'MILD') s.push('blowout_' + (blowoutRisk.isUnderdog ? 'dog' : 'fav'));
-        if (cadence?.scenario) s.push('cadence_' + String(cadence.scenario).toLowerCase());
-        if (unified.rebFloor) s.push('form_floor');
-        if (unified.biasVeto) s.push('bias_veto');
-        return s;
-      })(),
       reasons: buildPropReasons({
         market, unified,
         shotProfile: shotProfile || null,
         shotsToClear: shotsToClear || null,
         minutesSecurity: minutesSecurity || null,
         reboundExtras, raw: player?._raw || null, propSignal, opponent,
-        spinRead: _spin?.read || null, opponentStyle, adaptiveRead, blowoutRisk, biasCorrection: unified.biasCorrection || null, lowSample, cadence, minutesVolatility, foulProne, rebFloor: unified.rebFloor || null,
+        spinRead: _spin?.read || null,
       }),
       lineSource: propLineSource,
-      lineBook: lineMeta?.book || lineMeta?.vendor || null,
-      altOnly: altOnly || null,   // 'demon' | 'goblin' when only an alt line exists (no-bet)
+      lineBook: lineMeta?.vendor || null,
       propSignal,   // cold-form UNDER tier (or null) for THIS market
       praSignal,    // cold-form UNDER tier (or null) for PRA — fallback when reb/ast not offered
       // Diagnostic: how many game-log rows the bbref scrape returned for this player,
@@ -2698,6 +1526,9 @@ function buildV2Roster(players, teamAbbrev, injuryReport, gameContext) {
       const projection = computeProjMinutes(p, gameContext, p._injury);
       p.projMinutes = projection.projMinutes;
       p.confidence = projection.confidence;
+      p.minutesUncertain = projection.minutesUncertain;   // uncertain minutes -> uncertain FGA -> uncertain points (gate downstream)
+      p.bandWidth = projection.bandWidth;
+      p.bandDrivers = projection.bandDrivers;
       p._minutesAudit = projection.audit;
     } catch (err) {
       // If any single player blows up, default to season MPG and continue
@@ -3059,7 +1890,6 @@ export default async function handler(req, res) {
       markets: body.markets,
       topN: body.topN,
       lines: body.lines,
-      playerBias: body.playerBias,   // optional rolling {normName:{market:[bias,n]}} from client
       season: body.season
     });
 
