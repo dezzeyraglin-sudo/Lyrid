@@ -42,7 +42,7 @@ const ROLE_STABILITY_RANGE = 0.15; // 0.85 to 1.00 across gs/gp ratio
 const RECENT_TREND_HALF_WEIGHT = 0.5; // we regress half-way to the season mean
 const RECENT_TREND_CLAMP = 0.15; // recent_mpg can move season_mpg by at most +/- 15%
 const BLOWOUT_SPREAD_THRESHOLD = 10;
-const BLOWOUT_STARTER_PENALTY_PER_POINT = 0.005; // 0.5% reduction per extra point of spread
+const BLOWOUT_STARTER_PENALTY_PER_POINT = 0.010; // ~1%/pt — data: actual blowouts (margin>=16) cost starters ~14% (-3.9 min); this is that, weighted by blowout probability from the spread
 const BLOWOUT_BENCH_BOOST_PER_POINT = 0.008; // bench gets a bigger boost than starters lose
 const BLOWOUT_STARTER_FLOOR = 0.85; // never reduce starters by more than 15%
 const BLOWOUT_BENCH_CEILING = 1.30; // never boost bench by more than 30%
@@ -183,14 +183,23 @@ function computeProjMinutes(player, gameContext = {}, injuryRecord = null) {
   // Floor at 30 (per spec) unless OUT (which short-circuited above)
   confidence = Math.max(30, confidence);
 
-  // --- Floor/ceiling band ---
-  // Wider for DOUBTFUL/GTD, tighter for AVAILABLE/PROBABLE.
-  // Target: 75-85% of outcomes within the band per spec.
-  // Empirically a +/-15% band catches ~80% for stable rotation players; widen by status.
-  let bandWidth = 0.15;
-  if (status === 'GTD') bandWidth = 0.25;
-  else if (status === 'DOUBTFUL') bandWidth = 0.40;
-  else if (player.gp < 5) bandWidth = 0.25;
+  // --- Floor/ceiling band = honest MINUTES-UNCERTAINTY estimate ---
+  // The data lesson: the MEAN minutes projection is already strong (reliability r~0.92,
+  // prospective r~0.77) — sharpening minutes is about the BAND, not the center. The band's
+  // WIDTH accumulates from every driver that makes minutes volatile, and downstream should
+  // gate conviction on it: a wide band = uncertain minutes = uncertain FGA = uncertain points
+  // = pass, regardless of where the mean lands. (This generalizes the role-uncertainty fix:
+  // when a role is in flux we widen the band rather than confidently haircut the mean.)
+  let bandWidth = 0.15;                                   // stable-rotation baseline (~80% coverage)
+  const bandDrivers = [];
+  if (status === 'GTD') { bandWidth += 0.10; bandDrivers.push('gtd'); }
+  else if (status === 'DOUBTFUL') { bandWidth += 0.25; bandDrivers.push('doubtful'); }
+  if (startProb > 0.3 && startProb < 0.7) { bandWidth += 0.08; bandDrivers.push('role_ambiguity'); }
+  if (typeof player.last5_std === 'number' && player.last5_std > 4) { bandWidth += 0.07; bandDrivers.push('high_minutes_variance'); }
+  if (blowoutFactor !== 1.00) { bandWidth += 0.05; bandDrivers.push('blowout_risk'); }
+  if (player.gp < 5) { bandWidth += 0.10; bandDrivers.push('small_sample'); }
+  bandWidth = clamp(bandWidth, 0.15, 0.45);              // cap so the band stays interpretable
+  const minutesUncertain = bandWidth >= 0.22;           // gate flag: a single strong driver (GTD, role flux, high variance) is enough -> low conviction, size down or pass
 
   const floor = Math.max(0, projMinutes * (1 - bandWidth));
   const ceiling = Math.min(POSITION_CAP_MINUTES, projMinutes * (1 + bandWidth));
@@ -200,6 +209,9 @@ function computeProjMinutes(player, gameContext = {}, injuryRecord = null) {
     confidence: Math.round(confidence),
     floor: round1(floor),
     ceiling: round1(ceiling),
+    bandWidth: round3(bandWidth),        // the uncertainty estimate — downstream gates conviction on this
+    minutesUncertain,                    // true = minutes are volatile; treat FGA/points as low-conviction
+    bandDrivers,                         // which factors widened the band (for the card + logging)
     factors: {
       season_mpg: player.season_mpg,
       roleStability: round3(roleStability),
