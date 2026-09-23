@@ -44,6 +44,8 @@ function negbinPMF(mu, k, maxN) {
   for (let x = 1; x <= maxN; x++) out[x] = out[x - 1] * ((x + k - 1) / x) * (mu / (mu + k));
   return out;
 }
+function normCdf(z){return 0.5*(1+erf(z/Math.SQRT2));}
+function erf(x){const t=1/(1+0.3275911*Math.abs(x));const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);return x>=0?y:-y;}
 function invNorm(p) {
   const a=[-3.969683028665376e+01,2.209460984245205e+02,-2.759285104469687e+02,1.383577518672690e+02,-3.066479806614716e+01,2.506628277459239e+00];
   const b=[-5.447609879822406e+01,1.615858368580409e+02,-1.556989798598866e+02,6.680131188771972e+01,-1.328068155288572e+01];
@@ -110,8 +112,18 @@ export function analyzeCombo(input, market, league = 'NBA') {
   mean /= total || 1;
   const pct = (qq) => { let cc = 0; for (let i = 0; i < mix.length; i++) { cc += mix[i] / total; if (cc >= qq) return i; } return mix.length - 1; };
   const ceiling = pct(cfg.dist.ceilingPctile), floor = pct(cfg.dist.floorPctile);
-  let over = 0; const thr = Math.ceil(line); for (let i = thr; i < mix.length; i++) over += mix[i];
-  const pOverRaw = over / (total || 1);
+  const thr = Math.ceil(line);
+  // v4 combo variance term: components co-move within a game (usage/flow), so the convolution
+  // UNDERSTATES the true spread. Inflate sigma by a correlation factor (scaled by component
+  // count) and take the clear prob from the inflated normal — this pulls overstated combo
+  // edges toward 0.5 so they don't cash only on soft lines. Raw PMF prob kept for reference.
+  let variance = 0; for (let i = 0; i < mix.length; i++) variance += ((i - mean) ** 2) * (mix[i] / (total || 1));
+  const sigma = Math.sqrt(variance);
+  const corrInfl = 1 + (cfg.combo?.corrInflation ?? 0.12) * Math.max(0, comps.length - 1);
+  const sigmaInfl = sigma * corrInfl;
+  let overPMFsum = 0; for (let i = thr; i < mix.length; i++) overPMFsum += mix[i];
+  const pOverPMF = overPMFsum / (total || 1);
+  const pOverRaw = sigmaInfl > 0 ? (1 - normCdf(((thr - 0.5) - mean) / sigmaInfl)) : pOverPMF;
   const cal = calibrateOver(pOverRaw, cfg); const pOver = cal.p, pUnder = 1 - pOver;
   const lineAboveCeiling = cfg.lineAboveCeiling.enabled && line > ceiling;
   const thinComboGap = Math.abs(line - mean) < (cfg.combo?.thinGap ?? 1.5);
@@ -127,9 +139,9 @@ export function analyzeCombo(input, market, league = 'NBA') {
     components: comps, projMinutes: +projMinutes.toFixed(1), minutesCV: +cv.toFixed(3),
     distribution: { mean: +mean.toFixed(1), median: pct(0.5), floor, ceiling },
     pOverRaw: +pOverRaw.toFixed(3), pOver: +pOver.toFixed(3), pUnder: +pUnder.toFixed(3), edge: +edge.toFixed(3),
-    flags: { lineAboveCeiling, confidentOverFaded: cal.faded, roleUncertain, thinComboGap, comboIndependenceApprox: true },
+    flags: { lineAboveCeiling, confidentOverFaded: cal.faded, roleUncertain, thinComboGap, corrInflation: +corrInfl.toFixed(3), pOverPMF: +pOverPMF.toFixed(3) },
     recommendation: { lean, side: recSide, prob: +recProb.toFixed(3) },
-    notes: ['shadow — grade before trusting', 'combo = convolution over shared minutes; residual same-game correlation not modeled', 'thin gaps auto-pass until graded'],
+    notes: ['shadow — grade before trusting', `combo = convolution over shared minutes + residual-correlation variance inflation ×${corrInfl.toFixed(2)}`, 'thin gaps auto-pass until graded'],
   };
 }
 

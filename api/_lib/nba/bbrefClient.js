@@ -168,6 +168,7 @@ export async function fetchTeamContext(season) {
       oppPtsPerG: num(r.opp_pts),
       oppDrbPerG: num(r.opp_drb), oppOrbPerG: num(r.opp_orb), oppTrbPerG: num(r.opp_trb),
       oppFg3aRate: num(r.opp_fg3a) != null && num(r.opp_fga) ? num(r.opp_fg3a) / num(r.opp_fga) : null,
+      oppFtr: num(r.opp_fta) != null && num(r.opp_fga) ? num(r.opp_fta) / num(r.opp_fga) : null, // FT trips the team allows
     });
   }
   for (const r of own) {
@@ -175,6 +176,9 @@ export async function fetchTeamContext(season) {
     if (!t || !teams[t]) continue;
     teams[t].blocksPerG = num(r.blk);
     teams[t].stealsPerG = num(r.stl);
+    teams[t].ptsPerG = num(r.pts);
+    teams[t].foulsPerG = num(r.pf);
+    teams[t].ftr = num(r.fta) != null && num(r.fga) ? num(r.fta) / num(r.fga) : null; // this team's FT-draw rate
   }
   const out = { season, teams };
   _cache.set(ck, out);

@@ -316,27 +316,43 @@ export async function fetchPlayerVsOpponent(athleteId, oppAbbr, { minGames = 3, 
 
 // Shots-to-clear input profile: per-minute attempt rates, pooled make rates,
 // and a minutes mean/std/CV — computed from the last N played games.
-export function buildShotProfile(rows, { lastN = 15 } = {}) {
+export function buildShotProfile(rows, { lastN = 15, recentN = 5, recentWeight = 0.55 } = {}) {
   const played = (rows || []).filter(r => r.min && r.min > 0).slice(0, lastN);
   const g = played.length;
   if (!g) return { games: 0, insufficient: true };
-  const sum = k => played.reduce((s, r) => s + (r[k] || 0), 0);
-  const totMin = sum('min');
-  const rate = t => (totMin > 0 ? t / totMin : null);
+  const recent = played.slice(0, Math.min(recentN, g));
+  const winOf = (arr) => {
+    const tot = arr.reduce((s, r) => s + (r.min || 0), 0);
+    return { tot, rate: (k) => (tot > 0 ? arr.reduce((s, r) => s + (r[k] || 0), 0) / tot : null), sum: (k) => arr.reduce((s, r) => s + (r[k] || 0), 0) };
+  };
+  const all = winOf(played), rec = winOf(recent);
+  // v4 volume fix: VOLUME rates (attempts, reb, ast — minutes/usage driven) are recency-
+  // weighted toward L5 so the possession core follows RECENT FGA, not a stale 15-game pool
+  // (this is what rescues role-changers). EFFICIENCY (FG%) stays POOLED — it's the ~24% noise
+  // floor, so more sample is better and chasing recent hot/cold is chasing luck.
+  const wrate = (k) => {
+    const a = all.rate(k), r = rec.rate(k);
+    if (a == null) return r; if (r == null) return a;
+    return recentWeight * r + (1 - recentWeight) * a;
+  };
   const mins = played.map(r => r.min);
-  const mMean = totMin / g;
+  const mMean = all.tot / g;
   const mStd = Math.sqrt(mins.reduce((s, m) => s + (m - mMean) ** 2, 0) / g);
+  const recG = recent.length;
   return {
     games: g,
     minutes: { mean: mMean, std: mStd, cv: mMean > 0 ? mStd / mMean : null },
-    twoPaPerMin: rate(sum('twoPa')),
-    threePaPerMin: rate(sum('fg3a')),
-    ftaPerMin: rate(sum('fta')),
-    rebPerMin: rate(sum('reb')),
-    astPerMin: rate(sum('ast')),
-    twoPct: pct(sum('twoPm'), sum('twoPa')),
-    threePct: pct(sum('fg3m'), sum('fg3a')),
-    ftPct: pct(sum('ftm'), sum('fta')),
+    twoPaPerMin: wrate('twoPa'),
+    threePaPerMin: wrate('fg3a'),
+    ftaPerMin: wrate('fta'),
+    rebPerMin: wrate('reb'),
+    astPerMin: wrate('ast'),
+    twoPct: pct(all.sum('twoPm'), all.sum('twoPa')),
+    threePct: pct(all.sum('fg3m'), all.sum('fg3a')),
+    ftPct: pct(all.sum('ftm'), all.sum('fta')),
+    fgaRecent: recG ? (rec.sum('twoPa') + rec.sum('fg3a')) / recG : null,       // recent FGA per game
+    fgaRecentPerMin: rec.tot > 0 ? (rec.sum('twoPa') + rec.sum('fg3a')) / rec.tot : null,
+    recentWeight,
     insufficient: g < 5,
   };
 }
