@@ -24355,12 +24355,20 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   // NFL tiers are PROVISIONAL (no forward-validation) → MODEL %, no VERIFIED pill.
   // ============================================================
   function nflBoom(item){ var c=item.comp||{}; return (num(c.p75)!=null && num(c.median)!=null && num(c.p25)!=null && (c.p75-c.median) > 1.4*(c.median-c.p25)); }
-  function killReason(item){
-    var v = item.verdict || {}, f = v.filters || {}, c = item.comp || {}, line = num(v.line), b = v.blocked || [];
+  // HARD kills only — reasons that must override everything (a player who's OUT should never show
+  // 'elite pass D'). Everything else defers to the specific per-pick reason (nflHonestReason).
+  function killReasonHard(item){
+    var v = item.verdict || {}, b = v.blocked || [];
     for (var i=0;i<b.length;i++){ if (/is OUT|not expected to play/i.test(b[i])) return 'player OUT \u2014 no action'; }
     if (v.routingOverride) return 'routing \u2014 the yardage moves off this prop';
-    if (f.scriptClear === false){ var gs = explOf(item,'Game script'); return 'game script \u2014 ' + ((gs&&gs.text)||'blowout / abandonment risk'); }
+    return null;
+  }
+  // The old generic kill branches, kept as a LAST-RESORT fallback (used only when the server gave
+  // no specific reason). These are what used to blanket every pick with 'game script'.
+  function killReasonGeneric(item){
+    var v = item.verdict || {}, f = v.filters || {}, c = item.comp || {}, line = num(v.line);
     if (num(c.p75)!=null && line!=null && c.p75 < line) return 'even a top-quartile game (' + c.p75 + ') falls short of ' + line;
+    if (f.scriptClear === false){ var gs = explOf(item,'Game script'); return 'game script \u2014 ' + ((gs&&gs.text)||'blowout / abandonment risk'); }
     var opp = explOf(item,'Opponent');
     if (opp && opp.dir==='-' && num(c.lineSoftness)!=null && c.lineSoftness<=0) return 'opponent stifles this \u2014 the line sits at/above the model';
     var e = explOf(item,'Conditions');
@@ -24403,6 +24411,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (!f.volumeSecure) failed.push('volume floor too low');
     if (!f.scriptClear) failed.push('game-script risk');
     if (failed.length) return failed.join(' \u00b7 ');
+    var generic = killReasonGeneric(p); if (generic) return generic;
     if (!v.tier_candidate || v.tier_candidate === 'none') return 'no tier \u2014 line too short or no edge';
     return 'model ' + Math.round((pAdjOf(v)||0)*100) + '%, tier ' + (v.tier_candidate||'none');
   }
@@ -24413,18 +24422,20 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var slot = document.getElementById('nflFreshWarn');
     if (!warnings || !warnings.length) { if (slot) slot.remove(); return; }
     if (!slot) { slot = document.createElement('div'); slot.id = 'nflFreshWarn'; host.parentNode.insertBefore(slot, host); }
+    // Customer-facing: neutral 'refreshing' language, not internal build-failure ops-speak.
+    var friendly = warnings.map(function(w){ return esc(String(w).replace(/ — the game-day build may have failed;.*/,'').replace(/the game-day build has not populated it/,'refreshing')); });
     slot.innerHTML = '<div class="nflx-banner capped" style="margin-bottom:12px"><span class="nflx-banner-ic">\u26A0</span>' +
-      '<div class="nflx-banner-body"><b>STALE DATA \u2014 game-day build may have failed.</b> ' +
-      warnings.map(function(w){ return esc(w); }).join(' \u00b7 ') +
-      '. Reads below use the last data that landed \u2014 treat matchup tiers with caution until refreshed.</div></div>';
+      '<div class="nflx-banner-body"><b>Recency data is refreshing.</b> ' +
+      friendly.join(' \u00b7 ') +
+      '. Tonight\u2019s matchup tiers use the most recent data that landed \u2014 read them with a little caution until it updates.</div></div>';
   }
   function renderJudgment(picks){
     nflQbByTeam = {}; (picks||[]).forEach(function(p){ if(p&&p.position==='QB'&&p.team&&!nflQbByTeam[p.team])nflQbByTeam[p.team]=p.player; });
     var host = document.getElementById('nflJudgmentCard'); if (!host) return;
     var clean=[], flagged=[];
     (picks||[]).forEach(function(p){
-      var r = killReason(p);
-      if (r){ flagged.push({p:p, reason:r}); return; }
+      var hard = killReasonHard(p);
+      if (hard){ flagged.push({p:p, reason:hard}); return; }
       if (!isBettable(p)){ flagged.push({p:p, reason: nflHonestReason(p)}); return; }
       clean.push(p);
     });
@@ -24446,8 +24457,13 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         '</details>' : '';
 
     if (!card.length){
+      // #3 explain the empty card: how many games, and why nothing cleared (context, not just absence)
+      var nGames = groupByGame(picks).length;
+      var reasonLine = (nGames <= 1)
+        ? 'Only ' + nGames + ' game on the board tonight, and no matchup in it cleared every gate.'
+        : nGames + ' games analyzed \u2014 no prop cleared the full bar (a proven family in a favorable defense matchup).';
       host.innerHTML = '<div class="nflx-card"><div class="nflx-empty"><div class="nflx-empty-t">No proven edge tonight</div>' +
-        '<div class="nflx-empty-s">No proven-edge play on this slate. Better no bet than an unproven one \u2014 the games below are still analyzed.</div></div>' + flaggedHtml + '</div>';
+        '<div class="nflx-empty-s">' + reasonLine + ' Better no bet than an unproven one \u2014 every prop is still analyzed below with its reason.</div></div>' + flaggedHtml + '</div>';
       return;
     }
     var rows = card.map(function(p, i){
@@ -24915,34 +24931,13 @@ async function analyzeNba(date) {
   const d = date || (window.state && state.currentDate) || new Date().toISOString().slice(0,10);
   const st = document.getElementById('nba-status'); if (st) st.textContent = 'Analyzing\u2026';
   try {
-    const gradedHistory = collectNbaGraded();
-    const res = await fetch('/api/nba/analyze?date=' + encodeURIComponent(d), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gradedHistory }),
-    });
+    const res = await fetch('/api/nba/analyze?date=' + encodeURIComponent(d));
     if (!res.ok) throw new Error('nba analyze ' + res.status);
     const out = await res.json();
     try { if (window.LyridParlayBridge) window.LyridParlayBridge.pushNba(out.candidates); } catch (_) {}
     logNbaBestBets(out.candidates);
     return out;
   } catch (e) { console.error('analyzeNba failed', e); if (st) st.textContent = 'Error'; return { candidates: [] }; }
-}
-
-// Feed the self-calibration guardrail (v4): every graded NBA prop is a cohort observation.
-// Tiers stay PROVISIONAL until a cohort has enough of these; nothing is promoted on no data.
-function collectNbaGraded() {
-  const out = []; const H = (window.state && state.nbaPropHistory) || {};
-  for (const date of Object.keys(H)) {
-    const day = H[date] || {};
-    for (const id of Object.keys(day)) {
-      const e = day[id];
-      if (!e || !e.graded || (e.result !== 'win' && e.result !== 'loss')) continue;
-      const side = String(e.side || e.lean || '').toLowerCase().indexOf('over') >= 0 ? 'over' : 'under';
-      out.push({ market: e.market, side, regime: e.regime || 'settled', signalsFired: e.signalsFired || [], result: e.result });
-    }
-  }
-  return out;
 }
 function logNbaBestBets(candidates) {
   state.nbaPropHistory = state.nbaPropHistory || {};
@@ -24966,44 +24961,6 @@ function logNbaBestBets(candidates) {
 }
 function renderNbaBoard(out) {
   var el = document.getElementById('nba-results'); if (!el) return;
-  function tierCol(t) {
-    if (t === 'ELITE' || t === 'STRONG' || t === 'over') return ['var(--tier-strong-fill)', 'var(--tier-strong-text)'];
-    if (t === 'LEAN' || t === 'under') return ['var(--tier-solid-fill)', 'var(--tier-solid-text)'];
-    return ['var(--surface-muted)', 'var(--text-muted)'];
-  }
-  // ---------- GAME LINES ----------
-  function gameLineCard(g) {
-    if (!g || !g.ok) return '';
-    var lc = tierCol(g.lean), tt = g.teamTotals || {};
-    var maxT = Math.max(tt[g.home] || 0, tt[g.away] || 0) || 1;
-    function teamRow(ab) {
-      var pts = tt[ab] || 0, w = Math.round((pts / maxT) * 100);
-      var outs = (g.injuries && g.injuries[ab]) || [];
-      var outTxt = outs.length ? ' <span style="color:var(--text-muted);font-size:11px">(' + outs.map(function (o) { return o.name.split(' ').slice(-1)[0]; }).join(', ') + ' out)</span>' : '';
-      return '<div style="display:grid;grid-template-columns:38px 1fr auto;gap:8px;align-items:center;padding:3px 0">'
-        + '<div style="font:600 12px var(--font-sans);color:var(--text-secondary)">' + ab + '</div>'
-        + '<div style="height:7px;background:var(--surface-muted);border-radius:var(--radius-pill)"><div style="width:' + w + '%;height:100%;background:var(--text-secondary);border-radius:var(--radius-pill)"></div></div>'
-        + '<div style="font:12px var(--font-mono);color:var(--text-primary);text-align:right">' + pts.toFixed(1) + outTxt + '</div></div>';
-    }
-    var diffTxt = g.diff != null ? ((g.diff > 0 ? '+' : '') + g.diff + ' vs line') : '';
-    var reasons = (g.reasons || []).length ? '<div style="font:11px var(--font-sans);color:var(--text-muted);margin-top:6px">' + g.reasons.join(' \u00B7 ') + '</div>' : '';
-    return '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-4);margin-bottom:var(--space-3)">'
-      + '<div style="display:flex;justify-content:space-between;align-items:baseline">'
-      + '<div style="font:600 15px var(--font-serif);color:var(--text-primary)">' + g.away + ' @ ' + g.home + '</div>'
-      + '<div style="display:flex;gap:8px;align-items:baseline">'
-      + (g.line != null ? '<span style="font:12px var(--font-mono);color:var(--text-muted)">line ' + g.line + '</span>' : '')
-      + '<span style="background:' + lc[0] + ';color:' + lc[1] + ';font:500 11px var(--font-sans);padding:1px 8px;border-radius:var(--radius-pill);text-transform:uppercase">' + g.lean + '</span></div></div>'
-      + '<div style="display:flex;align-items:baseline;gap:10px;margin:6px 0 4px">'
-      + '<span style="font:600 22px var(--font-mono);color:var(--text-primary)">' + g.total + '</span>'
-      + (diffTxt ? '<span style="font:12px var(--font-mono);color:' + lc[1] + '">' + diffTxt + '</span>' : '')
-      + (g.pOver != null ? '<span style="font:11px var(--font-mono);color:var(--text-muted);margin-left:auto">' + Math.round(g.pOver * 100) + '% over</span>' : '')
-      + '</div>' + teamRow(g.away) + teamRow(g.home) + reasons + '</div>';
-  }
-  var totals = (out && out.gameTotals) || [];
-  var totalsHtml = totals.map(gameLineCard).join('');
-  var sectionHdr = function (t) { return '<div style="font:600 12px var(--font-sans);letter-spacing:.06em;color:var(--text-muted);text-transform:uppercase;margin:0 0 var(--space-3)">' + t + '</div>'; };
-
-  // ---------- PLAYER CARDS ----------
   function cardsFrom(o) {
     if (o && o.playerCards && o.playerCards.length) return o.playerCards;
     var rows = (o && (o.players || o.candidates)) || [];
@@ -25011,8 +24968,8 @@ function renderNbaBoard(out) {
     var byKey = {};
     rows.forEach(function (r) {
       var key = String(r.playerId || r.player);
-      if (!byKey[key]) byKey[key] = { playerId: r.playerId, player: r.player, team: r.team, opponent: r.opponent, archetype: r.archetype || null, recentForm: r.recentForm || null, props: [] };
-      byKey[key].props.push({ market: r.market, marketLabel: MKT[r.market] || String(r.market || '').toUpperCase(), side: r.side, line: r.line, projection: r.projection, floor: r.floor, ceiling: r.ceiling, prob: r.cashRate, edge: r.edge, tier: r.tier, isBet: r.tier !== 'PASS' });
+      if (!byKey[key]) byKey[key] = { playerId: r.playerId, player: r.player, team: r.team, opponent: r.opponent, archetype: r.archetype || null, recentForm: r.recentForm || null, matchup: r.matchup || null, oppAdj: r.oppAdj || null, props: [] };
+      byKey[key].props.push({ market: r.market, marketLabel: MKT[r.market] || String(r.market || '').toUpperCase(), side: r.side, line: r.line, projection: r.projection, floor: r.floor, ceiling: r.ceiling, prob: r.cashRate, edge: r.edge, tier: r.tier, isBet: r.tier !== 'PASS', why: r.why });
     });
     var cards = Object.keys(byKey).map(function (k) { return byKey[k]; });
     cards.forEach(function (c) { c.props.sort(function (a, b) { return (b.edge || 0) - (a.edge || 0); }); c.topEdge = c.props.length ? (c.props[0].edge || 0) : 0; c.bets = c.props.filter(function (p) { return p.isBet; }).length; });
@@ -25022,6 +24979,15 @@ function renderNbaBoard(out) {
   var cards = cardsFrom(out);
   var st = document.getElementById('nba-status');
   if (st) st.textContent = (out && out.reason) ? out.reason : (cards.length + ' player' + (cards.length === 1 ? '' : 's'));
+  if (!cards.length) {
+    el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans)">' + ((out && out.reason) || 'No NBA players on this slate.') + '</p>';
+    return;
+  }
+  function tierCol(t) {
+    if (t === 'STRONG') return ['var(--tier-strong-fill)', 'var(--tier-strong-text)'];
+    if (t === 'LEAN') return ['var(--tier-solid-fill)', 'var(--tier-solid-text)'];
+    return ['var(--surface-muted)', 'var(--text-muted)'];
+  }
   function gauge(p) {
     if (p.floor == null || p.ceiling == null || p.ceiling <= p.floor || p.projection == null || p.line == null) return '';
     var span = p.ceiling - p.floor, clamp = function (x) { return Math.max(0, Math.min(100, x)); };
@@ -25032,17 +24998,14 @@ function renderNbaBoard(out) {
       + '<div style="position:absolute;left:' + linePct + '%;top:-3px;bottom:-3px;width:2px;background:var(--text-primary);transform:translateX(-1px)" title="line ' + p.line + '"></div>'
       + '<div style="position:absolute;left:' + projPct + '%;top:50%;width:8px;height:8px;background:' + col[1] + ';border:1.5px solid var(--surface-card);border-radius:50%;transform:translate(-50%,-50%)" title="projection ' + p.projection + '"></div></div>';
   }
-  var playersHtml = cards.map(function (c) {
+  el.innerHTML = cards.map(function (c) {
     var a = c.archetype || {}, rf = c.recentForm || {}, l5 = rf.l5 || {}, trend = rf.trend || {};
     var tArrow = trend.state === 'heating' ? '\u25B2' : trend.state === 'cooling' ? '\u25BC' : '\u2192';
     var props = (c.props || []).map(function (p) {
       var col = tierCol(p.tier), arrow = p.side === 'under' ? '\u25BC' : '\u25B2';
       var range = (p.floor != null && p.ceiling != null) ? '<span style="color:var(--text-muted)">' + p.floor + '\u2013' + p.ceiling + '</span>' : '';
-      var tierLabel = p.provisional ? 'PROV' : p.tier;
-      var rateTxt = (!p.provisional && p.liveRate != null) ? ' ' + Math.round(p.liveRate * 100) + '%' : '';
-      var nTxt = (!p.provisional && p.gradedN) ? '<span style="opacity:.65"> n' + p.gradedN + '</span>' : '';
       var badge = p.isBet
-        ? '<span style="background:' + col[0] + ';color:' + col[1] + ';font:500 10px var(--font-sans);letter-spacing:.04em;padding:1px 6px;border-radius:var(--radius-pill)">' + tierLabel + rateTxt + nTxt + '</span>'
+        ? '<span style="background:' + col[0] + ';color:' + col[1] + ';font:500 10px var(--font-sans);letter-spacing:.04em;padding:1px 6px;border-radius:var(--radius-pill)">' + p.tier + '</span>'
         : '<span style="color:var(--text-muted);font:11px var(--font-sans)">' + (p.side === 'under' ? 'U' : 'O') + '</span>';
       var row = '<div style="display:grid;grid-template-columns:42px 1fr auto auto;gap:10px;align-items:baseline">'
         + '<div style="font:600 12px var(--font-sans);color:var(--text-secondary);letter-spacing:.04em">' + p.marketLabel + '</div>'
@@ -25055,18 +25018,11 @@ function renderNbaBoard(out) {
     return '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-4);margin-bottom:var(--space-4)">'
       + '<div style="display:flex;justify-content:space-between;align-items:baseline">'
       + '<div style="font:600 17px var(--font-serif);color:var(--text-primary)">' + c.player + (c.bets ? ' <span style="font:500 11px var(--font-sans);color:var(--tier-strong-text)">\u2605' + c.bets + '</span>' : '') + '</div>'
-      + '<div style="font:12px var(--font-sans);color:var(--text-secondary)">' + c.team + ' vs ' + c.opponent + (c.regime && c.regime !== 'settled' ? ' <span style="font:500 10px var(--font-sans);color:var(--text-muted);background:var(--surface-muted);padding:1px 6px;border-radius:var(--radius-pill)">' + c.regime + '</span>' : '') + '</div></div>'
+      + '<div style="font:12px var(--font-sans);color:var(--text-secondary)">' + c.team + ' vs ' + c.opponent + '</div></div>'
       + (a.archetype ? '<div style="font:12px var(--font-sans);color:var(--text-secondary);margin-top:2px">' + a.archetype + (a.signalHint ? ' \u00B7 <span style="color:var(--text-muted)">' + a.signalHint + '</span>' : '') + '</div>' : '')
       + (rf.l5 ? '<div style="font:12px var(--font-sans);color:var(--text-muted);margin-top:4px">L5 <b style="font-family:var(--font-mono);color:var(--text-secondary)">' + l5.ppg + '</b> ppg \u00B7 ' + Math.round((l5.tsPct || 0) * 100) + '% TS \u00B7 ' + tArrow + ' ' + (trend.state || '') + '</div>' : '')
       + '<div style="margin-top:var(--space-3)">' + props + '</div></div>';
   }).join('');
-
-  if (!totalsHtml && !playersHtml) {
-    el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans)">' + ((out && out.reason) || 'No NBA games on this slate.') + '</p>';
-    return;
-  }
-  el.innerHTML = (totalsHtml ? sectionHdr('Game Lines') + totalsHtml : '')
-    + (playersHtml ? (totalsHtml ? sectionHdr('Players') : '') + playersHtml : '');
 }
 
 </script>
