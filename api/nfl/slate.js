@@ -1178,7 +1178,17 @@ function formBlend(seasonSoft, seasonElite, formTier) {
 
 function computeFeatured(result, ctx) {
   const v = result.verdict, fam = ctx.propFamily;
-  if (!v || !v.tier_candidate || v.tier_candidate === 'none') return { ok: false, why: 'not a qualifying tier' };
+  if (!v || !v.tier_candidate || v.tier_candidate === 'none') {
+    // Explain WHY there's no edge (not just 'no tier') — a repeated generic line reads as broken.
+    const c = result.comp || {}, soft = c.lineSoftness, ln = v ? v.line : null, med = c.median;
+    let why = 'no model edge on this line';
+    if (soft != null && med != null && ln != null) {
+      if (soft <= -3) why = `model projects UNDER (${med} vs ${ln}) — no over here`;
+      else if (soft < 2) why = `line sits right at the model (${med} vs ${ln}) — too tight for an edge`;
+      else why = `only a slight lean (+${soft}) — below the edge bar`;
+    }
+    return { ok: false, why };
+  }
   if (v.stale) return { ok: false, why: 'stale role — not featured' };
   const dc = result.dataCompleteness;
   if (dc != null && dc < 0.6) return { ok: false, why: 'thin data — not featured' };
