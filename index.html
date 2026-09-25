@@ -24391,7 +24391,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (item.featured && item.featured.ok) return true;
     return item.featured ? false : true;
   }
-  window.LyridNflJudgment = { killReason: killReason, isBettable: isBettable };
+  window.LyridNflJudgment = { killReasonHard: killReasonHard, nflHonestReason: nflHonestReason, isBettable: isBettable };
   function pickScore(item){ var v=item.verdict||{}, pAdj=pAdjOf(v)||0, tw=RANK[v.tier_candidate||'none']*0.05, edge=num(v.edge)||0; return pAdj+tw+edge*0.5; }
   function gameKey(p){ return [String(p.team||''),String(p.opponent||'')].sort().join('@'); }
 
