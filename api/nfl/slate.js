@@ -923,10 +923,10 @@ async function loadEngineData(lines, date, fetchAvailability) {
   // slate looks up the right bucket. Pull all teams (not just slate) so percentiles are real.
   const defPaceRows = await qSafe(`nfl_defense_pace?select=team_abbr,pass_att_pg,plays_pg,volume_tier`);
   const defPaceByTeam = {};
-  for (const r of defPaceRows) defPaceByTeam[r.team_abbr] = { passAttPg: num(r.pass_att_pg), playsPg: num(r.plays_pg), volumeTier: r.volume_tier };
+  for (const r of defPaceRows) defPaceByTeam[fixAbbr(r.team_abbr)] = { passAttPg: num(r.pass_att_pg), playsPg: num(r.plays_pg), volumeTier: r.volume_tier };
   const defFormRows = await qSafe(`nfl_defense_form?select=team_abbr,pass_form_tier,rush_form_tier,form_pass_epa_allowed,form_rush_epa_allowed,last_week,updated_at&order=updated_at.desc`);
   const defFormByTeam = {};
-  for (const r of defFormRows) defFormByTeam[r.team_abbr] = { pass: r.pass_form_tier, rush: r.rush_form_tier, passEpa: num(r.form_pass_epa_allowed), rushEpa: num(r.form_rush_epa_allowed), week: r.last_week };
+  for (const r of defFormRows) defFormByTeam[fixAbbr(r.team_abbr)] = { pass: r.pass_form_tier, rush: r.rush_form_tier, passEpa: num(r.form_pass_epa_allowed), rushEpa: num(r.form_rush_epa_allowed), week: r.last_week };
   // DATA FRESHNESS — a recency signal is only good if the game-day build actually landed. If a
   // table hasn't been written in over ~8 days, the automated build silently failed and the gate is
   // running on stale data. Measure it here so the app can WARN (observable automation).
@@ -957,10 +957,11 @@ async function loadEngineData(lines, date, fetchAvailability) {
     const out = {};
     for (const r of supp) {
       const pe = Number(r.pass_epa_allowed), re = Number(r.rush_epa_allowed);
-      (out[r.team_abbr] ||= {}).pass_d = !isFinite(pe) ? 'avg_pass_d' : (pe <= pQ1 ? 'elite_pass_d' : (pe >= pQ2 ? 'soft_pass_d' : 'avg_pass_d'));  // low EPA allowed = elite
-      out[r.team_abbr].run_d = !isFinite(re) ? 'avg_run_d' : (re <= rQ1 ? 'stout_run_d' : (re >= rQ2 ? 'soft_run_d' : 'avg_run_d'));
+      const _ta = fixAbbr(r.team_abbr);
+      (out[_ta] ||= {}).pass_d = !isFinite(pe) ? 'avg_pass_d' : (pe <= pQ1 ? 'elite_pass_d' : (pe >= pQ2 ? 'soft_pass_d' : 'avg_pass_d'));  // low EPA allowed = elite
+      out[_ta].run_d = !isFinite(re) ? 'avg_run_d' : (re <= rQ1 ? 'stout_run_d' : (re >= rQ2 ? 'soft_run_d' : 'avg_run_d'));
     }
-    for (const r of press) { const pr = Number(r.pressure_rate); (out[r.team_abbr] ||= {}).rush_pressure = !isFinite(pr) ? 'avg_rush' : (pr <= gQ1 ? 'low_rush' : (pr >= gQ2 ? 'high_rush' : 'avg_rush')); }
+    for (const r of press) { const pr = Number(r.pressure_rate); (out[fixAbbr(r.team_abbr)] ||= {}).rush_pressure = !isFinite(pr) ? 'avg_rush' : (pr <= gQ1 ? 'low_rush' : (pr >= gQ2 ? 'high_rush' : 'avg_rush')); }
     return out;
   })();
   const defImpByTeam = {}; const _defSeen = new Set();
@@ -998,7 +999,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
       for (const r of grp) {
         const v = num(r.yards_per_target);
         const tier = (v == null || !isFinite(v)) ? 'avg' : (v <= q1 ? 'elite' : (v >= q2 ? 'soft' : 'avg'));
-        ((out[r.team_abbr] ||= {})[pg] = { tier, ypt: v });
+        ((out[fixAbbr(r.team_abbr)] ||= {})[pg] = { tier, ypt: v });
       }
     }
     return out;
