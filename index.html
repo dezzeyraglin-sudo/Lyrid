@@ -3473,6 +3473,13 @@
 .nflx-chip.gold{background:var(--tier-solid-fill);color:var(--tier-solid-text)}
 .nflx-chip.ceiling{background:var(--surface-muted);color:var(--text-secondary)}
 .nflx-chip.under-test{background:var(--data-warning-surface);color:var(--data-warning);border:1px solid var(--data-warning)}
+.nflx-tgt{background:var(--surface-card);border:1px solid var(--data-positive);border-radius:var(--radius-md,10px);padding:10px 14px;margin-bottom:12px}
+.nflx-tgt-h{font-size:var(--size-body-sm);font-weight:var(--weight-semibold);color:var(--text-primary);margin-bottom:6px}
+.nflx-tgt-sub{font-weight:var(--weight-regular);color:var(--text-muted);font-size:11px;margin-left:6px}
+.nflx-tgt-row{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;padding:3px 0;font-size:var(--size-caption)}
+.nflx-tgt-pos{font-family:var(--font-mono);font-weight:var(--weight-semibold);min-width:44px;color:var(--text-secondary)}
+.nflx-tgt-team{font-family:var(--font-mono);color:var(--data-positive)}
+.nflx-tgt-team b{color:var(--text-primary)}
 .nflx-banner.capped{display:flex;gap:8px;align-items:flex-start;background:var(--data-negative-surface,#fdecec);border:1px solid var(--data-negative);border-radius:var(--radius-md,10px);padding:8px 12px;margin-bottom:8px}
 .nflx-banner.capped .nflx-banner-ic{color:var(--data-negative);font-size:1.1em;line-height:1}
 .nflx-banner.capped .nflx-banner-body{font-size:var(--size-body-sm);color:var(--data-negative);line-height:1.35}
@@ -24427,6 +24434,37 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   }
   // Observable automation — if the game-day recency builds didn't land, the reads are running on
   // stale data. Show it loudly instead of silently trusting last week's tiers.
+  // TARGET BANNER — which teams on tonight's slate are softest vs WR/TE/RB (last 5), so the user
+  // knows where to look for overs. Descriptive guidance, drawn from the defense-vs-pos reports.
+  function nflRenderTargetBanner(reports, picks){
+    var host = document.getElementById('nflJudgmentCard'); if (!host) return;
+    var slot = document.getElementById('nflTargetBanner');
+    if (!reports || !picks || !picks.length) { if (slot) slot.remove(); return; }
+    // teams actually playing tonight
+    var live = {}; picks.forEach(function(p){ if(p.opponent) live[p.opponent]=1; if(p.team) live[p.team]=1; });
+    var SOFT = { WR:150, TE:55, RB:110 };   // last-5 yds/g thresholds that mark a soft matchup
+    var out = {};
+    ['WR','TE','RB'].forEach(function(pos){
+      var rows = [];
+      Object.keys(reports).forEach(function(tm){
+        if (!live[tm]) return;
+        var r = (reports[tm]||{})[pos]; if (!r || r.w5==null) return;
+        if (r.w5 >= SOFT[pos]) rows.push({ tm: tm, w5: r.w5 });
+      });
+      rows.sort(function(a,b){ return b.w5-a.w5; });
+      out[pos] = rows.slice(0,4);
+    });
+    var any = out.WR.length || out.TE.length || out.RB.length;
+    if (!any) { if (slot) slot.remove(); return; }
+    if (!slot) { slot = document.createElement('div'); slot.id = 'nflTargetBanner'; host.parentNode.insertBefore(slot, host); }
+    function line(pos){
+      if (!out[pos].length) return '';
+      var tags = out[pos].map(function(x){ return '<span class="nflx-tgt-team">'+esc(x.tm)+' <b>'+x.w5+'</b></span>'; }).join('');
+      return '<div class="nflx-tgt-row"><span class="nflx-tgt-pos">vs '+pos+'</span>'+tags+'</div>';
+    }
+    slot.innerHTML = '<div class="nflx-tgt"><div class="nflx-tgt-h">\uD83C\uDFAF Soft matchups to target tonight <span class="nflx-tgt-sub">last 5 g, yds/g allowed</span></div>' +
+      line('WR') + line('TE') + line('RB') + '</div>';
+  }
   function nflRenderFreshness(warnings){
     var host = document.getElementById('nflJudgmentCard'); if (!host) return;
     var slot = document.getElementById('nflFreshWarn');
@@ -24680,6 +24718,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var games = groupByGame(data.picks).length;
     if (meta) meta.textContent = data.picks.length + ' props \u00b7 ' + games + ' games \u00b7 ' + (data.source || 'engine');
     nflRenderFreshness(data.warnings);
+    nflRenderTargetBanner(data.defenseReports, data.picks);
     renderJudgment(data.picks);
     nflDefReports = data.defenseReports || {};
     renderGames(data.picks, data.totals);

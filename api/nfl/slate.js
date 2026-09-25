@@ -443,26 +443,16 @@ export default async function handler(req, res) {
     if (fam === 'rush_rec_yards') return ln < 10;
     return false;
   };
-  const _gkey = p => [p.team, p.opponent].sort().join('@');
-  const _gameInsane = {};
+  // Hold ONLY the individual pick with an impossible line — never cascade to a whole game. A single
+  // placeholder (e.g. a 3rd-stringer at 3.5) must not nuke every real prop in that game.
   for (const p of picks) {
-    const ln = p.verdict && p.verdict.line, fam = p.propType;
-    if (lineInsane(fam, ln)) {
-      p._insaneLine = true;
-      const g = _gkey(p); (_gameInsane[g] ||= { count: 0, qb: false }); _gameInsane[g].count++;
-      if (fam === 'passing_yards' || fam === 'pass_rush_yards') _gameInsane[g].qb = true;
-    }
-  }
-  for (const p of picks) {
-    const g = _gkey(p), gi = _gameInsane[g];
-    const boardDropped = gi && (gi.qb || gi.count >= 3);   // QB line impossible OR many placeholders => whole board dropped
-    if (p._insaneLine || boardDropped) {
+    if (lineInsane(p.propType, p.verdict && p.verdict.line)) {
       p.verdict = { pick: 'higher', line: (p.verdict && p.verdict.line) || null, tier_candidate: 'none',
         filters: { softLine: false, volumeSecure: false, scriptClear: false },
         pOver: null, pOverAdjusted: null, edge: null, reasons: [],
-        blocked: [boardDropped && !p._insaneLine ? 'lines dropped — PrizePicks board not ready for this game (hold)' : 'line unavailable — PrizePicks placeholder (not a real line)'],
+        blocked: ['line unavailable — PrizePicks placeholder (not a real line)'],
         provisional: true };
-      p.comp = null; p.featured = { ok: false, why: 'line unavailable / board not ready' };
+      p.comp = null; p.featured = { ok: false, why: 'placeholder line — not a real number' };
     }
   }
 
@@ -1206,6 +1196,12 @@ function computeFeatured(result, ctx) {
     return { ok: false, why };
   }
   if (v.stale) return { ok: false, why: 'stale role — not featured' };
+  // Directive: never feature stale or rotational players. Committee RBs and rotational WRs are held
+  // regardless of matchup — their floor is too capped to be a proven edge.
+  { const arch = result.volume && result.volume.archetype;
+    if (arch === 'rotational') return { ok: false, why: 'rotational role — not featured (capped floor)' };
+    if ((ctx.propFamily === 'rushing_yards' || ctx.propFamily === 'rush_rec_yards') && arch === 'committee')
+      return { ok: false, why: 'committee back — not featured (capped floor)' }; }
   const dc = result.dataCompleteness;
   if (dc != null && dc < 0.6) return { ok: false, why: 'thin data — not featured' };
   if (COMBO_FAMS.has(fam)) return { ok: false, why: 'combo family — losing (~40%), not featured' };
