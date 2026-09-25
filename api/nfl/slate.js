@@ -474,6 +474,15 @@ export default async function handler(req, res) {
   return res.status(200).json({
     source: ready ? 'prizepicks+engine' : 'prizepicks',
     date, count: picks.length, picks, totals,
+    // DEFENSE-VS-POSITION report (descriptive context for the game view — NOT a gate signal).
+    // Keyed by team: what THAT team's defense has allowed to WR/TE/RB over last 3/5/10, + who did it.
+    defenseReports: (function () {
+      if (!ready || !E.defVsPosByTeam) return {};
+      const teams = new Set(picks.map(p => p.team).concat(picks.map(p => p.opponent)).filter(Boolean));
+      const out = {};
+      for (const t of teams) { if (E.defVsPosByTeam[t]) out[t] = E.defVsPosByTeam[t]; }
+      return out;
+    })(),
     dataFreshness: (ready && E.dataFreshness) || null,
     warnings: (function () {
       const f = (ready && E.dataFreshness) || {}, out = [];
@@ -921,6 +930,12 @@ async function loadEngineData(lines, date, fetchAvailability) {
   // Classify each team's DEFENSE into archetype buckets from LEAGUE-WIDE suppression + pressure
   // (latest season), tiered by 33/67 percentile — mirrors build_matchup_history exactly so the
   // slate looks up the right bucket. Pull all teams (not just slate) so percentiles are real.
+  const defVsPosRows = await qSafe(`nfl_defense_vs_pos?select=team_abbr,position,avg_w3,avg_w5,avg_w10,top_players`);
+  const defVsPosByTeam = {};
+  for (const r of defVsPosRows) {
+    let top = []; try { top = typeof r.top_players === 'string' ? JSON.parse(r.top_players) : (r.top_players || []); } catch (_) {}
+    ((defVsPosByTeam[fixAbbr(r.team_abbr)] ||= {})[r.position] = { w3: num(r.avg_w3), w5: num(r.avg_w5), w10: num(r.avg_w10), top });
+  }
   const defPaceRows = await qSafe(`nfl_defense_pace?select=team_abbr,pass_att_pg,plays_pg,volume_tier`);
   const defPaceByTeam = {};
   for (const r of defPaceRows) defPaceByTeam[fixAbbr(r.team_abbr)] = { passAttPg: num(r.pass_att_pg), playsPg: num(r.plays_pg), volumeTier: r.volume_tier };
@@ -1094,7 +1109,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, defVsPosByTeam, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };

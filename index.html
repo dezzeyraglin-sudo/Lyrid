@@ -3512,6 +3512,16 @@
 .nflx-game-chev{color:var(--text-muted);transition:transform var(--duration-fast)}
 .nflx-game[open] .nflx-game-chev{transform:rotate(90deg)}
 .nflx-game-body{padding:var(--space-4)}
+.nflx-dvp{margin-bottom:10px;border:1px solid var(--border-hairline);border-radius:8px}
+.nflx-dvp summary{cursor:pointer;list-style:none;padding:8px 12px;font-size:var(--size-caption);font-weight:var(--weight-medium);color:var(--text-secondary)}
+.nflx-dvp summary::-webkit-details-marker{display:none}
+.nflx-dvp-team{padding:8px 12px;border-top:1px solid var(--border-hairline)}
+.nflx-dvp-h{font-size:var(--size-caption);font-weight:var(--weight-semibold);color:var(--text-primary);margin-bottom:4px}
+.nflx-dvp-row{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;padding:3px 0;font-size:var(--size-caption)}
+.nflx-dvp-pos{font-family:var(--font-mono);font-weight:var(--weight-semibold);min-width:26px;color:var(--text-secondary)}
+.nflx-dvp-nums{font-family:var(--font-mono);color:var(--text-secondary)}
+.nflx-dvp-row.nflx-dvp-soft .nflx-dvp-nums{color:var(--data-positive);font-weight:var(--weight-medium)}
+.nflx-dvp-who{color:var(--text-muted);font-size:11px;width:100%}
 
 .nflx-prop{border:1px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-4);margin-bottom:var(--space-3)}
 .nflx-prop:last-child{margin-bottom:0}
@@ -24559,6 +24569,26 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     groups.sort(function(a,b){ return (b.qualifying-a.qualifying) || (b.picks.length-a.picks.length); });
     return groups;
   }
+  var nflDefReports = {};
+  // DEFENSE-VS-POSITION panel — descriptive evidence: what each team's D gives up to WR/TE/RB over
+  // its last 3/5/10 games, with the players who did it. Context for the user, not a bet signal.
+  function nflDefVsPosPanel(teamList){
+    if (!teamList || !teamList.length) return '';
+    var blocks = teamList.map(function(tm){
+      var rep = nflDefReports[tm]; if (!rep) return '';
+      var posRows = ['WR','TE','RB'].map(function(pos){
+        var r = rep[pos]; if (!r) return '';
+        var who = (r.top||[]).slice(0,3).map(function(t){ return esc(t.name)+' '+t.yds; }).join(', ');
+        var soft = (r.w5!=null && r.w5 >= (pos==='WR'?150:pos==='TE'?55:110)) ? ' nflx-dvp-soft' : '';
+        return '<div class="nflx-dvp-row'+soft+'"><span class="nflx-dvp-pos">'+pos+'</span>' +
+          '<span class="nflx-dvp-nums">L3 '+(r.w3!=null?r.w3:'\u2014')+' \u00b7 L5 '+(r.w5!=null?r.w5:'\u2014')+' \u00b7 L10 '+(r.w10!=null?r.w10:'\u2014')+' yd/g</span>' +
+          (who?'<span class="nflx-dvp-who">'+who+'</span>':'') + '</div>';
+      }).join('');
+      if (!posRows) return '';
+      return '<div class="nflx-dvp-team"><div class="nflx-dvp-h">'+esc(tm)+' defense allows (yds/g)</div>'+posRows+'</div>';
+    }).join('');
+    return blocks ? '<details class="nflx-dvp"><summary>\u25B8 Defense allowing by position (last 3/5/10)</summary>'+blocks+'</details>' : '';
+  }
   function renderGames(picks, totals){
     var host=document.getElementById('nflGamesList'); if(!host) return;
     var groups=groupByGame(picks);
@@ -24573,7 +24603,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       return '<details class="nflx-game"' + (i===0?' open':'') + '><summary class="nflx-game-row">' +
         '<span class="nflx-game-mu">' + esc(mu) + '</span>' + scriptChipFor(g) + nflTotalChip(tv) +
         '<span class="nflx-game-meta"><span>' + g.picks.length + ' props</span>' + edge + '<span class="nflx-game-chev">\u203A</span></span>' +
-        '</summary><div class="nflx-game-body">' + nflTotalBlock(tv) + g.picks.map(renderPropCard).join('') + '</div></details>';
+        '</summary><div class="nflx-game-body">' + nflTotalBlock(tv) + nflDefVsPosPanel(g.teamList) + g.picks.map(renderPropCard).join('') + '</div></details>';
     }).join('');
   }
 
@@ -24651,6 +24681,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     if (meta) meta.textContent = data.picks.length + ' props \u00b7 ' + games + ' games \u00b7 ' + (data.source || 'engine');
     nflRenderFreshness(data.warnings);
     renderJudgment(data.picks);
+    nflDefReports = data.defenseReports || {};
     renderGames(data.picks, data.totals);
     var _tc=document.getElementById('nflTotalsContainer'); if(_tc)_tc.innerHTML='';
     try { if (typeof window.logNflBets === 'function') window.logNflBets(data.picks, nflState.date); } catch (_) {}
