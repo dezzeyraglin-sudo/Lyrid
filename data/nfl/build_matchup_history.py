@@ -93,7 +93,14 @@ def build(seasons):
     arch = defense_archetypes(seasons)
     if not arch:
         print("no defense archetypes (are nfl_defense_suppression / nfl_team_pressure populated?)"); return pd.DataFrame()
-    logs = pd.read_parquet(f"{NFLVERSE}/player_stats/player_stats.parquet")
+    # current-season weekly stats are in year-suffixed files; the un-suffixed one lags (stops ~2yrs back)
+    frames = []
+    for s in seasons:
+        try: frames.append(pd.read_parquet(f"{NFLVERSE}/stats_player/stats_player_week_{s}.parquet"))
+        except Exception: continue
+    if not frames:
+        print("no weekly player stats for", seasons); return pd.DataFrame()
+    logs = pd.concat(frames, ignore_index=True)
     logs = logs[(logs.get('season_type', 'REG') == 'REG') & (logs['season'].isin(seasons))]
     rows = []
     for pid, g in logs.groupby('player_id'):

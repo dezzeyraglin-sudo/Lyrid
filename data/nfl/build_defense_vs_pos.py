@@ -30,20 +30,22 @@ POS = ['WR', 'TE', 'RB']
 WINDOWS = [3, 5, 10]
 
 def build():
-    seasons = sorted({pd.Timestamp.now().year, pd.Timestamp.now().year - 1})
+    # Current-season weekly player stats live in year-suffixed files; the un-suffixed player_stats
+    # parquet lags (stops seasons back). Read the last 2 seasons' weekly files, newest available.
+    seasons = sorted({pd.Timestamp.now().year, pd.Timestamp.now().year - 1, pd.Timestamp.now().year - 2}, reverse=True)
     frames = []
     for s in seasons:
         try:
-            df = pd.read_parquet(f"{NFLVERSE}/player_stats/player_stats.parquet",
-                    columns=['player_display_name', 'position', 'season', 'week', 'opponent_team',
-                             'receiving_yards', 'rushing_yards', 'targets', 'carries', 'season_type'])
+            df = pd.read_parquet(f"{NFLVERSE}/stats_player/stats_player_week_{s}.parquet")
+            frames.append(df); 
+            if len(frames) >= 2: break   # two most-recent available seasons is enough
         except Exception:
-            df = pd.read_parquet(f"{NFLVERSE}/player_stats/player_stats.parquet")
-        df = df[(df.get('season_type', 'REG') == 'REG') & (df['season'] == s) & df['opponent_team'].notna()]
-        frames.append(df)
-        break  # the parquet already holds all seasons; one read is enough
-    allrows = pd.read_parquet(f"{NFLVERSE}/player_stats/player_stats.parquet")
-    allrows = allrows[(allrows.get('season_type', 'REG') == 'REG') & (allrows['season'].isin(seasons)) & allrows['opponent_team'].notna()]
+            continue
+    if not frames:
+        return pd.DataFrame()
+    allrows = pd.concat(frames, ignore_index=True)
+    st = allrows['season_type'] if 'season_type' in allrows.columns else pd.Series(['REG']*len(allrows))
+    allrows = allrows[(st == 'REG') & allrows['opponent_team'].notna()]
 
     # the yardage stat that matters per position
     def yds(r):
