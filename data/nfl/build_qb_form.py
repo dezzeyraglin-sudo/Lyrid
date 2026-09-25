@@ -79,6 +79,7 @@ def upsert(r):
     r2 = r[cols].copy()
     r2['form_dakota'] = r2['form_dakota'].round(4)
     r2 = r2.sort_values('games', ascending=False).drop_duplicates(subset=['player_key'], keep='first')
+    r2['updated_at'] = pd.Timestamp.now(tz='UTC').isoformat()   # explicit — upsert UPDATE won't fire the column default
     rows = r2.where(pd.notna(r2), None).to_dict('records')
     for i in range(0, len(rows), 500):
         rr = requests.post(f"{SB}/rest/v1/nfl_qb_form?on_conflict=player_key",

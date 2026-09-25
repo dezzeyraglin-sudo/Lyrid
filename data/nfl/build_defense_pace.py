@@ -66,6 +66,7 @@ def build(seasons):
     return df
 
 def upsert(df):
+    df['updated_at'] = pd.Timestamp.now(tz='UTC').isoformat()   # explicit — upsert UPDATE won't fire the column default
     rows = df.where(pd.notna(df), None).to_dict('records')
     r = requests.post(f"{SB}/rest/v1/nfl_defense_pace?on_conflict=team_abbr",
                       headers={**H, 'Prefer': 'resolution=merge-duplicates,return=minimal'},
