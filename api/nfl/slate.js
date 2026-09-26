@@ -355,6 +355,8 @@ export default async function handler(req, res) {
       matchupDelta: ctx.matchupDelta || null,
       oppPosCoverage: ctx.oppPosCoverage || null,
       oppPace: ctx.oppPace || null,
+      oppDefTier: ctx.oppDefTier || null,
+      oppDefForm: ctx.oppDefForm || null,
       gameEnv: ctx.gameEnv || null,
       stale: (result.verdict && result.verdict.stale) || null,
       injury,
@@ -482,6 +484,9 @@ export default async function handler(req, res) {
         if (s && s.missing) out.push(`${label[k]} data missing — the game-day build has not populated it`);
         else if (s && s.stale) out.push(`${label[k]} is ${s.ageDays}d stale — the game-day build may have failed; reads use last week\u2019s data`);
       }
+      const st = f.seasonTiers;
+      if (st && st.missing) out.push('defense tiers missing — the season build has not populated them');
+      else if (st && st.stale) out.push(`defense tiers are a season behind (built on ${st.season}, current is ${st.currentSeason}) — the weekly season build may have failed`);
       return out;
     })(),
     diagnostics: {
@@ -941,10 +946,16 @@ async function loadEngineData(lines, date, fetchAvailability) {
     const newest = Math.max(...ts), ageDays = (Date.now() - newest) / 86400000;
     return { updatedAt: new Date(newest).toISOString(), ageDays: +ageDays.toFixed(1), stale: ageDays > 8, missing: false };
   };
+  // SEASON-TIER freshness: the suppression table carries a season. If its latest season is behind
+  // the current NFL season, the pass_d/run_d tiers are stale (the 'built on 2025, never rebuilt for
+  // 2026' bug). This is what makes the automation OBSERVABLE — a forgotten/failed Tuesday build shows.
+  const _nflSeason = (function () { const d = new Date(); return d.getUTCMonth() >= 2 ? d.getUTCFullYear() : d.getUTCFullYear() - 1; })();
+  const _suppSeason = (allSupp && allSupp.length) ? Math.max(...allSupp.map(r => r.season)) : null;
   const dataFreshness = {
     defenseForm: _freshOf(defFormRows),
     qbForm: _freshOf(qbFormRows),
     injuries: _freshOf(injRows),
+    seasonTiers: { season: _suppSeason, currentSeason: _nflSeason, stale: (_suppSeason != null && _suppSeason < _nflSeason), missing: _suppSeason == null },
   };
   const allSupp = await qSafe(`nfl_defense_suppression?order=season.desc&select=team_abbr,season,pass_epa_allowed,rush_epa_allowed`);
   const allPress = await qSafe(`nfl_team_pressure?order=season.desc&select=team_abbr,season,pressure_rate`);

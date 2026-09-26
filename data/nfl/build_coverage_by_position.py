@@ -10,6 +10,11 @@ import argparse, os
 import pandas as pd, requests
 NV="https://github.com/nflverse/nflverse-data/releases/download"
 
+def current_nfl_season():
+    import datetime
+    d = datetime.date.today()
+    return d.year if d.month >= 3 else d.year - 1
+
 def build(season):
     pbp=pd.read_parquet(f"{NV}/pbp/play_by_play_{season}.parquet",
         columns=['defteam','receiver_player_id','receiving_yards','pass_attempt','complete_pass','epa'])
@@ -43,8 +48,9 @@ def upsert(df,table):
     if r.status_code>=300: print("   ",r.text[:200])
 
 if __name__=='__main__':
-    ap=argparse.ArgumentParser(); ap.add_argument('--seasons',nargs='+',type=int,required=True)
+    ap=argparse.ArgumentParser(); ap.add_argument('--seasons',nargs='+',type=int,default=None)
     ap.add_argument('--dry-run',action='store_true'); a=ap.parse_args()
+    if not a.seasons: a.seasons=[current_nfl_season()]
     for s in a.seasons:
         print(f"\n=== coverage by position {s} ===")
         df=build(s)

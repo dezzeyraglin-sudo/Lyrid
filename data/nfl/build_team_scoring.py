@@ -20,6 +20,12 @@ import pandas as pd, numpy as np, requests
 
 NFLVERSE = "https://github.com/nflverse/nflverse-data/releases/download"
 
+def current_nfl_season():
+    """NFL season year = current year, but Jan/Feb belong to the PRIOR season's playoffs."""
+    import datetime
+    d = datetime.date.today()
+    return d.year if d.month >= 3 else d.year - 1
+
 def load(season):
     return pd.read_parquet(f"{NFLVERSE}/pbp/play_by_play_{season}.parquet",
         columns=['game_id', 'season', 'week', 'home_team', 'away_team', 'home_score', 'away_score',
@@ -63,9 +69,10 @@ def upsert(df, table):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--seasons', nargs='+', type=int, required=True)
+    ap.add_argument('--seasons', nargs='+', type=int, default=None)
     ap.add_argument('--dry-run', action='store_true')
     a = ap.parse_args()
+    if not a.seasons: a.seasons = [current_nfl_season()]
     for s in a.seasons:
         print(f"\n=== team scoring {s} ===")
         m = team_scoring(load(s), s)

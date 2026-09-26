@@ -19,6 +19,12 @@ import pandas as pd
 import requests
 
 NFLVERSE = "https://github.com/nflverse/nflverse-data/releases/download"
+
+def current_nfl_season():
+    """NFL season year = current year, but Jan/Feb belong to the PRIOR season's playoffs."""
+    import datetime
+    d = datetime.date.today()
+    return d.year if d.month >= 3 else d.year - 1
 PBP_COLS = ['posteam','defteam','season','week','play_type','pass','rush',
             'pass_oe','xpass','down','ydstogo','wp','half_seconds_remaining',
             'game_seconds_remaining','play_id','game_id']
@@ -71,9 +77,10 @@ def upsert(df, table):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--seasons', nargs='+', type=int, required=True)
+    ap.add_argument('--seasons', nargs='+', type=int, default=None)
     ap.add_argument('--dry-run', action='store_true')
     args = ap.parse_args()
+    if not args.seasons: args.seasons = [current_nfl_season()]
     for season in args.seasons:
         print(f"\n=== team tendencies {season} ===")
         pbp = load_pbp(season)
