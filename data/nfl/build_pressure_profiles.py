@@ -16,8 +16,12 @@ import pandas as pd, requests
 NV="https://github.com/nflverse/nflverse-data/releases/download"
 
 def build_qb(season, min_att=200):
-    part=pd.read_parquet(f"{NV}/pbp_participation/pbp_participation_{season}.parquet",
-        columns=['nflverse_game_id','play_id','was_pressure'])
+    try:
+        part=pd.read_parquet(f"{NV}/pbp_participation/pbp_participation_{season}.parquet",
+            columns=['nflverse_game_id','play_id','was_pressure'])
+    except Exception as e:
+        print(f"  [qb] participation unavailable for {season} ({str(e)[:50]}) — skipping QB pressure, team table still builds")
+        return pd.DataFrame()
     pbp=pd.read_parquet(f"{NV}/pbp/play_by_play_{season}.parquet",
         columns=['game_id','play_id','passer_player_id','passer_player_name','receiver_player_id',
                  'air_yards','pass_attempt','sack','desc','posteam','defteam'])
@@ -109,10 +113,13 @@ if __name__=='__main__':
         print(f"\n=== pressure profiles {s} ===")
         q=build_qb(s); t=build_team(s)
         if a.dry_run:
-            q['te_lean']=(q.te_share_pressured-q.te_share_clean).round(3)
-            print(q.nlargest(5,'te_lean')[['player_name','attempts','te_lean','adot_clean','adot_pressured']].to_string(index=False))
+            if len(q):
+                q['te_lean']=(q.te_share_pressured-q.te_share_clean).round(3)
+                print(q.nlargest(5,'te_lean')[['player_name','attempts','te_lean','adot_clean','adot_pressured']].to_string(index=False))
+            print(t.sort_values('pressure_rate',ascending=False).head(6)[['team_abbr','pressure_rate','sack_rate','sack_pct_allowed']].to_string(index=False))
             continue
-        upsert(q,'nfl_qb_pressure_profile','player_key,season'); upsert(t,'nfl_team_pressure','team_abbr,season')
+        if len(q): upsert(q,'nfl_qb_pressure_profile','player_key,season')
+        upsert(t,'nfl_team_pressure','team_abbr,season')
 
 # SCHEMA ADDITIONS:
 # create table if not exists nfl_qb_pressure_profile (

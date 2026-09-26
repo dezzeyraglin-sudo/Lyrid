@@ -26,7 +26,11 @@ def build(season):
         a['catch_rate_allowed']=(a.completions/a.targets).round(3)
         a['pos_group']=grp; a['season']=season
         rows.append(a.rename(columns={'defteam':'team_abbr'}))
-    return pd.concat(rows,ignore_index=True).round(4)
+    out=pd.concat(rows,ignore_index=True).round(4)
+    # integer DB columns reject float values like 2.0 — cast counts to int
+    for c in ['targets','completions']:
+        if c in out.columns: out[c]=pd.to_numeric(out[c],errors='coerce').fillna(0).round().astype(int)
+    return out
 
 def upsert(df,table):
     url=os.environ['SUPABASE_URL'].rstrip('/')+f'/rest/v1/{table}'
