@@ -355,6 +355,9 @@ export default async function handler(req, res) {
       matchupDelta: ctx.matchupDelta || null,
       oppPosCoverage: ctx.oppPosCoverage || null,
       oppPace: ctx.oppPace || null,
+      roleMatchup: ctx.roleMatchup || null,
+      directionalEdge: ctx.directionalEdge || null,
+      qbReliable: ctx.qbReliable || null,
       oppDefTier: ctx.oppDefTier || null,
       oppDefForm: ctx.oppDefForm || null,
       gameEnv: ctx.gameEnv || null,
@@ -600,6 +603,60 @@ function buildCtx(E, l, base) {
     oppDefTier: (E.defenseArchetypeByTeam && opp && E.defenseArchetypeByTeam[opp]) || null,
     oppDefForm: (E.defFormByTeam && opp && E.defFormByTeam[opp]) || null,
     oppPace: (E.defPaceByTeam && opp && E.defPaceByTeam[opp]) || null,
+    directionalEdge: safe(function () {
+      // THE ALIGNMENT ENGINE (from the hand analysis): does the player's DIRECTION line up with
+      // where the defense bleeds? A boundary WR (94% outside) vs a D soft OUTSIDE = edge. A slot WR
+      // vs that same D = NO edge. An inside RB vs a D soft INSIDE = edge; vs its stout inside = fade.
+      if (!E.defDirByTeam || !E.plrDirByKey || !opp || !gsis) return null;
+      const dd = E.defDirByTeam[opp]; if (!dd) return null;
+      const pk = _norm(base.player);
+      const pd = E.plrDirByKey[pk] || (gsis ? E.plrDirByKey[gsis] : null);
+      const fam = l.prop_type;
+      if ((fam === 'receiving_yards') && pd && pd.pos === 'WR' && pd.sample >= 6) {
+        const boundary = pd.outPct >= 0.65, slot = pd.inPct >= 0.5;
+        // consistency-gated: soft in >=2/games, not one blowup
+        const softOut = dd.wrOut != null && dd.wrOutSoft >= Math.max(2, dd.games - 1);
+        const softIn  = dd.wrIn  != null && dd.wrInSoft  >= Math.max(2, dd.games - 1);
+        if (boundary && softOut) return { edge: 'aligned', side: 'outside', playerPct: pd.outPct, defAllows: dd.wrOut, note: `boundary WR (${Math.round(pd.outPct*100)}% outside) vs a D soft outside (${dd.wrOut}/g, ${dd.wrOutSoft}/${dd.games})` };
+        if (slot && softIn)      return { edge: 'aligned', side: 'inside',  playerPct: pd.inPct,  defAllows: dd.wrIn,  note: `slot WR (${Math.round(pd.inPct*100)}% inside) vs a D soft inside (${dd.wrIn}/g)` };
+        if (boundary && dd.wrOut != null && dd.wrOut < 90) return { edge: 'mismatch', side: 'outside', note: `boundary WR but this D holds up outside (${dd.wrOut}/g) — no directional edge` };
+        return { edge: 'neutral', note: 'no clear directional alignment' };
+      }
+      if ((fam === 'rushing_yards' || fam === 'rush_rec_yards') && pd && pd.pos === 'RB' && pd.sample >= 8) {
+        const inside = pd.inPct >= 0.6, outside = pd.outPct >= 0.5;
+        const LG_YPC = 4.3;
+        if (inside && dd.rbInYpc != null && dd.rbInYpc >= 4.6) return { edge: 'aligned', side: 'inside', playerPct: pd.inPct, defAllows: dd.rbInYpc, note: `inside runner (${Math.round(pd.inPct*100)}%) vs a D soft inside (${dd.rbInYpc} YPC vs ${LG_YPC} lg)` };
+        if (outside && dd.rbOutYpc != null && dd.rbOutYpc >= 4.8) return { edge: 'aligned', side: 'outside', playerPct: pd.outPct, defAllows: dd.rbOutYpc, note: `outside runner vs a D soft outside (${dd.rbOutYpc} YPC)` };
+        if (inside && dd.rbInYpc != null && dd.rbInYpc <= 3.7) return { edge: 'mismatch', side: 'inside', note: `inside runner but this D is stout inside (${dd.rbInYpc} YPC) — fade the direction` };
+        return { edge: 'neutral', note: 'no clear directional alignment' };
+      }
+      return null;
+    }, 'directionalEdge'),
+    qbReliable: safe(function () {
+      // "Are their QBs reliable?" — a hard gate on pass-side picks. Uses qb_form (dakota/CPOE recency).
+      const teamQb = (E.teamQbKey && base.team) ? E.teamQbKey[base.team] : null;
+      const qk = teamQb ? _norm((E.qbNameByKey && E.qbNameByKey[teamQb]) || '') : null;
+      const form = qk && E.qbFormByName ? E.qbFormByName[qk] : null;
+      if (!form) return null;
+      return { form: form.form, tier: form.tier, reliable: form.form >= 0.45 };
+    }, 'qbReliable'),
+    roleMatchup: safe(function () {
+      // The WR1-vs-room fix: is THIS player his team's WR1/WR2/TE1/RB1, and is the opponent
+      // CONSISTENTLY soft to that role (not just blowup-inflated on average)?
+      if (!E.defVsRoleByTeam || !opp) return null;
+      const pg = String((E.posByName && (E.posByName[base.player] || E.posByName[l.player_name])) || l.position || '').toUpperCase();
+      const teamRoles = (E.roleLeadersByTeam && E.roleLeadersByTeam[base.team]) || null;
+      // role of this player (WR1/WR2/TE1/RB1) — from the role-leaders map if present, else infer by position
+      let role = teamRoles && teamRoles[base.player] ? teamRoles[base.player] : null;
+      if (!role) return null;   // only judge players we can rank
+      const allow = (E.defVsRoleByTeam[opp] || {})[role];
+      if (!allow || !allow.games) return null;
+      // CONSISTENCY is the signal: soft in ALL games = real; blowup-inflated (1 of N) = trap
+      const verdict = allow.consistency >= 0.75 ? 'soft'
+                    : (allow.consistency <= 0.34 ? 'blowup_inflated'
+                    : 'mixed');
+      return { role, avg: allow.avg, games: allow.games, soft: allow.soft, consistency: allow.consistency, vals: allow.vals, verdict };
+    }, 'roleMatchup'),
     gameEnv: safe(function () {
       // #4 ROOF (static, free): a dome/closed roof is mildly pass-friendly (no wind); outdoor is
       // neutral here. LIVE WIND is a separate forecast-API integration (see nflGameEnv note) — not
@@ -925,6 +982,18 @@ async function loadEngineData(lines, date, fetchAvailability) {
   // Classify each team's DEFENSE into archetype buckets from LEAGUE-WIDE suppression + pressure
   // (latest season), tiered by 33/67 percentile — mirrors build_matchup_history exactly so the
   // slate looks up the right bucket. Pull all teams (not just slate) so percentiles are real.
+  const defDirRows = await qSafe(`nfl_defense_directional?select=team_abbr,games,wr_outside_pg,wr_outside_soft_games,wr_inside_pg,wr_inside_soft_games,rb_inside_ypc,rb_inside_att,rb_outside_ypc,rb_outside_att`);
+  const defDirByTeam = {};
+  for (const r of defDirRows) defDirByTeam[fixAbbr(r.team_abbr)] = { games: r.games, wrOut: num(r.wr_outside_pg), wrOutSoft: r.wr_outside_soft_games, wrIn: num(r.wr_inside_pg), wrInSoft: r.wr_inside_soft_games, rbInYpc: num(r.rb_inside_ypc), rbInAtt: r.rb_inside_att, rbOutYpc: num(r.rb_outside_ypc), rbOutAtt: r.rb_outside_att };
+  const plrDirRows = await qSafe(`nfl_player_direction?select=player_key,position,outside_pct,inside_pct,sample`);
+  const plrDirByKey = {};
+  for (const r of plrDirRows) plrDirByKey[r.player_key] = { pos: r.position, outPct: num(r.outside_pct), inPct: num(r.inside_pct), sample: r.sample };
+  const defVsRoleRows = await qSafe(`nfl_defense_vs_role?select=team_abbr,role_rank,avg_yds,games,soft_games,consistency,top_games`);
+  const defVsRoleByTeam = {};
+  for (const r of defVsRoleRows) {
+    let vals = []; try { vals = typeof r.top_games === 'string' ? JSON.parse(r.top_games) : (r.top_games || []); } catch (_) {}
+    ((defVsRoleByTeam[fixAbbr(r.team_abbr)] ||= {})[r.role_rank] = { avg: num(r.avg_yds), games: r.games, soft: r.soft_games, consistency: num(r.consistency), vals });
+  }
   const defVsPosRows = await qSafe(`nfl_defense_vs_pos?select=team_abbr,position,avg_w3,avg_w5,avg_w10,top_players`);
   const defVsPosByTeam = {};
   for (const r of defVsPosRows) {
@@ -1110,7 +1179,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, defVsPosByTeam, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, defVsPosByTeam, defVsRoleByTeam, defDirByTeam, plrDirByKey, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };
