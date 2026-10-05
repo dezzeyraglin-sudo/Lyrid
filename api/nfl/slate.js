@@ -355,6 +355,7 @@ export default async function handler(req, res) {
       matchupDelta: ctx.matchupDelta || null,
       oppPosCoverage: ctx.oppPosCoverage || null,
       oppPace: ctx.oppPace || null,
+      snapshot: ctx.snapshot || null,
       roleMatchup: ctx.roleMatchup || null,
       directionalEdge: ctx.directionalEdge || null,
       qbReliable: ctx.qbReliable || null,
@@ -603,6 +604,16 @@ function buildCtx(E, l, base) {
     oppDefTier: (E.defenseArchetypeByTeam && opp && E.defenseArchetypeByTeam[opp]) || null,
     oppDefForm: (E.defFormByTeam && opp && E.defFormByTeam[opp]) || null,
     oppPace: (E.defPaceByTeam && opp && E.defPaceByTeam[opp]) || null,
+    snapshot: safe(function () {
+      // What was KNOWN when this pick was captured — recorded so it can be tested against results.
+      const own = E.injuryByName ? (E.injuryByName[_norm(base.player)] || E.injuryByName[base.player_key]) : null;
+      const pk = _norm(base.player);
+      const mates = ((E.injuriesByTeam && E.injuriesByTeam[team]) || []).filter(x => _norm(x.name) !== pk)
+        .map(x => ({ name: x.name, pos: x.pos, status: x.status }));
+      const od = (E.oddsByTeam && team) ? E.oddsByTeam[team] : null;
+      return { status: own ? own.status : 'active', teamInjuries: mates,
+               spread: od && od.spread != null ? Number(od.spread) : null, total: od && od.total != null ? Number(od.total) : null };
+    }, 'snapshot'),
     directionalEdge: safe(function () {
       // THE ALIGNMENT ENGINE (from the hand analysis): does the player's DIRECTION line up with
       // where the defense bleeds? A boundary WR (94% outside) vs a D soft OUTSIDE = edge. A slot WR
@@ -963,6 +974,14 @@ async function loadEngineData(lines, date, fetchAvailability) {
   // injuries (server-side, from the ingest — ESPN 403s Vercel directly) + defender impact
   const injRows = await qSafe(`nfl_injuries?select=player_key,player_name,team_abbr,position,status,status_raw,detail,updated_at&order=updated_at.desc`);
   const injuryByName = {}; for (const r of injRows) injuryByName[r.player_key] = r;
+  // For the pick snapshot: who on each offense is on the injury report RIGHT NOW. This is the
+  // information that can't be rebuilt later (statuses change hourly), so it's recorded at capture.
+  const injuriesByTeam = {};
+  for (const r of injRows) {
+    const pos = String(r.position || '').toUpperCase();
+    if (!['QB', 'WR', 'TE', 'RB', 'FB'].includes(pos) || !r.status || r.status === 'active') continue;
+    (injuriesByTeam[fixAbbr(r.team_abbr)] ||= []).push({ name: r.player_name, key: r.player_key, pos, status: r.status, raw: r.status_raw || null });
+  }
   const defImpRows = allTeams.length ? await qSafe(`nfl_defender_impact?team=in.(${inList(allTeams)})&order=season.desc,impact_score.desc&select=player_id,player_name,team,pos_group,season,snap_share,impact_score,impact_type`) : [];
   // REAL coverage quality (PFR advanced def: passer-rating/yds-per-target allowed when thrown at).
   // Replaces the inverted event-based coverage score for the shadow gate. Keep the latest season
@@ -1179,7 +1198,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, injuryByName, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, defVsPosByTeam, defVsRoleByTeam, defDirByTeam, plrDirByKey, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, injuriesByTeam, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, defVsPosByTeam, defVsRoleByTeam, defDirByTeam, plrDirByKey, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };

@@ -24879,9 +24879,23 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       var v = p.verdict || {}, c = p.comp || {};
       var propType = FAM[p.propLabel]; if (!propType) return;          // gradeable families (incl combos)
       var proj = c.median; if (proj == null || v.line == null) return; // needs a projection + line to grade
+      // Placeholder / promo lines (a 3.5 pass line, a 0.5 rush line) are not real markets — 22 of them
+      // polluted the weeks 1-4 record. Never log them.
+      var FLOOR = { passing_yards: 100, pass_rush_yards: 100, rushing_yards: 6, receiving_yards: 6, rush_rec_yards: 10 };
+      if (Number(v.line) < (FLOOR[propType] || 0)) return;
       var key = (p.player_key || p.player) + '_' + propType;
-      if (day[key]) return;   // LOG ONCE — first capture wins. Lines move near game time, so we lock the
-                              // line (and tier) we first flagged rather than overwriting it on a later load.
+      var snap = p.snapshot || null;
+      if (day[key]) {
+        // LOG ONCE — the graded line stays the one we first captured. But record how the line and the
+        // injury report MOVED by later loads, so line timing and late news can be tested against results.
+        var ex = day[key];
+        if (ex.graded) return;
+        var chg = false;
+        if (ex.lineLatest !== Number(v.line)) { ex.lineLatest = Number(v.line); chg = true; }
+        if (snap && JSON.stringify(ex.snapshotLatest || null) !== JSON.stringify(snap)) { ex.snapshotLatest = snap; chg = true; }
+        if (chg) { ex.lineLatestAt = new Date().toISOString(); added++; }
+        return;
+      }
       var lean = Number(proj) >= Number(v.line) ? 'OVER' : 'UNDER';
       var proven = !!(p.featured && p.featured.ok === true);
       if (proven && p.featured.side) lean = p.featured.side === 'under' ? 'UNDER' : 'OVER';   // grade the side the rule called
@@ -24901,6 +24915,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         reasonText: (p.card && p.card.summary) || '',
         dataCompleteness: (p.dataCompleteness != null) ? p.dataCompleteness : null,
         lineSource: 'provided', capturedAt: new Date().toISOString(),
+        snapshot: snap,                       // known at capture: own status, teammates on the injury report, spread, total
+        lineLatest: Number(v.line), lineLatestAt: new Date().toISOString(), snapshotLatest: snap,
         actual: null, result: null, error: null, graded: false
       };
       added++;
