@@ -1268,18 +1268,21 @@ function formBlend(seasonSoft, seasonElite, formTier) {
 // Investigation result: the market line is MORE accurate than the model on average (MAE 28.8 vs
 // 31.5), and the model's disagreement with the line carries real information ONLY for rushing
 // (corr +0.38). Receiving (corr -0.03) and combos carry none. So the card features exactly one
-// segment — rushing props where the model and line disagree by 15+ yards, in EITHER direction:
+// segment — rushing UNDERS where the model sits 15+ yards below the line (standard lines only):
 //
-//   |model - line| >= 8   43-32 (57%)       |model - line| >= 12  31-18 (63%)
-//   |model - line| >= 10  37-23 (62%)       |model - line| >= 15  28-12 (70%), 95% CI 55-82%
-//   holdout: weeks 1-2 62%, weeks 3-4 62%. Same rule on receiving: 48% (fails, as predicted).
+//   model 10+ below line  26-14 (65%)     model 15+ below line  18-6 (75%), 95% CI 55-88%
+//   model 20+ below line  12-4  (75%)
+// The two-way version looked like 28-12, but its OVER wins were discounted goblin lines (e.g.
+// Saquon 20.5 vs a 78-yd average) that the live adapter drops; overs on standard lines are 0-1.
+// Unders are clean by construction (PrizePicks only offers MORE on goblin/demon lines).
+// Nearly all of the sample is weeks 1-2 — Week 5 is the rule's first true out-of-sample test.
 //
 // The gap is measured on the comp median BEFORE the matchup shave (comp.matchupAdj.from), because
 // that is the exact quantity the rule was validated on — the shave was added after those games.
 // Everything else (receiving, passing, combos, middle props) is held. Re-validate every week;
 // widen or narrow only on graded evidence.
 // ============================================================================================
-const PROVEN_RULE = { family: 'rushing_yards', minGap: 15, record: '28-12 (70%)', id: 'rush_gap15' };
+const PROVEN_RULE = { family: 'rushing_yards', side: 'under', minGap: 15, record: '18-6 (75%)', id: 'rush_under15' };
 const HELD_WHY = {
   receiving_yards: 'receiving — model adds no information over the line (4-wk test); not a proven edge',
   passing_yards: 'passing — not yet proven (small sample, model only partly informative)',
@@ -1303,6 +1306,11 @@ function computeFeatured(result, ctx) {
     return { ok: false, why: `rushing, but model (${basis}) and line (${v.line}) are only ${Math.abs(gap).toFixed(1)} yds apart — proven edge needs ${PROVEN_RULE.minGap}+` };
   }
   const side = gap > 0 ? 'over' : 'under';
+  if (side !== PROVEN_RULE.side) {
+    // The backtest's rushing-OVER wins came from discounted (goblin) lines that the live adapter now
+    // drops. On standard lines the over side is unproven (0-1), so it is held until graded evidence.
+    return { ok: false, why: `rushing OVER (model ${basis} vs line ${v.line}) — not proven on standard lines; only rushing unders are` };
+  }
   return {
     ok: true, side, gap: +gap.toFixed(1), basis, rule: PROVEN_RULE.id,
     why: `rushing ${side.toUpperCase()}: model ${basis} vs line ${v.line} (${gap > 0 ? '+' : ''}${gap.toFixed(1)} yds) — rule record ${PROVEN_RULE.record}`,

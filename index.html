@@ -17438,7 +17438,7 @@ function renderHistory() {
     // high rate, they GO UNDER structurally -> the under is a real play. Measuring, not yet betting.
     // PROVEN EDGE LIVE — the validated rule (rushing, 15+ yd model-line gap) graded only on picks the
     // live card actually featured from Week 5 on. Backtest was 28-12 (70%); this is the out-of-sample truth.
-    const byProven = sliceTable('PROVEN EDGE — LIVE (rushing, 15+ yd gap)', 'Backtest weeks 1\u20134: 28-12 (70%). This row counts only picks the live card featured. If it falls toward 50% over a real sample, the rule gets narrowed or pulled.', [
+    const byProven = sliceTable('PROVEN EDGE — LIVE (rushing unders, model 15+ yds below line)', 'Backtest: 18-6 (75%) on standard lines. This row counts only picks the live card featured. If it falls toward 50% over a real sample, the rule gets narrowed or pulled.', [
       { label: 'ALL proven picks', stats: computeNflPropStats(all.filter(e => e.proven)) },
       { label: 'proven OVER', stats: computeNflPropStats(all.filter(e => e.proven && e.lean === 'OVER')) },
       { label: 'proven UNDER', stats: computeNflPropStats(all.filter(e => e.proven && e.lean === 'UNDER')) },
@@ -24537,7 +24537,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }).join('');
 
     host.innerHTML = '<div class="nflx-card"><div class="nflx-card-head"><div class="nflx-card-top"><div class="nflx-card-title">Proven Edge</div><div class="nflx-card-count">' + card.length + '</div></div>' +
-      '<div class="nflx-card-sub">One validated rule: rushing props where the model and the line disagree by 15+ yards, over or under. Graded record 28-12 (70%) over weeks 1\u20134, and it held on a weeks 3\u20134 holdout. Everything else is analyzed below with the reason it isn\u2019t featured.</div>' +
+      '<div class="nflx-card-sub">One validated rule: rushing unders where the model sits 15+ yards below the line. Graded record 18-6 (75%) on standard lines, mostly weeks 1\u20132, so Week 5 is its first real out-of-sample test. Everything else is analyzed below with the reason it isn\u2019t featured.</div>' +
       '<div class="nflx-card-note">Provisional \u2014 this is the model\u2019s number, not a verified cash rate</div></div>' +
       rows + belowCapHtml + flaggedHtml + '</div>';
   }
