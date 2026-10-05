@@ -17436,6 +17436,13 @@ function renderHistory() {
     ]);
     // CAPPED-OPPORTUNITY WATCH — committee/rotational picks (logged as overs). If these lose at a
     // high rate, they GO UNDER structurally -> the under is a real play. Measuring, not yet betting.
+    // PROVEN EDGE LIVE — the validated rule (rushing, 15+ yd model-line gap) graded only on picks the
+    // live card actually featured from Week 5 on. Backtest was 28-12 (70%); this is the out-of-sample truth.
+    const byProven = sliceTable('PROVEN EDGE — LIVE (rushing, 15+ yd gap)', 'Backtest weeks 1\u20134: 28-12 (70%). This row counts only picks the live card featured. If it falls toward 50% over a real sample, the rule gets narrowed or pulled.', [
+      { label: 'ALL proven picks', stats: computeNflPropStats(all.filter(e => e.proven)) },
+      { label: 'proven OVER', stats: computeNflPropStats(all.filter(e => e.proven && e.lean === 'OVER')) },
+      { label: 'proven UNDER', stats: computeNflPropStats(all.filter(e => e.proven && e.lean === 'UNDER')) },
+    ]);
     const byCapped = sliceTable('CAPPED-OPPORTUNITY WATCH (committee/rotational)', 'These are logged as overs. A LOW win% here means capped-role players systematically go UNDER — which would make the under a real, earned signal (unlike the median-only unders we pulled). Needs sample before it graduates from flag to play.', [
       { label: 'CAPPED PICKS (as over)', stats: computeNflPropStats(all.filter(e => e.capped)) },
       { label: 'NON-CAPPED (ref)', stats: computeNflPropStats(all.filter(e => !e.capped && e.lean === 'OVER')) },
@@ -17446,7 +17453,7 @@ function renderHistory() {
     const pending = all.filter(e => !e.graded).sort((a, b) => ((b.edge ?? 0) - (a.edge ?? 0)));
     container.innerHTML = subnavHtml + statsBar +
       `<div class="rollup-tier-note" style="margin:10px 0">Model probability shown — provisional, not a verified cash rate. Graded off ESPN box scores.</div>` +
-      byTier + byMarket + byLean + byCapped +
+      byProven + byTier + byMarket + byLean + byCapped +
       (pending.length ? `<h3 class="rollup-section-title">PENDING (${pending.length})</h3><div class="rollup-prop-list">${pending.slice(0, 40).map(row).join('')}</div>` : '') +
       (graded.length ? `<h3 class="rollup-section-title">GRADED (${graded.length})</h3><div class="rollup-prop-list">${graded.slice(0, 60).map(row).join('')}</div>` : '');
     return;
@@ -24400,6 +24407,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     // LIVE QB gate — fresh feed overrides the server: a pass-dependent pick whose team QB is
     // OUT/doubtful right now is pulled, even if the server featured it before the ruling.
     if (nflIsPassDependent(item) && nflQbOut(item.team)) return false;
+    if (item.featured && item.featured.ok === true) return true;   // validated rule (rushing, 15+ yd gap) — either side
     var v = item.verdict||{}, pAdj = pAdjOf(v), tier = v.tier_candidate||'none';
     if (nflBoom(item) && num(v.edge)!=null && v.edge>=0.06 && v.filters && v.filters.scriptClear && !(item.featured && item.featured.ok===false)) return true;
     if (tier==='none') return false;
@@ -24409,7 +24417,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     return item.featured ? false : true;
   }
   window.LyridNflJudgment = { killReasonHard: killReasonHard, nflHonestReason: nflHonestReason, isBettable: isBettable };
-  function pickScore(item){ var v=item.verdict||{}, pAdj=pAdjOf(v)||0, tw=RANK[v.tier_candidate||'none']*0.05, edge=num(v.edge)||0; return pAdj+tw+edge*0.5; }
+  function pickScore(item){ if (item.featured && item.featured.ok === true) return 10 + Math.abs(num(item.featured.gap)||0)/100; var v=item.verdict||{}, pAdj=pAdjOf(v)||0, tw=RANK[v.tier_candidate||'none']*0.05, edge=num(v.edge)||0; return pAdj+tw+edge*0.5; }
   function gameKey(p){ return [String(p.team||''),String(p.opponent||'')].sort().join('@'); }
 
   // ============================================================
@@ -24516,7 +24524,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }
     var rows = card.map(function(p, i){
       var v=p.verdict||{}, c=p.comp||{}, pAdj=pAdjOf(v)||0, tier=nflInjCapTier(v.tier_candidate||'none', nflInjuryFor(p));
-      var dir = v.pick==='lower'?'down':'up';
+      var dir = (p.featured && p.featured.ok && p.featured.side) ? (p.featured.side==='under'?'down':'up') : (v.pick==='lower'?'down':'up');
       var _lblP = nflDisplayLabel(p); var chips = (_lblP ? '<span class="nflx-chip ' + _lblP.cls + '">' + _lblP.text + '</span><span class="nflx-chip prov">provisional \u00b7 small sample</span>' : '') + (nflBoom(p)?'<span class="nflx-chip ceiling">\u25C7 ceiling</span>':'') + nflInjuryChip(p);
       var why = (p.card && p.card.summary) ? '<div class="nflx-why">' + esc(p.card.summary) + '</div>' : '';
       return '<div class="nflx-pick"><div class="nflx-pick-rank">' + (i+1) + '</div><div class="nflx-pick-body">' +
@@ -24529,7 +24537,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     }).join('');
 
     host.innerHTML = '<div class="nflx-card"><div class="nflx-card-head"><div class="nflx-card-top"><div class="nflx-card-title">Proven Edge</div><div class="nflx-card-count">' + card.length + '</div></div>' +
-      '<div class="nflx-card-sub">Only families PROVEN above breakeven on the graded record \u2014 right now that\u2019s single-stat rushing overs (53.7%). More get added as they validate. Everything else is analyzed in the games below with why it isn\u2019t (yet) a proven edge.</div>' +
+      '<div class="nflx-card-sub">One validated rule: rushing props where the model and the line disagree by 15+ yards, over or under. Graded record 28-12 (70%) over weeks 1\u20134, and it held on a weeks 3\u20134 holdout. Everything else is analyzed below with the reason it isn\u2019t featured.</div>' +
       '<div class="nflx-card-note">Provisional \u2014 this is the model\u2019s number, not a verified cash rate</div></div>' +
       rows + belowCapHtml + flaggedHtml + '</div>';
   }
@@ -24875,6 +24883,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       if (day[key]) return;   // LOG ONCE — first capture wins. Lines move near game time, so we lock the
                               // line (and tier) we first flagged rather than overwriting it on a later load.
       var lean = Number(proj) >= Number(v.line) ? 'OVER' : 'UNDER';
+      var proven = !!(p.featured && p.featured.ok === true);
+      if (proven && p.featured.side) lean = p.featured.side === 'under' ? 'UNDER' : 'OVER';   // grade the side the rule called
       var tier = (v.tier_candidate || 'none').toLowerCase();
       day[key] = {
         date: date, player: p.player, team: p.team || null, opponent: p.opponent || null,
@@ -24886,6 +24896,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         tier: tier, isBet: tier !== 'none',   // every pick logged; isBet marks the actionable ones for the record
         underStrength: (v.underCandidate && v.underCandidate.strength) || null,
         capped: !!p.cappedOpportunity,
+        proven: proven, provenRule: proven ? (p.featured.rule || null) : null, provenGap: proven ? (p.featured.gap != null ? p.featured.gap : null) : null,
         ceiling: !!p.ceiling,
         reasonText: (p.card && p.card.summary) || '',
         dataCompleteness: (p.dataCompleteness != null) ? p.dataCompleteness : null,

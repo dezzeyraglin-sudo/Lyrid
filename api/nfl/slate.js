@@ -1262,7 +1262,56 @@ function formBlend(seasonSoft, seasonElite, formTier) {
   return 'neutral';
 }
 
+// ============================================================================================
+// PROVEN EDGE RULE (validated on 706 graded picks, weeks 1-4 of 2026).
+//
+// Investigation result: the market line is MORE accurate than the model on average (MAE 28.8 vs
+// 31.5), and the model's disagreement with the line carries real information ONLY for rushing
+// (corr +0.38). Receiving (corr -0.03) and combos carry none. So the card features exactly one
+// segment — rushing props where the model and line disagree by 15+ yards, in EITHER direction:
+//
+//   |model - line| >= 8   43-32 (57%)       |model - line| >= 12  31-18 (63%)
+//   |model - line| >= 10  37-23 (62%)       |model - line| >= 15  28-12 (70%), 95% CI 55-82%
+//   holdout: weeks 1-2 62%, weeks 3-4 62%. Same rule on receiving: 48% (fails, as predicted).
+//
+// The gap is measured on the comp median BEFORE the matchup shave (comp.matchupAdj.from), because
+// that is the exact quantity the rule was validated on — the shave was added after those games.
+// Everything else (receiving, passing, combos, middle props) is held. Re-validate every week;
+// widen or narrow only on graded evidence.
+// ============================================================================================
+const PROVEN_RULE = { family: 'rushing_yards', minGap: 15, record: '28-12 (70%)', id: 'rush_gap15' };
+const HELD_WHY = {
+  receiving_yards: 'receiving — model adds no information over the line (4-wk test); not a proven edge',
+  passing_yards: 'passing — not yet proven (small sample, model only partly informative)',
+  rush_rec_yards: 'rush+rec combo — losing family, not featured',
+  pass_rush_yards: 'pass+rush combo — losing family, not featured',
+};
+
 function computeFeatured(result, ctx) {
+  const v = result.verdict, c = result.comp || {}, fam = ctx.propFamily;
+  if (!v || c.median == null || v.line == null) return { ok: false, why: 'no projection to compare with the line' };
+  // hard data-quality vetoes only — not matchup filters (those were never part of the validated rule)
+  const blocked = (v.blocked || []).join(' ');
+  if (/is OUT|not expected to play|placeholder/i.test(blocked)) return { ok: false, why: 'player out or line unavailable' };
+  if (v.stale) return { ok: false, why: 'stale role (team or role changed) — baseline not trustworthy' };
+  const dc = result.dataCompleteness;
+  if (dc != null && dc < 0.6) return { ok: false, why: 'thin data — not featured' };
+  if (fam !== PROVEN_RULE.family) return { ok: false, why: HELD_WHY[fam] || (fam + ' — not a proven edge') };
+  const basis = (c.matchupAdj && c.matchupAdj.from != null) ? Number(c.matchupAdj.from) : Number(c.median);
+  const gap = basis - Number(v.line);
+  if (Math.abs(gap) < PROVEN_RULE.minGap) {
+    return { ok: false, why: `rushing, but model (${basis}) and line (${v.line}) are only ${Math.abs(gap).toFixed(1)} yds apart — proven edge needs ${PROVEN_RULE.minGap}+` };
+  }
+  const side = gap > 0 ? 'over' : 'under';
+  return {
+    ok: true, side, gap: +gap.toFixed(1), basis, rule: PROVEN_RULE.id,
+    why: `rushing ${side.toUpperCase()}: model ${basis} vs line ${v.line} (${gap > 0 ? '+' : ''}${gap.toFixed(1)} yds) — rule record ${PROVEN_RULE.record}`,
+  };
+}
+
+// Previous matchup-tier gate. Kept for reference; NOT called. Its filters were never validated
+// against graded outcomes, so they don't gate the card.
+function computeFeaturedLegacy(result, ctx) {
   const v = result.verdict, fam = ctx.propFamily;
   if (!v || !v.tier_candidate || v.tier_candidate === 'none') {
     // Explain WHY there's no edge (not just 'no tier') — a repeated generic line reads as broken.
