@@ -17497,11 +17497,34 @@ function renderHistory() {
       const mae = abs.reduce((s, x) => s + x, 0) / abs.length, med = abs[Math.floor(abs.length / 2)];
       const bias = err.reduce((s, x) => s + x, 0) / err.length;
       const lineMae = g.reduce((s, e) => s + Math.abs(Number(e.line) - Number(e.actual)), 0) / g.length;
-      return `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(label)}</span><span class="rollup-prop-vol">typical miss \u00b1${mae.toFixed(1)} yds (median ${med.toFixed(0)}) \u00b7 Lyrid runs ${Math.abs(bias).toFixed(1)} ${bias > 0 ? 'high' : 'low'} \u00b7 the line misses \u00b1${lineMae.toFixed(1)} \u00b7 n=${g.length}</span></div>`;
+      const lineBias = g.reduce((s, e) => s + (Number(e.line) - Number(e.actual)), 0) / g.length;
+      // Projections are MEDIANS and yardage is right-skewed, so mean bias reads 'low' even for a correct
+      // median. The fair median check: how often does the actual land above the number? (50% = calibrated)
+      const aboveP = g.filter(e => Number(e.actual) > Number(e.projection)).length / g.length;
+      const aboveL = g.filter(e => Number(e.actual) > Number(e.line)).length / g.length;
+      const shifted = [5, 10, 15].map(k => `+${k}: \u00b1${(g.reduce((s, e) => s + Math.abs(Number(e.projection) + k - Number(e.actual)), 0) / g.length).toFixed(1)}`).join(' ');
+      return `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(label)}</span><span class="rollup-prop-vol">Lyrid: miss \u00b1${mae.toFixed(1)} (median ${med.toFixed(0)}), bias ${bias > 0 ? '+' : ''}${bias.toFixed(1)}, actual above ${(aboveP * 100).toFixed(0)}% \u00b7 Line: miss \u00b1${lineMae.toFixed(1)}, bias ${lineBias > 0 ? '+' : ''}${lineBias.toFixed(1)}, actual above ${(aboveL * 100).toFixed(0)}% \u00b7 n=${g.length}</span></div>` +
+             `<div class="rollup-tier-note" style="margin:-2px 0 8px 0">research only \u2014 if Lyrid were shifted up: ${shifted}. Not used for picks.</div>`;
     };
     const famCal = [['RUSHING', 'rushing_yards'], ['RECEIVING', 'receiving_yards'], ['PASSING', 'passing_yards'], ['RUSH + REC', 'rush_rec_yards'], ['PASS + RUSH', 'pass_rush_yards']];
     const calRows = famCal.map(([l, t]) => calibRow(l, all.filter(e => e.propType === t))).join('');
-    const byCalib = calRows ? `<h3 class="rollup-section-title">CALIBRATION \u2014 how reliable are Lyrid's numbers?</h3><div class="rollup-tier-note">Not betting rules. If Lyrid misses by more than the line does, its disagreement with the line isn't information.</div><div class="rollup-prop-list">${calRows}</div>` : '';
+    const baseOf = e => { const b = e.snapshot && e.snapshot.baseline; if (!b) return null;
+      const t = b.trailing6 != null ? Number(b.trailing6) : null, lg = b.lastGame != null ? Number(b.lastGame) : null;
+      return t != null && lg != null ? (5 * t + lg) / 6 : (t != null ? t : lg); };
+    const BUCKETS = [[15, 1e9, '+15 or more'], [10, 15, '+10 to +14.9'], [5, 10, '+5 to +9.9'], [-5, 5, '-4.9 to +4.9'], [-10, -5, '-5 to -9.9'], [-15, -10, '-10 to -14.9'], [-1e9, -15, '-15 or lower']];
+    const baseRows = [['RECEIVING', 'receiving_yards'], ['RUSHING', 'rushing_yards']].map(([lbl, fam]) => {
+      const g = all.filter(e => e.propType === fam && e.graded && nflRealLine(e) && e.actual != null && e.projection != null && baseOf(e) != null);
+      if (!g.length) return `<div class="rollup-prop-row"><span class="rollup-prop-name">${lbl}</span><span class="rollup-prop-vol">no Week 5+ picks with a recorded baseline yet</span></div>`;
+      return BUCKETS.map(([lo, hi, name]) => {
+        const s = g.filter(e => { const d = Number(e.projection) - baseOf(e); return d >= lo && d < hi; });
+        if (!s.length) return '';
+        const aMinusP = s.reduce((x, e) => x + (Number(e.actual) - Number(e.projection)), 0) / s.length;
+        const overL = s.filter(e => Number(e.actual) > Number(e.line)).length / s.length;
+        return `<div class="rollup-prop-row"><span class="rollup-prop-name">${lbl} \u00b7 Lyrid ${name} vs his avg</span><span class="rollup-prop-vol">A) actual minus Lyrid ${aMinusP > 0 ? '+' : ''}${aMinusP.toFixed(1)} \u00b7 B) over the line ${(overL * 100).toFixed(0)}% \u00b7 n=${s.length}</span></div>`;
+      }).join('');
+    }).join('');
+    const byCalib = calRows ? `<h3 class="rollup-section-title">CALIBRATION \u2014 how reliable are Lyrid's numbers?</h3><div class="rollup-tier-note">Not betting rules. If Lyrid misses by more than the line does, its disagreement with the line isn't information.</div><div class="rollup-prop-list">${calRows}</div>` +
+      `<h3 class="rollup-section-title">CALIBRATION #2 \u2014 Lyrid's projection vs the player's own recent average (Week 5+)</h3><div class="rollup-tier-note">Weeks 1\u20134 suggested players Lyrid projects well BELOW their own average beat its number (+13.5 yds, receivers). Frozen here and tested on new games only. A asks whether Lyrid's number is wrong; B asks whether the LINE is beatable \u2014 a player can beat Lyrid and still lose the prop.</div><div class="rollup-prop-list">${baseRows}</div>` : '';
     const researchHdr = `<h3 class="rollup-section-title" style="margin-top:18px">REFERENCE ONLY \u2014 no edge</h3><div class="rollup-tier-note">Older breakdowns kept for research. Nothing below is a betting signal.</div>`;
     const byCapped = sliceTable('CAPPED-OPPORTUNITY WATCH (committee/rotational)', 'These are logged as overs. A LOW win% here means capped-role players systematically go UNDER — which would make the under a real, earned signal (unlike the median-only unders we pulled). Needs sample before it graduates from flag to play.', [
       { label: 'CAPPED PICKS (as over)', stats: computeNflPropStats(all.filter(e => e.capped)) },

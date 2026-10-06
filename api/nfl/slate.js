@@ -611,8 +611,13 @@ function buildCtx(E, l, base) {
       const mates = ((E.injuriesByTeam && E.injuriesByTeam[team]) || []).filter(x => _norm(x.name) !== pk)
         .map(x => ({ name: x.name, pos: x.pos, status: x.status }));
       const od = (E.oddsByTeam && team) ? E.oddsByTeam[team] : null;
+      // The player's own recent level in THIS family, frozen at capture (calibration #2: does Lyrid
+      // under-project players it puts below their own average?). Raw pieces kept; baseline defined at analysis.
+      const pf = (gsis && E.featByKeyFam && E.featByKeyFam[gsis]) ? E.featByKeyFam[gsis][l.prop_type] : null;
+      const baseline = pf ? { trailing6: pf.trailing, lastGame: pf.lastGame, asOfSeason: pf.fvSeason, asOfWeek: pf.fvWeek } : null;
       return { status: own ? own.status : 'active', teamInjuries: mates,
-               spread: od && od.spread != null ? Number(od.spread) : null, total: od && od.total != null ? Number(od.total) : null };
+               spread: od && od.spread != null ? Number(od.spread) : null, total: od && od.total != null ? Number(od.total) : null,
+               baseline };
     }, 'snapshot'),
     directionalEdge: safe(function () {
       // THE ALIGNMENT ENGINE (from the hand analysis): does the player's DIRECTION line up with
@@ -929,7 +934,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
   for (let start = 0; start < 40000; start += 1000) {
     let chunk = [];
     try {
-      chunk = await fetch(`${b}/rest/v1/nfl_feature_vectors?player_key=in.(${inList(slateKeys)})&order=player_key.asc,season.desc,week.desc&select=player_key,prop_type,volume_floor_score,feature_json`, {
+      chunk = await fetch(`${b}/rest/v1/nfl_feature_vectors?player_key=in.(${inList(slateKeys)})&order=player_key.asc,season.desc,week.desc&select=player_key,prop_type,season,week,volume_floor_score,feature_json`, {
         headers: { ...H, 'Range-Unit': 'items', Range: `${start}-${start + 999}` },
       }).then(r => r.ok ? r.json() : []);
     } catch (_) { chunk = []; }
@@ -950,6 +955,8 @@ async function loadEngineData(lines, date, fetchAvailability) {
     perFam[fam] = {
       features: { volume_floor: num(r.volume_floor_score), recent_form: num(fj.recent_form), skill_tshare: num(fj.skill_tshare), skill_ays: num(fj.skill_ays), skill_carry: num(fj.skill_carry) },
       recentTargets: recentTargetsByKey[r.player_key] ?? null,
+      // raw baseline pieces for the snapshot: 6-game trailing average BEFORE his latest game, plus that game
+      trailing: num(fj.trailing_yards), lastGame: num(fj.outcome_yards), fvSeason: r.season ?? null, fvWeek: r.week ?? null,
     };
     if (!featByKey[r.player_key]) featByKey[r.player_key] = perFam[fam];
   }
