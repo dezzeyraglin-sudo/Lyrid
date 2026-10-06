@@ -17420,6 +17420,36 @@ function renderHistory() {
       }).join('');
       return rows ? `<h3 class="rollup-section-title">${esc(title)}</h3>${note ? `<div class="rollup-tier-note">${esc(note)}</div>` : ''}<div class="rollup-prop-list">${rows}</div>` : '';
     };
+    // PROMOTION RULE (frozen): a rule is only promotable on NEW games when ALL hold —
+    //   n >= 40 graded picks, 95% lower bound > 50%, and still > 50% with its single best week removed.
+    // The betting threshold is reported SEPARATELY so the research isn't tuned to the payout table.
+    const nflWeekKey = d => Math.floor((Date.parse(d) / 86400000 - 5) / 7);   // weeks run Tue-Mon
+    const promoStatus = (entries) => {
+      const g = entries.filter(e => e.graded && (e.result === 'win' || e.result === 'loss'));
+      const n = g.length, w = g.filter(e => e.result === 'win').length;
+      if (!n) return '';
+      const p = w / n, z = 1.96, den = 1 + z * z / n, c = p + z * z / (2 * n), a = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n));
+      const lo = (c - a) / den;
+      const wk = {}; g.forEach(e => { const k = nflWeekKey(e.date); (wk[k] ||= { w: 0, l: 0 }); e.result === 'win' ? wk[k].w++ : wk[k].l++; });
+      const weeks = Object.values(wk); const best = weeks.reduce((b, x) => (x.w - x.l > b.w - b.l ? x : b), weeks[0]);
+      const rw = w - best.w, rn = n - best.w - best.l, robust = rn > 0 && rw / rn > 0.5;
+      let stat;
+      if (n < 40) stat = `TESTING \u00b7 ${n}/40 new picks`;
+      else if (lo > 0.5 && robust) stat = `PASSES statistical test (95% floor ${(lo * 100).toFixed(0)}%, holds without best week)`;
+      else if (p < 0.5) stat = 'NOT HOLDING \u2014 below 50% on new games';
+      else stat = `INCONCLUSIVE (95% floor ${(lo * 100).toFixed(0)}%${robust ? '' : ', depends on one week'})`;
+      const bet = p >= 0.577 ? 'clears 2-pick Power (57.7%)' : (p >= 0.545 ? 'clears Flex (~54-55%) only' : 'below PrizePicks breakeven');
+      return `${stat} \u00b7 betting: ${bet} \u00b7 ${weeks.length} wk`;
+    };
+    const watchTable = (title, note, groups) => {
+      const rows = groups.map(g => {
+        const s = computeNflPropStats(g.entries);
+        if (!s.n) return `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(g.label)}</span><span class="rollup-prop-vol">no new picks yet</span></div>`;
+        return `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(g.label)}</span><span class="rollup-prop-rate ${rateClass(s.winRate)}">${fmtRate(s.winRate)}</span><span class="rollup-prop-vol">${rec(s)} \u00b7 ${s.n}</span></div>` +
+               `<div class="rollup-tier-note" style="margin:-2px 0 8px 0">${esc(promoStatus(g.entries.filter(nflRealLine)))}</div>`;
+      }).join('');
+      return `<h3 class="rollup-section-title">${esc(title)}</h3>${note ? `<div class="rollup-tier-note">${esc(note)}</div>` : ''}<div class="rollup-prop-list">${rows}</div>`;
+    };
     const byTier = sliceTable('BY MODEL TIER', 'Provisional tiers — GUARANTEED/PLATINUM should out-hit GOLD once the sample builds. This is the calibration the tiers are waiting on before any badge ships.', [
       { label: 'GUARANTEED', stats: computeNflPropStats(all.filter(e => e.tier === 'guaranteed')) },
       { label: 'PLATINUM', stats: computeNflPropStats(all.filter(e => e.tier === 'platinum')) },
@@ -17438,11 +17468,41 @@ function renderHistory() {
     // high rate, they GO UNDER structurally -> the under is a real play. Measuring, not yet betting.
     // PROVEN EDGE LIVE — the validated rule (rushing, 15+ yd model-line gap) graded only on picks the
     // live card actually featured from Week 5 on. Backtest was 28-12 (70%); this is the out-of-sample truth.
-    const byProven = sliceTable('PROVEN EDGE — LIVE (rushing unders, model 15+ yds below line)', 'Backtest: 18-6 (75%) on standard lines. This row counts only picks the live card featured. If it falls toward 50% over a real sample, the rule gets narrowed or pulled.', [
-      { label: 'ALL proven picks', stats: computeNflPropStats(all.filter(e => e.proven)) },
-      { label: 'proven OVER', stats: computeNflPropStats(all.filter(e => e.proven && e.lean === 'OVER')) },
-      { label: 'proven UNDER', stats: computeNflPropStats(all.filter(e => e.proven && e.lean === 'UNDER')) },
+    const byProven = watchTable('PROVEN \u2014 rushing unders, model 15+ yds below line', 'Backtest 18-6 (75%) on standard lines. Counts only picks the live card featured, from Week 5 on. Monitored with the same promotion test; if it stops holding on new games it gets pulled.', [
+      { label: 'live proven picks', entries: all.filter(e => e.proven) },
     ]);
+    // WATCH LIST — segments that looked promising in weeks 1-4 but are NOT proven. Each is graded on
+    // its own side (under or over) regardless of the model's lean, and only on picks logged with a
+    // capture snapshot (Week 5+), so every result here is new, out-of-sample evidence.
+    function watchSide(list, side) {
+      return list.filter(e => e.snapshot && e.graded && e.actual != null && Number(e.actual) !== Number(e.line))
+        .map(e => Object.assign({}, e, { result: (side === 'under' ? Number(e.actual) < Number(e.line) : Number(e.actual) > Number(e.line)) ? 'win' : 'loss' }));
+    }
+    const sp = e => (e.snapshot && e.snapshot.spread != null) ? Number(e.snapshot.spread) : null;   // ESPN: + = underdog
+    const tot = e => (e.snapshot && e.snapshot.total != null) ? Number(e.snapshot.total) : null;
+    const watchFade = list => list.filter(e => e.snapshot && e.graded && e.actual != null && Number(e.actual) !== Number(e.line))
+      .map(e => Object.assign({}, e, { result: (e.lean === 'OVER' ? Number(e.actual) < Number(e.line) : Number(e.actual) > Number(e.line)) ? 'win' : 'loss' }));
+    const byWatch = watchTable('WATCH \u2014 unproven, grading on new games from Week 5', 'Hypotheses frozen from weeks 1\u20134 and graded ONLY on later games. None is on the card. Promotion needs 40+ new picks, a 95% floor above 50%, and no dependence on one week. With six tested, expect at least one to fade. Never edit a rule using the games currently validating it.', [
+      { label: 'FADE: receiving \u2014 opposite of Lyrid\u2019s lean (wk1-4: 56%)', entries: watchFade(all.filter(e => e.propType === 'receiving_yards')) },
+      { label: 'UNDER: rushing, team 3+ pt underdog (wk1-4: 57%)', entries: watchSide(all.filter(e => e.propType === 'rushing_yards' && sp(e) != null && sp(e) >= 3), 'under') },
+      { label: 'UNDER: passing, line 229.5+ (wk1-4: 64%)', entries: watchSide(all.filter(e => e.propType === 'passing_yards' && Number(e.line) >= 229.5), 'under') },
+      { label: 'UNDER: pass+rush, total 42.5 or lower (wk1-4: 67%)', entries: watchSide(all.filter(e => e.propType === 'pass_rush_yards' && tot(e) != null && tot(e) <= 42.5), 'under') },
+      { label: 'OVER: receiving, line 16.5 or lower (wk1-4: 57%)', entries: watchSide(all.filter(e => e.propType === 'receiving_yards' && Number(e.line) <= 16.5), 'over') },
+      { label: 'OVER: rushing, team favored 3+ (wk1-4: 59%, fading)', entries: watchSide(all.filter(e => e.propType === 'rushing_yards' && sp(e) != null && sp(e) <= -3), 'over') },
+    ]);
+    const calibRow = (label, list) => {
+      const g = list.filter(e => e.graded && nflRealLine(e) && e.actual != null && e.projection != null);
+      if (!g.length) return '';
+      const err = g.map(e => Number(e.projection) - Number(e.actual)), abs = err.map(Math.abs).sort((a, b) => a - b);
+      const mae = abs.reduce((s, x) => s + x, 0) / abs.length, med = abs[Math.floor(abs.length / 2)];
+      const bias = err.reduce((s, x) => s + x, 0) / err.length;
+      const lineMae = g.reduce((s, e) => s + Math.abs(Number(e.line) - Number(e.actual)), 0) / g.length;
+      return `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(label)}</span><span class="rollup-prop-vol">typical miss \u00b1${mae.toFixed(1)} yds (median ${med.toFixed(0)}) \u00b7 Lyrid runs ${Math.abs(bias).toFixed(1)} ${bias > 0 ? 'high' : 'low'} \u00b7 the line misses \u00b1${lineMae.toFixed(1)} \u00b7 n=${g.length}</span></div>`;
+    };
+    const famCal = [['RUSHING', 'rushing_yards'], ['RECEIVING', 'receiving_yards'], ['PASSING', 'passing_yards'], ['RUSH + REC', 'rush_rec_yards'], ['PASS + RUSH', 'pass_rush_yards']];
+    const calRows = famCal.map(([l, t]) => calibRow(l, all.filter(e => e.propType === t))).join('');
+    const byCalib = calRows ? `<h3 class="rollup-section-title">CALIBRATION \u2014 how reliable are Lyrid's numbers?</h3><div class="rollup-tier-note">Not betting rules. If Lyrid misses by more than the line does, its disagreement with the line isn't information.</div><div class="rollup-prop-list">${calRows}</div>` : '';
+    const researchHdr = `<h3 class="rollup-section-title" style="margin-top:18px">REFERENCE ONLY \u2014 no edge</h3><div class="rollup-tier-note">Older breakdowns kept for research. Nothing below is a betting signal.</div>`;
     const byCapped = sliceTable('CAPPED-OPPORTUNITY WATCH (committee/rotational)', 'These are logged as overs. A LOW win% here means capped-role players systematically go UNDER — which would make the under a real, earned signal (unlike the median-only unders we pulled). Needs sample before it graduates from flag to play.', [
       { label: 'CAPPED PICKS (as over)', stats: computeNflPropStats(all.filter(e => e.capped)) },
       { label: 'NON-CAPPED (ref)', stats: computeNflPropStats(all.filter(e => !e.capped && e.lean === 'OVER')) },
@@ -17452,8 +17512,8 @@ function renderHistory() {
     const graded = all.filter(e => e.graded).sort((a, b) => (b.date + b.player).localeCompare(a.date + a.player));
     const pending = all.filter(e => !e.graded).sort((a, b) => ((b.edge ?? 0) - (a.edge ?? 0)));
     container.innerHTML = subnavHtml + statsBar +
-      `<div class="rollup-tier-note" style="margin:10px 0">Model probability shown — provisional, not a verified cash rate. Graded off ESPN box scores.</div>` +
-      byProven + byTier + byMarket + byLean + byCapped +
+      `<div class="rollup-tier-note" style="margin:10px 0">Only the PROVEN rule is a betting signal. Everything else is research. Graded off ESPN box scores.</div>` +
+      byProven + byWatch + byCalib + researchHdr + byTier + byMarket + byLean + byCapped +
       (pending.length ? `<h3 class="rollup-section-title">PENDING (${pending.length})</h3><div class="rollup-prop-list">${pending.slice(0, 40).map(row).join('')}</div>` : '') +
       (graded.length ? `<h3 class="rollup-section-title">GRADED (${graded.length})</h3><div class="rollup-prop-list">${graded.slice(0, 60).map(row).join('')}</div>` : '');
     return;
@@ -24249,11 +24309,20 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   // SINGLE-STAT OVERS (~60%). So a qualifying single-stat pick shows 'MODEL EDGE'; combos (which
   // lose ~40%) show 'COMBO · UNPROVEN'. Internal tier_candidate is preserved for the TIER PROOF
   // record so calibration data keeps accruing while we gather more sample.
+  // Badges and percentages only where the graded record has EARNED them. The GOLD/PLATINUM tiers
+  // went 36-39% over weeks 1-4 and stated model probabilities of 70-80% hit 35%, so neither is shown.
+  // A proven-rule pick shows the RULE'S graded record; everything else says plainly it has no edge.
   function nflDisplayLabel(item) {
-    var v = item.verdict || {}, tier = v.tier_candidate || 'none';
-    if (tier === 'none') return null;
-    if (/\+/.test(item.propLabel || '')) return { text: 'COMBO \u00b7 UNPROVEN', cls: 'prov' };
-    return { text: 'MODEL EDGE', cls: 'edge' };
+    if (item && item.featured && item.featured.ok === true) return { text: 'PROVEN EDGE', cls: 'edge' };
+    return null;
+  }
+  function nflPctHtml(item) {
+    var f = item && item.featured;
+    if (f && f.ok === true) {
+      var m = /(\d+)-(\d+)\s*\((\d+)%\)/.exec(String(f.why || ''));
+      if (m) return '<div class="nflx-pct"><span class="v">' + m[3] + '%</span><span class="k">rule record \u00b7 ' + m[1] + '-' + m[2] + '</span></div>';
+    }
+    return '<div class="nflx-pct"><span class="k">no proven edge</span></div>';
   }
 
   // ---- date helpers ----
@@ -24532,7 +24601,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         '<div class="nflx-pick-line"><span class="nflx-dir ' + dir + '">' + (dir==='up'?'Higher':'Lower') + '</span> <span class="nflx-prop-market">' + esc(p.propLabel) + '</span> <span class="nflx-linev">' + esc(v.line) + '</span></div>' +
         '<div class="nflx-pick-mu">' + esc(p.position||'') + (p.position?' \u00b7 ':'') + esc(p.team||'') + (p.opponent?' vs ' + esc(p.opponent):'') + '</div>' +
         projTrack(c, v.line) +
-        '<div class="nflx-metarow"><div class="nflx-pct"><span class="v">' + Math.round(pAdj*100) + '%</span><span class="k">model</span></div>' + chips + '</div>' + why +
+        '<div class="nflx-metarow">' + nflPctHtml(p) + chips + '</div>' + why +
       '</div></div>';
     }).join('');
 
@@ -24597,7 +24666,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         '<div class="nflx-prop-sub">' + esc(item.position||'') + (item.position&&item.team?' \u00b7 ':'') + esc(item.team||'') + (item.opponent?' vs ' + esc(item.opponent):'') + '</div></div>' +
       nflCappedBanner(item) + nflInjuryBanner(item) +
       projTrack(c, v.line) +
-      '<div class="nflx-metarow"><div class="nflx-pct"><span class="v">' + Math.round((isUnder && v.underPlay.pUnder!=null ? v.underPlay.pUnder : pAdj)*100) + '%</span><span class="k">' + (isUnder?'model \u00b7 under':'model') + '</span></div>' + chips + '</div>' +
+      '<div class="nflx-metarow">' + nflPctHtml(item) + chips + '</div>' +
       filters + (isUnder ? '<div class="nflx-blocked" style="color:var(--data-warning);background:var(--data-warning-surface)">Take the <b>UNDER</b> \u2014 still testing. Model projects ' + Math.round(c.median) + ' vs line ' + esc(v.line) + ', ceiling (p75) ' + Math.round(v.underPlay.ceiling) + ' stays contained. Unvalidated \u2014 logged to build the unders record, not yet a rated play.</div>' : blocked) + drivers + why +
     '</div>';
   }
@@ -25007,8 +25076,10 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 })();
 
 // Stats roll-up over a list of graded NFL entries (mirrors computeWnbaPropStats).
+var NFL_LINE_FLOOR = { passing_yards: 100, pass_rush_yards: 100, rushing_yards: 6, receiving_yards: 6, rush_rec_yards: 10 };
+function nflRealLine(e) { return e && Number(e.line) >= (NFL_LINE_FLOOR[e.propType] || 0); }
 function computeNflPropStats(entries) {
-  entries = entries || [];
+  entries = (entries || []).filter(nflRealLine);   // placeholder/promo lines are not real markets
   var graded = entries.filter(function (e) { return e.graded && (e.result === 'win' || e.result === 'loss'); });
   var wins = graded.filter(function (e) { return e.result === 'win'; }).length;
   var losses = graded.filter(function (e) { return e.result === 'loss'; }).length;
