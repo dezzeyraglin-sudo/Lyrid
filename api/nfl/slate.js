@@ -356,6 +356,7 @@ export default async function handler(req, res) {
       oppPosCoverage: ctx.oppPosCoverage || null,
       oppPace: ctx.oppPace || null,
       snapshot: ctx.snapshot || null,
+      matchupNotes: ctx.matchupNotes || null,
       roleMatchup: ctx.roleMatchup || null,
       directionalEdge: ctx.directionalEdge || null,
       qbReliable: ctx.qbReliable || null,
@@ -489,6 +490,9 @@ export default async function handler(req, res) {
         else if (s && s.stale) out.push(`${label[k]} is ${s.ageDays}d stale — the game-day build may have failed; reads use last week\u2019s data`);
       }
       const st = f.seasonTiers;
+      const fvx = f.featureVectors;
+      if (fvx && fvx.missing) out.push('player projection inputs (feature vectors) are missing');
+      else if (fvx && fvx.stale) out.push(`player projection inputs are through ${fvx.season} wk${fvx.week}${fvx.refSeason ? `, but games are through ${fvx.refSeason} wk${fvx.refWeek}` : ''} — projections are using stale player data`);
       if (st && st.missing) out.push('defense tiers missing — the season build has not populated them');
       else if (st && st.stale) out.push(`defense tiers are a season behind (built on ${st.season}, current is ${st.currentSeason}) — the weekly season build may have failed`);
       return out;
@@ -604,6 +608,13 @@ function buildCtx(E, l, base) {
     oppDefTier: (E.defenseArchetypeByTeam && opp && E.defenseArchetypeByTeam[opp]) || null,
     oppDefForm: (E.defFormByTeam && opp && E.defFormByTeam[opp]) || null,
     oppPace: (E.defPaceByTeam && opp && E.defPaceByTeam[opp]) || null,
+    matchupNotes: safe(function () {
+      const fam = l.prop_type, notes = {};
+      if ((fam === 'rushing_yards' || fam === 'rush_rec_yards') && E.ypcByTeam && opp) notes.oppYpc = E.ypcByTeam[opp] || null;
+      if ((fam === 'receiving_yards' || fam === 'passing_yards' || fam === 'pass_rush_yards' || fam === 'rush_rec_yards') && E.secondaryInjByTeam && opp)
+        notes.oppSecondary = E.secondaryInjByTeam[opp] || [];
+      return notes;
+    }, 'matchupNotes'),
     snapshot: safe(function () {
       // What was KNOWN when this pick was captured — recorded so it can be tested against results.
       const own = E.injuryByName ? (E.injuryByName[_norm(base.player)] || E.injuryByName[base.player_key]) : null;
@@ -614,7 +625,7 @@ function buildCtx(E, l, base) {
       // The player's own recent level in THIS family, frozen at capture (calibration #2: does Lyrid
       // under-project players it puts below their own average?). Raw pieces kept; baseline defined at analysis.
       const pf = (gsis && E.featByKeyFam && E.featByKeyFam[gsis]) ? E.featByKeyFam[gsis][l.prop_type] : null;
-      const baseline = pf ? { trailing6: pf.trailing, lastGame: pf.lastGame, asOfSeason: pf.fvSeason, asOfWeek: pf.fvWeek } : null;
+      const baseline = pf ? { trailing6: pf.trailing, games: pf.trailingGames, lastGame: pf.lastGame, asOfSeason: pf.fvSeason, asOfWeek: pf.fvWeek } : null;
       return { status: own ? own.status : 'active', teamInjuries: mates,
                spread: od && od.spread != null ? Number(od.spread) : null, total: od && od.total != null ? Number(od.total) : null,
                baseline };
@@ -956,7 +967,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
       features: { volume_floor: num(r.volume_floor_score), recent_form: num(fj.recent_form), skill_tshare: num(fj.skill_tshare), skill_ays: num(fj.skill_ays), skill_carry: num(fj.skill_carry) },
       recentTargets: recentTargetsByKey[r.player_key] ?? null,
       // raw baseline pieces for the snapshot: 6-game trailing average BEFORE his latest game, plus that game
-      trailing: num(fj.trailing_yards), lastGame: num(fj.outcome_yards), fvSeason: r.season ?? null, fvWeek: r.week ?? null,
+      trailing: num(fj.trailing_yards), trailingGames: num(fj.trailing_games), lastGame: num(fj.outcome_yards), fvSeason: r.season ?? null, fvWeek: r.week ?? null,
     };
     if (!featByKey[r.player_key]) featByKey[r.player_key] = perFam[fam];
   }
@@ -1029,7 +1040,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
   const defPaceRows = await qSafe(`nfl_defense_pace?select=team_abbr,pass_att_pg,plays_pg,volume_tier`);
   const defPaceByTeam = {};
   for (const r of defPaceRows) defPaceByTeam[fixAbbr(r.team_abbr)] = { passAttPg: num(r.pass_att_pg), playsPg: num(r.plays_pg), volumeTier: r.volume_tier };
-  const defFormRows = await qSafe(`nfl_defense_form?select=team_abbr,pass_form_tier,rush_form_tier,form_pass_epa_allowed,form_rush_epa_allowed,last_week,updated_at&order=updated_at.desc`);
+  const defFormRows = await qSafe(`nfl_defense_form?select=team_abbr,pass_form_tier,rush_form_tier,form_pass_epa_allowed,form_rush_epa_allowed,last_season,last_week,updated_at&order=updated_at.desc`);
   const defFormByTeam = {};
   for (const r of defFormRows) defFormByTeam[fixAbbr(r.team_abbr)] = { pass: r.pass_form_tier, rush: r.rush_form_tier, passEpa: num(r.form_pass_epa_allowed), rushEpa: num(r.form_rush_epa_allowed), week: r.last_week };
   // DATA FRESHNESS — a recency signal is only good if the game-day build actually landed. If a
@@ -1041,6 +1052,9 @@ async function loadEngineData(lines, date, fetchAvailability) {
     const newest = Math.max(...ts), ageDays = (Date.now() - newest) / 86400000;
     return { updatedAt: new Date(newest).toISOString(), ageDays: +ageDays.toFixed(1), stale: ageDays > 8, missing: false };
   };
+  // Loaded BEFORE the freshness block reads it (reading a const before its declaration threw at runtime
+  // and silently took the whole engine down: every pick showed 'analysis pending').
+  const allSupp = await qSafe(`nfl_defense_suppression?order=season.desc&select=team_abbr,season,pass_epa_allowed,rush_epa_allowed,ypc_allowed`);
   // SEASON-TIER freshness: the suppression table carries a season. If its latest season is behind
   // the current NFL season, the pass_d/run_d tiers are stale (the 'built on 2025, never rebuilt for
   // 2026' bug). This is what makes the automation OBSERVABLE — a forgotten/failed Tuesday build shows.
@@ -1051,8 +1065,35 @@ async function loadEngineData(lines, date, fetchAvailability) {
     qbForm: _freshOf(qbFormRows),
     injuries: _freshOf(injRows),
     seasonTiers: { season: _suppSeason, currentSeason: _nflSeason, stale: (_suppSeason != null && _suppSeason < _nflSeason), missing: _suppSeason == null },
+    featureVectors: (function () {
+      // The comp engine's player features. If these lag the games already played, every projection is
+      // built on stale player data. Reference = newest week in defense form (rebuilt every game day).
+      const fv = feats.reduce((m, r) => Math.max(m, (Number(r.season) || 0) * 100 + (Number(r.week) || 0)), 0);
+      const ref = defFormRows.reduce((m, r) => Math.max(m, (Number(r.last_season) || 0) * 100 + (Number(r.last_week) || 0)), 0);
+      if (!fv) return { missing: true, stale: true };
+      const fvS = Math.floor(fv / 100), fvW = fv % 100, refS = Math.floor(ref / 100), refW = ref % 100;
+      const stale = fvS < _nflSeason || (ref > 0 && fv < ref);
+      return { season: fvS, week: fvW, refSeason: refS || null, refWeek: refW || null, stale, missing: false };
+    })(),
   };
-  const allSupp = await qSafe(`nfl_defense_suppression?order=season.desc&select=team_abbr,season,pass_epa_allowed,rush_epa_allowed`);
+  // MATCHUP NOTES (context for the card, not a verdict input): opponent YPC allowed with league rank,
+  // and the opponent's secondary on the injury report with coverage tier where known.
+  const ypcByTeam = (function () {
+    const latest = allSupp.length ? Math.max(...allSupp.map(r => r.season)) : null;
+    const rows = allSupp.filter(r => r.season === latest && isFinite(Number(r.ypc_allowed)));
+    const sorted = [...rows].sort((a, b) => Number(a.ypc_allowed) - Number(b.ypc_allowed));   // rank 1 = stingiest
+    const lg = rows.length ? rows.reduce((s, r) => s + Number(r.ypc_allowed), 0) / rows.length : null;
+    const out = {};
+    sorted.forEach((r, i) => { out[fixAbbr(r.team_abbr)] = { ypc: +Number(r.ypc_allowed).toFixed(2), rank: i + 1, of: sorted.length, lg: lg != null ? +lg.toFixed(2) : null, season: latest }; });
+    return out;
+  })();
+  const secondaryInjByTeam = {};
+  for (const r of injRows) {
+    const pos = String(r.position || '').toUpperCase();
+    if (!['CB', 'S', 'FS', 'SS', 'DB', 'SAF', 'NB'].includes(pos) || !r.status || r.status === 'active') continue;
+    const cq = coverageByName[_norm(r.player_name)] || null;
+    (secondaryInjByTeam[fixAbbr(r.team_abbr)] ||= []).push({ name: r.player_name, pos, status: r.status, tier: cq ? cq.tier : null });
+  }
   const allPress = await qSafe(`nfl_team_pressure?order=season.desc&select=team_abbr,season,pressure_rate`);
   const defenseArchetypeByTeam = (function () {
     const latest = allSupp.length ? Math.max(...allSupp.map(r => r.season)) : null;
@@ -1205,7 +1246,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, injuryByName, injuriesByTeam, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, defVsPosByTeam, defVsRoleByTeam, defDirByTeam, plrDirByKey, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, injuriesByTeam, ypcByTeam, secondaryInjByTeam, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, defVsPosByTeam, defVsRoleByTeam, defDirByTeam, plrDirByKey, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };

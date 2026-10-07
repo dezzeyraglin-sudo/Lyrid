@@ -3519,6 +3519,18 @@
 .nflx-game-chev{color:var(--text-muted);transition:transform var(--duration-fast)}
 .nflx-game[open] .nflx-game-chev{transform:rotate(90deg)}
 .nflx-game-body{padding:var(--space-4)}
+.nflx-verdict{border-radius:8px;padding:8px 12px;margin:8px 0;font-size:var(--size-body-sm)}
+.nflx-verdict.play{background:var(--data-positive-surface,#e9f7ef);border:1px solid var(--data-positive);color:var(--text-primary)}
+.nflx-verdict.pass{background:var(--surface-muted);border:1px solid var(--border-hairline);color:var(--text-secondary)}
+.nflx-verdict-sub{font-size:var(--size-caption);color:var(--text-muted);margin-top:2px}
+.nflx-case{margin:6px 0;font-size:var(--size-caption)}
+.nflx-case-h{font-weight:var(--weight-semibold);margin-bottom:2px}
+.nflx-case.pro .nflx-case-h{color:var(--data-positive)}
+.nflx-case.con .nflx-case-h{color:var(--data-negative)}
+.nflx-case.neu .nflx-case-h{color:var(--text-secondary)}
+.nflx-case-i{color:var(--text-secondary);padding:1px 0 1px 10px;position:relative}
+.nflx-case-i:before{content:'\2022';position:absolute;left:0;color:var(--text-muted)}
+.nflx-knows{margin-top:8px;padding-top:6px;border-top:1px solid var(--border-hairline);font-size:var(--size-caption);color:var(--text-muted)}
 .nflx-dvp{margin-bottom:10px;border:1px solid var(--border-hairline);border-radius:8px}
 .nflx-dvp summary{cursor:pointer;list-style:none;padding:8px 12px;font-size:var(--size-caption);font-weight:var(--weight-medium);color:var(--text-secondary)}
 .nflx-dvp summary::-webkit-details-marker{display:none}
@@ -17501,9 +17513,10 @@ function renderHistory() {
       // Projections are MEDIANS and yardage is right-skewed, so mean bias reads 'low' even for a correct
       // median. The fair median check: how often does the actual land above the number? (50% = calibrated)
       const aboveP = g.filter(e => Number(e.actual) > Number(e.projection)).length / g.length;
+      const tieP = g.filter(e => Number(e.actual) === Number(e.projection)).length / g.length;
       const aboveL = g.filter(e => Number(e.actual) > Number(e.line)).length / g.length;
       const shifted = [5, 10, 15].map(k => `+${k}: \u00b1${(g.reduce((s, e) => s + Math.abs(Number(e.projection) + k - Number(e.actual)), 0) / g.length).toFixed(1)}`).join(' ');
-      return `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(label)}</span><span class="rollup-prop-vol">Lyrid: miss \u00b1${mae.toFixed(1)} (median ${med.toFixed(0)}), bias ${bias > 0 ? '+' : ''}${bias.toFixed(1)}, actual above ${(aboveP * 100).toFixed(0)}% \u00b7 Line: miss \u00b1${lineMae.toFixed(1)}, bias ${lineBias > 0 ? '+' : ''}${lineBias.toFixed(1)}, actual above ${(aboveL * 100).toFixed(0)}% \u00b7 n=${g.length}</span></div>` +
+      return `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(label)}</span><span class="rollup-prop-vol">Lyrid: miss \u00b1${mae.toFixed(1)} (median ${med.toFixed(0)}), bias ${bias > 0 ? '+' : ''}${bias.toFixed(1)}, actual above ${(aboveP * 100).toFixed(0)}% (ties ${(tieP * 100).toFixed(0)}%) \u00b7 Line: miss \u00b1${lineMae.toFixed(1)}, bias ${lineBias > 0 ? '+' : ''}${lineBias.toFixed(1)}, actual above ${(aboveL * 100).toFixed(0)}% \u00b7 n=${g.length}</span></div>` +
              `<div class="rollup-tier-note" style="margin:-2px 0 8px 0">research only \u2014 if Lyrid were shifted up: ${shifted}. Not used for picks.</div>`;
     };
     const famCal = [['RUSHING', 'rushing_yards'], ['RECEIVING', 'receiving_yards'], ['PASSING', 'passing_yards'], ['RUSH + REC', 'rush_rec_yards'], ['PASS + RUSH', 'pass_rush_yards']];
@@ -17513,15 +17526,20 @@ function renderHistory() {
       return t != null && lg != null ? (5 * t + lg) / 6 : (t != null ? t : lg); };
     const BUCKETS = [[15, 1e9, '+15 or more'], [10, 15, '+10 to +14.9'], [5, 10, '+5 to +9.9'], [-5, 5, '-4.9 to +4.9'], [-10, -5, '-5 to -9.9'], [-15, -10, '-10 to -14.9'], [-1e9, -15, '-15 or lower']];
     const baseRows = [['RECEIVING', 'receiving_yards'], ['RUSHING', 'rushing_yards']].map(([lbl, fam]) => {
-      const g = all.filter(e => e.propType === fam && e.graded && nflRealLine(e) && e.actual != null && e.projection != null && baseOf(e) != null);
-      if (!g.length) return `<div class="rollup-prop-row"><span class="rollup-prop-name">${lbl}</span><span class="rollup-prop-vol">no Week 5+ picks with a recorded baseline yet</span></div>`;
+      const g0 = all.filter(e => e.propType === fam && e.graded && nflRealLine(e) && e.actual != null && e.projection != null && baseOf(e) != null);
+      // Only baselines built from 5+ prior games. A 2-game 'average' is not comparable, so thin or
+      // unknown-count baselines are excluded and reported, never quietly mixed in.
+      const g = g0.filter(e => Number(e.snapshot.baseline.games) >= 5);
+      const thin = g0.length - g.length;
+      const thinNote = thin ? `<div class="rollup-tier-note" style="margin:-2px 0 8px 0">${lbl}: ${thin} pick${thin === 1 ? '' : 's'} excluded (baseline from fewer than 5 games, or count not recorded)</div>` : '';
+      if (!g.length) return thinNote + `<div class="rollup-prop-row"><span class="rollup-prop-name">${lbl}</span><span class="rollup-prop-vol">no Week 5+ picks with a recorded baseline yet</span></div>`;
       return BUCKETS.map(([lo, hi, name]) => {
         const s = g.filter(e => { const d = Number(e.projection) - baseOf(e); return d >= lo && d < hi; });
         if (!s.length) return '';
         const aMinusP = s.reduce((x, e) => x + (Number(e.actual) - Number(e.projection)), 0) / s.length;
         const overL = s.filter(e => Number(e.actual) > Number(e.line)).length / s.length;
         return `<div class="rollup-prop-row"><span class="rollup-prop-name">${lbl} \u00b7 Lyrid ${name} vs his avg</span><span class="rollup-prop-vol">A) actual minus Lyrid ${aMinusP > 0 ? '+' : ''}${aMinusP.toFixed(1)} \u00b7 B) over the line ${(overL * 100).toFixed(0)}% \u00b7 n=${s.length}</span></div>`;
-      }).join('');
+      }).join('') + thinNote;
     }).join('');
     const byCalib = calRows ? `<h3 class="rollup-section-title">CALIBRATION \u2014 how reliable are Lyrid's numbers?</h3><div class="rollup-tier-note">Not betting rules. If Lyrid misses by more than the line does, its disagreement with the line isn't information.</div><div class="rollup-prop-list">${calRows}</div>` +
       `<h3 class="rollup-section-title">CALIBRATION #2 \u2014 Lyrid's projection vs the player's own recent average (Week 5+)</h3><div class="rollup-tier-note">Weeks 1\u20134 suggested players Lyrid projects well BELOW their own average beat its number (+13.5 yds, receivers). Frozen here and tested on new games only. A asks whether Lyrid's number is wrong; B asks whether the LINE is beatable \u2014 a player can beat Lyrid and still lose the prop.</div><div class="rollup-prop-list">${baseRows}</div>` : '';
@@ -24664,6 +24682,70 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     return '<span class="nflx-chip inj">\u2695 ' + esc(inj.status === 'out' ? 'OUT' : (inj.statusRaw || 'Q')) + '</span>';
   }
 
+  // ---- Card helpers: verdict / case for / case against / what Lyrid knows ----
+  var _nflMissMemo = { n: -1, by: {} };
+  function nflFamilyMiss(propType) {
+    // Lyrid's typical miss vs the line's, per family, from the user's own graded history (real lines only).
+    var hist = (window.state && state.nflPropHistory) || (typeof state !== 'undefined' && state.nflPropHistory) || {};
+    var all = []; Object.keys(hist).forEach(function (d) { var day = hist[d] || {}; Object.keys(day).forEach(function (k) { all.push(day[k]); }); });
+    if (_nflMissMemo.n !== all.length) {
+      var by = {};
+      all.forEach(function (e) {
+        if (!e || !e.graded || e.actual == null || e.projection == null || !nflRealLine(e)) return;
+        var b = by[e.propType] || (by[e.propType] = { n: 0, pm: 0, lm: 0 });
+        b.n++; b.pm += Math.abs(Number(e.projection) - Number(e.actual)); b.lm += Math.abs(Number(e.line) - Number(e.actual));
+      });
+      _nflMissMemo = { n: all.length, by: by };
+    }
+    var r = _nflMissMemo.by[propType];
+    return (r && r.n >= 15) ? { lyrid: r.pm / r.n, line: r.lm / r.n, n: r.n } : null;
+  }
+  var NFL_KNOWS = {
+    rushing_yards: 'Rushing is the one family where Lyrid has shown real information.',
+    receiving_yards: 'Lyrid\u2019s receiving numbers haven\u2019t beaten the line in testing. Lines set below a player\u2019s recent average went over only 50%.',
+    passing_yards: 'Passing isn\u2019t proven. On real lines, Lyrid\u2019s disagreement with the line hasn\u2019t predicted results.',
+    rush_rec_yards: 'Rush + rec combos have lost (~40%). Not featured.',
+    pass_rush_yards: 'Pass + rush combos have lost. Not featured.'
+  };
+  function nflCardBody(item) {
+    var v = item.verdict || {}, f = item.featured || {}, mn = item.matchupNotes || {};
+    var pt = item.propType || ({ 'Passing Yards': 'passing_yards', 'Rushing Yards': 'rushing_yards', 'Receiving Yards': 'receiving_yards', 'Pass + Rush Yards': 'pass_rush_yards', 'Rush + Rec Yards': 'rush_rec_yards' })[item.propLabel] || '';
+    // VERDICT — "play" only when a proven rule fires
+    var verdict;
+    if (f.ok === true) {
+      var m = /(\d+)-(\d+)\s*\((\d+)%\)/.exec(String(f.why || ''));
+      verdict = '<div class="nflx-verdict play"><b>PLAY: ' + (f.side === 'under' ? 'UNDER' : 'OVER') + '</b> \u2014 proven rule<div class="nflx-verdict-sub">' + esc(f.why || '') + '</div></div>';
+    } else {
+      verdict = '<div class="nflx-verdict pass"><b>No proven edge \u2014 pass</b>' + (f.why ? '<div class="nflx-verdict-sub">' + esc(f.why) + '</div>' : '') + '</div>';
+    }
+    // CASE FOR THE OVER / UNDER — engine drivers, plus the two matchup notes
+    var pro = [], con = [], neu = [];
+    ((item.card && item.card.explanations) || []).slice(0, 6).forEach(function (e) {
+      var t = '<b>' + esc(e.label) + '</b> ' + esc(e.text);
+      (e.dir === '+' ? pro : (e.dir === '-' ? con : neu)).push(t);
+    });
+    if (mn.oppYpc && mn.oppYpc.ypc != null) {
+      var y = mn.oppYpc, txt = '<b>Run defense</b> ' + esc(item.opponent || 'Opponent') + ' allows ' + y.ypc.toFixed(1) + ' YPC (' + y.rank + nflOrd(y.rank) + ' stingiest of ' + y.of + (y.lg != null ? '; league ' + y.lg.toFixed(1) : '') + ')';
+      if (y.lg != null && y.ypc >= y.lg + 0.2) pro.push(txt); else if (y.lg != null && y.ypc <= y.lg - 0.2) con.push(txt); else neu.push(txt);
+    }
+    if (mn.oppSecondary) {
+      var hurt = mn.oppSecondary.filter(function (d) { return d.status === 'out' || d.status === 'doubtful'; });
+      var q = mn.oppSecondary.filter(function (d) { return d.status !== 'out' && d.status !== 'doubtful'; });
+      var fmt = function (d) { return esc(d.name) + ' (' + esc(d.pos) + (d.tier ? ', ' + esc(String(d.tier).replace('_', ' ')) : '') + ') \u2014 ' + esc(d.status); };
+      if (hurt.length) pro.push('<b>Secondary injuries</b> ' + hurt.map(fmt).join('; '));
+      if (q.length) neu.push('<b>Secondary, questionable</b> ' + q.map(fmt).join('; '));
+      if (!mn.oppSecondary.length) neu.push('<b>Secondary</b> no ' + esc(item.opponent || 'opponent') + ' corners or safeties on the injury report');
+    }
+    var list = function (title, arr, cls) { return arr.length ? '<div class="nflx-case ' + cls + '"><div class="nflx-case-h">' + title + '</div>' + arr.map(function (x) { return '<div class="nflx-case-i">' + x + '</div>'; }).join('') + '</div>' : ''; };
+    var cases = list('Case for the over', pro, 'pro') + list('Case for the under', con, 'con') + list('Matchup', neu, 'neu');
+    // WHAT LYRID KNOWS — family status + measured typical miss vs the line
+    var miss = nflFamilyMiss(pt);
+    var knows = (NFL_KNOWS[pt] || '') + (pt === 'rushing_yards' && f.ok !== true ? ' This prop doesn\u2019t meet the proven rule (model 15+ yds below the line).' : '') +
+      (miss ? ' Typical miss: Lyrid \u00b1' + miss.lyrid.toFixed(0) + ' yds, the line \u00b1' + miss.line.toFixed(0) + ' (' + miss.n + ' graded).' : '') +
+      ' Defense rankings and injuries are context only \u2014 matchup ratings didn\u2019t predict results in weeks 1\u20134.';
+    return verdict + cases + '<div class="nflx-knows"><b>What Lyrid knows</b> ' + knows + '</div>';
+  }
+  function nflOrd(n) { var s = ['th', 'st', 'nd', 'rd'], v = n % 100; return s[(v - 20) % 10] || s[v] || s[0]; }
   function renderPropCard(item){
     var v=item.verdict||{}, c=item.comp||{}, f=v.filters||{};
     var _inj=nflInjuryFor(item); var _rawTier=v.tier_candidate||'none'; var tier=nflInjCapTier(_rawTier,_inj); var noPlay=tier==='none'; var _injCapped=(_rawTier!=='none' && tier!==_rawTier);
@@ -24685,12 +24767,11 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var why = (item.card && item.card.summary) ? '<div class="nflx-why">' + esc(item.card.summary) + '</div>' : '';
     return '<div class="nflx-prop">' +
       '<div class="nflx-prop-top"><div><div class="nflx-prop-name">' + esc(item.player||'') + '</div>' +
-        '<div class="nflx-pick-line"><span class="nflx-dir ' + (isUnder?'down':(dir + (noPlay?' muted':''))) + '">' + (isUnder?'Lower':(dir==='up'?'Higher':'Lower')) + '</span> <span class="nflx-prop-market">' + esc(item.propLabel||'') + '</span> <span class="nflx-linev">' + esc(v.line) + '</span></div></div>' +
+        '<div class="nflx-pick-line">' + ((item.featured && item.featured.ok === true) ? '<span class="nflx-dir ' + (item.featured.side === 'under' ? 'down' : 'up') + '">' + (item.featured.side === 'under' ? 'Lower' : 'Higher') + '</span> ' : '') + '<span class="nflx-prop-market">' + esc(item.propLabel||'') + '</span> <span class="nflx-linev">' + esc(v.line) + '</span></div></div>' +
         '<div class="nflx-prop-sub">' + esc(item.position||'') + (item.position&&item.team?' \u00b7 ':'') + esc(item.team||'') + (item.opponent?' vs ' + esc(item.opponent):'') + '</div></div>' +
       nflCappedBanner(item) + nflInjuryBanner(item) +
       projTrack(c, v.line) +
-      '<div class="nflx-metarow">' + nflPctHtml(item) + chips + '</div>' +
-      filters + (isUnder ? '<div class="nflx-blocked" style="color:var(--data-warning);background:var(--data-warning-surface)">Take the <b>UNDER</b> \u2014 still testing. Model projects ' + Math.round(c.median) + ' vs line ' + esc(v.line) + ', ceiling (p75) ' + Math.round(v.underPlay.ceiling) + ' stays contained. Unvalidated \u2014 logged to build the unders record, not yet a rated play.</div>' : blocked) + drivers + why +
+      (_injMsg ? '<div class="nflx-blocked">' + _injMsg + '</div>' : '') + nflCardBody(item) +
     '</div>';
   }
   window.renderNflCard = renderPropCard; // back-compat alias
