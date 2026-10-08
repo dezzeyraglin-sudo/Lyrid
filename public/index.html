@@ -25089,6 +25089,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         dataCompleteness: (p.dataCompleteness != null) ? p.dataCompleteness : null,
         lineSource: 'provided', capturedAt: new Date().toISOString(),
         snapshot: snap,                       // known at capture: own status, teammates on the injury report, spread, total
+        engineRev: p.engineRev || null,       // which engine version produced this projection
         lineLatest: Number(v.line), lineLatestAt: new Date().toISOString(), snapshotLatest: snap,
         actual: null, result: null, error: null, graded: false
       };

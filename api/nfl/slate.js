@@ -28,6 +28,11 @@ import {
   getAltLinesDropped, clearAltLinesDropped,
 } from '../../lib/nfl/nflLineAdapters.js';
 
+// Engine revision stamped on every pick so graded history never mixes projections from different
+// engine versions. Bump this whenever projection math changes.
+//   r2026.10.08 — removed the asymmetric pass-game recalibration (receiving/passing medians change).
+const ENGINE_REV = 'r2026.10.08';
+
 const PP_URL = 'https://partner-api.prizepicks.com/projections?league_id=9&per_page=1000';
 const PROP_LABEL = {
   passing_yards: 'Passing Yards', rushing_yards: 'Rushing Yards',
@@ -356,6 +361,7 @@ export default async function handler(req, res) {
       oppPosCoverage: ctx.oppPosCoverage || null,
       oppPace: ctx.oppPace || null,
       snapshot: ctx.snapshot || null,
+      engineRev: ENGINE_REV,
       matchupNotes: ctx.matchupNotes || null,
       roleMatchup: ctx.roleMatchup || null,
       directionalEdge: ctx.directionalEdge || null,
