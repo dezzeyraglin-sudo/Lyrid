@@ -1,23 +1,31 @@
-name: gameday-recency-builds
-# Keeps every RECENCY signal current before each slate: injuries, QB form, defense form.
-# These go stale week to week and the gate silently serves old data if they aren't refreshed —
-# so they run automatically. Seasonal builds (coverage_quality, matchup_history) stay manual.
-#
-# Times are UTC (GitHub cron has no DST) and set EARLY so a run always lands BEFORE kickoff even
-# with GitHub's 5-15 min scheduling lag. Adjust if your slate times differ.
+name: lyrid-nfl-builds
+# All NFL data builds run through ONE script, data/nfl/refresh_all.py, which owns the order and the
+# arguments. Local and automated runs are identical: `python3 data/nfl/refresh_all.py`.
+#   recency (Thu/Sun/Mon)  injuries, QB form, defense form/pace, defense-vs-position — fresh before each slate
+#   season  (Tuesday)      player games -> env -> feature vectors -> defense/team tiers, after games are final
+# Run by hand anytime: GitHub -> Actions -> lyrid-nfl-builds -> Run workflow (pick both / recency / season).
 on:
   schedule:
-    - cron: '0 12 * * 4'   # Thu 12:00 UTC (~7-8am ET) — before Thursday Night Football
-    - cron: '0 12 * * 0'   # Sun 12:00 UTC (~7-8am ET) — before the early Sunday slate
-    - cron: '0 19 * * 1'   # Mon 19:00 UTC (~2-3pm ET) — refresh before Monday Night Football
-  workflow_dispatch: {}    # manual "Run workflow" button in the Actions tab
+    - cron: '0 12 * * 4'   # Thu ~7-8am ET  — recency, before Thursday Night Football
+    - cron: '0 12 * * 0'   # Sun ~7-8am ET  — recency, before the Sunday slate
+    - cron: '0 19 * * 1'   # Mon ~2-3pm ET  — recency, before Monday Night Football
+    - cron: '0 14 * * 2'   # Tue ~9-10am ET — season, after the week's games are final
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'which builds to run'
+        required: false
+        default: 'both'
+        type: choice
+        options: [both, recency, season]
 
 concurrency:
-  group: gameday-recency
+  group: lyrid-nfl-builds
   cancel-in-progress: false
 
 jobs:
-  build:
+  recency:
+    if: (github.event_name == 'schedule' && github.event.schedule != '0 14 * * 2') || (github.event_name == 'workflow_dispatch' && inputs.job != 'season')
     runs-on: ubuntu-latest
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -25,33 +33,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install deps
-        run: pip install --quiet pandas numpy requests pyarrow
+        with: { python-version: '3.11' }
+      - run: pip install --quiet pandas numpy requests pyarrow
+      - name: Recency builds
+        run: python3 data/nfl/refresh_all.py --only recency
 
-      # Each build runs even if a prior one fails, so one bad source doesn't skip the others.
-      # But the job still FAILS at the end if any step failed (see the gate) — so GitHub emails you.
-      - name: Injuries
-        id: inj
-        continue-on-error: true
-        run: python3 data/nfl/ingest_injuries.py
-
-      - name: QB form
-        id: qb
-        continue-on-error: true
-        run: python3 data/nfl/build_qb_form.py --window 8 --min-games 4
-
-      - name: Defense form
-        id: def
-        continue-on-error: true
-        run: python3 data/nfl/build_defense_form.py --window 4
-
-      # Fail loudly if ANY build did not succeed — a silent stale gate is the whole risk we're
-      # removing. Check for != 'success' (not == 'failure'): a skipped/cancelled step also means the
-      # data didn't land, and this phrasing resolves reliably for continue-on-error steps.
-      - name: Fail if any build did not succeed
-        if: steps.inj.outcome != 'success' || steps.qb.outcome != 'success' || steps.def.outcome != 'success'
-        run: |
-          echo "::error::A recency build did not succeed — injuries=${{ steps.inj.outcome }} qb=${{ steps.qb.outcome }} defense=${{ steps.def.outcome }}"
-          exit 1
+  season:
+    if: (github.event_name == 'schedule' && github.event.schedule == '0 14 * * 2') || (github.event_name == 'workflow_dispatch' && inputs.job != 'recency')
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install --quiet pandas numpy requests pyarrow
+      - name: Season builds (player games -> env -> feature vectors -> tiers)
+        run: python3 data/nfl/refresh_all.py --only season
