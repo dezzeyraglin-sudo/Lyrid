@@ -17543,6 +17543,20 @@ function renderHistory() {
     }).join('');
     const byCalib = calRows ? `<h3 class="rollup-section-title">CALIBRATION \u2014 how reliable are Lyrid's numbers?</h3><div class="rollup-tier-note">Not betting rules. If Lyrid misses by more than the line does, its disagreement with the line isn't information.</div><div class="rollup-prop-list">${calRows}</div>` +
       `<h3 class="rollup-section-title">CALIBRATION #2 \u2014 Lyrid's projection vs the player's own recent average (Week 5+)</h3><div class="rollup-tier-note">Weeks 1\u20134 suggested players Lyrid projects well BELOW their own average beat its number (+13.5 yds, receivers). Frozen here and tested on new games only. A asks whether Lyrid's number is wrong; B asks whether the LINE is beatable \u2014 a player can beat Lyrid and still lose the prop.</div><div class="rollup-prop-list">${baseRows}</div>` : '';
+    // LINE MOVEMENT — closing-line proxy. First line vs the latest line seen before the game. A move
+    // toward Lyrid's side (up after an OVER lean, down after an UNDER lean) means the market came to
+    // Lyrid after it picked. Measurable before grading. Week 5+ only (needs lineLatest from the snapshot era).
+    const moveRow = (label, list) => {
+      const m = list.filter(e => e.snapshot && e.lineLatest != null && e.line != null && Number(e.lineLatest) !== Number(e.line) && nflRealLine(e));
+      const seen = list.filter(e => e.snapshot && e.lineLatest != null).length;
+      if (!m.length) return `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(label)}</span><span class="rollup-prop-vol">${seen ? `no line moves yet (${seen} tracked)` : 'no tracked picks yet'}</span></div>`;
+      const toward = m.filter(e => (e.lean === 'OVER') === (Number(e.lineLatest) > Number(e.line))).length;
+      const avg = m.reduce((s, e) => s + Math.abs(Number(e.lineLatest) - Number(e.line)), 0) / m.length;
+      return `<div class="rollup-prop-row"><span class="rollup-prop-name">${esc(label)}</span><span class="rollup-prop-rate ${rateClass(toward / m.length)}">${fmtRate(toward / m.length)}</span><span class="rollup-prop-vol">moved toward Lyrid ${toward}/${m.length} \u00b7 avg move ${avg.toFixed(1)} yds \u00b7 ${seen} tracked</span></div>`;
+    };
+    const byMove = `<h3 class="rollup-section-title">LINE MOVEMENT \u2014 did the market move toward Lyrid?</h3><div class="rollup-tier-note">First line Lyrid saw vs the latest line seen before kickoff. Above 50% suggests Lyrid is ahead of the market; near 50% means it isn't. Updates each time the board is opened before the game, so open it near kickoff for the best read.</div><div class="rollup-prop-list">` +
+      moveRow('PROVEN picks', all.filter(e => e.proven)) +
+      [['RUSHING', 'rushing_yards'], ['RECEIVING', 'receiving_yards'], ['PASSING', 'passing_yards']].map(([l, t]) => moveRow(l + ' (all leans)', all.filter(e => e.propType === t))).join('') + `</div>`;
     const researchHdr = `<h3 class="rollup-section-title" style="margin-top:18px">REFERENCE ONLY \u2014 no edge</h3><div class="rollup-tier-note">Older breakdowns kept for research. Nothing below is a betting signal.</div>`;
     const byCapped = sliceTable('CAPPED-OPPORTUNITY WATCH (committee/rotational)', 'These are logged as overs. A LOW win% here means capped-role players systematically go UNDER — which would make the under a real, earned signal (unlike the median-only unders we pulled). Needs sample before it graduates from flag to play.', [
       { label: 'CAPPED PICKS (as over)', stats: computeNflPropStats(all.filter(e => e.capped)) },
@@ -17554,7 +17568,7 @@ function renderHistory() {
     const pending = all.filter(e => !e.graded).sort((a, b) => ((b.edge ?? 0) - (a.edge ?? 0)));
     container.innerHTML = subnavHtml + statsBar +
       `<div class="rollup-tier-note" style="margin:10px 0">Only the PROVEN rule is a betting signal. Everything else is research. Graded off ESPN box scores.</div>` +
-      byProven + byWatch + byCalib + researchHdr + byTier + byMarket + byLean + byCapped +
+      byProven + byWatch + byCalib + byMove + researchHdr + byTier + byMarket + byLean + byCapped +
       (pending.length ? `<h3 class="rollup-section-title">PENDING (${pending.length})</h3><div class="rollup-prop-list">${pending.slice(0, 40).map(row).join('')}</div>` : '') +
       (graded.length ? `<h3 class="rollup-section-title">GRADED (${graded.length})</h3><div class="rollup-prop-list">${graded.slice(0, 60).map(row).join('')}</div>` : '');
     return;
@@ -19993,6 +20007,9 @@ async function autoGradeOnAppOpen() {
 
   try { if (typeof window.gradeNflProps === 'function') await window.gradeNflProps({ silent: true }); }
   catch(err) { console.warn('[autoGrade] nfl props failed:', (err&&err.message)||err); }
+  // NFL game totals were logged every slate but never graded (nothing called the grader).
+  try { if (typeof window.gradeNflTotals === 'function') await window.gradeNflTotals(); }
+  catch(err) { console.warn('[autoGrade] nfl totals failed:', (err&&err.message)||err); }
   try { if (typeof window.gradeWnbaProps === 'function') await window.gradeWnbaProps({ silent: true }); }
   catch(err) { console.warn('[autoGrade] wnba props failed:', err.message); }
 
@@ -24750,11 +24767,10 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var v=item.verdict||{}, c=item.comp||{}, f=v.filters||{};
     var _inj=nflInjuryFor(item); var _rawTier=v.tier_candidate||'none'; var tier=nflInjCapTier(_rawTier,_inj); var noPlay=tier==='none'; var _injCapped=(_rawTier!=='none' && tier!==_rawTier);
     var pAdj = pAdjOf(v)||0, dir = v.pick==='lower'?'down':'up';
-    var isUnder = !!(v.underPlay && v.underPlay.call);
     var _lbl = nflDisplayLabel(item);
     var chips = noPlay ? '<span class="nflx-chip prov">No play</span>'
       : (_lbl ? '<span class="nflx-chip ' + _lbl.cls + '">' + _lbl.text + '</span><span class="nflx-chip prov">provisional \u00b7 small sample</span>' : '<span class="nflx-chip prov">tracked</span>');
-    if (nflBoom(item) && !isUnder) chips += '<span class="nflx-chip ceiling">\u25C7 ceiling</span>';
+    if (nflBoom(item)) chips += '<span class="nflx-chip ceiling">\u25C7 ceiling</span>';
     var filt = function(l,ok){ return '<span class="nflx-filt ' + (ok?'pass':'fail') + '"><span class="dot">' + (ok?'\u2713':'\u2715') + '</span>' + l + '</span>'; };
     var filters = '<div class="nflx-filters">' + filt('Soft line', f.softLine) + filt('Volume-secure', f.volumeSecure) + filt('Script-clear', f.scriptClear) + '</div>';
     var _injMsg = _injCapped ? ('injury risk \u2014 listed ' + esc(_inj.statusRaw||_inj.status) + (_inj.detail?(' ('+esc(_inj.detail)+')'):'') + '; soft line likely prices reduced volume') : '';
@@ -25182,7 +25198,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 
 // Stats roll-up over a list of graded NFL entries (mirrors computeWnbaPropStats).
 var NFL_LINE_FLOOR = { passing_yards: 100, pass_rush_yards: 100, rushing_yards: 6, receiving_yards: 6, rush_rec_yards: 10 };
-function nflRealLine(e) { return e && Number(e.line) >= (NFL_LINE_FLOOR[e.propType] || 0); }
+function nflRealLine(e) { return e && !e.excluded && Number(e.line) >= (NFL_LINE_FLOOR[e.propType] || 0); }   // excluded = marked non-standard (cleanup patch)
 function computeNflPropStats(entries) {
   entries = (entries || []).filter(nflRealLine);   // placeholder/promo lines are not real markets
   var graded = entries.filter(function (e) { return e.graded && (e.result === 'win' || e.result === 'loss'); });

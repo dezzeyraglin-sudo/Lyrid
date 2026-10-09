@@ -30,8 +30,10 @@ import {
 
 // Engine revision stamped on every pick so graded history never mixes projections from different
 // engine versions. Bump this whenever projection math changes.
-//   r2026.10.08 — removed the asymmetric pass-game recalibration (receiving/passing medians change).
-const ENGINE_REV = 'r2026.10.08';
+//   r2026.10.08  — removed the asymmetric pass-game recalibration (receiving/passing medians change).
+//   r2026.10.08b — removed the coverage-quality adjustment (receiving, rush+rec) and limited the
+//                  defense-archetype shave to rushing. Receiving/passing medians are now the raw comp median.
+const ENGINE_REV = 'r2026.10.08b';
 
 const PP_URL = 'https://partner-api.prizepicks.com/projections?league_id=9&per_page=1000';
 const PROP_LABEL = {
@@ -1390,115 +1392,8 @@ function computeFeatured(result, ctx) {
   };
 }
 
-// Previous matchup-tier gate. Kept for reference; NOT called. Its filters were never validated
-// against graded outcomes, so they don't gate the card.
-function computeFeaturedLegacy(result, ctx) {
-  const v = result.verdict, fam = ctx.propFamily;
-  if (!v || !v.tier_candidate || v.tier_candidate === 'none') {
-    // Explain WHY there's no edge (not just 'no tier') — a repeated generic line reads as broken.
-    const c = result.comp || {}, soft = c.lineSoftness, ln = v ? v.line : null, med = c.median;
-    let why = 'no model edge on this line';
-    if (soft != null && med != null && ln != null) {
-      if (soft <= -3) why = `model projects UNDER (${med} vs ${ln}) — no over here`;
-      else if (soft < 2) why = `line sits right at the model (${med} vs ${ln}) — too tight for an edge`;
-      else why = `only a slight lean (+${soft}) — below the edge bar`;
-    }
-    return { ok: false, why };
-  }
-  if (v.stale) return { ok: false, why: 'stale role — not featured' };
-  // Directive: never feature stale or rotational players. Committee RBs and rotational WRs are held
-  // regardless of matchup — their floor is too capped to be a proven edge.
-  { const arch = result.volume && result.volume.archetype;
-    if (arch === 'rotational') return { ok: false, why: 'rotational role — not featured (capped floor)' };
-    if ((ctx.propFamily === 'rushing_yards' || ctx.propFamily === 'rush_rec_yards') && arch === 'committee')
-      return { ok: false, why: 'committee back — not featured (capped floor)' }; }
-  const dc = result.dataCompleteness;
-  if (dc != null && dc < 0.6) return { ok: false, why: 'thin data — not featured' };
-  if (COMBO_FAMS.has(fam)) return { ok: false, why: 'combo family — losing (~40%), not featured' };
-  const tier = ctx.oppDefTier || {};
-  const vol = (result.signals && result.signals.volume) || {};
-  const d = vol.detail || {}, arch = vol.archetype;
-  const pos = String(ctx.position || '').toUpperCase();
-  const script = (result.signals && result.signals.script) || {};
-  const supportive = script.side === 'favored' || (script.side !== 'underdog' && !script.flag);
-
-  if (fam === 'passing_yards') {
-    // Single-stat passing OVER — validated ~62% (Wk1-2), the tool's #2 edge. The QB stand-down
-    // was over-generalized from one game; the competent-QB gate below is what actually protects
-    // against the SF@LAR-type busts (raw/backup QBs), so we feature passing overs behind a
-    // competent, high-volume starter and let the gate exclude the Cam Ward / Cooper Rush cases.
-    if (ctx.qbCompetent && ctx.qbCompetent.competent === false) return { ok: false, why: 'QB risk — ' + (ctx.qbCompetent.reason || 'backup/unproven QB') };
-    const secure = arch === 'high_volume_passer' || arch === 'mid_volume_passer' || (v.filters && v.filters.volumeSecure);
-    if (!secure) return { ok: false, why: 'QB volume not secure' };
-    // THE EDGE: passing overs hit vs SOFT pass D, die vs elite. Feature only in the soft matchup.
-    switch (formBlend(tier.pass_d === 'soft_pass_d', tier.pass_d === 'elite_pass_d', ctx.oppDefForm && ctx.oppDefForm.pass)) {
-      case 'feature': {
-        const pace = ctx.oppPace, env = ctx.gameEnv;
-        if (pace && pace.volumeTier === 'low_volume') return { ok: false, why: `soft pass D but LOW pass volume faced (${pace.passAttPg != null ? pace.passAttPg.toFixed(0)+' att/g' : 'run-heavy'}) — too few attempts for a clean passing over` };
-        var extra = (pace && pace.volumeTier === 'high_volume' ? ' + high volume' : '') + (env && env.pass_friendly ? ' + dome' : '');
-        return { ok: true, why: 'passing over vs SOFT pass D' + (ctx.oppDefForm && ctx.oppDefForm.pass === 'soft' ? ' (soft lately too)' : '') + extra + ' — competent QB (matchup edge)' };
-      }
-      case 'fade':    return { ok: false, why: 'elite pass D — passing overs fade here (fade/under spot)' };
-      case 'conflict':return { ok: false, why: 'mixed signal — season vs recent pass-D form disagree; not a clean edge' };
-      default:        return { ok: false, why: 'neutral pass-D matchup — passing over not a proven edge here' };
-    }
-  }
-  if (fam === 'receiving_yards') {
-    // TEs don't feature — target-fragile, first read to vanish when the QB locks onto WRs
-    // or the script tightens (Loveland 0 targets behind a raw QB).
-    if (pos === 'TE') return { ok: false, why: 'TEs not featured (target-fragile)' };
-    // WR1 AND WR2 qualify (stable role); WR3 / slot / boom-bust do not.
-    const stableWR = arch === 'volume_possession' || (d.tsMean != null && d.tsMean >= 0.15 && d.tsCv != null && d.tsCv <= 0.50);
-    if (!stableWR) return { ok: false, why: 'target share not stable enough (WR3/boom-bust)' };
-    // a backup / unproven QB sinks the whole receiving corps — competent QB required
-    if (ctx.qbCompetent && ctx.qbCompetent.competent === false) return { ok: false, why: 'QB risk — ' + (ctx.qbCompetent.reason || 'backup/unproven QB') };
-    // #2 coverage is now a PROJECTION nudge (nflAnalyze scales the median by the matched corner's
-    // real coverage quality), not a binary drop — so a WR vs an elite corner whose ADJUSTED number
-    // still clears the line can feature. The near-median/soft-line gate keys off the adjusted proj.
-    // THE EDGE — position-split: feature vs a defense SOFT against THIS receiver's position (a D can
-    // be elite vs outside WRs but soft vs the slot/TE). Uses the per-position tier when available,
-    // else the team-wide pass_d tier. Elite-vs-this-position = fade/under; neutral = not featured.
-    const pc = ctx.oppPosCoverage, form = ctx.oppDefForm;
-    const posLabel = String(ctx.position || 'receiver');
-    const soft = pc ? pc.tier === 'soft' : tier.pass_d === 'soft_pass_d';
-    const elite = pc ? pc.tier === 'elite' : tier.pass_d === 'elite_pass_d';
-    const yptStr = pc && pc.ypt != null ? ` (${pc.ypt.toFixed(1)} yd/tgt)` : '';
-    switch (formBlend(soft, elite, form && form.pass)) {
-      case 'feature': {
-        const pace = ctx.oppPace, env = ctx.gameEnv;
-        // VOLUME (#3): a soft-D over is stronger where the D faces more pass attempts, weaker in a
-        // low-volume spot. ROOF (#4): a dome/closed roof is mildly pass-friendly (no wind).
-        if (pace && pace.volumeTier === 'low_volume') return { ok: false, why: `soft vs ${posLabel}s but LOW pass volume (${pace.passAttPg != null ? pace.passAttPg.toFixed(0)+' att/g faced' : 'run-heavy opponent'}) — too few chances for a clean over` };
-        var extra = (pace && pace.volumeTier === 'high_volume' ? ` + high volume (${pace.passAttPg != null ? pace.passAttPg.toFixed(0)+' att/g' : 'pass-heavy'})` : '') + (env && env.pass_friendly ? ' + dome (no wind)' : '');
-        return { ok: true, why: `receiving over vs a defense soft vs ${posLabel}s${yptStr}${form && form.pass === 'soft' ? ' — soft lately too' : ''}${extra} (matchup edge)` };
-      }
-      case 'fade':    return { ok: false, why: `defense elite vs ${posLabel}s${yptStr} — receiving over fades here (fade/under)` };
-      case 'conflict':return { ok: false, why: `mixed signal — season vs recent form disagree on this coverage; not a clean edge` };
-      default:        return { ok: false, why: `neutral coverage vs ${posLabel}s — not a proven-edge matchup` };
-    }
-  }
-  if (fam === 'rushing_yards') {
-    // #3 CURRENT depth chart must still show him as the lead — catches a fresh committee/demotion
-    // the historical archetype missed (a bellcow now splitting or dropped to RB2 this week).
-    if (ctx.role && ctx.role.posGroup === 'RB' && (ctx.role.rank || 1) >= 2) return { ok: false, why: 'not the lead back on the current depth chart (committee/demotion)' };
-    // pure rushing needs real carry volume (bellcow / steady)
-    const steady = arch === 'bellcow' || (d.carryMean != null && d.carryMean >= 12 && d.carryCv != null && d.carryCv <= 0.40);
-    if (!steady) return { ok: false, why: 'committee / unsteady carries' };
-    // rushing over FADES vs a stout run D — blend the season read with recent rush form.
-    const rb = formBlend(tier.run_d === 'soft_run_d', tier.run_d === 'stout_run_d', ctx.oppDefForm && ctx.oppDefForm.rush);
-    if (rb === 'fade') return { ok: false, why: 'stout run D — rushing over fades here (fade/under spot)' };
-    if (rb === 'conflict') return { ok: false, why: 'mixed signal — season vs recent run-D form disagree; not a clean edge' };
-    const favorable = rb === 'feature' || (ctx.oppDefWeakness && Number(ctx.oppDefWeakness.run) > 0.5);
-    return (supportive || favorable) ? { ok: true, why: (rb === 'feature' ? 'steady carries + SOFT run D' + (ctx.oppDefForm && ctx.oppDefForm.rush === 'soft' ? ' (lately too)' : '') + ' (matchup edge)' : (supportive ? 'steady carries + supportive script' : 'steady carries + favorable matchup')) }
-                                     : { ok: false, why: 'no supportive script or favorable matchup' };
-  }
-  if (fam === 'rush_rec_yards') {
-    // Combo family — Wk1-2 graded ~40% (worst family). Not featured until it proves out; still
-    // analyzed and shown in the game cards (labeled COMBO · UNPROVEN), just not promoted.
-    return { ok: false, why: 'combo (rush+rec) — unproven family, not featured' };
-  }
-  return { ok: false, why: 'family not featured' };
-}
+// (The previous matchup-tier gate, computeFeaturedLegacy, was removed 2026-10-08: never called,
+//  and its filters were never validated against graded results. It remains in git history.)
 
 // ---- staleness: does the historical baseline still describe this player's situation? ----
 function computeStaleness(base, l, E) {
