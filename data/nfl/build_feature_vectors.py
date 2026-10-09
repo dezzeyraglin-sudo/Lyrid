@@ -63,6 +63,11 @@ def trailing(df, key, col, n=6):
     if col not in df.columns: return pd.Series([np.nan] * len(df), index=df.index)
     return df.groupby(key)[col].transform(lambda s: pd.to_numeric(s, errors='coerce').shift(1).rolling(n, min_periods=2).mean())
 
+def trailing_count(df, key, col, n=6):
+    """How many valid prior games the trailing mean actually used (2..6). A 2-game baseline is not a 6-game one."""
+    if col not in df.columns: return pd.Series([np.nan] * len(df), index=df.index)
+    return df.groupby(key)[col].transform(lambda s: pd.to_numeric(s, errors='coerce').shift(1).rolling(n, min_periods=1).count())
+
 def zstats(series):
     xs = pd.to_numeric(series, errors='coerce').replace([np.inf, -np.inf], np.nan).dropna()
     if len(xs) < 8: return (None, None)
@@ -125,6 +130,9 @@ def build(seasons, persist=False):
     pg['tr_carries'] = trailing(pg, 'player_key', carry_col)
     pg['tr_pass_rush'] = trailing(pg, 'player_key', 'pass_rush_yards')
     pg['tr_rush_rec']  = trailing(pg, 'player_key', 'rush_rec_yards')
+    for _c, _src in [('trn_rec', 'receiving_yards'), ('trn_rush', 'rushing_yards'), ('trn_pass', 'passing_yards'),
+                     ('trn_pass_rush', 'pass_rush_yards'), ('trn_rush_rec', 'rush_rec_yards')]:
+        pg[_c] = trailing_count(pg, 'player_key', _src)
 
     # ---- MILESTONE: trailing cumulative family yards + games left ----
     for fam, col in PROP_COLS.items():
@@ -217,6 +225,7 @@ def build(seasons, persist=False):
                 'milestone_pull': milestone_pull(_safe(r.get('cum_' + fam)), _safe(r.get('games_left')), fam),
                 # labels / diagnostics
                 'trailing_yards': _safe(r.get(yc)),
+                'trailing_games': _safe(r.get('trn_' + yc[3:])),   # how many prior games that average used
                 'outcome_yards': float(r[col]),
             }
             out.append({
@@ -260,8 +269,12 @@ def upsert(df):
         if r.status_code >= 300: print("   ", r.text[:200]); break
 
 if __name__ == '__main__':
-    ap = argparse.ArgumentParser(); ap.add_argument('--seasons', nargs='+', type=int, required=True)
+    ap = argparse.ArgumentParser(); ap.add_argument('--seasons', nargs='+', type=int, default=None)
     ap.add_argument('--dry-run', action='store_true'); a = ap.parse_args()
+    if not a.seasons:
+        # current AND prior season: the 6-game trailing averages are computed after filtering to these
+        # seasons, so current-season-only would give Week 1 a 0-game baseline and Week 3 a 2-game one.
+        import datetime as _dt; _d = _dt.date.today(); _y = _d.year if _d.month >= 3 else _d.year - 1; a.seasons = [_y - 1, _y]
     df = build(a.seasons, persist=not a.dry_run)
     print(f"built {len(df)} context-conditioned feature vectors across {len(a.seasons)} seasons")
     if a.dry_run:
