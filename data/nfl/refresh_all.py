@@ -62,6 +62,8 @@ def plan(y):
         ('season',  'build_team_scoring.py',      ['--seasons', Y],                     True),
         ('season',  'build_team_tendencies.py',   ['--seasons', Y],                     True),
         ('season',  'build_matchup_history.py',   ['--seasons', PP, P, Y],              True),
+        # the matchup report on every prop: team offense / OL / DL / secondary / corners + player profiles
+        ('season',  'build_matchup_profiles.py',  [],                                   True),
         # matchup context for the card — optional until their tables are created
         ('season',  'build_defense_vs_role.py',   [],                                   False),
         ('season',  'build_directional_matchup.py', [],                                 False),

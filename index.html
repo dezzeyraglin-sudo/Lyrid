@@ -3530,6 +3530,20 @@
 .nflx-case.neu .nflx-case-h{color:var(--text-secondary)}
 .nflx-case-i{color:var(--text-secondary);padding:1px 0 1px 10px;position:relative}
 .nflx-case-i:before{content:'\2022';position:absolute;left:0;color:var(--text-muted)}
+.nflx-mr{margin:8px 0;border:1px solid var(--border-hairline);border-radius:8px}
+.nflx-mr summary{cursor:pointer;list-style:none;padding:6px 10px;font-size:var(--size-caption);color:var(--text-secondary)}
+.nflx-mr summary::-webkit-details-marker{display:none}
+.nflx-mr-row{display:grid;grid-template-columns:1fr auto 64px;gap:8px;padding:2px 10px;font-size:var(--size-caption);color:var(--text-secondary)}
+.nflx-mr-row.over .nflx-mr-side{color:var(--data-positive)}
+.nflx-mr-row.under .nflx-mr-side{color:var(--data-negative)}
+.nflx-mr-side{text-align:right;font-family:var(--font-mono)}
+.nflx-mr-player{padding:4px 10px;font-size:var(--size-caption);color:var(--text-secondary)}
+.nflx-mr-note{padding:4px 10px 8px;font-size:11px;color:var(--text-muted)}
+.nflx-mp{border-collapse:collapse;font-size:var(--size-caption);width:100%}
+.nflx-mp th,.nflx-mp td{padding:3px 6px;text-align:right;border-bottom:1px solid var(--border-hairline);white-space:nowrap}
+.nflx-mp td:first-child,.nflx-mp th:first-child{text-align:left;color:var(--text-secondary)}
+.nflx-mp-h td{font-weight:var(--weight-semibold);color:var(--text-primary);padding-top:8px}
+.nflx-mp-rk{font-size:10px;color:var(--text-muted)}
 .nflx-knows{margin-top:8px;padding-top:6px;border-top:1px solid var(--border-hairline);font-size:var(--size-caption);color:var(--text-muted)}
 .nflx-dvp{margin-bottom:10px;border:1px solid var(--border-hairline);border-radius:8px}
 .nflx-dvp summary{cursor:pointer;list-style:none;padding:8px 12px;font-size:var(--size-caption);font-weight:var(--weight-medium);color:var(--text-secondary)}
@@ -17447,7 +17461,7 @@ function renderHistory() {
       const rw = w - best.w, rn = n - best.w - best.l, robust = rn > 0 && rw / rn > 0.5;
       let stat;
       if (n < 40) stat = `TESTING \u00b7 ${n}/40 new picks`;
-      else if (lo > 0.5 && robust) stat = `PASSES statistical test (95% floor ${(lo * 100).toFixed(0)}%, holds without best week)`;
+      else if (lo > 0.5 && robust) stat = `READY TO PROMOTE \u2014 passes the test (95% floor ${(lo * 100).toFixed(0)}%, holds without best week)`;
       else if (p < 0.5) stat = 'NOT HOLDING \u2014 below 50% on new games';
       else stat = `INCONCLUSIVE (95% floor ${(lo * 100).toFixed(0)}%${robust ? '' : ', depends on one week'})`;
       const bet = p >= 0.577 ? 'clears 2-pick Power (57.7%)' : (p >= 0.545 ? 'clears Flex (~54-55%) only' : 'below PrizePicks breakeven');
@@ -17481,7 +17495,8 @@ function renderHistory() {
     // PROVEN EDGE LIVE — the validated rule (rushing, 15+ yd model-line gap) graded only on picks the
     // live card actually featured from Week 5 on. Backtest was 28-12 (70%); this is the out-of-sample truth.
     const byProven = watchTable('PROVEN \u2014 rushing unders, model 15+ yds below line', 'Backtest 18-6 (75%) on standard lines. Counts only picks the live card featured, from Week 5 on. Monitored with the same promotion test; if it stops holding on new games it gets pulled.', [
-      { label: 'live proven picks', entries: all.filter(e => e.proven) },
+      { label: 'rushing unders, model 15+ below line', entries: all.filter(e => e.proven && e.provenRule !== 'matchup_read') },
+      { label: 'matchup read (once promoted)', entries: all.filter(e => e.proven && e.provenRule === 'matchup_read') },
     ]);
     // WATCH LIST — segments that looked promising in weeks 1-4 but are NOT proven. Each is graded on
     // its own side (under or over) regardless of the model's lean, and only on picks logged with a
@@ -17495,6 +17510,8 @@ function renderHistory() {
     const watchFade = list => list.filter(e => e.snapshot && e.graded && e.actual != null && Number(e.actual) !== Number(e.line))
       .map(e => Object.assign({}, e, { result: (e.lean === 'OVER' ? Number(e.actual) < Number(e.line) : Number(e.actual) > Number(e.line)) ? 'win' : 'loss' }));
     const byWatch = watchTable('WATCH \u2014 unproven, grading on new games from Week 5', 'Hypotheses frozen from weeks 1\u20134 and graded ONLY on later games. None is on the card. Promotion needs 40+ new picks, a 95% floor above 50%, and no dependence on one week. With six tested, expect at least one to fade. Never edit a rule using the games currently validating it.', [
+      { label: 'MATCHUP READ: side the ranked factors favor (all props, margin 2+)', entries: all.filter(e => e.snapshot && e.graded && e.matchupLean && (e.matchupLean.lean === 'OVER' || e.matchupLean.lean === 'UNDER') && e.actual != null && Number(e.actual) !== Number(e.line))
+          .map(e => Object.assign({}, e, { result: (e.matchupLean.lean === 'OVER' ? Number(e.actual) > Number(e.line) : Number(e.actual) < Number(e.line)) ? 'win' : 'loss' })) },
       { label: 'FADE: receiving \u2014 opposite of Lyrid\u2019s lean (wk1-4: 56%)', entries: watchFade(all.filter(e => e.propType === 'receiving_yards')) },
       { label: 'UNDER: rushing, team 3+ pt underdog (wk1-4: 57%)', entries: watchSide(all.filter(e => e.propType === 'rushing_yards' && sp(e) != null && sp(e) >= 3), 'under') },
       { label: 'UNDER: passing, line 229.5+ (wk1-4: 64%)', entries: watchSide(all.filter(e => e.propType === 'passing_yards' && Number(e.line) >= 229.5), 'under') },
@@ -24731,9 +24748,11 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var verdict;
     if (f.ok === true) {
       var m = /(\d+)-(\d+)\s*\((\d+)%\)/.exec(String(f.why || ''));
-      verdict = '<div class="nflx-verdict play"><b>PLAY: ' + (f.side === 'under' ? 'UNDER' : 'OVER') + '</b> \u2014 proven rule<div class="nflx-verdict-sub">' + esc(f.why || '') + '</div></div>';
+      verdict = '<div class="nflx-verdict play"><b>PLAY: ' + (f.side === 'under' ? 'UNDER' : 'OVER') + '</b> \u2014 ' + (f.rule === 'matchup_read' ? 'promoted rule (matchup read)' : 'proven rule') + '<div class="nflx-verdict-sub">' + esc(f.why || '') + '</div></div>';
     } else {
-      verdict = '<div class="nflx-verdict pass"><b>No proven edge \u2014 pass</b>' + (f.why ? '<div class="nflx-verdict-sub">' + esc(f.why) + '</div>' : '') + '</div>';
+      var rdv = item.matchupReport && item.matchupReport.read;
+      var leanTxt = (rdv && (rdv.lean === 'OVER' || rdv.lean === 'UNDER')) ? ' \u00b7 Lean ' + rdv.lean + ' (matchup ' + (rdv.lean === 'OVER' ? rdv.over + '\u2013' + rdv.under : rdv.under + '\u2013' + rdv.over) + ', unproven)' : '';
+      verdict = '<div class="nflx-verdict pass"><b>No proven edge \u2014 pass</b>' + esc(leanTxt) + (f.why ? '<div class="nflx-verdict-sub">' + esc(f.why) + '</div>' : '') + '</div>';
     }
     // CASE FOR THE OVER / UNDER — engine drivers, plus the two matchup notes
     var pro = [], con = [], neu = [];
@@ -24760,7 +24779,34 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var knows = (NFL_KNOWS[pt] || '') + (pt === 'rushing_yards' && f.ok !== true ? ' This prop doesn\u2019t meet the proven rule (model 15+ yds below the line).' : '') +
       (miss ? ' Typical miss: Lyrid \u00b1' + miss.lyrid.toFixed(0) + ' yds, the line \u00b1' + miss.line.toFixed(0) + ' (' + miss.n + ' graded).' : '') +
       ' Defense rankings and injuries are context only \u2014 matchup ratings didn\u2019t predict results in weeks 1\u20134.';
-    return verdict + cases + '<div class="nflx-knows"><b>What Lyrid knows</b> ' + knows + '</div>';
+    return verdict + cases + nflMatchupHtml(item) + '<div class="nflx-knows"><b>What Lyrid knows</b> ' + knows + '</div>';
+  }
+  function nflRankTxt(f) { return f.rank + nflOrd(f.rank) + ' of ' + f.of; }
+  function nflMatchupHtml(item) {
+    var r = item.matchupReport; if (!r || !r.factors) return '';
+    var side = { over: '\u25B2 over', under: '\u25BC under', neutral: '\u2013' };
+    var rows = r.factors.map(function (f) {
+      var v = (f.v != null && Math.abs(f.v) < 1 && f.label.indexOf('YPC') < 0 && f.label.indexOf('yds') < 0 && f.label.indexOf('plays') < 0) ? (f.v * 100).toFixed(1) + '%' : f.v;
+      return '<div class="nflx-mr-row ' + f.side + '"><span>' + esc(f.label) + '</span><span>' + esc(String(v)) + ' (' + nflRankTxt(f) + ')</span><span class="nflx-mr-side">' + side[f.side] + '</span></div>';
+    }).join('');
+    var p = r.player || {}, bits = [];
+    if (p.snap_share != null) bits.push('snap share ' + Math.round(p.snap_share * 100) + '% (last 3)');
+    if (p.target_share != null) bits.push('target share ' + Math.round(p.target_share * 100) + '%');
+    if (p.receiving) { var q = p.receiving; if (q.separation != null) bits.push('separation ' + q.separation + ' yds'); if (q.air_yards_share != null) bits.push(q.air_yards_share + '% of team air yards'); if (q.yac_over_expected != null) bits.push('YAC over expected ' + q.yac_over_expected); }
+    if (p.rushing) { var u = p.rushing; if (u.yac_per_carry != null) bits.push(u.yac_per_carry + ' yds after contact/carry'); if (u.ybc_per_carry != null) bits.push(u.ybc_per_carry + ' before contact'); if (u.broken_tackle_rate != null) bits.push(Math.round(u.broken_tackle_rate * 100) + '% broken-tackle rate'); if (u.ryoe_per_att != null) bits.push((u.ryoe_per_att > 0 ? '+' : '') + u.ryoe_per_att + ' rush yds over expected/att'); }
+    if (p.passing) { var s = p.passing; if (s.time_to_throw != null) bits.push(s.time_to_throw + 's time to throw'); if (s.cpoe != null) bits.push((s.cpoe > 0 ? '+' : '') + s.cpoe + ' completion % over expected'); }
+    var cbs = (r.oppCorners || []).map(function (c) { return esc(c.name) + ' (' + c.targets + ' tgts, ' + c.ypt + ' yds/tgt, rating ' + c.rating + ')'; }).join('; ');
+    var rd = r.read || {};
+    var readTxt = rd.lean === 'MIXED' ? 'MIXED \u2014 factors split (' + rd.over + ' over / ' + rd.under + ' under)' : rd.lean + ' (' + rd.over + ' over / ' + rd.under + ' under)';
+    return '<details class="nflx-mr"><summary>\u25B8 Matchup report \u00b7 read: <b>' + esc(readTxt) + '</b></summary>' +
+      rows + (bits.length ? '<div class="nflx-mr-player"><b>' + esc(item.player || '') + '</b> ' + esc(bits.join(' \u00b7 ')) + '</div>' : '') +
+      (cbs ? '<div class="nflx-mr-player"><b>' + esc(item.opponent || 'Opponent') + ' corners</b> ' + cbs + '</div>' : '') +
+      '<div class="nflx-mr-note">Matchup read = ranked factors in the top or bottom third of the league. It is a tracked lean, graded in History \u2014 not a proven edge. Route participation isn\u2019t public; snap share stands in.</div></details>';
+  }
+  function nflLeanChip(item) {
+    var rd = item.matchupReport && item.matchupReport.read;
+    if (!rd || (rd.lean !== 'OVER' && rd.lean !== 'UNDER')) return '';
+    return '<span class="nflx-dir ' + (rd.lean === 'UNDER' ? 'down' : 'up') + ' muted" title="Matchup read \u2014 tracked lean, not a proven edge">Lean ' + (rd.lean === 'UNDER' ? 'lower' : 'higher') + '</span> ';
   }
   function nflOrd(n) { var s = ['th', 'st', 'nd', 'rd'], v = n % 100; return s[(v - 20) % 10] || s[v] || s[0]; }
   function renderPropCard(item){
@@ -24783,7 +24829,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var why = (item.card && item.card.summary) ? '<div class="nflx-why">' + esc(item.card.summary) + '</div>' : '';
     return '<div class="nflx-prop">' +
       '<div class="nflx-prop-top"><div><div class="nflx-prop-name">' + esc(item.player||'') + '</div>' +
-        '<div class="nflx-pick-line">' + ((item.featured && item.featured.ok === true) ? '<span class="nflx-dir ' + (item.featured.side === 'under' ? 'down' : 'up') + '">' + (item.featured.side === 'under' ? 'Lower' : 'Higher') + '</span> ' : '') + '<span class="nflx-prop-market">' + esc(item.propLabel||'') + '</span> <span class="nflx-linev">' + esc(v.line) + '</span></div></div>' +
+        '<div class="nflx-pick-line">' + ((item.featured && item.featured.ok === true) ? '<span class="nflx-dir ' + (item.featured.side === 'under' ? 'down' : 'up') + '">' + (item.featured.side === 'under' ? 'Lower' : 'Higher') + '</span> ' : nflLeanChip(item)) + '<span class="nflx-prop-market">' + esc(item.propLabel||'') + '</span> <span class="nflx-linev">' + esc(v.line) + '</span></div></div>' +
         '<div class="nflx-prop-sub">' + esc(item.position||'') + (item.position&&item.team?' \u00b7 ':'') + esc(item.team||'') + (item.opponent?' vs ' + esc(item.opponent):'') + '</div></div>' +
       nflCappedBanner(item) + nflInjuryBanner(item) +
       projTrack(c, v.line) +
@@ -24805,6 +24851,25 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     return groups;
   }
   var nflDefReports = {};
+  var nflTeamProfiles = {};
+  function nflMatchupPanel(teams) {
+    if (!teams || teams.length < 2) return '';
+    var A = nflTeamProfiles[teams[0]], B = nflTeamProfiles[teams[1]];
+    if (!A || !B) return '';
+    var cell = function (m, pct) { if (!m || m.v == null) return '\u2014'; var v = pct ? (m.v * 100).toFixed(1) + '%' : m.v; return v + (m.rank ? ' <span class="nflx-mp-rk">' + m.rank + nflOrd(m.rank) + '</span>' : ''); };
+    var row = function (lbl, sec, key, pct) { return '<tr><td>' + lbl + '</td><td>' + cell((A[sec] || {})[key], pct) + '</td><td>' + cell((B[sec] || {})[key], pct) + '</td></tr>'; };
+    var hdr = function (t) { return '<tr class="nflx-mp-h"><td colspan="3">' + t + '</td></tr>'; };
+    var cbs = function (P) { return (P.corners || []).map(function (c) { return esc(c.name) + ' ' + c.ypt + '/tgt'; }).join('<br>') || '\u2014'; };
+    var t = '<table class="nflx-mp"><tr><th></th><th>' + esc(teams[0]) + '</th><th>' + esc(teams[1]) + '</th></tr>' +
+      hdr('Offense') + row('EPA / play', 'offense', 'epa_play') + row('Success rate', 'offense', 'success_rate', true) + row('Pass rate', 'offense', 'pass_rate', true) + row('Plays / game', 'offense', 'plays_pg') + row('Explosive-play rate', 'offense', 'explosive_rate', true) +
+      hdr('O-line: pass protection') + row('Pressure allowed', 'ol_pass', 'pressure_rate_allowed', true) + row('Sack rate allowed', 'ol_pass', 'sack_rate_allowed', true) + row('QB time to throw (s)', 'ol_pass', 'qb_time_to_throw') +
+      hdr('O-line: run blocking') + row('Yds before contact / carry', 'ol_run', 'ybc_per_carry') + row('Stuffed-run rate', 'ol_run', 'stuffed_rate', true) +
+      hdr('D-line: vs the pass') + row('Pressure rate', 'dl_pass', 'pressure_rate', true) + row('Sack rate', 'dl_pass', 'sack_rate', true) +
+      hdr('D-line: vs the run') + row('YPC allowed', 'dl_run', 'ypc_allowed') + row('Stuff rate', 'dl_run', 'stuff_rate', true) + row('Yds before contact allowed', 'dl_run', 'ybc_allowed') +
+      hdr('Secondary') + row('Yds / att allowed', 'secondary', 'ypa_allowed') + row('Explosive passes allowed', 'secondary', 'explosive_pass_allowed', true) +
+      '<tr><td>Top corners (yds/target)</td><td>' + cbs(A) + '</td><td>' + cbs(B) + '</td></tr></table>';
+    return '<details class="nflx-dvp"><summary>\u25B8 Matchup report \u2014 offense, lines, secondary (rank 1 = best)</summary><div style="overflow-x:auto;padding:6px 12px">' + t + '</div></details>';
+  }
   // DEFENSE-VS-POSITION panel — descriptive evidence: what each team's D gives up to WR/TE/RB over
   // its last 3/5/10 games, with the players who did it. Context for the user, not a bet signal.
   function nflDefVsPosPanel(teamList){
@@ -24838,7 +24903,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       return '<details class="nflx-game"' + (i===0?' open':'') + '><summary class="nflx-game-row">' +
         '<span class="nflx-game-mu">' + esc(mu) + '</span>' + scriptChipFor(g) + nflTotalChip(tv) +
         '<span class="nflx-game-meta"><span>' + g.picks.length + ' props</span>' + edge + '<span class="nflx-game-chev">\u203A</span></span>' +
-        '</summary><div class="nflx-game-body">' + nflTotalBlock(tv) + nflDefVsPosPanel(g.teamList) + g.picks.map(renderPropCard).join('') + '</div></details>';
+        '</summary><div class="nflx-game-body">' + nflTotalBlock(tv) + nflMatchupPanel(g.teamList) + nflDefVsPosPanel(g.teamList) + g.picks.map(renderPropCard).join('') + '</div></details>';
     }).join('');
   }
 
@@ -24918,6 +24983,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     nflRenderTargetBanner(data.defenseReports, data.picks);
     renderJudgment(data.picks);
     nflDefReports = data.defenseReports || {};
+    nflTeamProfiles = data.teamProfiles || {};
     renderGames(data.picks, data.totals);
     var _tc=document.getElementById('nflTotalsContainer'); if(_tc)_tc.innerHTML='';
     try { if (typeof window.logNflBets === 'function') window.logNflBets(data.picks, nflState.date); } catch (_) {}
@@ -25106,6 +25172,7 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
         lineSource: 'provided', capturedAt: new Date().toISOString(),
         snapshot: snap,                       // known at capture: own status, teammates on the injury report, spread, total
         engineRev: p.engineRev || null,       // which engine version produced this projection
+        matchupLean: (p.matchupReport && p.matchupReport.read) ? p.matchupReport.read : null,   // tracked matchup read (graded in History)
         lineLatest: Number(v.line), lineLatestAt: new Date().toISOString(), snapshotLatest: snap,
         actual: null, result: null, error: null, graded: false
       };

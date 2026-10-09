@@ -365,6 +365,7 @@ export default async function handler(req, res) {
       snapshot: ctx.snapshot || null,
       engineRev: ENGINE_REV,
       matchupNotes: ctx.matchupNotes || null,
+      matchupReport: ctx.matchupReport || null,
       roleMatchup: ctx.roleMatchup || null,
       directionalEdge: ctx.directionalEdge || null,
       qbReliable: ctx.qbReliable || null,
@@ -481,6 +482,11 @@ export default async function handler(req, res) {
     date, count: picks.length, picks, totals,
     // DEFENSE-VS-POSITION report (descriptive context for the game view — NOT a gate signal).
     // Keyed by team: what THAT team's defense has allowed to WR/TE/RB over last 3/5/10, + who did it.
+    teamProfiles: (function () {
+      if (!ready || !E.teamProfile) return {};
+      const out = {}; for (const p of picks) for (const t of [p.team, p.opponent]) if (t && E.teamProfile[t]) out[t] = E.teamProfile[t];
+      return out;
+    })(),
     defenseReports: (function () {
       if (!ready || !E.defVsPosByTeam) return {};
       const teams = new Set(picks.map(p => p.team).concat(picks.map(p => p.opponent)).filter(Boolean));
@@ -616,6 +622,46 @@ function buildCtx(E, l, base) {
     oppDefTier: (E.defenseArchetypeByTeam && opp && E.defenseArchetypeByTeam[opp]) || null,
     oppDefForm: (E.defFormByTeam && opp && E.defFormByTeam[opp]) || null,
     oppPace: (E.defPaceByTeam && opp && E.defPaceByTeam[opp]) || null,
+    matchupReport: safe(function () {
+      // The structured matchup report for this prop: team unit vs opponent unit, with league ranks,
+      // plus the player's own usage/efficiency. And a MATCHUP READ: how many ranked factors favor the
+      // over vs the under. Context + a tracked lean — never a verdict (only proven rules are).
+      if (!E.teamProfile) return null;
+      const T = E.teamProfile[team] || {}, O = E.teamProfile[opp] || {};
+      const P = (E.playerProfile && E.playerProfile[_norm(base.player)]) || {};
+      const fam = l.prop_type;
+      const isRush = fam === 'rushing_yards' || fam === 'rush_rec_yards';
+      const isPass = fam === 'receiving_yards' || fam === 'passing_yards' || fam === 'pass_rush_yards' || fam === 'rush_rec_yards';
+      // factor: [label, metric object, 'over' if a GOOD rank for this unit helps the over, else 'under']
+      const F = [];
+      const add = (label, m, goodHelps) => { if (m && m.rank) F.push({ label, v: m.v, rank: m.rank, of: m.of, goodHelps }); };
+      if (isRush) {
+        add(`${team} OL run blocking (yds before contact/carry)`, (T.ol_run || {}).ybc_per_carry, 'over');
+        add(`${team} OL stuffed-run rate`, (T.ol_run || {}).stuffed_rate, 'over');
+        add(`${opp} run D: YPC allowed`, (O.dl_run || {}).ypc_allowed, 'under');
+        add(`${opp} run D: stuff rate`, (O.dl_run || {}).stuff_rate, 'under');
+        add(`${opp} run D: yds before contact allowed`, (O.dl_run || {}).ybc_allowed, 'under');
+      }
+      if (isPass) {
+        add(`${team} OL pressure allowed`, (T.ol_pass || {}).pressure_rate_allowed, 'over');
+        add(`${opp} pass rush: pressure rate`, (O.dl_pass || {}).pressure_rate, 'under');
+        add(`${opp} secondary: yds/att allowed`, (O.secondary || {}).ypa_allowed, 'under');
+        add(`${opp} secondary: explosive passes allowed`, (O.secondary || {}).explosive_pass_allowed, 'under');
+        add(`${team} pass rate`, (T.offense || {}).pass_rate, fam === 'rush_rec_yards' ? null : 'over');
+      }
+      add(`${team} plays per game`, (T.offense || {}).plays_pg, 'over');
+      let over = 0, under = 0;
+      for (const f of F) {
+        if (!f.goodHelps) { f.side = 'neutral'; continue; }
+        const good = f.rank <= f.of / 3, bad = f.rank > (2 * f.of) / 3;
+        f.side = good ? f.goodHelps : (bad ? (f.goodHelps === 'over' ? 'under' : 'over') : 'neutral');
+        if (f.side === 'over') over++; else if (f.side === 'under') under++;
+      }
+      const lean = over - under >= 2 ? 'OVER' : (under - over >= 2 ? 'UNDER' : 'MIXED');
+      return { read: { lean, over, under, n: F.length }, factors: F,
+               player: { snap_share: P.snap_share ?? null, target_share: P.target_share ?? null, receiving: P.receiving || null, rushing: P.rushing || null, passing: P.passing || null },
+               oppCorners: isPass ? (O.corners || []) : [] };
+    }, 'matchupReport'),
     matchupNotes: safe(function () {
       const fam = l.prop_type, notes = {};
       if ((fam === 'rushing_yards' || fam === 'rush_rec_yards') && E.ypcByTeam && opp) notes.oppYpc = E.ypcByTeam[opp] || null;
@@ -1102,6 +1148,9 @@ async function loadEngineData(lines, date, fetchAvailability) {
     const cq = coverageByName[_norm(r.player_name)] || null;
     (secondaryInjByTeam[fixAbbr(r.team_abbr)] ||= []).push({ name: r.player_name, pos, status: r.status, tier: cq ? cq.tier : null });
   }
+  const profRows = await qSafe(`nfl_matchup_profile?select=kind,key,data`);
+  const teamProfile = {}, playerProfile = {};
+  for (const r of profRows) { if (r.kind === 'team') teamProfile[fixAbbr(r.key)] = r.data; else if (r.kind === 'player') playerProfile[r.key] = r.data; }
   const allPress = await qSafe(`nfl_team_pressure?order=season.desc&select=team_abbr,season,pressure_rate`);
   const defenseArchetypeByTeam = (function () {
     const latest = allSupp.length ? Math.max(...allSupp.map(r => r.season)) : null;
@@ -1254,7 +1303,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, injuryByName, injuriesByTeam, ypcByTeam, secondaryInjByTeam, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, defVsPosByTeam, defVsRoleByTeam, defDirByTeam, plrDirByKey, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, injuriesByTeam, ypcByTeam, secondaryInjByTeam, teamProfile, playerProfile, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, defVsPosByTeam, defVsRoleByTeam, defDirByTeam, plrDirByKey, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };
@@ -1357,6 +1406,26 @@ function formBlend(seasonSoft, seasonElite, formTier) {
 // Everything else (receiving, passing, combos, middle props) is held. Re-validate every week;
 // widen or narrow only on graded evidence.
 // ============================================================================================
+// PROMOTED RULES — rules that have passed the frozen promotion test on NEW games (History shows
+// "READY TO PROMOTE"). Flip a rule to true here to put its picks on the card as PLAY. One manual switch
+// on purpose: graded history lives on the founder's device, not the server.
+//   matchup_read: the side the ranked matchup factors favor (margin 2+). Backtest weeks 2-4 (mostly
+//   1-game ranks): 82-93, 46.9%. NOT promoted. Grading live from Week 5 in History > WATCH.
+const PROMOTED_RULES = { matchup_read: false };
+
+// The card gate: proven rule first; then any promoted rule; vetoes always win.
+function computeFeatured(result, ctx) {
+  const pr = computeProvenRule(result, ctx);
+  if (pr.ok || pr.veto) return pr;
+  const rd = ctx.matchupReport && ctx.matchupReport.read;
+  if (PROMOTED_RULES.matchup_read && rd && (rd.lean === 'OVER' || rd.lean === 'UNDER')) {
+    const side = rd.lean === 'OVER' ? 'over' : 'under';
+    return { ok: true, side, rule: 'matchup_read', gap: null,
+             why: `matchup read ${rd.lean}: ${rd.over} factors for the over, ${rd.under} for the under — promoted rule` };
+  }
+  return pr;
+}
+
 const PROVEN_RULE = { family: 'rushing_yards', side: 'under', minGap: 15, record: '18-6 (75%)', id: 'rush_under15' };
 const HELD_WHY = {
   receiving_yards: 'receiving — model adds no information over the line (4-wk test); not a proven edge',
@@ -1365,15 +1434,15 @@ const HELD_WHY = {
   pass_rush_yards: 'pass+rush combo — losing family, not featured',
 };
 
-function computeFeatured(result, ctx) {
+function computeProvenRule(result, ctx) {
   const v = result.verdict, c = result.comp || {}, fam = ctx.propFamily;
   if (!v || c.median == null || v.line == null) return { ok: false, why: 'no projection to compare with the line' };
   // hard data-quality vetoes only — not matchup filters (those were never part of the validated rule)
   const blocked = (v.blocked || []).join(' ');
-  if (/is OUT|not expected to play|placeholder/i.test(blocked)) return { ok: false, why: 'player out or line unavailable' };
-  if (v.stale) return { ok: false, why: 'stale role (team or role changed) — baseline not trustworthy' };
+  if (/is OUT|not expected to play|placeholder/i.test(blocked)) return { ok: false, veto: true, why: 'player out or line unavailable' };
+  if (v.stale) return { ok: false, veto: true, why: 'stale role (team or role changed) — baseline not trustworthy' };
   const dc = result.dataCompleteness;
-  if (dc != null && dc < 0.6) return { ok: false, why: 'thin data — not featured' };
+  if (dc != null && dc < 0.6) return { ok: false, veto: true, why: 'thin data — not featured' };
   if (fam !== PROVEN_RULE.family) return { ok: false, why: HELD_WHY[fam] || (fam + ' — not a proven edge') };
   const basis = (c.matchupAdj && c.matchupAdj.from != null) ? Number(c.matchupAdj.from) : Number(c.median);
   const gap = basis - Number(v.line);
