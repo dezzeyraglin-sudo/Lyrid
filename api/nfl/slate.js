@@ -34,6 +34,10 @@ import {
 //   r2026.10.08b — removed the coverage-quality adjustment (receiving, rush+rec) and limited the
 //                  defense-archetype shave to rushing. Receiving/passing medians are now the raw comp median.
 const ENGINE_REV = 'r2026.10.08b';
+// Rule promotion. true = force on, false = force off, 'auto' = on only while it passes the frozen
+// promotion test on the shared graded record in Supabase (re-checked every 10 minutes).
+const PROMOTED_RULES = { matchup_read: 'auto' };
+let PROMO_LIVE = { matchup_read: false, status: null, at: 0 };
 
 const PP_URL = 'https://partner-api.prizepicks.com/projections?league_id=9&per_page=1000';
 const PROP_LABEL = {
@@ -126,6 +130,7 @@ export default async function handler(req, res) {
   } catch (e) { engineError = String((e && e.message) || e); analyzeProp = null; }
 
   // 4) gather all engine inputs (Supabase + ESPN). null => LINES mode.
+  try { await refreshPromotion(); } catch (_) {}
   let E = null;
   if (analyzeProp) {
     try { E = await loadEngineData(lines, date, fetchAvailability); } catch (e) { E = null; engineError = engineError || String(e); }
@@ -477,7 +482,14 @@ export default async function handler(req, res) {
     (rank[b.verdict.tier_candidate] - rank[a.verdict.tier_candidate]) ||
     ((b.verdict.edge || 0) - (a.verdict.edge || 0)));
 
+  let gameReports = {}; try { if (ready) gameReports = buildGameReports(E, picks); } catch (e) { gameReports = { error: String((e && e.message) || e) }; }
+  // every prop scored on its overall matchup advantage (sorted by the board)
+  if (ready) for (const p of picks) {
+    try { p.advantage = scoreAdvantage(E, p, gameReports[[p.team, p.opponent].sort().join('@')] || gameReports[`${p.opponent}@${p.team}`] || gameReports[`${p.team}@${p.opponent}`]); } catch (_) { p.advantage = null; }
+  }
+  const historyLog = await logHistoryToSupabase(picks, totals, date);
   return res.status(200).json({
+    gameReports, historyLog, promotion: { matchup_read: PROMO_LIVE.matchup_read, mode: PROMOTED_RULES.matchup_read, status: PROMO_LIVE.status },
     source: ready ? 'prizepicks+engine' : 'prizepicks',
     date, count: picks.length, picks, totals,
     // DEFENSE-VS-POSITION report (descriptive context for the game view — NOT a gate signal).
@@ -1150,7 +1162,8 @@ async function loadEngineData(lines, date, fetchAvailability) {
   }
   const profRows = await qSafe(`nfl_matchup_profile?select=kind,key,data`);
   const teamProfile = {}, playerProfile = {};
-  for (const r of profRows) { if (r.kind === 'team') teamProfile[fixAbbr(r.key)] = r.data; else if (r.kind === 'player') playerProfile[r.key] = r.data; }
+  let leagueMeta = null;
+  for (const r of profRows) { if (r.kind === 'team') teamProfile[fixAbbr(r.key)] = r.data; else if (r.kind === 'player') playerProfile[r.key] = r.data; else if (r.kind === 'meta' && r.key === 'league') leagueMeta = r.data; }
   const allPress = await qSafe(`nfl_team_pressure?order=season.desc&select=team_abbr,season,pressure_rate`);
   const defenseArchetypeByTeam = (function () {
     const latest = allSupp.length ? Math.max(...allSupp.map(r => r.season)) : null;
@@ -1303,7 +1316,7 @@ async function loadEngineData(lines, date, fetchAvailability) {
     nameToKey, nameToTeam, posByName, posByKey, cpoeByKey, teamQbKey,
     trailingByKey, seasonByKey, featByKey, featByKeyFam, recQualByKey, qbPressByKey,
     oddsByTeam, oppByTeam, homeByTeam, availability, milestoneByKey, curTeamEnvZ, curQbEnvZ, roleByName,
-    tendByTeam, supByTeam, scoringByTeam, injuryByName, injuriesByTeam, ypcByTeam, secondaryInjByTeam, teamProfile, playerProfile, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, defVsPosByTeam, defVsRoleByTeam, defDirByTeam, plrDirByKey, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
+    tendByTeam, supByTeam, scoringByTeam, injuryByName, injuriesByTeam, ypcByTeam, secondaryInjByTeam, teamProfile, playerProfile, leagueMeta, defImpByTeam, coverageByName, qbFormByName, matchupByKey, defenseArchetypeByTeam, posDefTierByTeam, defFormByTeam, defPaceByTeam, defVsPosByTeam, defVsRoleByTeam, defDirByTeam, plrDirByKey, posByName, schemeByTeam, penByTeam, teamPressByTeam, coverageByTeam,
     recExplByKey, qbDeepByKey, explByTeam,
     compPoolByPos,
   };
@@ -1411,19 +1424,228 @@ function formBlend(seasonSoft, seasonElite, formTier) {
 // on purpose: graded history lives on the founder's device, not the server.
 //   matchup_read: the side the ranked matchup factors favor (margin 2+). Backtest weeks 2-4 (mostly
 //   1-game ranks): 82-93, 46.9%. NOT promoted. Grading live from Week 5 in History > WATCH.
-const PROMOTED_RULES = { matchup_read: false };
+// (PROMOTED_RULES / PROMO_LIVE are declared at the top of the file, next to ENGINE_REV.)
 
 // The card gate: proven rule first; then any promoted rule; vetoes always win.
 function computeFeatured(result, ctx) {
   const pr = computeProvenRule(result, ctx);
   if (pr.ok || pr.veto) return pr;
   const rd = ctx.matchupReport && ctx.matchupReport.read;
-  if (PROMOTED_RULES.matchup_read && rd && (rd.lean === 'OVER' || rd.lean === 'UNDER')) {
+  const readOn = PROMOTED_RULES.matchup_read === true || (PROMOTED_RULES.matchup_read === 'auto' && PROMO_LIVE.matchup_read);
+  if (readOn && rd && (rd.lean === 'OVER' || rd.lean === 'UNDER')) {
     const side = rd.lean === 'OVER' ? 'over' : 'under';
     return { ok: true, side, rule: 'matchup_read', gap: null,
              why: `matchup read ${rd.lean}: ${rd.over} factors for the over, ${rd.under} for the under — promoted rule` };
   }
   return pr;
+}
+
+// ---- GRADED HISTORY IN SUPABASE (nfl_prop_log) ----
+const NFL_FLOOR = { passing_yards: 100, pass_rush_yards: 100, rushing_yards: 6, receiving_yards: 6, rush_rec_yards: 10 };
+function sbCreds() {
+  const url = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SECRET_KEY;
+  return url && key ? { url, H: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' } } : null;
+}
+// Same record the browser used to keep (first capture wins; the SQL function locks it).
+function nflLogRows(picks, totals, date) {
+  const now = new Date().toISOString(), rows = [];
+  for (const p of picks || []) {
+    const v = p.verdict || {}, c = p.comp || {}, pt = p.propType;
+    if (!NFL_FLOOR[pt] || c.median == null || v.line == null || Number(v.line) < NFL_FLOOR[pt]) continue;
+    const proven = !!(p.featured && p.featured.ok === true);
+    let lean = Number(c.median) >= Number(v.line) ? 'OVER' : 'UNDER';
+    if (proven && p.featured.side) lean = p.featured.side === 'under' ? 'UNDER' : 'OVER';
+    const tier = String(v.tier_candidate || 'none').toLowerCase();
+    rows.push({ kind: 'prop', log_date: date, log_key: `${p.player_key || p.player}_${pt}`, prop_type: pt, entry: {
+      date, player: p.player, team: p.team || null, opponent: p.opponent || null, market: p.propLabel, propType: pt,
+      line: Number(v.line), projection: +Number(c.median).toFixed(1), p25: c.p25 ?? null, p75: c.p75 ?? null,
+      edge: v.edge != null ? +Number(v.edge).toFixed(4) : null, lean, probOver: v.pOverAdjusted ?? v.pOver ?? null,
+      tier, isBet: tier !== 'none', capped: !!p.cappedOpportunity,
+      proven, provenRule: proven ? (p.featured.rule || null) : null, provenGap: proven ? (p.featured.gap ?? null) : null,
+      reasonText: (p.card && p.card.summary) || '', dataCompleteness: p.dataCompleteness ?? null,
+      lineSource: 'provided', capturedAt: now, snapshot: p.snapshot || null, engineRev: p.engineRev || null,
+      matchupLean: (p.matchupReport && p.matchupReport.read) || null,
+      advantage: p.advantage ? { score: p.advantage.score, side: p.advantage.side, strength: p.advantage.strength, n: p.advantage.n } : null,
+      lineLatest: Number(v.line), lineLatestAt: now, snapshotLatest: p.snapshot || null,
+      actual: null, result: null, error: null, graded: false } });
+  }
+  for (const t of totals || []) {
+    if (!t || !t.homeTeam || !t.awayTeam || t.projected == null) continue;
+    rows.push({ kind: 'total', log_date: date, log_key: [t.homeTeam, t.awayTeam].sort().join('@'), prop_type: 'game_total', entry: {
+      date, home: t.homeTeam, away: t.awayTeam, projected: Number(t.projected), line: t.line != null ? Number(t.line) : null,
+      lean: t.line != null ? (Number(t.projected) >= Number(t.line) ? 'OVER' : 'UNDER') : null,
+      capturedAt: now, engineRev: ENGINE_REV, actual: null, error: null, result: null, graded: false } });
+  }
+  return rows;
+}
+async function logHistoryToSupabase(picks, totals, date) {
+  const sb = sbCreds(); if (!sb) return { ok: false, why: 'no Supabase credentials' };
+  const rows = nflLogRows(picks, totals, date); if (!rows.length) return { ok: true, n: 0 };
+  try {
+    const r = await fetch(`${sb.url}/rest/v1/rpc/nfl_log_upsert`, { method: 'POST', headers: sb.H, body: JSON.stringify({ rows }) });
+    return r.ok ? { ok: true, n: rows.length } : { ok: false, why: `supabase ${r.status}` };
+  } catch (e) { return { ok: false, why: String((e && e.message) || e) }; }   // never blocks the board
+}
+// The frozen promotion test, run on the shared graded record: n >= 40, Wilson 95% floor > 50%,
+// and still > 50% with the single best week removed. Only Week 5+ picks (they carry a snapshot).
+function promoTest(entries) {
+  const n = entries.length, w = entries.filter(e => e.win).length;
+  if (n < 40) return { pass: false, n, w, why: `testing (${n}/40)` };
+  const p = w / n, z = 1.96, den = 1 + z * z / n, c = p + z * z / (2 * n), a = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)), lo = (c - a) / den;
+  const wk = {}; for (const e of entries) { const k = Math.floor((Date.parse(e.date) / 86400000 - 5) / 7); (wk[k] ||= { w: 0, l: 0 }); e.win ? wk[k].w++ : wk[k].l++; }
+  const best = Object.values(wk).reduce((b, x) => (x.w - x.l > b.w - b.l ? x : b), { w: 0, l: 0 });
+  const rn = n - best.w - best.l, robust = rn > 0 && (w - best.w) / rn > 0.5;
+  return { pass: lo > 0.5 && robust, n, w, rate: +p.toFixed(3), floor: +lo.toFixed(3), robust };
+}
+async function refreshPromotion() {
+  if (Date.now() - PROMO_LIVE.at < 10 * 60 * 1000) return PROMO_LIVE;
+  const sb = sbCreds(); if (!sb) return PROMO_LIVE;
+  try {
+    const sel = 'entry->>date,entry->>line,entry->>actual,entry->>excluded,entry->>propType,entry->matchupLean,entry->snapshot';
+    const r = await fetch(`${sb.url}/rest/v1/nfl_prop_log?kind=eq.prop&graded=eq.true&select=${encodeURIComponent(sel)}&limit=20000`, { headers: sb.H });
+    const rows = r.ok ? await r.json() : [];
+    const es = rows.filter(x => x.snapshot && x.matchupLean && (x.matchupLean.lean === 'OVER' || x.matchupLean.lean === 'UNDER') && !x.excluded
+        && x.actual != null && Number(x.line) >= (NFL_FLOOR[x.propType] || 0) && Number(x.actual) !== Number(x.line))
+      .map(x => ({ date: x.date, win: x.matchupLean.lean === 'OVER' ? Number(x.actual) > Number(x.line) : Number(x.actual) < Number(x.line) }));
+    const st = promoTest(es);
+    PROMO_LIVE = { matchup_read: st.pass, status: st, at: Date.now() };
+  } catch (_) { PROMO_LIVE.at = Date.now(); }
+  return PROMO_LIVE;
+}
+
+// ---- GAME REPORT: one structured read of each game, built from measured stats ----
+// Estimates (QB yards, TDs, big-run odds) are transparent formulas with their typical miss shown.
+// Leans come from the tracked matchup read; only proven/promoted rules are labeled as bets.
+function log5(a, b, lg) {
+  if (![a, b, lg].every(x => x > 0 && x < 1)) return a;
+  const x = (a * b) / lg, y = ((1 - a) * (1 - b)) / (1 - lg); return x / (x + y);
+}
+function buildGameReports(E, picks) {
+  const T = E.teamProfile || {}, PP = E.playerProfile || {}, L = E.leagueMeta || {}, out = {};
+  const byTeam = {}; for (const [k, p] of Object.entries(PP)) if (p.team) (byTeam[p.team] ||= []).push({ key: k, ...p });
+  const seen = new Set();
+  for (const home of Object.values(E.homeByTeam || {})) {
+    if (!home || seen.has(home)) continue; seen.add(home);
+    const away = E.oppByTeam[home]; if (!away) continue;
+    const gk = [away, home].join('@'), od = E.oddsByTeam[home] || {}, total = Number(od.total), spH = Number(od.spread);
+    const rep = { away, home, total: isFinite(total) ? total : null, teams: {} };
+    const gp0 = (picks || []).filter(p => (p.team === home && p.opponent === away) || (p.team === away && p.opponent === home));
+    for (const [team, opp, sp] of [[home, away, spH], [away, home, isFinite(spH) ? -spH : NaN]]) {
+      const tp = T[team] || {}, op = T[opp] || {}, tr = {};
+      // Available players only: skip anyone OUT / doubtful / on IR, and prefer players PrizePicks posted a
+      // prop for in this game (they only post for players expected to play). Prevents an injured RB1/QB.
+      const posted = new Set(gp0.filter(p => p.team === team).map(p => _norm(p.player)));
+      const hurt = k => { const r = E.injuryByName && E.injuryByName[k]; return r && /out|doubtful|ir|reserve/i.test(String(r.status || '') + ' ' + String(r.status_raw || '')); };
+      const avail = (byTeam[team] || []).filter(p => !hurt(p.key));
+      const roster = avail.some(p => posted.has(p.key)) ? [...avail.filter(p => posted.has(p.key)), ...avail.filter(p => !posted.has(p.key) && !p.qb_model && p.position !== 'RB')] : avail;
+      // implied points and touchdowns (book spread: negative = favored)
+      if (isFinite(total) && isFinite(sp)) {
+        tr.impliedPoints = +(total / 2 - sp / 2).toFixed(1);
+        if (L.td_per_point) tr.estTouchdowns = +(tr.impliedPoints * L.td_per_point).toFixed(1);
+      }
+      // QB passing-yards estimate: attempts x yards/attempt (the model tested at ~58 yd typical miss)
+      const qb = roster.filter(p => p.qb_model).sort((a, b) => (b.qb_model.starts - a.qb_model.starts) || (b.qb_model.att_own - a.qb_model.att_own))[0];
+      if (qb && L.qb_att_coef && isFinite(total) && isFinite(sp)) {
+        const c = L.qb_att_coef, q = qb.qb_model, trail = 0.5 * q.att_own + 0.5 * (q.team_att || q.att_own);
+        const att = c[0] * trail + c[1] * (-sp) + c[2] * total + c[3];
+        tr.qb = { name: qb.key, estAttempts: +att.toFixed(1), estPassYards: Math.round(att * q.ypa), typicalMiss: L.qb_typical_miss || 58 };
+      }
+      // RB1: holes and big-run odds (log5 of the back's rate vs the defense's allowed rate)
+      const rb = roster.filter(p => p.position === 'RB' && p.rushing && p.rushing.carries).sort((a, b) => (b.rushing.carries_pg || 0) - (a.rushing.carries_pg || 0))[0];
+      if (rb && L.run_20plus) {
+        const r = rb.rushing, n = r.carries, cpg = r.carries_pg || 15;
+        const shrink = (rate, lg) => (rate * n + lg * 50) / (n + 50);
+        const allow20 = (((op.dl_run || {}).run_20plus_allowed || {}).v ?? L.run_20plus) * 0.5 + L.run_20plus * 0.5;
+        const allow10 = (((op.dl_run || {}).run_10plus_allowed || {}).v ?? L.run_10plus) * 0.5 + L.run_10plus * 0.5;
+        const stuffD = (((op.dl_run || {}).stuff_rate || {}).v ?? L.stuffed) * 0.5 + L.stuffed * 0.5;
+        const p20 = log5(shrink(r.run_20plus_rate ?? L.run_20plus, L.run_20plus), allow20, L.run_20plus);
+        const p10 = log5(shrink(r.run_10plus_rate ?? L.run_10plus, L.run_10plus), allow10, L.run_10plus);
+        const pst = log5(shrink(r.stuffed_rate ?? L.stuffed, L.stuffed), stuffD, L.stuffed);
+        tr.rb1 = { name: rb.key, carriesPg: cpg, stuffedPerCarry: +pst.toFixed(3), cleanHolePerCarry: +(1 - pst).toFixed(3),
+                   tenPlusPerCarry: +p10.toFixed(3), chanceOf20PlusRun: +(1 - Math.pow(1 - p20, cpg)).toFixed(2),
+                   yacPerCarry: r.yac_per_carry ?? null, ybcPerCarry: r.ybc_per_carry ?? null, leagueChance20: +(1 - Math.pow(1 - L.run_20plus, cpg)).toFixed(2) };
+      }
+      // Coverage fit (last season's splits vs this defense's man/zone mix)
+      const cov = op.coverage;
+      if (cov && cov.man_rate != null) {
+        tr.coverageFaced = cov;
+        tr.coverageFits = roster.filter(p => p.vs_coverage && (p.target_share || 0) >= 0.1).map(p => {
+          const v = p.vs_coverage, own = (v.man_ypt * v.man_tgts + v.zone_ypt * v.zone_tgts) / (v.man_tgts + v.zone_tgts);
+          const vsThis = cov.man_rate * v.man_ypt + (1 - cov.man_rate) * v.zone_ypt;
+          return { name: p.key, manYpt: v.man_ypt, zoneYpt: v.zone_ypt, vsThisMix: +vsThis.toFixed(1), ownAvg: +own.toFixed(1), edge: +(vsThis - own).toFixed(1) };
+        }).sort((a, b) => b.edge - a.edge).slice(0, 4);
+      }
+      // Blitz matchup: how this offense does vs the blitz, and how often the opponent sends it
+      if (op.blitz && tp.style) tr.blitz = { oppBlitzRate: op.blitz.blitz_rate || null, oppSixPlus: op.blitz.six_plus_rushers || null,
+        offenseVsBlitz: tp.style.epa_vs_blitz || null, offenseVsStandard: tp.style.epa_vs_standard_rush || null, oppAvgRushers: op.blitz.avg_pass_rushers || null };
+      rep.teams[team] = tr;
+    }
+    // props in this game: plays (proven/promoted), strongest reads, most suppressed
+    const gp = (picks || []).filter(p => (p.team === home && p.opponent === away) || (p.team === away && p.opponent === home));
+    const readOf = p => (p.matchupReport && p.matchupReport.read) || null;
+    rep.plays = gp.filter(p => p.featured && p.featured.ok).map(p => ({ player: p.player, prop: p.propLabel, line: p.verdict && p.verdict.line, side: p.featured.side, rule: p.featured.rule, why: p.featured.why }));
+    rep.strongestReads = gp.filter(p => { const r = readOf(p); return r && Math.abs(r.over - r.under) >= 3; })
+      .sort((a, b) => Math.abs(readOf(b).over - readOf(b).under) - Math.abs(readOf(a).over - readOf(a).under)).slice(0, 6)
+      .map(p => ({ player: p.player, prop: p.propLabel, line: p.verdict && p.verdict.line, lean: readOf(p).lean, over: readOf(p).over, under: readOf(p).under,
+                   history: p.matchupDelta || null }));
+    rep.mostSuppressed = gp.filter(p => { const r = readOf(p); return r && r.under > r.over; })
+      .sort((a, b) => (readOf(b).under - readOf(b).over) - (readOf(a).under - readOf(a).over)).slice(0, 4)
+      .map(p => ({ player: p.player, prop: p.propLabel, line: p.verdict && p.verdict.line, under: readOf(p).under, over: readOf(p).over,
+                   why: ((p.matchupReport && p.matchupReport.factors) || []).filter(f => f.side === 'under').map(f => `${f.label} (${f.rank} of ${f.of})`) }));
+    out[gk] = rep;
+  }
+  return out;
+}
+
+// ---- MATCHUP ADVANTAGE SCORE: every prop, every available signal, one number ----
+// Each signal becomes a contribution in [-1, +1] (+ favors the OVER). Score = mean of available signals,
+// so a prop isn't ranked higher just for having more data. Strength: |score| >= 0.4 strong, >= 0.2 moderate.
+// A TRACKED LEAN — logged and graded like everything else; not a bet until it passes promotion.
+const clip = x => Math.max(-1, Math.min(1, x));
+function scoreAdvantage(E, p, gr) {
+  const PP = E.playerProfile || {}, T = E.teamProfile || {}, L = E.leagueMeta || {};
+  const fam = p.propType, team = p.team, opp = p.opponent, me = PP[_norm(p.player)] || {}, op = T[opp] || {}, tp = T[team] || {};
+  const line = p.verdict && p.verdict.line != null ? Number(p.verdict.line) : null;
+  const C = [];
+  const add = (label, contrib, detail) => { if (isFinite(contrib)) C.push({ label, c: +clip(contrib).toFixed(2), detail }); };
+  const rd = p.matchupReport && p.matchupReport.read;
+  if (rd && rd.n) add('Team-unit matchup factors', (rd.over - rd.under) / rd.n, `${rd.over} for over, ${rd.under} for under`);
+  const md = p.matchupDelta;
+  if (md && md.delta != null && line) add('History vs this defense type', md.delta / Math.max(0.3 * line, 8), `${md.delta > 0 ? '+' : ''}${md.delta} yds vs his norm vs ${String(md.bucket || '').replace(/_/g, ' ')} (${md.games} g)`);
+  const isRush = fam === 'rushing_yards' || fam === 'rush_rec_yards', isRec = fam === 'receiving_yards' || fam === 'rush_rec_yards';
+  if (isRush && me.rushing && me.rushing.carries && L.run_20plus) {
+    const r = me.rushing, n = r.carries, sh = (rate, lg) => ((rate ?? lg) * n + lg * 50) / (n + 50);
+    const a20 = (((op.dl_run || {}).run_20plus_allowed || {}).v ?? L.run_20plus) * 0.5 + L.run_20plus * 0.5;
+    const st = (((op.dl_run || {}).stuff_rate || {}).v ?? L.stuffed) * 0.5 + L.stuffed * 0.5;
+    const p20 = log5(sh(r.run_20plus_rate, L.run_20plus), a20, L.run_20plus), pst = log5(sh(r.stuffed_rate, L.stuffed), st, L.stuffed);
+    add('Big-run chance vs avg back', (p20 / L.run_20plus - 1) / 1.5, `${(p20 * 100).toFixed(1)}% of carries go 20+ (league ${(L.run_20plus * 100).toFixed(1)}%)`);
+    add('Clean holes vs league', (L.stuffed - pst) / 0.08, `stuffed on ${(pst * 100).toFixed(0)}% of carries (league ${(L.stuffed * 100).toFixed(0)}%)`);
+    if (r.ryoe_per_att != null) add('Rush yards over expected', r.ryoe_per_att / 2, `${r.ryoe_per_att > 0 ? '+' : ''}${r.ryoe_per_att}/carry`);
+  }
+  if (isRec) {
+    const v = me.vs_coverage, cov = op.coverage;
+    if (v && cov && cov.man_rate != null) {
+      const own = (v.man_ypt * v.man_tgts + v.zone_ypt * v.zone_tgts) / (v.man_tgts + v.zone_tgts), vs = cov.man_rate * v.man_ypt + (1 - cov.man_rate) * v.zone_ypt;
+      add('Coverage fit (man/zone mix)', ((vs - own) / own) / 0.15, `${vs.toFixed(1)} yds/tgt vs ${opp}'s mix (own ${own.toFixed(1)}; ${cov.season})`);
+    }
+    if (me.receiving && me.receiving.separation != null) add('Separation (route running)', (me.receiving.separation - 3.0) / 0.8, `${me.receiving.separation} yds avg separation`);
+  }
+  if (isRec || fam === 'passing_yards' || fam === 'pass_rush_yards') {
+    const br = op.blitz && op.blitz.blitz_rate, vb = tp.style && tp.style.epa_vs_blitz, vs = tp.style && tp.style.epa_vs_standard_rush;
+    if (br && vb && vs) {
+      const expd = br.v * vb.v + (1 - br.v) * vs.v, base = 0.3 * vb.v + 0.7 * vs.v;
+      add('Blitz matchup', (expd - base) / 0.08, `${opp} blitzes ${(br.v * 100).toFixed(0)}%; ${team} EPA vs blitz ${vb.v}, vs standard ${vs.v}`);
+    }
+  }
+  if (fam === 'passing_yards' && gr && line) {
+    const q = ((gr.teams || {})[team] || {}).qb;
+    if (q && q.name === _norm(p.player)) add('QB yardage estimate vs line', (q.estPassYards - line) / (q.typicalMiss || 58), `~${q.estPassYards} est vs line ${line}`);
+  }
+  if (!C.length) return null;
+  const score = +(C.reduce((a, x) => a + x.c, 0) / C.length).toFixed(2);
+  const strength = Math.abs(score) >= 0.4 ? 'strong' : (Math.abs(score) >= 0.2 ? 'moderate' : 'slight');
+  return { score, side: score > 0 ? 'OVER' : (score < 0 ? 'UNDER' : null), strength, n: C.length, components: C };
 }
 
 const PROVEN_RULE = { family: 'rushing_yards', side: 'under', minGap: 15, record: '18-6 (75%)', id: 'rush_under15' };

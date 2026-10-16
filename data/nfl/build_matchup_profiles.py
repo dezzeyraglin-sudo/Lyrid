@@ -48,7 +48,7 @@ def ranked(values, higher_is_better):
 
 def build(y):
     pbp = pd.read_parquet(f"{NV}/pbp/play_by_play_{y}.parquet",
-        columns=['game_id', 'season_type', 'week', 'posteam', 'defteam', 'home_team', 'away_team', 'home_score', 'away_score',
+        columns=['game_id', 'play_id', 'rusher_player_id', 'season_type', 'week', 'posteam', 'defteam', 'home_team', 'away_team', 'home_score', 'away_score',
                  'play_type', 'epa', 'success', 'yards_gained', 'qb_dropback', 'sack', 'rush_attempt', 'pass_attempt', 'passing_yards'])
     pbp = pbp[(pbp.season_type == 'REG') & pbp.posteam.notna()].copy()
     pbp['posteam'] = pbp.posteam.map(fx); pbp['defteam'] = pbp.defteam.map(fx)
@@ -68,6 +68,7 @@ def build(y):
     ngp = pd.read_parquet(f"{NV}/nextgen_stats/ngs_passing.parquet"); ngp = ngp[(ngp.season == y) & (ngp.week == 0)].copy(); ngp['team_abbr'] = ngp.team_abbr.map(fx)
 
     M = {}
+    COVSPLIT = {}
     def put(section, name, values, hib):
         for t, v in ranked(values, hib).items():
             M.setdefault(t, {}).setdefault(section, {})[name] = v
@@ -109,6 +110,54 @@ def build(y):
         top = gg.sort_values('tgt', ascending=False).head(3)
         M.setdefault(t, {})['corners'] = [{'name': r.pfr_player_name, 'targets': int(r.tgt), 'ypt': rnd(r.yds / r.tgt, 1),
                                            'rating': rnd(r.rx / r.tgt, 1)} for r in top.itertuples()]
+    # ---- BLITZ PACKAGES, FRONTS, OFFENSIVE STYLE (FTN charting, current season) ----
+    try:
+        ftn = pd.read_parquet(f"{NV}/ftn_charting/ftn_charting_{y}.parquet")
+        j = pbp.merge(ftn[['nflverse_game_id', 'nflverse_play_id', 'n_blitzers', 'n_pass_rushers', 'n_defense_box', 'is_play_action', 'is_motion', 'is_screen_pass']],
+                      left_on=['game_id', 'play_id'], right_on=['nflverse_game_id', 'nflverse_play_id'], how='inner')
+        jd = j[j.qb_dropback == 1].copy(); jd['blitz'] = pd.to_numeric(jd.n_blitzers, errors='coerce').fillna(0) > 0
+        jr = j[j.rush_attempt == 1].copy()
+        put('blitz', 'blitz_rate', jd.groupby('defteam').blitz.mean(), True)
+        put('blitz', 'six_plus_rushers', (pd.to_numeric(jd.n_pass_rushers, errors='coerce') >= 6).groupby(jd.defteam).mean(), True)
+        put('blitz', 'epa_allowed_when_blitzing', jd[jd.blitz].groupby('defteam').epa.mean(), False)
+        put('blitz', 'epa_allowed_standard_rush', jd[~jd.blitz].groupby('defteam').epa.mean(), False)
+        for t, v in jd.groupby('defteam').n_pass_rushers.apply(lambda s: pd.to_numeric(s, errors='coerce').mean()).items():
+            M.setdefault(t, {}).setdefault('blitz', {})['avg_pass_rushers'] = {'v': rnd(v, 2)}
+        put('fronts', 'stacked_box_rate', (pd.to_numeric(jr.n_defense_box, errors='coerce') >= 8).groupby(jr.defteam).mean(), True)
+        put('style', 'epa_vs_blitz', jd[jd.blitz].groupby('posteam').epa.mean(), True)
+        put('style', 'epa_vs_standard_rush', jd[~jd.blitz].groupby('posteam').epa.mean(), True)
+        put('style', 'play_action_rate', jd.groupby('posteam').is_play_action.mean(), True)
+        put('style', 'motion_rate', j.groupby('posteam').is_motion.mean(), True)
+        put('style', 'faced_stacked_box_rate', (pd.to_numeric(jr.n_defense_box, errors='coerce') >= 8).groupby(jr.posteam).mean(), False)
+    except Exception as e:
+        print(f"  [ftn] blitz/front data unavailable: {str(e)[:60]}")
+    put('ol_run', 'run_10plus_rate', (rush.yards_gained >= 10).groupby(rush.posteam).mean(), True)
+    put('ol_run', 'run_20plus_rate', (rush.yards_gained >= 20).groupby(rush.posteam).mean(), True)
+    put('dl_run', 'run_10plus_allowed', (rush.yards_gained >= 10).groupby(rush.defteam).mean(), False)
+    put('dl_run', 'run_20plus_allowed', (rush.yards_gained >= 20).groupby(rush.defteam).mean(), False)
+    # ---- COVERAGE (last completed season: NGS participation isn't published until after a season) ----
+    cov_season = y - 1
+    try:
+        part = pd.read_parquet(f"{NV}/pbp_participation/pbp_participation_{cov_season}.parquet",
+                               columns=['nflverse_game_id', 'play_id', 'defense_man_zone_type', 'defense_coverage_type'])
+        pb = pd.read_parquet(f"{NV}/pbp/play_by_play_{cov_season}.parquet",
+                             columns=['game_id', 'play_id', 'season_type', 'defteam', 'pass_attempt', 'receiver_player_id', 'yards_gained'])
+        pb = pb[(pb.season_type == 'REG') & (pb.pass_attempt == 1)].copy(); pb['defteam'] = pb.defteam.map(fx)
+        cv = pb.merge(part, left_on=['game_id', 'play_id'], right_on=['nflverse_game_id', 'play_id'], how='inner')
+        mz = cv[cv.defense_man_zone_type.isin(['MAN_COVERAGE', 'ZONE_COVERAGE'])]
+        for t, gg in mz.groupby('defteam'):
+            shells = cv[cv.defteam == t].defense_coverage_type.replace('', np.nan).dropna().value_counts(normalize=True)
+            M.setdefault(t, {})['coverage'] = {'season': cov_season, 'man_rate': rnd((gg.defense_man_zone_type == 'MAN_COVERAGE').mean()),
+                'shells': {k: rnd(v) for k, v in shells.head(5).items()}}
+        rmap = pd.read_parquet(f"{NV}/weekly_rosters/roster_weekly_{cov_season}.parquet", columns=['gsis_id', 'full_name']).dropna().drop_duplicates('gsis_id').set_index('gsis_id').full_name.to_dict()
+        mz = mz[mz.receiver_player_id.notna()].copy(); mz['key'] = mz.receiver_player_id.map(rmap).map(norm)
+        for k, gg in mz.groupby('key'):
+            man = gg[gg.defense_man_zone_type == 'MAN_COVERAGE']; zone = gg[gg.defense_man_zone_type == 'ZONE_COVERAGE']
+            if len(man) >= 12 and len(zone) >= 12:
+                COVSPLIT[k] = {'season': cov_season, 'man_ypt': rnd(man.yards_gained.sum() / len(man), 1), 'man_tgts': int(len(man)),
+                               'zone_ypt': rnd(zone.yards_gained.sum() / len(zone), 1), 'zone_tgts': int(len(zone))}
+    except Exception as e:
+        print(f"  [coverage] {cov_season} participation unavailable: {str(e)[:60]}")
     for t in M: M[t]['games'] = int(games.get(t, 0))
     rows = [{'kind': 'team', 'key': t, 'data': d} for t, d in M.items()]
 
@@ -141,7 +190,41 @@ def build(y):
     for k in P:
         if k in snap3.index: P[k]['snap_share'] = rnd(snap3[k], 3)
         if k in tshare: P[k]['target_share'] = rnd(tshare[k], 3)
+    last = W.sort_values('week').groupby('key').tail(1).set_index('key')
+    for k in P:
+        if k in last.index: P[k]['team'] = fx(last.loc[k, 'team']); P[k]['position'] = last.loc[k, 'position']
+    rr = pd.read_parquet(f"{NV}/weekly_rosters/roster_weekly_{y}.parquet", columns=['gsis_id', 'full_name']).dropna().drop_duplicates('gsis_id').set_index('gsis_id').full_name.to_dict()
+    ru2 = rush[rush.rusher_player_id.notna()].copy(); ru2['key'] = ru2.rusher_player_id.map(rr).map(norm)
+    for k, gg in ru2.groupby('key'):
+        if len(gg) >= 15:
+            P.setdefault(k, {}).setdefault('rushing', {}).update({'carries': int(len(gg)), 'run_10plus_rate': rnd((gg.yards_gained >= 10).mean()),
+                'run_20plus_rate': rnd((gg.yards_gained >= 20).mean()), 'stuffed_rate': rnd((gg.yards_gained <= 0).mean())})
+    for k, v in COVSPLIT.items(): P.setdefault(k, {})['vs_coverage'] = v
+    try:
+        Q = pd.concat([pd.read_parquet(f"{NV}/stats_player/stats_player_week_{s}.parquet") for s in [y - 1, y]], ignore_index=True)
+        Q = Q[(Q.season_type == 'REG') & (Q.position == 'QB')].copy()
+        for c in ['attempts', 'passing_yards']: Q[c] = pd.to_numeric(Q[c], errors='coerce').fillna(0)
+        Q['key'] = Q.player_display_name.map(norm); Q['t'] = Q.season * 100 + Q.week
+        TA = Q.groupby(['team', 't']).attempts.sum().reset_index()
+        lg_ypa = Q[Q.attempts >= 15].passing_yards.sum() / Q[Q.attempts >= 15].attempts.sum()
+        for k, gg in Q[Q.attempts >= 15].groupby('key'):
+            h = gg.sort_values('t').tail(8)
+            if len(h) < 2: continue
+            th = TA[TA.team == h.team.iloc[-1]].sort_values('t').tail(6)
+            w = np.linspace(0.6, 1.0, len(h)); a = h.attempts.sum()
+            P.setdefault(k, {})['qb_model'] = {'att_own': rnd(np.average(h.attempts, weights=w), 2), 'team_att': rnd(th.attempts.mean(), 2) if len(th) else None,
+                'ypa': rnd((h.passing_yards.sum() + lg_ypa * 250) / (a + 250), 3), 'starts': int(len(h))}
+            P[k].setdefault('team', fx(h.team.iloc[-1])); P[k].setdefault('position', 'QB')
+    except Exception as e:
+        print(f"  [qb] inputs unavailable: {str(e)[:60]}")
     rows += [{'kind': 'player', 'key': k, 'data': d} for k, d in P.items()]
+    gm = pbp.drop_duplicates('game_id'); pts_all = float((gm.home_score + gm.away_score).sum())
+    tds = pd.read_parquet(f"{NV}/pbp/play_by_play_{y}.parquet", columns=['season_type', 'touchdown', 'td_team'])
+    tds = tds[(tds.season_type == 'REG') & (tds.touchdown == 1) & tds.td_team.notna()]
+    rows.append({'kind': 'meta', 'key': 'league', 'data': {
+        'run_10plus': rnd((rush.yards_gained >= 10).mean()), 'run_20plus': rnd((rush.yards_gained >= 20).mean()), 'stuffed': rnd((rush.yards_gained <= 0).mean()),
+        'td_per_point': rnd(len(tds) / pts_all, 4) if pts_all else None,
+        'qb_att_coef': [0.4241, -0.0784, 0.2771, 5.6237], 'qb_typical_miss': 58}})
     return rows, M, P
 
 def upsert(rows):

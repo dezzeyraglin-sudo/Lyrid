@@ -3544,6 +3544,12 @@
 .nflx-mp td:first-child,.nflx-mp th:first-child{text-align:left;color:var(--text-secondary)}
 .nflx-mp-h td{font-weight:var(--weight-semibold);color:var(--text-primary);padding-top:8px}
 .nflx-mp-rk{font-size:10px;color:var(--text-muted)}
+.nflx-gr-sec{margin:6px 0 10px}
+.nflx-gr-h{font-size:var(--size-caption);font-weight:var(--weight-semibold);color:var(--text-primary);margin-bottom:2px}
+.nflx-gr-i{font-size:var(--size-caption);color:var(--text-secondary);padding:2px 0}
+.nflx-gr-muted{color:var(--text-muted)}
+.nflx-ta-row{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:3px 0;font-size:var(--size-caption)}
+.nflx-ta-score{font-family:var(--font-mono);color:var(--text-secondary);white-space:nowrap}
 .nflx-knows{margin-top:8px;padding-top:6px;border-top:1px solid var(--border-hairline);font-size:var(--size-caption);color:var(--text-muted)}
 .nflx-dvp{margin-bottom:10px;border:1px solid var(--border-hairline);border-radius:8px}
 .nflx-dvp summary{cursor:pointer;list-style:none;padding:8px 12px;font-size:var(--size-caption);font-weight:var(--weight-medium);color:var(--text-secondary)}
@@ -17396,7 +17402,7 @@ function renderHistory() {
       <button class="history-subnav-btn ${historyView==='nba'?'active':''}" data-hist-view="nba" onclick="switchHistoryView('nba')">★ NBA BEST BETS</button>
       <button class="history-subnav-btn ${historyView==='wnbagames'?'active':''}" data-hist-view="wnbagames" onclick="switchHistoryView('wnbagames')">◈ WNBA GAME BETS</button>
       <button class="history-subnav-btn ${historyView==='nfl'?'active':''}" data-hist-view="nfl" onclick="switchHistoryView('nfl')">▲ NFL PROPS</button>
-      ${historyView === 'nfl' ? `<button class="btn sm" onclick="gradeNflProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'wnbagames' ? `<button class="btn sm" onclick="gradeWnbaGameBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="backfillInningData()" style="margin-left:6px" title="Fetch per-inning data for already-graded games (one-time backfill)">⊕ BACKFILL INNINGS</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
+      ${historyView === 'nfl' ? `<button class="btn sm" onclick="nflReloadHistory()" style="margin-left:auto" title="Grading runs on the server; this reloads the shared record">↻ REFRESH</button>` : historyView === 'wnba' ? `<button class="btn sm" onclick="gradeWnbaProps()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'wnbagames' ? `<button class="btn sm" onclick="gradeWnbaGameBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'gamebets' ? `<button class="btn sm" onclick="gradeGameLineBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'yrfi' ? `<button class="btn sm" onclick="gradeFirstInningBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'pitcherbets' ? `<button class="btn sm" onclick="gradePitcherPropBets()" style="margin-left:auto">⚡ GRADE ALL</button>` : historyView === 'calibration' ? `<button class="btn sm" onclick="gradeProjectionAudit()" style="margin-left:auto">⚡ GRADE ALL</button><button class="btn sm" onclick="backfillInningData()" style="margin-left:6px" title="Fetch per-inning data for already-graded games (one-time backfill)">⊕ BACKFILL INNINGS</button><button class="btn sm" onclick="document.getElementById('lyrid-import-input').click()" style="margin-left:6px" title="Import a state JSON backup or picks CSV">⬆ IMPORT DATA</button><input type="file" id="lyrid-import-input" accept=".json,.csv" style="display:none" onchange="handleImportFile(event)">` : `<button class="btn sm" onclick="manualAddHitterToHistory()" style="margin-left:auto">+ ADD HITTER</button>
       <button class="btn sm" onclick="gradeAllBestBets()" style="margin-left:6px">⚡ GRADE ALL</button>`}
     </div>
   `;
@@ -17404,7 +17410,12 @@ function renderHistory() {
   // WNBA PROPS view — in-depth prediction tracking to sharpen the engine
   if (historyView === 'nfl') {
     const all = [];
-    Object.keys(state.nflPropHistory || {}).forEach(d => { Object.values(state.nflPropHistory[d]).forEach(e => all.push(e)); });
+    const srv = window.__nflServerHistory;
+    if (!srv) loadNflServerHistory(false);
+    if (srv && srv.ok) (srv.props || []).forEach(e => all.push(e));
+    else Object.keys(state.nflPropHistory || {}).forEach(d => { Object.values(state.nflPropHistory[d]).forEach(e => all.push(e)); });
+    const srcNote = (srv && srv.ok) ? `Shared record on the server \u00b7 ${(srv.props || []).length} props \u00b7 logged and graded automatically.`
+      : (srv ? `Server record unavailable (${srv.why || 'error'}) \u2014 showing this device's local record.` : 'Loading the shared record\u2026 showing this device\u2019s local record for now.');
     if (all.length === 0) {
       container.innerHTML = subnavHtml + `<div class="empty"><div class="empty-icon">◌</div><div>No NFL predictions tracked yet.<br><br>The model's actionable plays are auto-captured when you open the NFL tab and load a slate.<br>After games finish, tap ⚡ GRADE ALL (or reopen the app) to score them against ESPN box scores.<br><br><span style="opacity:.7">Tiers stay provisional until this record builds — this is the forward-validation they're waiting on.</span></div></div>`;
       return;
@@ -17510,6 +17521,10 @@ function renderHistory() {
     const watchFade = list => list.filter(e => e.snapshot && e.graded && e.actual != null && Number(e.actual) !== Number(e.line))
       .map(e => Object.assign({}, e, { result: (e.lean === 'OVER' ? Number(e.actual) < Number(e.line) : Number(e.actual) > Number(e.line)) ? 'win' : 'loss' }));
     const byWatch = watchTable('WATCH \u2014 unproven, grading on new games from Week 5', 'Hypotheses frozen from weeks 1\u20134 and graded ONLY on later games. None is on the card. Promotion needs 40+ new picks, a 95% floor above 50%, and no dependence on one week. With six tested, expect at least one to fade. Never edit a rule using the games currently validating it.', [
+      { label: 'ADVANTAGE: strong (|score| 0.40+)', entries: all.filter(e => e.snapshot && e.graded && e.advantage && e.advantage.side && e.advantage.strength === 'strong' && e.actual != null && Number(e.actual) !== Number(e.line))
+          .map(e => Object.assign({}, e, { result: (e.advantage.side === 'OVER' ? Number(e.actual) > Number(e.line) : Number(e.actual) < Number(e.line)) ? 'win' : 'loss' })) },
+      { label: 'ADVANTAGE: moderate or stronger (|score| 0.20+)', entries: all.filter(e => e.snapshot && e.graded && e.advantage && e.advantage.side && e.advantage.strength !== 'slight' && e.actual != null && Number(e.actual) !== Number(e.line))
+          .map(e => Object.assign({}, e, { result: (e.advantage.side === 'OVER' ? Number(e.actual) > Number(e.line) : Number(e.actual) < Number(e.line)) ? 'win' : 'loss' })) },
       { label: 'MATCHUP READ: side the ranked factors favor (all props, margin 2+)', entries: all.filter(e => e.snapshot && e.graded && e.matchupLean && (e.matchupLean.lean === 'OVER' || e.matchupLean.lean === 'UNDER') && e.actual != null && Number(e.actual) !== Number(e.line))
           .map(e => Object.assign({}, e, { result: (e.matchupLean.lean === 'OVER' ? Number(e.actual) > Number(e.line) : Number(e.actual) < Number(e.line)) ? 'win' : 'loss' })) },
       { label: 'FADE: receiving \u2014 opposite of Lyrid\u2019s lean (wk1-4: 56%)', entries: watchFade(all.filter(e => e.propType === 'receiving_yards')) },
@@ -17584,7 +17599,7 @@ function renderHistory() {
     const graded = all.filter(e => e.graded).sort((a, b) => (b.date + b.player).localeCompare(a.date + a.player));
     const pending = all.filter(e => !e.graded).sort((a, b) => ((b.edge ?? 0) - (a.edge ?? 0)));
     container.innerHTML = subnavHtml + statsBar +
-      `<div class="rollup-tier-note" style="margin:10px 0">Only the PROVEN rule is a betting signal. Everything else is research. Graded off ESPN box scores.</div>` +
+      `<div class="rollup-tier-note" style="margin:10px 0">Only the PROVEN rule is a betting signal. Everything else is research. ${srcNote}</div>` +
       byProven + byWatch + byCalib + byMove + researchHdr + byTier + byMarket + byLean + byCapped +
       (pending.length ? `<h3 class="rollup-section-title">PENDING (${pending.length})</h3><div class="rollup-prop-list">${pending.slice(0, 40).map(row).join('')}</div>` : '') +
       (graded.length ? `<h3 class="rollup-section-title">GRADED (${graded.length})</h3><div class="rollup-prop-list">${graded.slice(0, 60).map(row).join('')}</div>` : '');
@@ -24720,8 +24735,10 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   var _nflMissMemo = { n: -1, by: {} };
   function nflFamilyMiss(propType) {
     // Lyrid's typical miss vs the line's, per family, from the user's own graded history (real lines only).
-    var hist = (window.state && state.nflPropHistory) || (typeof state !== 'undefined' && state.nflPropHistory) || {};
-    var all = []; Object.keys(hist).forEach(function (d) { var day = hist[d] || {}; Object.keys(day).forEach(function (k) { all.push(day[k]); }); });
+    var srv = window.__nflServerHistory, all = [];
+    if (srv && srv.ok) all = srv.props || [];
+    else { var hist = (window.state && state.nflPropHistory) || (typeof state !== 'undefined' && state.nflPropHistory) || {};
+      Object.keys(hist).forEach(function (d) { var day = hist[d] || {}; Object.keys(day).forEach(function (k) { all.push(day[k]); }); }); }
     if (_nflMissMemo.n !== all.length) {
       var by = {};
       all.forEach(function (e) {
@@ -24751,7 +24768,9 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
       verdict = '<div class="nflx-verdict play"><b>PLAY: ' + (f.side === 'under' ? 'UNDER' : 'OVER') + '</b> \u2014 ' + (f.rule === 'matchup_read' ? 'promoted rule (matchup read)' : 'proven rule') + '<div class="nflx-verdict-sub">' + esc(f.why || '') + '</div></div>';
     } else {
       var rdv = item.matchupReport && item.matchupReport.read;
-      var leanTxt = (rdv && (rdv.lean === 'OVER' || rdv.lean === 'UNDER')) ? ' \u00b7 Lean ' + rdv.lean + ' (matchup ' + (rdv.lean === 'OVER' ? rdv.over + '\u2013' + rdv.under : rdv.under + '\u2013' + rdv.over) + ', unproven)' : '';
+      var avv = item.advantage;
+      var leanTxt = (avv && avv.side) ? ' \u00b7 Matchup advantage ' + nflAdvTxt(avv) + ', unproven'
+        : ((rdv && (rdv.lean === 'OVER' || rdv.lean === 'UNDER')) ? ' \u00b7 Lean ' + rdv.lean + ' (matchup ' + (rdv.lean === 'OVER' ? rdv.over + '\u2013' + rdv.under : rdv.under + '\u2013' + rdv.over) + ', unproven)' : '');
       verdict = '<div class="nflx-verdict pass"><b>No proven edge \u2014 pass</b>' + esc(leanTxt) + (f.why ? '<div class="nflx-verdict-sub">' + esc(f.why) + '</div>' : '') + '</div>';
     }
     // CASE FOR THE OVER / UNDER — engine drivers, plus the two matchup notes
@@ -24798,12 +24817,31 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var cbs = (r.oppCorners || []).map(function (c) { return esc(c.name) + ' (' + c.targets + ' tgts, ' + c.ypt + ' yds/tgt, rating ' + c.rating + ')'; }).join('; ');
     var rd = r.read || {};
     var readTxt = rd.lean === 'MIXED' ? 'MIXED \u2014 factors split (' + rd.over + ' over / ' + rd.under + ' under)' : rd.lean + ' (' + rd.over + ' over / ' + rd.under + ' under)';
-    return '<details class="nflx-mr"><summary>\u25B8 Matchup report \u00b7 read: <b>' + esc(readTxt) + '</b></summary>' +
-      rows + (bits.length ? '<div class="nflx-mr-player"><b>' + esc(item.player || '') + '</b> ' + esc(bits.join(' \u00b7 ')) + '</div>' : '') +
+    var av = item.advantage, advRows = (av && av.components) ? '<div class="nflx-mr-player"><b>Matchup advantage ' + esc(nflAdvTxt(av)) + '</b> \u2014 ' + av.n + ' signals:</div>' +
+      av.components.map(function (c) { return '<div class="nflx-mr-row ' + (c.c > 0.05 ? 'over' : (c.c < -0.05 ? 'under' : 'neutral')) + '"><span>' + esc(c.label) + ': ' + esc(c.detail || '') + '</span><span></span><span class="nflx-mr-side">' + (c.c > 0 ? '+' : '') + c.c.toFixed(2) + '</span></div>'; }).join('') : '';
+    return '<details class="nflx-mr"><summary>\u25B8 Matchup report \u00b7 ' + (av && av.side ? 'advantage: <b>' + esc(nflAdvTxt(av)) + '</b>' : 'read: <b>' + esc(readTxt) + '</b>') + '</summary>' +
+      advRows + rows + (bits.length ? '<div class="nflx-mr-player"><b>' + esc(item.player || '') + '</b> ' + esc(bits.join(' \u00b7 ')) + '</div>' : '') +
       (cbs ? '<div class="nflx-mr-player"><b>' + esc(item.opponent || 'Opponent') + ' corners</b> ' + cbs + '</div>' : '') +
       '<div class="nflx-mr-note">Matchup read = ranked factors in the top or bottom third of the league. It is a tracked lean, graded in History \u2014 not a proven edge. Route participation isn\u2019t public; snap share stands in.</div></details>';
   }
+  function nflAdvAbs(p) { return (p && p.advantage && p.advantage.score != null) ? Math.abs(p.advantage.score) : -1; }
+  function nflAdvSort(a, b) { var fa = a.featured && a.featured.ok ? 1 : 0, fb = b.featured && b.featured.ok ? 1 : 0; return (fb - fa) || (nflAdvAbs(b) - nflAdvAbs(a)); }
+  function nflAdvTxt(a) { return a ? a.side + ' ' + (a.score > 0 ? '+' : '') + a.score.toFixed(2) + ' (' + a.strength + ')' : ''; }
+  function nflTopAdvantages(picks) {
+    var top = (picks || []).filter(function (p) { return p.advantage && p.advantage.strength !== 'slight'; }).sort(nflAdvSort).slice(0, 12);
+    if (!top.length) return '';
+    var rows = top.map(function (p) {
+      var a = p.advantage, play = p.featured && p.featured.ok;
+      return '<div class="nflx-ta-row"><span class="nflx-dir ' + (a.side === 'UNDER' ? 'down' : 'up') + (play ? '' : ' muted') + '">' + (a.side === 'UNDER' ? 'Lower' : 'Higher') + '</span>' +
+        '<span class="nflx-ta-name"><b>' + esc(p.player) + '</b> ' + esc(p.propLabel) + ' ' + esc(p.verdict && p.verdict.line) + ' <span class="nflx-gr-muted">' + esc(p.team || '') + ' vs ' + esc(p.opponent || '') + '</span></span>' +
+        '<span class="nflx-ta-score">' + (a.score > 0 ? '+' : '') + a.score.toFixed(2) + ' ' + a.strength + (play ? ' \u00b7 <b>PLAY</b>' : '') + '</span></div>';
+    }).join('');
+    return '<details class="nflx-dvp nflx-ta" open><summary>\u25B8 Top matchup advantages \u2014 every prop scored, strongest first</summary><div style="padding:4px 12px 8px">' + rows +
+      '<div class="nflx-mr-note">Score = average of every signal for that prop (team-unit factors, history vs this defense type, big-run and hole odds, coverage fit, separation, blitz matchup, QB estimate), from \u22121 (under) to +1 (over). A tracked lean graded in History \u2014 only rows marked PLAY are bets.</div></div></details>';
+  }
   function nflLeanChip(item) {
+    var av = item.advantage;
+    if (av && av.side && av.strength !== 'slight') return '<span class="nflx-dir ' + (av.side === 'UNDER' ? 'down' : 'up') + ' muted" title="Matchup advantage \u2014 tracked lean, not a proven edge">Lean ' + (av.side === 'UNDER' ? 'lower' : 'higher') + '</span> ';
     var rd = item.matchupReport && item.matchupReport.read;
     if (!rd || (rd.lean !== 'OVER' && rd.lean !== 'UNDER')) return '';
     return '<span class="nflx-dir ' + (rd.lean === 'UNDER' ? 'down' : 'up') + ' muted" title="Matchup read \u2014 tracked lean, not a proven edge">Lean ' + (rd.lean === 'UNDER' ? 'lower' : 'higher') + '</span> ';
@@ -24852,6 +24890,50 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   }
   var nflDefReports = {};
   var nflTeamProfiles = {};
+  var nflGameReports = {};
+  function nflTitle(k) { return String(k || '').replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
+  function nflGameReportPanel(teams, picks) {
+    if (!teams || teams.length < 2) return '';
+    var r = nflGameReports[teams[0] + '@' + teams[1]] || nflGameReports[teams[1] + '@' + teams[0]];
+    if (!r || !r.teams) return '';
+    var pct = function (x) { return x == null ? '\u2014' : Math.round(x * 100) + '%'; };
+    var lineFor = function (name, label) { var p = (picks || []).find(function (q) { return String(q.player || '').toLowerCase().replace(/[.'`]/g, '').replace(/\s+(jr|sr|ii|iii|iv|v)\b/g, '') === name && q.propLabel === label; }); return p && p.verdict ? p.verdict.line : null; };
+    var sec = function (title, body) { return body ? '<div class="nflx-gr-sec"><div class="nflx-gr-h">' + title + '</div>' + body + '</div>' : ''; };
+    var li = function (s) { return '<div class="nflx-gr-i">' + s + '</div>'; };
+    var A = r.teams[r.away] || {}, H = r.teams[r.home] || {};
+    var td = (A.estTouchdowns != null && H.estTouchdowns != null) ? (A.estTouchdowns + H.estTouchdowns).toFixed(1) : null;
+    var out = '';
+    out += sec('Score &amp; touchdowns', (r.total != null ? li('Total ' + r.total + ' \u00b7 ' + esc(r.away) + ' ~' + (A.impliedPoints ?? '\u2014') + ' pts (' + (A.estTouchdowns ?? '\u2014') + ' TDs) \u00b7 ' + esc(r.home) + ' ~' + (H.impliedPoints ?? '\u2014') + ' pts (' + (H.estTouchdowns ?? '\u2014') + ' TDs)') : '') +
+      (td ? li('<b>~' + td + ' touchdowns expected in the game</b> (from the market\u2019s implied points)') : ''));
+    var qbs = [r.away, r.home].map(function (t) { var x = (r.teams[t] || {}).qb; if (!x) return ''; var ln = lineFor(x.name, 'Passing Yards');
+      return li('<b>' + esc(nflTitle(x.name)) + '</b> (' + esc(t) + '): ~' + x.estAttempts + ' attempts \u2192 <b>~' + x.estPassYards + ' passing yds</b> (\u00b1' + x.typicalMiss + ')' + (ln != null ? ' \u00b7 line ' + ln + ' (' + (x.estPassYards - ln > 0 ? '+' : '') + (x.estPassYards - ln).toFixed(1) + ')' : '')); }).join('');
+    out += sec('QB passing yards (estimate)', qbs);
+    var rbs = [r.away, r.home].map(function (t) { var x = (r.teams[t] || {}).rb1; if (!x) return '';
+      return li('<b>' + esc(nflTitle(x.name)) + '</b> (' + esc(t) + ', ~' + x.carriesPg + ' carries): clean hole ' + pct(x.cleanHolePerCarry) + ' of carries \u00b7 10+ yds ' + pct(x.tenPlusPerCarry) + ' of carries \u00b7 <b>' + pct(x.chanceOf20PlusRun) + ' chance of a 20+ yd run</b> (avg back: ' + pct(x.leagueChance20) + ')' +
+        (x.yacPerCarry != null ? ' \u00b7 ' + x.yacPerCarry + ' yds after contact/carry' : '')); }).join('');
+    out += sec('O-line holes &amp; big-run chance (RB1)', rbs);
+    var cov = [r.away, r.home].map(function (t) { var x = r.teams[t] || {}; if (!x.coverageFaced) return '';
+      var sh = Object.entries(x.coverageFaced.shells || {}).slice(0, 2).map(function (e) { return e[0].replace('COVER_', 'Cover ') + ' ' + pct(e[1]); }).join(', ');
+      var fits = (x.coverageFits || []).map(function (f) { return esc(nflTitle(f.name)) + ' ' + f.vsThisMix + ' yds/tgt vs this mix (own ' + f.ownAvg + ', man ' + f.manYpt + ' / zone ' + f.zoneYpt + ')'; }).join('; ');
+      return li('<b>' + esc(t) + ' offense</b> faces ' + pct(x.coverageFaced.man_rate) + ' man' + (sh ? ' \u00b7 ' + sh : '') + ' (' + x.coverageFaced.season + ' tendencies)' + (fits ? '<br>Best fits: ' + fits : '')); }).join('');
+    out += sec('Coverage &amp; who benefits', cov);
+    var bl = [r.away, r.home].map(function (t) { var x = (r.teams[t] || {}).blitz; if (!x || !x.oppBlitzRate) return '';
+      var vb = x.offenseVsBlitz, vs = x.offenseVsStandard, opp = t === r.away ? r.home : r.away;
+      var verdict = (vb && vs) ? (vb.v > vs.v ? 'blitzing <b>helps</b> ' + esc(t) : 'blitzing <b>hurts</b> ' + esc(t)) : '';
+      return li(esc(opp) + ' blitzes ' + pct(x.oppBlitzRate.v) + ' (' + x.oppBlitzRate.rank + nflOrd(x.oppBlitzRate.rank) + '), sends 6+ ' + pct(x.oppSixPlus && x.oppSixPlus.v) + ' \u00b7 ' + esc(t) + ' EPA/dropback vs blitz ' + (vb ? vb.v + ' (' + vb.rank + nflOrd(vb.rank) + ')' : '\u2014') + ', vs standard rush ' + (vs ? vs.v + ' (' + vs.rank + nflOrd(vs.rank) + ')' : '\u2014') + (verdict ? ' \u2192 ' + verdict : '')); }).join('');
+    out += sec('Blitz &amp; pass rush', bl + li('<span class="nflx-gr-muted">Pass-rush techniques (stunts, twists, bull rush) aren\u2019t in free data; pressure, sack, and rusher counts are shown instead.</span>'));
+    var sup = (r.mostSuppressed || []).map(function (p) { return li('<b>' + esc(p.player) + '</b> ' + esc(p.prop) + ' ' + p.line + ' \u2014 ' + p.under + ' factors against, ' + p.over + ' for' + (p.why && p.why.length ? ': ' + esc(p.why.join('; ')) : '')); }).join('');
+    out += sec('Most suppressed', sup);
+    var reads = (r.strongestReads || []).map(function (p) { var h0 = p.history; return li(esc(p.player) + ' ' + esc(p.prop) + ' ' + p.line + ' \u2192 lean <b>' + p.lean + '</b> (' + p.over + '\u2013' + p.under + ')' +
+      (h0 && h0.delta != null ? ' \u00b7 history vs this defense type: ' + (h0.delta > 0 ? '+' : '') + h0.delta + ' yds vs his norm (' + (h0.games || '?') + ' g)' : '')); }).join('');
+    out += sec('Strongest matchup leans (unproven, tracked)', reads);
+    var plays = r.plays || [];
+    var bet = plays.length ? plays.map(function (p) { return li('<b>' + esc(p.player) + ' ' + esc(p.prop) + ' ' + (p.side === 'under' ? 'UNDER' : 'OVER') + ' ' + p.line + '</b> \u2014 ' + esc(p.rule === 'matchup_read' ? 'promoted matchup read' : 'proven rule')); }).join('') +
+        (plays.length >= 2 ? li('Parlay: these legs share one game, so they win or lose together more than independent legs would. Treat it as one bet on the game script, sized small.') : li('Straight bet only \u2014 one qualifying play.'))
+      : li('No bet qualifies in this game. The leans above are unproven; a parlay of unproven leans multiplies the risk, not the edge.');
+    out += sec('Best bet', bet);
+    return '<details class="nflx-dvp nflx-gr" open><summary>\u25B8 Game report</summary><div style="padding:6px 12px">' + out + '</div></details>';
+  }
   function nflMatchupPanel(teams) {
     if (!teams || teams.length < 2) return '';
     var A = nflTeamProfiles[teams[0]], B = nflTeamProfiles[teams[1]];
@@ -24895,15 +24977,16 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     var qbByTeam={}; (picks||[]).forEach(function(p){ if(p&&p.position==='QB'&&p.team&&!qbByTeam[p.team])qbByTeam[p.team]=p.player; });
     var totByKey={}; (totals||[]).forEach(function(x){ if(x&&x.homeTeam&&x.awayTeam){ totByKey[[x.homeTeam,x.awayTeam].sort().join('@')]=x; } });
     var cnt=document.getElementById('nflGamesCount'); if(cnt) cnt.textContent = groups.length + ' \u00b7 tap to analyze';
-    host.innerHTML = groups.map(function(g,i){
+    host.innerHTML = nflTopAdvantages(picks) + groups.map(function(g,i){
       var mu = g.teamList.length>=2 ? (g.teamList[0]+' vs '+g.teamList[1]) : (g.teamList[0]||'Game');
-      var tally=[]; if(g.tally.GUARANTEED)tally.push(g.tally.GUARANTEED+' GUAR'); if(g.tally.PLATINUM)tally.push(g.tally.PLATINUM+' PLAT'); if(g.tally.GOLD)tally.push(g.tally.GOLD+' GOLD');
-      var edge = g.qualifying ? ('<span class="edge">'+tally.join(' \u00b7 ')+'</span>') : '<span>no edge</span>';
+      var nPlay = g.picks.filter(function(p){ return p.featured && p.featured.ok; }).length;
+      var nStrong = g.picks.filter(function(p){ return p.advantage && p.advantage.strength === 'strong'; }).length;
+      var edge = nPlay ? ('<span class="edge">' + nPlay + ' play' + (nPlay===1?'':'s') + (nStrong ? ' \u00b7 ' + nStrong + ' strong' : '') + '</span>') : (nStrong ? '<span>' + nStrong + ' strong lean' + (nStrong===1?'':'s') + '</span>' : '<span>no edge</span>');
       var tv = nflComputeTotal(totByKey[g.key], qbByTeam);
       return '<details class="nflx-game"' + (i===0?' open':'') + '><summary class="nflx-game-row">' +
         '<span class="nflx-game-mu">' + esc(mu) + '</span>' + scriptChipFor(g) + nflTotalChip(tv) +
         '<span class="nflx-game-meta"><span>' + g.picks.length + ' props</span>' + edge + '<span class="nflx-game-chev">\u203A</span></span>' +
-        '</summary><div class="nflx-game-body">' + nflTotalBlock(tv) + nflMatchupPanel(g.teamList) + nflDefVsPosPanel(g.teamList) + g.picks.map(renderPropCard).join('') + '</div></details>';
+        '</summary><div class="nflx-game-body">' + nflTotalBlock(tv) + nflGameReportPanel(g.teamList, g.picks) + nflMatchupPanel(g.teamList) + nflDefVsPosPanel(g.teamList) + g.picks.slice().sort(nflAdvSort).map(renderPropCard).join('') + '</div></details>';
     }).join('');
   }
 
@@ -24984,6 +25067,8 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
     renderJudgment(data.picks);
     nflDefReports = data.defenseReports || {};
     nflTeamProfiles = data.teamProfiles || {};
+    nflGameReports = data.gameReports || {};
+    if (!window.__nflServerHistory && typeof loadNflServerHistory === 'function') loadNflServerHistory(true);
     renderGames(data.picks, data.totals);
     var _tc=document.getElementById('nflTotalsContainer'); if(_tc)_tc.innerHTML='';
     try { if (typeof window.logNflBets === 'function') window.logNflBets(data.picks, nflState.date); } catch (_) {}
@@ -25264,6 +25349,16 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
 })();
 
 // Stats roll-up over a list of graded NFL entries (mirrors computeWnbaPropStats).
+// Shared NFL history (Supabase, via /api/nfl/history). The server logs + grades; browsers read.
+window.__nflServerHistory = null; window.__nflHistLoading = false;
+function loadNflServerHistory(quiet) {
+  if (window.__nflHistLoading) return; window.__nflHistLoading = true;
+  fetch('/api/nfl/history?_=' + Date.now()).then(r => r.json()).then(j => { window.__nflServerHistory = j; })
+    .catch(e => { window.__nflServerHistory = { ok: false, why: String((e && e.message) || e), props: [], totals: [] }; })
+    .finally(() => { window.__nflHistLoading = false;
+      if (!quiet && typeof historyView !== 'undefined' && historyView === 'nfl' && document.getElementById('historyList')) { try { renderHistory(); } catch (_) {} } });
+}
+function nflReloadHistory() { window.__nflServerHistory = null; loadNflServerHistory(false); }
 var NFL_LINE_FLOOR = { passing_yards: 100, pass_rush_yards: 100, rushing_yards: 6, receiving_yards: 6, rush_rec_yards: 10 };
 function nflRealLine(e) { return e && !e.excluded && Number(e.line) >= (NFL_LINE_FLOOR[e.propType] || 0); }   // excluded = marked non-standard (cleanup patch)
 function computeNflPropStats(entries) {
