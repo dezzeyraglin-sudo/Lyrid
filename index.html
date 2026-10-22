@@ -3745,6 +3745,7 @@
   <div style="display:flex;gap:var(--space-3);align-items:center;margin-bottom:var(--space-5);flex-wrap:wrap">
     <input id="nba-date" type="date" style="height:36px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font:14px var(--font-sans)">
     <button class="lyrid-btn primary" onclick="analyzeNba(document.getElementById('nba-date').value).then(renderNbaBoard)">Analyze</button>
+    <button id="nba-checklist-toggle" class="lyrid-btn" onclick="toggleNbaChecklistFilter()" style="font:13px var(--font-sans);padding:7px 12px;border:0.5px solid var(--border-hairline);background:var(--surface-muted);color:var(--text-secondary);border-radius:var(--radius-sm);cursor:pointer">Checklist ≥ 55: Off</button>
     <span id="nba-status" style="font:13px var(--font-sans);color:var(--text-muted)"></span>
   </div>
   <div id="nba-results"></div>
@@ -23438,7 +23439,24 @@ setInterval(lyridCacheDigest, 600000);    // refresh every 10 min while open
   window.LyridParlayBridge = {
     pushMlb: function (edges, date) { try { var d = date || todayISO(); UI.setSportCandidates('mlb', mlbHhrCandidates(d).concat(mlbPitcherCandidates(d))); } catch (_) {} },
     pushWnba: function (ranked, data) { try { UI.setSportCandidates('wnba', wnbaToCandidates(ranked, data)); } catch (_) {} },
-    pushNba: function (candidates) { try { UI.setSportCandidates('nba', candidates || []); } catch (_) {} },
+    pushNba: function (candidates) {
+      try {
+        // High-floor filter: drop forced-pass pure points + low checklist scores
+        var filtered = (candidates || []).filter(function (c) {
+          if (!c) return false;
+          var flags = c.flags || c.schemeFlags || {};
+          var score = (c.schemeScore != null) ? c.schemeScore : 50;
+          // Never allow forced-pass legs into the Parlay Maker
+          if (flags.forcedPass) return false;
+          // Pure points overs that the checklist flagged as high risk are blocked
+          if (String(c.market || '').toLowerCase() === 'points' && c.side === 'over' && (flags.purePointsRisk || score < 40)) return false;
+          // Soft preference: require at least a mediocre checklist score
+          if (score < 35) return false;
+          return true;
+        });
+        UI.setSportCandidates('nba', filtered);
+      } catch (_) {}
+    },
     toCandidates: function (edges, date) { return mlbToCandidates(edges, date || todayISO()); }
   };
 })();
@@ -25390,6 +25408,28 @@ async function analyzeNba(date) {
     return out;
   } catch (e) { console.error('analyzeNba failed', e); if (st) st.textContent = 'Error'; return { candidates: [] }; }
 }
+// ---- NBA checklist filter (one-click ≥ 55) ----
+window.__nbaChecklistFilter = false;
+window.__nbaLastOut = null;
+function toggleNbaChecklistFilter() {
+  window.__nbaChecklistFilter = !window.__nbaChecklistFilter;
+  var btn = document.getElementById('nba-checklist-toggle');
+  if (btn) {
+    if (window.__nbaChecklistFilter) {
+      btn.textContent = 'Checklist ≥ 55: On';
+      btn.style.background = 'var(--brand-primary)';
+      btn.style.color = 'var(--text-on-primary, #fff)';
+      btn.style.borderColor = 'var(--brand-primary)';
+    } else {
+      btn.textContent = 'Checklist ≥ 55: Off';
+      btn.style.background = 'var(--surface-muted)';
+      btn.style.color = 'var(--text-secondary)';
+      btn.style.borderColor = 'var(--border-hairline)';
+    }
+  }
+  if (window.__nbaLastOut) renderNbaBoard(window.__nbaLastOut);
+}
+
 function logNbaBestBets(candidates) {
   state.nbaPropHistory = state.nbaPropHistory || {};
   for (const c of (candidates || [])) {
@@ -25400,6 +25440,10 @@ function logNbaBestBets(candidates) {
       probOver: c.probOver, tier: c.tier, lineSource: c.lineSource, recommendation: c.recommendation,
       isBestBet: true, confidence: c.cashRate, floor: c.floor, ceiling: c.ceiling,
       reason: c.why, lineStatus: (c.flags && c.flags.lineStatus) || 'standard',
+      // --- checklist / scheme-risk (new) ---
+      schemeScore: c.schemeScore != null ? c.schemeScore : 50,
+      schemeFlags: c.schemeFlags || c.flags || {},
+      schemeUnderFactors: c.schemeUnderFactors || 0,
       // --- attribution logging (captured at slate time, graded later) ---
       signalsFired: Array.isArray(c.signalsFired) ? c.signalsFired : [],
       designation: c.designation || 'available',
@@ -25412,6 +25456,7 @@ function logNbaBestBets(candidates) {
 }
 function renderNbaBoard(out) {
   var el = document.getElementById('nba-results'); if (!el) return;
+  window.__nbaLastOut = out; // keep for toggle re-render
   function cardsFrom(o) {
     if (o && o.playerCards && o.playerCards.length) return o.playerCards;
     var rows = (o && (o.players || o.candidates)) || [];
@@ -25420,18 +25465,42 @@ function renderNbaBoard(out) {
     rows.forEach(function (r) {
       var key = String(r.playerId || r.player);
       if (!byKey[key]) byKey[key] = { playerId: r.playerId, player: r.player, team: r.team, opponent: r.opponent, archetype: r.archetype || null, recentForm: r.recentForm || null, matchup: r.matchup || null, oppAdj: r.oppAdj || null, props: [] };
-      byKey[key].props.push({ market: r.market, marketLabel: MKT[r.market] || String(r.market || '').toUpperCase(), side: r.side, line: r.line, projection: r.projection, floor: r.floor, ceiling: r.ceiling, prob: r.cashRate, edge: r.edge, tier: r.tier, isBet: r.tier !== 'PASS', why: r.why });
+      byKey[key].props.push({
+        market: r.market, marketLabel: MKT[r.market] || String(r.market || '').toUpperCase(),
+        side: r.side, line: r.line, projection: r.projection, floor: r.floor, ceiling: r.ceiling,
+        prob: r.cashRate, edge: r.edge, tier: r.tier, isBet: r.tier !== 'PASS', why: r.why,
+        schemeScore: r.schemeScore != null ? r.schemeScore : 50,
+        schemeFlags: r.schemeFlags || (r.flags || {}),
+        schemeUnderFactors: r.schemeUnderFactors || 0
+      });
     });
     var cards = Object.keys(byKey).map(function (k) { return byKey[k]; });
+    // Apply checklist ≥ 55 filter when toggle is on
+    if (window.__nbaChecklistFilter) {
+      cards.forEach(function (c) {
+        c.props = (c.props || []).filter(function (p) {
+          var sc = (p.schemeScore != null) ? p.schemeScore : 50;
+          var sf = p.schemeFlags || {};
+          if (sf.forcedPass) return false;
+          return sc >= 55;
+        });
+      });
+      cards = cards.filter(function (c) { return (c.props || []).length > 0; });
+    }
     cards.forEach(function (c) { c.props.sort(function (a, b) { return (b.edge || 0) - (a.edge || 0); }); c.topEdge = c.props.length ? (c.props[0].edge || 0) : 0; c.bets = c.props.filter(function (p) { return p.isBet; }).length; });
     cards.sort(function (a, b) { return b.topEdge - a.topEdge; });
     return cards;
   }
   var cards = cardsFrom(out);
   var st = document.getElementById('nba-status');
-  if (st) st.textContent = (out && out.reason) ? out.reason : (cards.length + ' player' + (cards.length === 1 ? '' : 's'));
+  var filterNote = window.__nbaChecklistFilter ? ' (checklist ≥ 55)' : '';
+  if (st) st.textContent = (out && out.reason) ? out.reason : (cards.length + ' player' + (cards.length === 1 ? '' : 's') + filterNote);
   if (!cards.length) {
-    el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans)">' + ((out && out.reason) || 'No NBA players on this slate.') + '</p>';
+    el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans)">'
+      + (window.__nbaChecklistFilter
+        ? 'No props cleared the Checklist ≥ 55 filter. Turn the toggle off to see everything.'
+        : ((out && out.reason) || 'No NBA players on this slate.'))
+      + '</p>';
     return;
   }
   function tierCol(t) {
@@ -25458,13 +25527,27 @@ function renderNbaBoard(out) {
       var badge = p.isBet
         ? '<span style="background:' + col[0] + ';color:' + col[1] + ';font:500 10px var(--font-sans);letter-spacing:.04em;padding:1px 6px;border-radius:var(--radius-pill)">' + p.tier + '</span>'
         : '<span style="color:var(--text-muted);font:11px var(--font-sans)">' + (p.side === 'under' ? 'U' : 'O') + '</span>';
+      // Checklist / scheme-risk badge
+      var sc = (p.schemeScore != null) ? p.schemeScore : 50;
+      var sf = p.schemeFlags || {};
+      var riskBits = [];
+      if (sf.forcedPass) riskBits.push('FORCED PASS');
+      if (sf.purePointsRisk) riskBits.push('pure pts risk');
+      if (sf.schemeHostile) riskBits.push('hostile scheme');
+      if (sf.minutesRisk) riskBits.push('min risk');
+      if (sf.compoundingUnder) riskBits.push('under stack');
+      var riskColor = sc >= 60 ? 'var(--cool,#5bbf7a)' : sc >= 40 ? 'var(--warn,#d6a24a)' : 'var(--danger,#e08080)';
+      var checklist = '<div style="margin-top:4px;font:11px var(--font-sans);color:' + riskColor + '">'
+        + 'Checklist ' + sc
+        + (riskBits.length ? ' · ' + riskBits.join(' · ') : '')
+        + '</div>';
       var row = '<div style="display:grid;grid-template-columns:42px 1fr auto auto;gap:10px;align-items:baseline">'
         + '<div style="font:600 12px var(--font-sans);color:var(--text-secondary);letter-spacing:.04em">' + p.marketLabel + '</div>'
         + '<div style="font:14px var(--font-sans);color:var(--text-primary)"><span style="font-family:var(--font-mono);font-variant-numeric:tabular-nums">' + arrow + ' ' + p.side + ' ' + p.line + '</span>'
         + ' <span style="color:var(--text-muted);font-size:12px">\u00B7 proj <b style="font-family:var(--font-mono);color:var(--text-primary)">' + (p.projection != null ? p.projection : '\u2014') + '</b> ' + range + '</span></div>'
         + '<div style="font:12px var(--font-mono);color:var(--text-muted)">' + Math.round((p.prob || 0) * 100) + '%</div>'
         + '<div>' + badge + '</div></div>';
-      return '<div style="padding:8px 0;border-top:0.5px solid var(--border-hairline)">' + row + gauge(p) + '</div>';
+      return '<div style="padding:8px 0;border-top:0.5px solid var(--border-hairline)">' + row + gauge(p) + checklist + '</div>';
     }).join('');
     return '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-4);margin-bottom:var(--space-4)">'
       + '<div style="display:flex;justify-content:space-between;align-items:baseline">'

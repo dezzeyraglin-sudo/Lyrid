@@ -16,6 +16,7 @@ const COMBO_SET = new Set(['pra', 'pts_rebs', 'pts_asts', 'rebs_asts']);
 import { formFloor } from './formFloor.js';
 import { biasCorrection } from './biasCorrection.js';
 import { classifyCadence, applyCadence } from './cadenceEngine.js';
+import { applySchemeRisk } from './schemeRisk.js';
 
 function recentAvgFor(profile, market) {
   if (!profile) return null;
@@ -87,6 +88,20 @@ export function decide(mp, market, line, ctx = {}) {
     }
   }
 
+  // 4.5) scheme-risk / high-floor checklist (Miller/Coward-style pure-points protection)
+  let scheme = { flags: {}, reasons: [], score: 50, underFactors: 0 };
+  if (rec.lean !== 'pass' || rec.formKill) {
+    // still run even on formKill so we can attach flags for logging
+  }
+  scheme = applySchemeRisk(mp, market, line, rec, {
+    ...ctx,
+    date: ctx.date || mp.date,
+    gameScript: ctx.gameScript || { total: mp.totalLine, spread: mp.spread },
+    matchup: mp.matchup,
+    oppAdj: mp.oppAdj,
+  });
+  rec = scheme.rec;
+
   // 5) finalize
   const marketMinEdge = market === 'points' ? cfg.edge.minEdge
     : COMBO_SET.has(market) ? (cfg.combo?.minEdge ?? 0.07)
@@ -115,7 +130,11 @@ export function decide(mp, market, line, ctx = {}) {
   }
   const reasons = [...(res.recNotes || []), res.flags?.confidentOverFaded ? 'confident over faded' : null,
     res.flags?.lineAboveCeiling ? 'line above ceiling' : null,
-    rec.formNote, cadenceNote, ...matchupReasons, roleGuarded ? 'role change + market disagreement — lean neutralized (stale projection risk)' : null, ...szReasons, bc.n ? `bias-corrected ${bc.bias > 0 ? '+' : ''}${bc.bias} (n${bc.n})` : null,
+    rec.formNote, cadenceNote, ...matchupReasons,
+    roleGuarded ? 'role change + market disagreement — lean neutralized (stale projection risk)' : null,
+    ...szReasons,
+    ...(scheme.reasons || []),
+    bc.n ? `bias-corrected ${bc.bias > 0 ? '+' : ''}${bc.bias} (n${bc.n})` : null,
   ].filter(Boolean);
 
   return {
@@ -123,6 +142,10 @@ export function decide(mp, market, line, ctx = {}) {
     side: rec.side, prob: rec.prob, edge: +rec.edge.toFixed(3), lean,
     distribution: res.distribution, bias: bc.bias, cadence: cadenceClass,
     formKill: !!rec.formKill, roleGuarded, shotZone: szRead, engine: res, reasons,
+    // new checklist / scheme-risk surface
+    schemeFlags: scheme.flags || {},
+    schemeScore: scheme.score,
+    schemeUnderFactors: scheme.underFactors || 0,
   };
 }
 

@@ -37,6 +37,7 @@ export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
       if (!ln || ln.isStandard === false || ln.line == null) continue;
       const v = decide(mp, market, ln.line, {
         league, gradedHistory, cadenceShares: mp.cadenceShares, gameScript: mp.gameScript, shotZone: mp.shotZone,
+        date: mp.date,
       });
       if (!v.ok) continue;
       const tier = provisionalTier(v.edge);
@@ -47,6 +48,9 @@ export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
         gameId: mp.gameId || '', date: mp.date || null,
         market, side: v.side, line: ln.line, prob: v.prob, edge: v.edge, tier, isBet,
         lineStatus: ln.lineStatus || 'standard', started: mp.starter ?? null, why, _v: v,
+        schemeFlags: v.schemeFlags || {},
+        schemeScore: v.schemeScore ?? 50,
+        schemeUnderFactors: v.schemeUnderFactors || 0,
       });
     }
   }
@@ -65,6 +69,7 @@ export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
 
       const v = decide(mp, market, ln.line, {
         league, gradedHistory, cadenceShares: mp.cadenceShares, gameScript: mp.gameScript, shotZone: mp.shotZone,
+        date: mp.date,
       });
       if (!v.ok || v.lean === 'pass') continue;
       if (minEdge != null && v.edge < minEdge) continue;
@@ -77,6 +82,9 @@ export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
         gameId: mp.gameId || '', date: mp.date || null,
         market, side: v.side, line: ln.line, prob: v.prob, edge: v.edge, tier,
         lineStatus: ln.lineStatus || 'standard', started: mp.starter ?? null, why, _v: v,
+        schemeFlags: v.schemeFlags || {},
+        schemeScore: v.schemeScore ?? 50,
+        schemeUnderFactors: v.schemeUnderFactors || 0,
       });
     }
   }
@@ -104,7 +112,16 @@ export function toCandidates(ranked, data = {}) {
       antiCalibrated: !!(r._v?.engine?.flags?.confidentOverFaded),
       highScoringGame: false, started: r.started ?? false, bookProhibited: false,
       lineStatus: r.lineStatus || 'standard',
+      // checklist surface
+      purePointsRisk: !!(r.schemeFlags && r.schemeFlags.purePointsRisk),
+      schemeHostile: !!(r.schemeFlags && r.schemeFlags.schemeHostile),
+      minutesRisk: !!(r.schemeFlags && r.schemeFlags.minutesRisk),
+      forcedPass: !!(r.schemeFlags && r.schemeFlags.forcedPass),
+      compoundingUnder: !!(r.schemeFlags && r.schemeFlags.compoundingUnder),
     },
+    schemeScore: r.schemeScore ?? 50,
+    schemeUnderFactors: r.schemeUnderFactors || 0,
+    schemeFlags: r.schemeFlags || {},
   }));
 }
 
