@@ -25453,25 +25453,54 @@ async function analyzeNba(date) {
   const st = document.getElementById('nba-status'); if (st) st.textContent = 'Analyzing\u2026';
   try {
     const res = await fetch('/api/nba/analyze?date=' + encodeURIComponent(d));
-    if (!res.ok) throw new Error('nba analyze ' + res.status);
-    const out = await res.json();
+    var bodyText = '';
+    try { bodyText = await res.text(); } catch (_) {}
+    var out = {};
+    try { out = bodyText ? JSON.parse(bodyText) : {}; } catch (parseErr) {
+      console.error('[nba analyze] non-JSON response', res.status, bodyText.slice(0, 300));
+      if (st) st.textContent = 'API error ' + res.status + ' (non-JSON)';
+      return {
+        candidates: [], players: [], playerCards: [],
+        error: 'non_json', status: res.status,
+        reason: 'Analyze API returned non-JSON (HTTP ' + res.status + '). Check /api/nba/analyze deploy and server logs.',
+        _raw: bodyText.slice(0, 500)
+      };
+    }
+    if (!res.ok) {
+      console.error('[nba analyze] HTTP', res.status, out);
+      if (st) st.textContent = 'API error ' + res.status;
+      return {
+        candidates: [], players: [], playerCards: [],
+        error: out.error || ('http_' + res.status),
+        status: res.status,
+        reason: out.error
+          ? ('Analyze failed: ' + out.error)
+          : ('Analyze API HTTP ' + res.status + '. Often a missing module on deploy (e.g. baseRateGrader.js) or PrizePicks/ESPN failure.'),
+        diagnostics: out.diagnostics || null
+      };
+    }
     try { if (window.LyridParlayBridge) window.LyridParlayBridge.pushNba(out.candidates); } catch (_) {}
     logNbaBestBets(out.candidates);
-    // Prefer full slate for the board; candidates alone are only LEAN+ bets
-    if ((!out.playerCards || !out.playerCards.length) && (!out.players || !out.players.length) && out.candidates) {
-      console.warn('[nba] API returned candidates only — full slate missing. diagnostics:', out.diagnostics);
-    }
     try {
       console.log('[nba analyze]', {
         playerCards: out.playerCards ? out.playerCards.length : 0,
         players: out.players ? out.players.length : 0,
         candidates: out.candidates ? out.candidates.length : 0,
         diagnostics: out.diagnostics,
-        reason: out.reason
+        reason: out.reason,
+        error: out.error
       });
     } catch (_) {}
     return out;
-  } catch (e) { console.error('analyzeNba failed', e); if (st) st.textContent = 'Error'; return { candidates: [] }; }
+  } catch (e) {
+    console.error('analyzeNba failed', e);
+    if (st) st.textContent = 'Network error';
+    return {
+      candidates: [], players: [], playerCards: [],
+      error: String(e && e.message || e),
+      reason: 'Network/analyze error: ' + String(e && e.message || e)
+    };
+  }
 }
 // ---- NBA checklist filter + navigation filters ----
 window.__nbaChecklistFilter = false;
@@ -25851,6 +25880,7 @@ function renderNbaBoard(out) {
   if (actionableN === 0 && cards.length > 0) statusCore += ' · 0 actionable (all PASS)';
   else if (actionableN > 0) statusCore += ' · ' + actionableN + ' actionable';
   if (filterNote) statusCore += filterNote;
+  if (out && out.error) statusCore = 'API error' + (out.status ? ' ' + out.status : '') + (out.error ? ': ' + String(out.error).slice(0, 80) : '');
   if (st) st.textContent = statusCore;
 
   // Banners
@@ -25905,13 +25935,21 @@ function renderNbaBoard(out) {
     var rawPc = (out && out.playerCards && out.playerCards.length) || 0;
     var rawPl = (out && out.players && out.players.length) || 0;
     var rawCand = (out && out.candidates && out.candidates.length) || 0;
+    var apiDead = rawPc === 0 && rawPl === 0 && rawCand === 0 && !diag.merged && !diag.scheduleGames;
+    var msg = (out && out.reason)
+      ? out.reason
+      : (apiDead
+        ? 'Analyze API returned an empty payload. This is usually a deploy issue (missing api/_lib/nba/baseRateGrader.js or analyze crash), not filters.'
+        : 'No props match the current filters.');
     el.innerHTML = thinBanner + '<div style="padding:12px 0;font:14px var(--font-sans);color:var(--text-muted)">'
-      + '<p style="margin:0 0 8px">' + ((out && out.reason)
-        ? out.reason
-        : 'No props match the current filters.') + '</p>'
-      + '<p style="margin:0 0 8px;color:var(--text-secondary)">Clear search, set Position/Market to All, View to By Game, and turn Checklist off.</p>'
+      + '<p style="margin:0 0 8px;color:var(--text-primary)">' + msg + '</p>'
+      + (out && out.error ? '<p style="margin:0 0 8px;color:var(--danger,#e08080);font:12px var(--font-mono)">error: ' + String(out.error) + '</p>' : '')
+      + (apiDead
+        ? '<p style="margin:0 0 8px;color:var(--text-secondary)">Deploy checklist: <b>api/_lib/nba/baseRateGrader.js</b> (new), calibration.js, analyze.js, schemeRisk.js, nbaVerdict.js, nbaBestBets.js. Then open <code>/api/nba/analyze?date=2026-10-23</code> and confirm JSON has playerCards/players.</p>'
+        : '<p style="margin:0 0 8px;color:var(--text-secondary)">Clear search, set Position/Market to All, View to By Game, and turn Checklist off.</p>')
       + '<p style="margin:0;font:12px var(--font-mono);color:var(--text-muted)">'
       + 'API: playerCards=' + rawPc + ' · players=' + rawPl + ' · candidates=' + rawCand
+      + (out && out.status != null ? ' · HTTP ' + out.status : '')
       + (diag.merged != null ? ' · merged=' + diag.merged : '')
       + (diag.evaluatedRows != null ? ' · evaluatedRows=' + diag.evaluatedRows : '')
       + (diag.playersWithProps != null ? ' · playersWithProps=' + diag.playersWithProps : '')
