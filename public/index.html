@@ -25570,6 +25570,108 @@ function logNbaBestBets(candidates) {
   }
   try { if (typeof saveState === 'function') saveState(); } catch (_) {}
 }
+// Build favorable / projected-short matchup reads from oppAdj, scheme, proj vs line
+function buildNbaMatchupRead(card) {
+  var fav = [];
+  var short = []; // projected to be surpassed / struggle
+  var oa = card.oppAdj || {};
+  var props = card.props || [];
+  var arch = card.archetype || {};
+  var archLabel = (arch.archetype || arch.label || '').toString();
+  var hint = (arch.signalHint || '').toString();
+
+  // Opponent defense multipliers
+  if (oa.effMult != null) {
+    if (oa.effMult >= 1.015) fav.push('Soft opponent defense (eff ×' + Number(oa.effMult).toFixed(2) + ')');
+    else if (oa.effMult <= 0.985) short.push('Tough opponent defense (eff ×' + Number(oa.effMult).toFixed(2) + ')');
+  }
+  if (oa.volMult != null) {
+    if (oa.volMult >= 1.02) fav.push('Up-tempo environment (volume ×' + Number(oa.volMult).toFixed(2) + ')');
+    else if (oa.volMult <= 0.98) short.push('Slow pace / suppressed volume (×' + Number(oa.volMult).toFixed(2) + ')');
+  }
+  if (oa.blockMult != null && oa.blockMult <= 0.98) short.push('Rim-protecting defense');
+  if (oa.stealMult != null && oa.stealMult <= 0.975) short.push('High ball-pressure defense');
+  if (oa.rebMult != null) {
+    if (oa.rebMult >= 1.02) fav.push('Favorable rebound environment');
+    else if (oa.rebMult <= 0.98) short.push('Scarce rebound environment');
+  }
+
+  // Archetype / signal hints
+  if (/fade thin|high variance|regression/i.test(hint) || /fade thin|high variance/i.test(archLabel)) {
+    short.push(hint || archLabel || 'High-variance profile — thin overs fade');
+  }
+  if (/soft matchup|favorable|concedes/i.test(hint)) fav.push(hint);
+
+  // Prop-level: projection vs line + scheme flags
+  var bestShort = null, bestFav = null;
+  props.forEach(function (p) {
+    if (p.projection == null || p.line == null) return;
+    var gap = Number(p.projection) - Number(p.line);
+    var sf = p.schemeFlags || {};
+    var whyBits = [];
+    if (typeof p.why === 'string' && p.why) whyBits = p.why.split(/\s*·\s*/);
+    else if (Array.isArray(p.why)) whyBits = p.why;
+
+    if (gap < -0.3 || (p.side === 'under' && (p.edge || 0) > 0.03) || sf.forcedPass || sf.purePointsRisk || sf.schemeHostile || sf.minutesRisk) {
+      var reasons = [];
+      if (gap < -0.3) reasons.push('proj ' + p.projection + ' vs line ' + p.line + ' (short by ' + Math.abs(gap).toFixed(1) + ')');
+      if (sf.minutesRisk) reasons.push('minutes risk');
+      if (sf.schemeHostile) reasons.push('hostile scheme');
+      if (sf.purePointsRisk) reasons.push('pure points variance');
+      if (sf.forcedPass) reasons.push('checklist forced pass');
+      if (sf.compoundingUnder) reasons.push('compounding under factors');
+      whyBits.forEach(function (w) {
+        if (/tough|hostile|rim|pressure|fade|regression|minutes|role|blowout/i.test(w) && reasons.indexOf(w) < 0) reasons.push(w);
+      });
+      var score = Math.abs(Math.min(gap, 0)) + (sf.forcedPass ? 0.5 : 0) + (sf.minutesRisk ? 0.3 : 0) + (p.edge || 0);
+      var item = { market: p.marketLabel || p.market, side: 'under', gap: gap, score: score, reasons: reasons.slice(0, 4) };
+      if (!bestShort || item.score > bestShort.score) bestShort = item;
+      short.push((p.marketLabel || p.market) + ': ' + (reasons[0] || 'projects under line'));
+    }
+
+    if (gap > 0.4 || (p.side === 'over' && (p.edge || 0) > 0.04 && !sf.forcedPass && !sf.purePointsRisk)) {
+      var freasons = [];
+      if (gap > 0.4) freasons.push('proj ' + p.projection + ' vs line ' + p.line + ' (+' + gap.toFixed(1) + ')');
+      if (oa.effMult >= 1.015) freasons.push('soft defense');
+      if (oa.volMult >= 1.02) freasons.push('pace/volume up');
+      whyBits.forEach(function (w) {
+        if (/soft|concedes|favorable|volume|pace|form|heating/i.test(w) && freasons.indexOf(w) < 0) freasons.push(w);
+      });
+      var fscore = gap + (p.edge || 0);
+      var fitem = { market: p.marketLabel || p.market, side: 'over', gap: gap, score: fscore, reasons: freasons.slice(0, 4) };
+      if (!bestFav || fitem.score > bestFav.score) bestFav = fitem;
+      if (freasons.length) fav.push((p.marketLabel || p.market) + ': ' + freasons[0]);
+    }
+  });
+
+  // Dedupe short/fav strings
+  function uniq(arr) {
+    var seen = {};
+    return arr.filter(function (x) {
+      var k = String(x).toLowerCase();
+      if (seen[k]) return false;
+      seen[k] = 1;
+      return true;
+    });
+  }
+  fav = uniq(fav).slice(0, 4);
+  short = uniq(short).slice(0, 4);
+
+  var lean = 'neutral';
+  if (bestShort && (!bestFav || bestShort.score > (bestFav.score || 0))) lean = 'short';
+  else if (bestFav && bestFav.score >= 0.4) lean = 'favorable';
+
+  return {
+    lean: lean,
+    favorable: fav,
+    projectedShort: short,
+    bestShort: bestShort,
+    bestFav: bestFav,
+    scoreFav: bestFav ? bestFav.score : 0,
+    scoreShort: bestShort ? bestShort.score : 0,
+  };
+}
+
 function renderNbaBoard(out) {
   var el = document.getElementById('nba-results'); if (!el) return;
   window.__nbaLastOut = out;
@@ -25839,6 +25941,8 @@ function renderNbaBoard(out) {
     var a = c.archetype || {}, rf = c.recentForm || {}, l5 = rf.l5 || {}, trend = rf.trend || {};
     var tArrow = trend.state === 'heating' ? '\u25B2' : trend.state === 'cooling' ? '\u25BC' : '\u2192';
     var posLabel = c._pos === 'G' ? 'G' : c._pos === 'C' ? 'C' : 'F';
+    var read = c._matchupRead || buildNbaMatchupRead(c);
+    c._matchupRead = read;
     // Headshot: ESPN CDN by playerId, with initials fallback
     var pid = c.playerId || c.id || '';
     var initials = String(c.player || '?').split(/\s+/).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase();
@@ -25877,6 +25981,24 @@ function renderNbaBoard(out) {
         + '<div>' + badge + '</div></div>';
       return '<div style="padding:8px 0;border-top:0.5px solid var(--border-hairline)">' + row + gauge(p) + checklist + '</div>';
     }).join('');
+
+    // Matchup read strip
+    var matchupHtml = '';
+    if (read.favorable.length || read.projectedShort.length) {
+      matchupHtml = '<div style="margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border-hairline);display:grid;gap:6px">';
+      if (read.favorable.length) {
+        matchupHtml += '<div style="font:12px var(--font-sans);color:var(--cool,#5bbf7a)">'
+          + '<span style="font-weight:600;letter-spacing:.03em">FAVORABLE</span> · '
+          + read.favorable.slice(0, 3).join(' · ') + '</div>';
+      }
+      if (read.projectedShort.length) {
+        matchupHtml += '<div style="font:12px var(--font-sans);color:var(--danger,#e08080)">'
+          + '<span style="font-weight:600;letter-spacing:.03em">PROJECTED SHORT</span> · '
+          + read.projectedShort.slice(0, 3).join(' · ') + '</div>';
+      }
+      matchupHtml += '</div>';
+    }
+
     return '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:14px;margin-bottom:10px">'
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'
       + '<div style="display:flex;align-items:center;gap:10px;min-width:0">'
@@ -25889,14 +26011,57 @@ function renderNbaBoard(out) {
       + (rf.l5 ? '<div style="font:12px var(--font-sans);color:var(--text-muted);margin-top:3px">L5 <b style="font-family:var(--font-mono);color:var(--text-secondary)">' + l5.ppg + '</b> ppg \u00B7 ' + Math.round((l5.tsPct || 0) * 100) + '% TS \u00B7 ' + tArrow + ' ' + (trend.state || '') + '</div>' : '')
       + '</div></div>'
       + '<div style="font:12px var(--font-sans);color:var(--text-secondary);white-space:nowrap;padding-top:2px">' + (c.team || '') + '</div></div>'
+      + matchupHtml
       + '<div style="margin-top:6px">' + props + '</div></div>';
+  }
+
+  // Attach matchup reads and build top-of-board Key Reads list
+  cards.forEach(function (c) { c._matchupRead = buildNbaMatchupRead(c); });
+  var favList = cards.filter(function (c) { return c._matchupRead.scoreFav > 0.35; })
+    .sort(function (a, b) { return b._matchupRead.scoreFav - a._matchupRead.scoreFav; })
+    .slice(0, 6);
+  var shortList = cards.filter(function (c) { return c._matchupRead.scoreShort > 0.3; })
+    .sort(function (a, b) { return b._matchupRead.scoreShort - a._matchupRead.scoreShort; })
+    .slice(0, 6);
+
+  function keyReadRow(c, kind) {
+    var r = c._matchupRead;
+    var why = kind === 'fav'
+      ? (r.bestFav && r.bestFav.reasons.length ? r.bestFav.reasons.join(' · ') : r.favorable[0] || '')
+      : (r.bestShort && r.bestShort.reasons.length ? r.bestShort.reasons.join(' · ') : r.projectedShort[0] || '');
+    var mkt = kind === 'fav'
+      ? (r.bestFav ? r.bestFav.market : '')
+      : (r.bestShort ? r.bestShort.market : '');
+    var color = kind === 'fav' ? 'var(--cool,#5bbf7a)' : 'var(--danger,#e08080)';
+    var label = kind === 'fav' ? 'FAVORABLE' : 'SHORT';
+    return '<div style="display:grid;grid-template-columns:72px 1fr;gap:8px;padding:8px 0;border-top:0.5px solid var(--border-hairline);align-items:start">'
+      + '<div style="font:600 10px var(--font-sans);letter-spacing:.06em;color:' + color + '">' + label + '</div>'
+      + '<div><div style="font:600 13px var(--font-sans);color:var(--text-primary)">' + c.player
+      + ' <span style="font:500 11px var(--font-sans);color:var(--text-muted)">' + (c.team || '') + ' vs ' + (c.opponent || '') + '</span>'
+      + (mkt ? ' · <span style="font-family:var(--font-mono);font-size:11px">' + mkt + '</span>' : '')
+      + '</div>'
+      + '<div style="font:12px var(--font-sans);color:var(--text-secondary);margin-top:2px">' + why + '</div></div></div>';
+  }
+
+  var keyReadsHtml = '';
+  if (favList.length || shortList.length) {
+    keyReadsHtml = '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:14px;margin-bottom:16px">'
+      + '<div style="font:600 15px var(--font-serif);color:var(--text-primary);margin-bottom:4px">Key reads</div>'
+      + '<div style="font:12px var(--font-sans);color:var(--text-muted);margin-bottom:8px">Best favorable matchups and players projected short — before the full game board.</div>';
+    if (favList.length) {
+      keyReadsHtml += '<div style="margin-bottom:6px">' + favList.map(function (c) { return keyReadRow(c, 'fav'); }).join('') + '</div>';
+    }
+    if (shortList.length) {
+      keyReadsHtml += '<div>' + shortList.map(function (c) { return keyReadRow(c, 'short'); }).join('') + '</div>';
+    }
+    keyReadsHtml += '</div>';
   }
 
   // --- View modes ---
   if (F.view === 'edge' || F.view === 'bets') {
     // Flat list sorted by edge
     cards.sort(function (a, b) { return b.topEdge - a.topEdge; });
-    el.innerHTML = thinBanner + cards.map(renderPlayerCard).join('');
+    el.innerHTML = thinBanner + keyReadsHtml + cards.map(renderPlayerCard).join('');
     return;
   }
 
@@ -25923,7 +26088,7 @@ function renderNbaBoard(out) {
   var gameList = Object.keys(games).map(function (k) { return games[k]; });
   gameList.sort(function (a, b) { return b.topEdge - a.topEdge; });
 
-  el.innerHTML = thinBanner + gameList.map(function (g) {
+  el.innerHTML = thinBanner + keyReadsHtml + gameList.map(function (g) {
     // Sort players within game by edge
     g.players.sort(function (a, b) { return b.topEdge - a.topEdge; });
     var collapsed = !!window.__nbaCollapsedGames[g.key];
