@@ -25571,8 +25571,11 @@ function renderNbaBoard(out) {
   var COMBO_MKTS = { pts_rebs: 1, pts_asts: 1, rebs_asts: 1, pra: 1 };
 
   function cardsFrom(o) {
-    if (o && o.playerCards && o.playerCards.length) {
-      // Normalize playerCards shape to same as rows path
+    // Prefer the richest full-slate source. candidates alone is LEAN+ only.
+    var pcLen = (o && o.playerCards && o.playerCards.length) || 0;
+    var plLen = (o && o.players && o.players.length) || 0;
+    var useCards = pcLen > 0 && pcLen >= plLen;
+    if (useCards) {
       return o.playerCards.map(function (c) {
         return {
           playerId: c.playerId, player: c.player, team: c.team, opponent: c.opponent,
@@ -25583,7 +25586,7 @@ function renderNbaBoard(out) {
             return {
               market: p.market, marketLabel: p.marketLabel || String(p.market || '').toUpperCase(),
               side: p.side, line: p.line, projection: p.projection, floor: p.floor, ceiling: p.ceiling,
-              prob: p.prob || p.cashRate, edge: p.edge, tier: p.tier, isBet: p.isBet != null ? p.isBet : (p.tier !== 'PASS'),
+              prob: p.prob || p.cashRate, edge: p.edge, tier: p.tier, isBet: p.isBet != null ? p.isBet : (p.tier !== 'PASS' && p.tier !== 'PROVISIONAL'),
               why: p.why,
               schemeScore: p.schemeScore != null ? p.schemeScore : 50,
               schemeFlags: p.schemeFlags || {},
@@ -25593,7 +25596,8 @@ function renderNbaBoard(out) {
         };
       });
     }
-    var rows = (o && (o.players || o.candidates)) || [];
+    // Build from flat players (full slate) or fall back to candidates (actionable only)
+    var rows = (o && ((o.players && o.players.length) ? o.players : o.candidates)) || [];
     var MKT = { points: 'PTS', rebounds: 'REB', assists: 'AST', pra: 'PRA', pts_rebs: 'P+R', pts_asts: 'P+A', rebs_asts: 'R+A', threes: '3PT' };
     var byKey = {};
     rows.forEach(function (r) {
@@ -25683,24 +25687,31 @@ function renderNbaBoard(out) {
   if (q) filterBits.push('"' + q + '"');
   var filterNote = filterBits.length ? ' (' + filterBits.join(' · ') + ')' : '';
   var diag = (out && out.diagnostics) || {};
-  var diagHint = '';
-  if (diag.merged != null || diag.ppStandardLines != null) {
-    diagHint = ' · engine: ' + (diag.merged != null ? diag.merged : '?') + ' merged / '
-      + (diag.ppStandardLines != null ? diag.ppStandardLines : '?') + ' PP lines / '
-      + (diag.scheduleGames != null ? diag.scheduleGames : '?') + ' games';
-  }
-  if (st) st.textContent = (out && out.reason)
-    ? out.reason
-    : (cards.length + ' player' + (cards.length === 1 ? '' : 's') + filterNote + diagHint);
+  var actionableN = (out && out.candidates && out.candidates.length) || cards.reduce(function (n, c) { return n + (c.bets || 0); }, 0);
+  var mergedN = diag.merged != null ? diag.merged : null;
+  // Never let the "all PASS" reason replace the slate count — show both
+  var statusCore = cards.length + ' player' + (cards.length === 1 ? '' : 's') + ' on board';
+  if (mergedN != null && mergedN > cards.length) statusCore = cards.length + ' of ' + mergedN + ' players on board';
+  if (actionableN === 0 && cards.length > 0) statusCore += ' · 0 actionable (all PASS)';
+  else if (actionableN > 0) statusCore += ' · ' + actionableN + ' actionable';
+  if (filterNote) statusCore += filterNote;
+  if (st) st.textContent = statusCore;
 
-  // Diagnostic banner when slate is thin vs scheduled games
+  // Banners
   var thinBanner = '';
-  if (diag.scheduleGames >= 5 && cards.length > 0 && cards.length < 8) {
+  if (actionableN === 0 && cards.length > 0) {
+    thinBanner += '<div style="background:rgba(27,58,91,.08);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:14px;font:13px var(--font-sans);color:var(--text-primary)">'
+      + '<b>Research mode</b> — ' + (mergedN != null ? mergedN : cards.length) + ' player'
+      + ((mergedN != null ? mergedN : cards.length) === 1 ? '' : 's') + ' evaluated, none cleared the LEAN edge threshold yet. '
+      + 'Full slate is shown below for browsing. Edges are shadow/provisional early season; thresholds can be tightened once grades accrue.'
+      + '</div>';
+  }
+  if (diag.scheduleGames >= 5 && cards.length > 0 && cards.length < 8 && (mergedN == null || mergedN < 8)) {
     var unresolvedN = (diag.unresolved && diag.unresolved.length) || 0;
-    thinBanner = '<div style="background:rgba(214,162,74,.12);border:0.5px solid rgba(214,162,74,.35);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:14px;font:13px var(--font-sans);color:var(--text-primary)">'
+    thinBanner += '<div style="background:rgba(214,162,74,.12);border:0.5px solid rgba(214,162,74,.35);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:14px;font:13px var(--font-sans);color:var(--text-primary)">'
       + '<b style="color:#d6a24a">Thin slate</b> — showing ' + cards.length + ' player'
       + (cards.length === 1 ? '' : 's') + ' but ' + diag.scheduleGames + ' games are scheduled. '
-      + (diag.merged != null ? (diag.merged + ' players merged from engine. ') : '')
+      + (mergedN != null ? (mergedN + ' players merged from engine. ') : '')
       + (diag.ppStandardLines != null ? (diag.ppStandardLines + ' PrizePicks standard lines. ') : '')
       + (unresolvedN ? (unresolvedN + '+ unresolved (roster/name mismatch). ') : '')
       + 'Check roster cache cron, PP_NBA_LEAGUE_ID, and date.'
