@@ -25461,6 +25461,15 @@ async function analyzeNba(date) {
     if ((!out.playerCards || !out.playerCards.length) && (!out.players || !out.players.length) && out.candidates) {
       console.warn('[nba] API returned candidates only — full slate missing. diagnostics:', out.diagnostics);
     }
+    try {
+      console.log('[nba analyze]', {
+        playerCards: out.playerCards ? out.playerCards.length : 0,
+        players: out.players ? out.players.length : 0,
+        candidates: out.candidates ? out.candidates.length : 0,
+        diagnostics: out.diagnostics,
+        reason: out.reason
+      });
+    } catch (_) {}
     return out;
   } catch (e) { console.error('analyzeNba failed', e); if (st) st.textContent = 'Error'; return { candidates: [] }; }
 }
@@ -25571,53 +25580,98 @@ function renderNbaBoard(out) {
   var COMBO_MKTS = { pts_rebs: 1, pts_asts: 1, rebs_asts: 1, pra: 1 };
 
   function cardsFrom(o) {
-    // Prefer the richest full-slate source. candidates alone is LEAN+ only.
-    var pcLen = (o && o.playerCards && o.playerCards.length) || 0;
-    var plLen = (o && o.players && o.players.length) || 0;
-    var useCards = pcLen > 0 && pcLen >= plLen;
-    if (useCards) {
-      return o.playerCards.map(function (c) {
+    var MKT = { points: 'PTS', rebounds: 'REB', assists: 'AST', pra: 'PRA', pts_rebs: 'P+R', pts_asts: 'P+A', rebs_asts: 'R+A', threes: '3PT' };
+
+    function normalizeProp(p) {
+      if (!p) return null;
+      var market = p.market || null;
+      if (!market && p.marketLabel) {
+        // reverse-map occasional label-only payloads
+        var rev = { PTS: 'points', REB: 'rebounds', AST: 'assists', PRA: 'pra', 'P+R': 'pts_rebs', 'P+A': 'pts_asts', 'R+A': 'rebs_asts', '3PT': 'threes' };
+        market = rev[String(p.marketLabel).toUpperCase()] || String(p.marketLabel).toLowerCase();
+      }
+      if (p.line == null && p.line !== 0) return null;
+      var tier = p.tier || 'PASS';
+      var isBet = p.isBet != null ? !!p.isBet : (tier !== 'PASS' && tier !== 'PROVISIONAL' && tier !== 'none');
+      return {
+        market: market,
+        marketLabel: p.marketLabel || MKT[market] || String(market || '').toUpperCase(),
+        side: p.side || p.lean || 'over',
+        line: p.line,
+        projection: p.projection,
+        floor: p.floor,
+        ceiling: p.ceiling,
+        prob: p.prob != null ? p.prob : p.cashRate,
+        edge: p.edge != null ? p.edge : 0,
+        tier: tier,
+        isBet: isBet,
+        why: p.why,
+        schemeScore: p.schemeScore != null ? p.schemeScore : 50,
+        schemeFlags: p.schemeFlags || p.flags || {},
+        schemeUnderFactors: p.schemeUnderFactors || 0
+      };
+    }
+
+    function fromPlayerCards(list) {
+      return (list || []).map(function (c) {
+        var props = (c.props || []).map(normalizeProp).filter(Boolean);
         return {
           playerId: c.playerId, player: c.player, team: c.team, opponent: c.opponent,
           position: c.position || c.pos || null,
           archetype: c.archetype || null, recentForm: c.recentForm || null,
           matchup: c.matchup || null, oppAdj: c.oppAdj || null,
-          props: (c.props || []).map(function (p) {
-            return {
-              market: p.market, marketLabel: p.marketLabel || String(p.market || '').toUpperCase(),
-              side: p.side, line: p.line, projection: p.projection, floor: p.floor, ceiling: p.ceiling,
-              prob: p.prob || p.cashRate, edge: p.edge, tier: p.tier, isBet: p.isBet != null ? p.isBet : (p.tier !== 'PASS' && p.tier !== 'PROVISIONAL'),
-              why: p.why,
-              schemeScore: p.schemeScore != null ? p.schemeScore : 50,
-              schemeFlags: p.schemeFlags || {},
-              schemeUnderFactors: p.schemeUnderFactors || 0
-            };
-          })
+          props: props
         };
-      });
+      }).filter(function (c) { return c.player && c.props.length; });
     }
-    // Build from flat players (full slate) or fall back to candidates (actionable only)
-    var rows = (o && ((o.players && o.players.length) ? o.players : o.candidates)) || [];
-    var MKT = { points: 'PTS', rebounds: 'REB', assists: 'AST', pra: 'PRA', pts_rebs: 'P+R', pts_asts: 'P+A', rebs_asts: 'R+A', threes: '3PT' };
-    var byKey = {};
-    rows.forEach(function (r) {
-      var key = String(r.playerId || r.player);
-      if (!byKey[key]) byKey[key] = {
-        playerId: r.playerId, player: r.player, team: r.team, opponent: r.opponent,
-        position: r.position || r.pos || null,
-        archetype: r.archetype || null, recentForm: r.recentForm || null,
-        matchup: r.matchup || null, oppAdj: r.oppAdj || null, props: []
-      };
-      byKey[key].props.push({
-        market: r.market, marketLabel: MKT[r.market] || String(r.market || '').toUpperCase(),
-        side: r.side, line: r.line, projection: r.projection, floor: r.floor, ceiling: r.ceiling,
-        prob: r.cashRate, edge: r.edge, tier: r.tier, isBet: r.tier !== 'PASS', why: r.why,
-        schemeScore: r.schemeScore != null ? r.schemeScore : 50,
-        schemeFlags: r.schemeFlags || (r.flags || {}),
-        schemeUnderFactors: r.schemeUnderFactors || 0
+
+    function fromFlatRows(rows) {
+      var byKey = {};
+      (rows || []).forEach(function (r) {
+        if (!r) return;
+        var key = String(r.playerId || r.player || '');
+        if (!key) return;
+        if (!byKey[key]) byKey[key] = {
+          playerId: r.playerId, player: r.player, team: r.team, opponent: r.opponent,
+          position: r.position || r.pos || null,
+          archetype: r.archetype || null, recentForm: r.recentForm || null,
+          matchup: r.matchup || null, oppAdj: r.oppAdj || null, props: []
+        };
+        // Flat row may already be a prop, or a playerCard-like object
+        if (r.props && r.props.length) {
+          r.props.forEach(function (p) {
+            var np = normalizeProp(p);
+            if (np) byKey[key].props.push(np);
+          });
+        } else {
+          var np = normalizeProp(r);
+          if (np) byKey[key].props.push(np);
+        }
       });
-    });
-    return Object.keys(byKey).map(function (k) { return byKey[k]; });
+      return Object.keys(byKey).map(function (k) { return byKey[k]; }).filter(function (c) { return c.props.length; });
+    }
+
+    // Try every source; keep the richest non-empty result
+    var candidates = [];
+    if (o && o.playerCards && o.playerCards.length) candidates.push(fromPlayerCards(o.playerCards));
+    if (o && o.players && o.players.length) candidates.push(fromFlatRows(o.players));
+    if (o && o.candidates && o.candidates.length) candidates.push(fromFlatRows(o.candidates));
+    // Also accept alternate keys some payloads use
+    if (o && o.rows && o.rows.length) candidates.push(fromFlatRows(o.rows));
+    if (o && o.slate && o.slate.length) candidates.push(fromFlatRows(o.slate));
+
+    candidates.sort(function (a, b) { return b.length - a.length; });
+    var best = candidates.length ? candidates[0] : [];
+    try {
+      console.log('[nba board] sources', {
+        playerCards: o && o.playerCards ? o.playerCards.length : 0,
+        players: o && o.players ? o.players.length : 0,
+        candidates: o && o.candidates ? o.candidates.length : 0,
+        chosen: best.length,
+        diagnostics: o && o.diagnostics
+      });
+    } catch (_) {}
+    return best;
   }
 
   var cards = cardsFrom(out);
@@ -25717,14 +25771,51 @@ function renderNbaBoard(out) {
       + 'Check roster cache cron, PP_NBA_LEAGUE_ID, and date.'
       + '</div>';
   }
+  // Base-rate cohort panel (WNBA 2026 carry-forward)
+  var brs = out && out.baseRateSummary;
+  if (brs && brs.markets && brs.markets.length) {
+    var rows = brs.markets.map(function (m) {
+      var lift = m.underLift != null ? ((m.underLift >= 0 ? '+' : '') + (m.underLift * 100).toFixed(1) + 'pp') : '—';
+      var edge = m.underHasEdge ? ' <span style="color:var(--cool,#5bbf7a)">EDGE</span>' : '';
+      return '<div style="display:grid;grid-template-columns:72px 1fr 1fr 1fr;gap:8px;font:12px var(--font-mono);padding:4px 0;border-top:0.5px solid var(--border-hairline)">'
+        + '<span style="font-family:var(--font-sans);font-weight:600">' + String(m.market).toUpperCase() + '</span>'
+        + '<span>base U ' + (m.baseUnder != null ? Math.round(m.baseUnder * 100) + '%' : '—') + '</span>'
+        + '<span>tool U ' + (m.toolUnder != null ? Math.round(m.toolUnder * 100) + '%' : '—') + ' n=' + (m.underN || 0) + '</span>'
+        + '<span>lift ' + lift + edge + '</span></div>';
+    }).join('');
+    thinBanner += '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:12px 14px;margin-bottom:14px">'
+      + '<div style="font:600 13px var(--font-sans);color:var(--text-primary);margin-bottom:4px">Cohort vs market base rate</div>'
+      + '<div style="font:12px var(--font-sans);color:var(--text-muted);margin-bottom:8px">'
+      + (brs.posture === 'shadow' ? 'Shadow mode — thin graded sample. ' : 'Live rates. ')
+      + 'Edge = tool under rate − market under base rate. Graded ' + (brs.graded || 0)
+      + ' · settled ' + (brs.settled || 0)
+      + ' · breakeven ' + Math.round((brs.breakeven || 0.577) * 1000) / 10 + '%</div>'
+      + rows
+      + '</div>';
+  } else if (brs && brs.posture === 'shadow') {
+    thinBanner += '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:14px;font:13px var(--font-sans);color:var(--text-secondary)">'
+      + '<b style="color:var(--text-primary)">Cohort calibration</b> — shadow mode (not enough graded NBA picks yet). '
+      + 'Tiers stay provisional until live rates beat each market\'s base under rate, not 50%.'
+      + '</div>';
+  }
 
   if (!cards.length) {
-    el.innerHTML = thinBanner + '<p style="color:var(--text-muted);font:14px var(--font-sans);padding:12px 0">'
-      + ((out && out.reason)
+    var rawPc = (out && out.playerCards && out.playerCards.length) || 0;
+    var rawPl = (out && out.players && out.players.length) || 0;
+    var rawCand = (out && out.candidates && out.candidates.length) || 0;
+    el.innerHTML = thinBanner + '<div style="padding:12px 0;font:14px var(--font-sans);color:var(--text-muted)">'
+      + '<p style="margin:0 0 8px">' + ((out && out.reason)
         ? out.reason
-        : 'No props match the current filters. Clear search, reset Position / Market / View chips, or turn Checklist off.')
-      + (diag.merged != null ? (' <span style="color:var(--text-secondary)">(engine merged ' + diag.merged + ', PP lines ' + (diag.ppStandardLines || 0) + ', games ' + (diag.scheduleGames || 0) + ')</span>') : '')
-      + '</p>';
+        : 'No props match the current filters.') + '</p>'
+      + '<p style="margin:0 0 8px;color:var(--text-secondary)">Clear search, set Position/Market to All, View to By Game, and turn Checklist off.</p>'
+      + '<p style="margin:0;font:12px var(--font-mono);color:var(--text-muted)">'
+      + 'API: playerCards=' + rawPc + ' · players=' + rawPl + ' · candidates=' + rawCand
+      + (diag.merged != null ? ' · merged=' + diag.merged : '')
+      + (diag.evaluatedRows != null ? ' · evaluatedRows=' + diag.evaluatedRows : '')
+      + (diag.playersWithProps != null ? ' · playersWithProps=' + diag.playersWithProps : '')
+      + (diag.ppStandardLines != null ? ' · PP lines=' + diag.ppStandardLines : '')
+      + (diag.scheduleGames != null ? ' · games=' + diag.scheduleGames : '')
+      + '</p></div>';
     return;
   }
 
