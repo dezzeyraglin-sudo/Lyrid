@@ -25457,6 +25457,10 @@ async function analyzeNba(date) {
     const out = await res.json();
     try { if (window.LyridParlayBridge) window.LyridParlayBridge.pushNba(out.candidates); } catch (_) {}
     logNbaBestBets(out.candidates);
+    // Prefer full slate for the board; candidates alone are only LEAN+ bets
+    if ((!out.playerCards || !out.playerCards.length) && (!out.players || !out.players.length) && out.candidates) {
+      console.warn('[nba] API returned candidates only — full slate missing. diagnostics:', out.diagnostics);
+    }
     return out;
   } catch (e) { console.error('analyzeNba failed', e); if (st) st.textContent = 'Error'; return { candidates: [] }; }
 }
@@ -25678,11 +25682,37 @@ function renderNbaBoard(out) {
   if (F.view === 'bets') filterBits.push('actionable');
   if (q) filterBits.push('"' + q + '"');
   var filterNote = filterBits.length ? ' (' + filterBits.join(' · ') + ')' : '';
-  if (st) st.textContent = (out && out.reason) ? out.reason : (cards.length + ' player' + (cards.length === 1 ? '' : 's') + filterNote);
+  var diag = (out && out.diagnostics) || {};
+  var diagHint = '';
+  if (diag.merged != null || diag.ppStandardLines != null) {
+    diagHint = ' · engine: ' + (diag.merged != null ? diag.merged : '?') + ' merged / '
+      + (diag.ppStandardLines != null ? diag.ppStandardLines : '?') + ' PP lines / '
+      + (diag.scheduleGames != null ? diag.scheduleGames : '?') + ' games';
+  }
+  if (st) st.textContent = (out && out.reason)
+    ? out.reason
+    : (cards.length + ' player' + (cards.length === 1 ? '' : 's') + filterNote + diagHint);
+
+  // Diagnostic banner when slate is thin vs scheduled games
+  var thinBanner = '';
+  if (diag.scheduleGames >= 5 && cards.length > 0 && cards.length < 8) {
+    var unresolvedN = (diag.unresolved && diag.unresolved.length) || 0;
+    thinBanner = '<div style="background:rgba(214,162,74,.12);border:0.5px solid rgba(214,162,74,.35);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:14px;font:13px var(--font-sans);color:var(--text-primary)">'
+      + '<b style="color:#d6a24a">Thin slate</b> — showing ' + cards.length + ' player'
+      + (cards.length === 1 ? '' : 's') + ' but ' + diag.scheduleGames + ' games are scheduled. '
+      + (diag.merged != null ? (diag.merged + ' players merged from engine. ') : '')
+      + (diag.ppStandardLines != null ? (diag.ppStandardLines + ' PrizePicks standard lines. ') : '')
+      + (unresolvedN ? (unresolvedN + '+ unresolved (roster/name mismatch). ') : '')
+      + 'Check roster cache cron, PP_NBA_LEAGUE_ID, and date.'
+      + '</div>';
+  }
 
   if (!cards.length) {
-    el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans);padding:12px 0">'
-      + 'No props match the current filters. Clear search, reset Position / Market / View chips, or turn Checklist off.'
+    el.innerHTML = thinBanner + '<p style="color:var(--text-muted);font:14px var(--font-sans);padding:12px 0">'
+      + ((out && out.reason)
+        ? out.reason
+        : 'No props match the current filters. Clear search, reset Position / Market / View chips, or turn Checklist off.')
+      + (diag.merged != null ? (' <span style="color:var(--text-secondary)">(engine merged ' + diag.merged + ', PP lines ' + (diag.ppStandardLines || 0) + ', games ' + (diag.scheduleGames || 0) + ')</span>') : '')
       + '</p>';
     return;
   }
@@ -25764,7 +25794,7 @@ function renderNbaBoard(out) {
   if (F.view === 'edge' || F.view === 'bets') {
     // Flat list sorted by edge
     cards.sort(function (a, b) { return b.topEdge - a.topEdge; });
-    el.innerHTML = cards.map(renderPlayerCard).join('');
+    el.innerHTML = thinBanner + cards.map(renderPlayerCard).join('');
     return;
   }
 
@@ -25791,7 +25821,7 @@ function renderNbaBoard(out) {
   var gameList = Object.keys(games).map(function (k) { return games[k]; });
   gameList.sort(function (a, b) { return b.topEdge - a.topEdge; });
 
-  el.innerHTML = gameList.map(function (g) {
+  el.innerHTML = thinBanner + gameList.map(function (g) {
     // Sort players within game by edge
     g.players.sort(function (a, b) { return b.topEdge - a.topEdge; });
     var collapsed = !!window.__nbaCollapsedGames[g.key];
