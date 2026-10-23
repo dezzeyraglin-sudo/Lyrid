@@ -231,19 +231,21 @@ export async function analyzeSlate(io) {
     const meta = c.playerId != null ? metaById[String(c.playerId)] : null;
     const regime = meta ? meta.regime : (c.regime || null);
     const engineIsBet = c.isBet != null ? c.isBet : (c.tier && c.tier !== 'PASS' && c.lean && c.lean !== 'pass');
-    // LIVE-rate gate: only a pick the engine actually LEANS can earn a graded tier; a good
-    // cohort never elevates a no-edge pick. Badge = live cohort rate, never the engine's edge.
-    const cg = engineIsBet
-      ? gradeTier({ market: c.market, side: c.side, regime }, calibration, CONFIGS.NBA)
-      : { tier: c.tier, liveRate: null, n: 0, provisional: true, notLeaned: true };
+    // LIVE-rate gate + base-rate demotion (WNBA 2026): badge from live cohort rate,
+    // auto-PASS when tool rate is below market base rate or below 2-pick breakeven.
+    // Always run gradeTier so research props get baseRate/lift context.
+    const cg = gradeTier({ market: c.market, side: c.side, regime }, calibration, CONFIGS.NBA);
+    const displayTier = engineIsBet ? cg.tier : (cg.demoted ? 'PASS' : (c.tier || 'PASS'));
     const base = meta ? { ...c, archetype: meta.archetype, shotZone: meta.shotZone, recentForm: meta.recentForm, oppAdj: meta.oppAdj, matchup: meta.matchup } : { ...c };
     return {
       ...base,
       regime,
-      engineTier: c.tier,                 // the engine's edge-based read (pre-calibration)
-      tier: cg.tier,                      // the badge shown: PROVISIONAL until graded, then live-rate
-      calibration: cg,                    // { tier, liveRate, n, provisional, demoted }
-      isBet: !!engineIsBet && !cg.demoted, // provisional leans still log (to accrue grades); demoted cohorts don't
+      engineTier: c.tier,
+      tier: displayTier,
+      calibration: cg,
+      baseRate: cg.baseRate != null ? cg.baseRate : null,
+      lift: cg.lift != null ? cg.lift : null,
+      isBet: !!engineIsBet && !cg.demoted,
     };
   });
 
@@ -253,7 +255,11 @@ export async function analyzeSlate(io) {
     scheduleGames: schedule.length,
     ppStandardLines: props.lines.length,
     playersWithLine: players.length,
-    calibration: { gradedRows: calibration.n, cohorts: Object.keys(calibration.cohorts).length },
+    calibration: {
+      gradedRows: calibration.n,
+      cohorts: Object.keys(calibration.cohorts).length,
+      posture: calibration.baseRateSummary ? calibration.baseRateSummary.posture : 'shadow',
+    },
     merged: merged.length,
     evaluatedRows: allRows.length,
     playersWithProps,
@@ -291,6 +297,10 @@ export async function analyzeSlate(io) {
     mergedCount: merged.length,
     diagnostics,
     reason,
+    // Base-rate cohort report (WNBA 2026 carry-forward) — board can render this panel
+    baseRateSummary: calibration.baseRateSummary || null,
+    baseRates: calibration.baseRates || null,
+    lifts: calibration.lifts || null,
   };
 }
 
