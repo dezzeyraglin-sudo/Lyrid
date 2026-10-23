@@ -25707,6 +25707,19 @@ function renderNbaBoard(out) {
     var a = c.archetype || {}, rf = c.recentForm || {}, l5 = rf.l5 || {}, trend = rf.trend || {};
     var tArrow = trend.state === 'heating' ? '\u25B2' : trend.state === 'cooling' ? '\u25BC' : '\u2192';
     var posLabel = c._pos === 'G' ? 'G' : c._pos === 'C' ? 'C' : 'F';
+    // Headshot: ESPN CDN by playerId, with initials fallback
+    var pid = c.playerId || c.id || '';
+    var initials = String(c.player || '?').split(/\s+/).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase();
+    var photoHtml;
+    if (pid && /^\d+$/.test(String(pid))) {
+      var src = 'https://a.espncdn.com/i/headshots/nba/players/full/' + pid + '.png';
+      photoHtml = '<img src="' + src + '" alt="" width="40" height="40" loading="lazy" referrerpolicy="no-referrer"'
+        + ' style="width:40px;height:40px;border-radius:50%;object-fit:cover;background:var(--surface-muted);border:0.5px solid var(--border-hairline);flex-shrink:0"'
+        + ' onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" />'
+        + '<div style="display:none;width:40px;height:40px;border-radius:50%;background:var(--surface-muted);border:0.5px solid var(--border-hairline);align-items:center;justify-content:center;font:600 13px var(--font-sans);color:var(--text-muted);flex-shrink:0">' + initials + '</div>';
+    } else {
+      photoHtml = '<div style="width:40px;height:40px;border-radius:50%;background:var(--surface-muted);border:0.5px solid var(--border-hairline);display:flex;align-items:center;justify-content:center;font:600 13px var(--font-sans);color:var(--text-muted);flex-shrink:0">' + initials + '</div>';
+    }
     var props = (c.props || []).map(function (p) {
       var col = tierCol(p.tier), arrow = p.side === 'under' ? '\u25BC' : '\u25B2';
       var range = (p.floor != null && p.ceiling != null) ? '<span style="color:var(--text-muted)">' + p.floor + '\u2013' + p.ceiling + '</span>' : '';
@@ -25733,13 +25746,17 @@ function renderNbaBoard(out) {
       return '<div style="padding:8px 0;border-top:0.5px solid var(--border-hairline)">' + row + gauge(p) + checklist + '</div>';
     }).join('');
     return '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:14px;margin-bottom:10px">'
-      + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">'
-      + '<div style="font:600 16px var(--font-serif);color:var(--text-primary)">' + c.player
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'
+      + '<div style="display:flex;align-items:center;gap:10px;min-width:0">'
+      + photoHtml
+      + '<div style="min-width:0">'
+      + '<div style="font:600 16px var(--font-serif);color:var(--text-primary);line-height:1.2">' + c.player
       + ' <span style="font:500 11px var(--font-sans);color:var(--text-muted);margin-left:4px">' + posLabel + '</span>'
       + (c.bets ? ' <span style="font:500 11px var(--font-sans);color:var(--tier-strong-text)">\u2605' + c.bets + '</span>' : '') + '</div>'
-      + '<div style="font:12px var(--font-sans);color:var(--text-secondary);white-space:nowrap">' + (c.team || '') + '</div></div>'
       + (a.archetype || a.label ? '<div style="font:12px var(--font-sans);color:var(--text-secondary);margin-top:2px">' + (a.archetype || a.label) + (a.signalHint ? ' \u00B7 <span style="color:var(--text-muted)">' + a.signalHint + '</span>' : '') + '</div>' : '')
-      + (rf.l5 ? '<div style="font:12px var(--font-sans);color:var(--text-muted);margin-top:4px">L5 <b style="font-family:var(--font-mono);color:var(--text-secondary)">' + l5.ppg + '</b> ppg \u00B7 ' + Math.round((l5.tsPct || 0) * 100) + '% TS \u00B7 ' + tArrow + ' ' + (trend.state || '') + '</div>' : '')
+      + (rf.l5 ? '<div style="font:12px var(--font-sans);color:var(--text-muted);margin-top:3px">L5 <b style="font-family:var(--font-mono);color:var(--text-secondary)">' + l5.ppg + '</b> ppg \u00B7 ' + Math.round((l5.tsPct || 0) * 100) + '% TS \u00B7 ' + tArrow + ' ' + (trend.state || '') + '</div>' : '')
+      + '</div></div>'
+      + '<div style="font:12px var(--font-sans);color:var(--text-secondary);white-space:nowrap;padding-top:2px">' + (c.team || '') + '</div></div>'
       + '<div style="margin-top:6px">' + props + '</div></div>';
   }
 
