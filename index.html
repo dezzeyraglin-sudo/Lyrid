@@ -3750,6 +3750,14 @@
   </div>
   <!-- NBA navigation filters -->
   <div id="nba-nav-filters" style="display:none;margin-bottom:16px">
+    <div style="margin-bottom:10px;position:relative;max-width:360px">
+      <input id="nba-search" type="search" placeholder="Search team, player, or position…"
+        oninput="onNbaSearch(this.value)"
+        style="width:100%;height:36px;padding:0 36px 0 12px;border:0.5px solid var(--border-hairline);border-radius:var(--radius-sm);background:var(--surface-card);color:var(--text-primary);font:14px var(--font-sans);outline:none"
+      />
+      <button type="button" id="nba-search-clear" onclick="clearNbaSearch()" title="Clear"
+        style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);font:16px var(--font-sans);cursor:pointer;padding:2px 6px;line-height:1">×</button>
+    </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
       <span style="font:11px var(--font-sans);color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;align-self:center;margin-right:4px">Position</span>
       <button class="nba-filter-chip active" data-filter="pos" data-value="all" onclick="setNbaFilter('pos','all')">All</button>
@@ -25457,6 +25465,7 @@ window.__nbaChecklistFilter = false;
 window.__nbaLastOut = null;
 window.__nbaFilters = { pos: 'all', mkt: 'all', view: 'game' };
 window.__nbaCollapsedGames = {};
+window.__nbaSearch = '';
 
 function toggleNbaChecklistFilter() {
   window.__nbaChecklistFilter = !window.__nbaChecklistFilter;
@@ -25484,6 +25493,22 @@ function setNbaFilter(type, value) {
     if (btn.getAttribute('data-value') === value) btn.classList.add('active');
     else btn.classList.remove('active');
   });
+  if (window.__nbaLastOut) renderNbaBoard(window.__nbaLastOut);
+}
+
+function onNbaSearch(val) {
+  window.__nbaSearch = String(val || '').trim().toLowerCase();
+  var clearBtn = document.getElementById('nba-search-clear');
+  if (clearBtn) clearBtn.style.display = window.__nbaSearch ? 'block' : 'none';
+  if (window.__nbaLastOut) renderNbaBoard(window.__nbaLastOut);
+}
+
+function clearNbaSearch() {
+  window.__nbaSearch = '';
+  var input = document.getElementById('nba-search');
+  if (input) input.value = '';
+  var clearBtn = document.getElementById('nba-search-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
   if (window.__nbaLastOut) renderNbaBoard(window.__nbaLastOut);
 }
 
@@ -25611,6 +25636,30 @@ function renderNbaBoard(out) {
   });
   // Position filter
   if (F.pos !== 'all') cards = cards.filter(function (c) { return c._pos === F.pos; });
+
+  // Search: team, player name, opponent, or position keyword
+  var q = (window.__nbaSearch || '').trim().toLowerCase();
+  if (q) {
+    var posWords = { guard: 'G', guards: 'G', g: 'G', pg: 'G', sg: 'G',
+                     forward: 'F', forwards: 'F', f: 'F', sf: 'F', pf: 'F', wing: 'F',
+                     center: 'C', centers: 'C', c: 'C', big: 'C' };
+    cards = cards.filter(function (c) {
+      var name = String(c.player || '').toLowerCase();
+      var team = String(c.team || '').toLowerCase();
+      var opp = String(c.opponent || '').toLowerCase();
+      var pos = String(c._pos || '').toLowerCase();
+      var posFull = c._pos === 'G' ? 'guard' : c._pos === 'C' ? 'center' : 'forward';
+      // Direct matches
+      if (name.indexOf(q) >= 0) return true;
+      if (team.indexOf(q) >= 0) return true;
+      if (opp.indexOf(q) >= 0) return true;
+      if (pos === q || posFull.indexOf(q) >= 0) return true;
+      // Position word shortcuts ("guard", "centers", etc.)
+      if (posWords[q] && posWords[q] === c._pos) return true;
+      return false;
+    });
+  }
+
   // Drop empty players
   cards = cards.filter(function (c) { return (c.props || []).length > 0; });
 
@@ -25627,12 +25676,13 @@ function renderNbaBoard(out) {
   if (F.pos !== 'all') filterBits.push(F.pos === 'G' ? 'guards' : F.pos === 'F' ? 'forwards' : 'centers');
   if (F.mkt !== 'all') filterBits.push(F.mkt);
   if (F.view === 'bets') filterBits.push('actionable');
+  if (q) filterBits.push('"' + q + '"');
   var filterNote = filterBits.length ? ' (' + filterBits.join(' · ') + ')' : '';
   if (st) st.textContent = (out && out.reason) ? out.reason : (cards.length + ' player' + (cards.length === 1 ? '' : 's') + filterNote);
 
   if (!cards.length) {
     el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans);padding:12px 0">'
-      + 'No props match the current filters. Reset Position / Market / View chips or turn Checklist off.'
+      + 'No props match the current filters. Clear search, reset Position / Market / View chips, or turn Checklist off.'
       + '</p>';
     return;
   }
