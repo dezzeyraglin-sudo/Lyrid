@@ -101,6 +101,7 @@ export function toCandidates(ranked, data = {}) {
     team: r.team, opponent: r.opponent, player: r.player, playerId: r.playerId || null,
     market: r.market, side: r.side, line: r.line,
     tier: r.tier, cashRate: r.prob, edgeType: 'nba-' + r.market, sampleN: null,
+    isBet: r.isBet != null ? !!r.isBet : (r.tier !== 'PASS'),
     // fields the History (nbaPropHistory) entry needs — mirrors wnbaPropHistory shape:
     edge: r.edge, probOver: r.side === 'over' ? r.prob : +(1 - r.prob).toFixed(3),
     lean: r.side, recommendation: r.side, lineSource: 'prizepicks',

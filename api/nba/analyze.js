@@ -9,6 +9,8 @@ import * as espn from '../_lib/nba/espnClient.js';
 import { fetchPlayerAdvanced, fetchTeamContext } from '../_lib/nba/bbrefClient.js';
 import { fetchNbaProps } from '../_lib/nba/prizepicks.js';
 import { buildRosterIndex, fetchTeamsMap } from '../_lib/nba/espnRoster.js';
+import { readProfile } from '../_lib/nba/profileStore.js';
+import { logPicks, readGradedHistory } from '../_lib/nba/propLog.js';
 import { mergePlayer } from '../_lib/nba/normalizeMerge.js';
 import { projectMinutes } from '../_lib/nba/minutesModel.js';
 import { evaluateSlate, rankBestBets, toCandidates } from '../_lib/nba/nbaBestBets.js';
@@ -96,6 +98,9 @@ export function buildPlayerCards(rows) {
       prob: r.cashRate, edge: r.edge, tier: r.tier, isBet: r.isBet != null ? r.isBet : (r.tier !== 'PASS' && r.tier !== 'PROVISIONAL'),
       liveRate: r.calibration ? r.calibration.liveRate : null, gradedN: r.calibration ? r.calibration.n : 0, provisional: r.calibration ? r.calibration.provisional : true,
       why: r.why,
+      schemeScore: r.schemeScore != null ? r.schemeScore : 50,
+      schemeFlags: r.schemeFlags || (r.flags || {}),
+      schemeUnderFactors: r.schemeUnderFactors || 0,
     });
   }
   const cards = Object.values(byKey);
@@ -291,14 +296,26 @@ export default async function handler(req, res) {
     const season = Number(req.query?.season || process.env.NBA_SEASON || 2026); // bbref rate season (prior until new-season games accrue)
     const rosterSeason = Number(process.env.NBA_ROSTER_SEASON || 2027);
 
-    const [schedule, props, advPack, teamPack, rosterIndex, injuryIdx] = await Promise.all([
+    // Cached profiles written nightly by api/cron/nba-profiles.js keep the ~540-call roster
+    // build + the bbref team fetch OFF the hot path (the inline build was timing out and
+    // dropping most of the slate). Fall back to inline only on a cache miss.
+    const [cachedRoster, cachedTeams] = await Promise.all([
+      readProfile('roster', rosterSeason).catch(() => null),
+      readProfile('teams', season).catch(() => null),
+    ]);
+    const [schedule, props, advPack, teamPackInline, rosterInline, injuryIdx] = await Promise.all([
       espn.fetchSchedule(yyyymmdd(date)),
       fetchNbaProps(),
       fetchPlayerAdvanced(season),
-      fetchTeamContext(season),
-      buildRosterIndex(rosterSeason),  // in production: read from cache written by the roster cron
+      cachedTeams ? Promise.resolve(null) : fetchTeamContext(season),
+      cachedRoster ? Promise.resolve(null) : buildRosterIndex(rosterSeason),
       espn.injuryIndex(),
     ]);
+    const rosterIndex = cachedRoster
+      ? { season: cachedRoster.season, byNameKey: cachedRoster.byNameKey, byId: cachedRoster.byId }
+      : rosterInline;
+    const bbrefTeams = cachedTeams ? cachedTeams.teams : (teamPackInline && teamPackInline.teams);
+    const profileSource = { roster: cachedRoster ? 'cache' : 'inline', teams: cachedTeams ? 'cache' : 'inline' };
 
     // shot-zone cache is written by a cron (buildShotZoneIndex over recent summaries);
     // read it here when available. Null is fine — archetype falls back to bbref rates
@@ -306,17 +323,36 @@ export default async function handler(req, res) {
     const shotZoneIndex = null; // TODO: load from Supabase/KV (cron output)
     // graded history powers the self-calibration guardrail (v4). Frontend POSTs its graded
     // nbaPropHistory rows; absent it, tiers stay PROVISIONAL (nothing promoted on no data).
-    const gradedHistory = (req.body && req.body.gradedHistory) || null;
+    // calibration feed: the server-side log is authoritative once it has graded rows; the
+    // frontend's manual-upload POST is the fallback before the grader has run (additive, not a
+    // replacement — your manual path still works).
+    const postGraded = (req.body && req.body.gradedHistory) || [];
+    const serverGraded = await readGradedHistory({}).catch(() => []);
+    const gradedHistory = serverGraded.length ? serverGraded : (postGraded.length ? postGraded : null);
     const seasonStart = process.env.NBA_SEASON_START || null;
 
     const out = await analyzeSlate({
       date, season, props, schedule, rosterIndex, injuryIdx,
-      bbrefAdv: advPack.byKey, bbrefTeams: teamPack.teams,
+      bbrefAdv: advPack.byKey, bbrefTeams,
       fetchGameLog: espn.fetchPlayerGameLog,
       shotZoneIndex, gradedHistory, seasonStart,
     });
 
-    res.status(200).json(out);
+    // first-capture: log leaned picks so the nightly grader (api/cron/nba-grade) settles them
+    // from box scores and feeds calibration — best-effort, never blocks the response.
+    try {
+      const nk = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const picks = (out.candidates || []).filter((c) => c.isBet).map((c) => ({
+        pickId: `${date}|${c.playerId != null ? c.playerId : nk(c.player)}|${c.market}|${c.side}`,
+        date, gameId: c.gameId || null, player: c.player, playerId: c.playerId,
+        market: c.market, side: c.side, line: c.line, projection: c.projection,
+        tier: c.tier, regime: c.regime, signalsFired: c.signalsFired || c.signals || [],
+        engineVersion: 'nba-v4',
+      }));
+      if (picks.length) logPicks(picks).catch(() => {});
+    } catch (_) { /* logging never blocks */ }
+
+    res.status(200).json({ ...out, profileSource, calibrationFeed: serverGraded.length ? 'server-log' : (postGraded.length ? 'manual-upload' : 'none') });
   } catch (e) {
     res.status(500).json({ error: String(e && e.message || e) });
   }
