@@ -3742,12 +3742,56 @@
 <div class="panel-content" id="nba-panel">
   <div class="lyrid-eyebrow">Player Props</div>
   <h2 style="margin-bottom:var(--space-4)">NBA</h2>
-  <div style="display:flex;gap:var(--space-3);align-items:center;margin-bottom:var(--space-5);flex-wrap:wrap">
+  <div style="display:flex;gap:var(--space-3);align-items:center;margin-bottom:12px;flex-wrap:wrap">
     <input id="nba-date" type="date" style="height:36px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font:14px var(--font-sans)">
     <button class="lyrid-btn primary" onclick="analyzeNba(document.getElementById('nba-date').value).then(renderNbaBoard)">Analyze</button>
     <button id="nba-checklist-toggle" class="lyrid-btn" onclick="toggleNbaChecklistFilter()" style="font:13px var(--font-sans);padding:7px 12px;border:0.5px solid var(--border-hairline);background:var(--surface-muted);color:var(--text-secondary);border-radius:var(--radius-sm);cursor:pointer">Checklist ≥ 55: Off</button>
     <span id="nba-status" style="font:13px var(--font-sans);color:var(--text-muted)"></span>
   </div>
+  <!-- NBA navigation filters -->
+  <div id="nba-nav-filters" style="display:none;margin-bottom:16px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      <span style="font:11px var(--font-sans);color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;align-self:center;margin-right:4px">Position</span>
+      <button class="nba-filter-chip active" data-filter="pos" data-value="all" onclick="setNbaFilter('pos','all')">All</button>
+      <button class="nba-filter-chip" data-filter="pos" data-value="G" onclick="setNbaFilter('pos','G')">Guards</button>
+      <button class="nba-filter-chip" data-filter="pos" data-value="F" onclick="setNbaFilter('pos','F')">Forwards</button>
+      <button class="nba-filter-chip" data-filter="pos" data-value="C" onclick="setNbaFilter('pos','C')">Centers</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      <span style="font:11px var(--font-sans);color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;align-self:center;margin-right:4px">Market</span>
+      <button class="nba-filter-chip active" data-filter="mkt" data-value="all" onclick="setNbaFilter('mkt','all')">All</button>
+      <button class="nba-filter-chip" data-filter="mkt" data-value="points" onclick="setNbaFilter('mkt','points')">PTS</button>
+      <button class="nba-filter-chip" data-filter="mkt" data-value="rebounds" onclick="setNbaFilter('mkt','rebounds')">REB</button>
+      <button class="nba-filter-chip" data-filter="mkt" data-value="assists" onclick="setNbaFilter('mkt','assists')">AST</button>
+      <button class="nba-filter-chip" data-filter="mkt" data-value="pra" onclick="setNbaFilter('mkt','pra')">PRA</button>
+      <button class="nba-filter-chip" data-filter="mkt" data-value="combo" onclick="setNbaFilter('mkt','combo')">Combos</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <span style="font:11px var(--font-sans);color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;align-self:center;margin-right:4px">View</span>
+      <button class="nba-filter-chip active" data-filter="view" data-value="game" onclick="setNbaFilter('view','game')">By Game</button>
+      <button class="nba-filter-chip" data-filter="view" data-value="edge" onclick="setNbaFilter('view','edge')">By Edge</button>
+      <button class="nba-filter-chip" data-filter="view" data-value="bets" onclick="setNbaFilter('view','bets')">Actionable only</button>
+    </div>
+  </div>
+  <style>
+    .nba-filter-chip{
+      font:12px var(--font-sans);font-weight:500;padding:5px 11px;border-radius:100px;
+      border:0.5px solid var(--border-hairline);background:var(--surface-muted);color:var(--text-secondary);
+      cursor:pointer;transition:all .15s ease;
+    }
+    .nba-filter-chip:hover{border-color:var(--brand-primary);color:var(--text-primary)}
+    .nba-filter-chip.active{background:var(--brand-primary);color:var(--text-on-primary,#fff);border-color:var(--brand-primary)}
+    .nba-game-header{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+      padding:12px 14px;background:var(--surface-card);border:0.5px solid var(--border-hairline);
+      border-radius:var(--radius-md);cursor:pointer;margin-bottom:8px;user-select:none;
+    }
+    .nba-game-header:hover{border-color:var(--brand-primary)}
+    .nba-game-header .nba-game-title{font:600 15px var(--font-serif);color:var(--text-primary)}
+    .nba-game-header .nba-game-meta{font:12px var(--font-sans);color:var(--text-muted)}
+    .nba-game-body{margin-bottom:20px;padding-left:2px}
+    .nba-game-body.is-collapsed{display:none}
+  </style>
   <div id="nba-results"></div>
 </div>
 <div class="panel-content" id="wnba-panel">
@@ -25408,9 +25452,12 @@ async function analyzeNba(date) {
     return out;
   } catch (e) { console.error('analyzeNba failed', e); if (st) st.textContent = 'Error'; return { candidates: [] }; }
 }
-// ---- NBA checklist filter (one-click ≥ 55) ----
+// ---- NBA checklist filter + navigation filters ----
 window.__nbaChecklistFilter = false;
 window.__nbaLastOut = null;
+window.__nbaFilters = { pos: 'all', mkt: 'all', view: 'game' };
+window.__nbaCollapsedGames = {};
+
 function toggleNbaChecklistFilter() {
   window.__nbaChecklistFilter = !window.__nbaChecklistFilter;
   var btn = document.getElementById('nba-checklist-toggle');
@@ -25428,6 +25475,37 @@ function toggleNbaChecklistFilter() {
     }
   }
   if (window.__nbaLastOut) renderNbaBoard(window.__nbaLastOut);
+}
+
+function setNbaFilter(type, value) {
+  window.__nbaFilters[type] = value;
+  // update chip active states
+  document.querySelectorAll('.nba-filter-chip[data-filter="' + type + '"]').forEach(function (btn) {
+    if (btn.getAttribute('data-value') === value) btn.classList.add('active');
+    else btn.classList.remove('active');
+  });
+  if (window.__nbaLastOut) renderNbaBoard(window.__nbaLastOut);
+}
+
+function toggleNbaGame(key) {
+  window.__nbaCollapsedGames[key] = !window.__nbaCollapsedGames[key];
+  var body = document.getElementById('nba-game-body-' + key);
+  var chev = document.getElementById('nba-game-chev-' + key);
+  if (body) body.classList.toggle('is-collapsed', !!window.__nbaCollapsedGames[key]);
+  if (chev) chev.textContent = window.__nbaCollapsedGames[key] ? '▸' : '▾';
+}
+
+function inferNbaPos(card) {
+  // Try explicit position fields first, then archetype text
+  var pos = (card.position || card.pos || (card.archetype && card.archetype.position) || '').toString().toUpperCase();
+  if (pos.indexOf('G') === 0 || pos === 'PG' || pos === 'SG' || pos === 'GUARD') return 'G';
+  if (pos.indexOf('C') === 0 || pos === 'CENTER') return 'C';
+  if (pos.indexOf('F') === 0 || pos === 'SF' || pos === 'PF' || pos === 'FORWARD') return 'F';
+  var arch = ((card.archetype && (card.archetype.archetype || card.archetype.label || card.archetype)) || '').toString().toLowerCase();
+  if (/guard|point|combo guard|shooting guard|floor general|creator/.test(arch)) return 'G';
+  if (/center|big|rim|anchor|paint/.test(arch)) return 'C';
+  if (/forward|wing|stretch|three-and-d|3&d|scorer/.test(arch)) return 'F';
+  return 'F'; // default wing/forward bucket
 }
 
 function logNbaBestBets(candidates) {
@@ -25456,15 +25534,47 @@ function logNbaBestBets(candidates) {
 }
 function renderNbaBoard(out) {
   var el = document.getElementById('nba-results'); if (!el) return;
-  window.__nbaLastOut = out; // keep for toggle re-render
+  window.__nbaLastOut = out;
+  var nav = document.getElementById('nba-nav-filters');
+  if (nav) nav.style.display = 'block';
+
+  var F = window.__nbaFilters || { pos: 'all', mkt: 'all', view: 'game' };
+  var COMBO_MKTS = { pts_rebs: 1, pts_asts: 1, rebs_asts: 1, pra: 1 };
+
   function cardsFrom(o) {
-    if (o && o.playerCards && o.playerCards.length) return o.playerCards;
+    if (o && o.playerCards && o.playerCards.length) {
+      // Normalize playerCards shape to same as rows path
+      return o.playerCards.map(function (c) {
+        return {
+          playerId: c.playerId, player: c.player, team: c.team, opponent: c.opponent,
+          position: c.position || c.pos || null,
+          archetype: c.archetype || null, recentForm: c.recentForm || null,
+          matchup: c.matchup || null, oppAdj: c.oppAdj || null,
+          props: (c.props || []).map(function (p) {
+            return {
+              market: p.market, marketLabel: p.marketLabel || String(p.market || '').toUpperCase(),
+              side: p.side, line: p.line, projection: p.projection, floor: p.floor, ceiling: p.ceiling,
+              prob: p.prob || p.cashRate, edge: p.edge, tier: p.tier, isBet: p.isBet != null ? p.isBet : (p.tier !== 'PASS'),
+              why: p.why,
+              schemeScore: p.schemeScore != null ? p.schemeScore : 50,
+              schemeFlags: p.schemeFlags || {},
+              schemeUnderFactors: p.schemeUnderFactors || 0
+            };
+          })
+        };
+      });
+    }
     var rows = (o && (o.players || o.candidates)) || [];
     var MKT = { points: 'PTS', rebounds: 'REB', assists: 'AST', pra: 'PRA', pts_rebs: 'P+R', pts_asts: 'P+A', rebs_asts: 'R+A', threes: '3PT' };
     var byKey = {};
     rows.forEach(function (r) {
       var key = String(r.playerId || r.player);
-      if (!byKey[key]) byKey[key] = { playerId: r.playerId, player: r.player, team: r.team, opponent: r.opponent, archetype: r.archetype || null, recentForm: r.recentForm || null, matchup: r.matchup || null, oppAdj: r.oppAdj || null, props: [] };
+      if (!byKey[key]) byKey[key] = {
+        playerId: r.playerId, player: r.player, team: r.team, opponent: r.opponent,
+        position: r.position || r.pos || null,
+        archetype: r.archetype || null, recentForm: r.recentForm || null,
+        matchup: r.matchup || null, oppAdj: r.oppAdj || null, props: []
+      };
       byKey[key].props.push({
         market: r.market, marketLabel: MKT[r.market] || String(r.market || '').toUpperCase(),
         side: r.side, line: r.line, projection: r.projection, floor: r.floor, ceiling: r.ceiling,
@@ -25474,35 +25584,59 @@ function renderNbaBoard(out) {
         schemeUnderFactors: r.schemeUnderFactors || 0
       });
     });
-    var cards = Object.keys(byKey).map(function (k) { return byKey[k]; });
-    // Apply checklist ≥ 55 filter when toggle is on
-    if (window.__nbaChecklistFilter) {
-      cards.forEach(function (c) {
-        c.props = (c.props || []).filter(function (p) {
-          var sc = (p.schemeScore != null) ? p.schemeScore : 50;
-          var sf = p.schemeFlags || {};
-          if (sf.forcedPass) return false;
-          return sc >= 55;
-        });
-      });
-      cards = cards.filter(function (c) { return (c.props || []).length > 0; });
-    }
-    cards.forEach(function (c) { c.props.sort(function (a, b) { return (b.edge || 0) - (a.edge || 0); }); c.topEdge = c.props.length ? (c.props[0].edge || 0) : 0; c.bets = c.props.filter(function (p) { return p.isBet; }).length; });
-    cards.sort(function (a, b) { return b.topEdge - a.topEdge; });
-    return cards;
+    return Object.keys(byKey).map(function (k) { return byKey[k]; });
   }
+
   var cards = cardsFrom(out);
+
+  // --- Apply filters ---
+  cards.forEach(function (c) {
+    c._pos = inferNbaPos(c);
+    c.props = (c.props || []).filter(function (p) {
+      // Checklist filter
+      if (window.__nbaChecklistFilter) {
+        var sc = p.schemeScore != null ? p.schemeScore : 50;
+        if ((p.schemeFlags && p.schemeFlags.forcedPass) || sc < 55) return false;
+      }
+      // Market filter
+      if (F.mkt !== 'all') {
+        if (F.mkt === 'combo') {
+          if (!COMBO_MKTS[p.market]) return false;
+        } else if (p.market !== F.mkt) return false;
+      }
+      // Actionable-only view
+      if (F.view === 'bets' && !p.isBet) return false;
+      return true;
+    });
+  });
+  // Position filter
+  if (F.pos !== 'all') cards = cards.filter(function (c) { return c._pos === F.pos; });
+  // Drop empty players
+  cards = cards.filter(function (c) { return (c.props || []).length > 0; });
+
+  // Sort props within player, compute topEdge
+  cards.forEach(function (c) {
+    c.props.sort(function (a, b) { return (b.edge || 0) - (a.edge || 0); });
+    c.topEdge = c.props.length ? (c.props[0].edge || 0) : 0;
+    c.bets = c.props.filter(function (p) { return p.isBet; }).length;
+  });
+
   var st = document.getElementById('nba-status');
-  var filterNote = window.__nbaChecklistFilter ? ' (checklist ≥ 55)' : '';
+  var filterBits = [];
+  if (window.__nbaChecklistFilter) filterBits.push('checklist ≥ 55');
+  if (F.pos !== 'all') filterBits.push(F.pos === 'G' ? 'guards' : F.pos === 'F' ? 'forwards' : 'centers');
+  if (F.mkt !== 'all') filterBits.push(F.mkt);
+  if (F.view === 'bets') filterBits.push('actionable');
+  var filterNote = filterBits.length ? ' (' + filterBits.join(' · ') + ')' : '';
   if (st) st.textContent = (out && out.reason) ? out.reason : (cards.length + ' player' + (cards.length === 1 ? '' : 's') + filterNote);
+
   if (!cards.length) {
-    el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans)">'
-      + (window.__nbaChecklistFilter
-        ? 'No props cleared the Checklist ≥ 55 filter. Turn the toggle off to see everything.'
-        : ((out && out.reason) || 'No NBA players on this slate.'))
+    el.innerHTML = '<p style="color:var(--text-muted);font:14px var(--font-sans);padding:12px 0">'
+      + 'No props match the current filters. Reset Position / Market / View chips or turn Checklist off.'
       + '</p>';
     return;
   }
+
   function tierCol(t) {
     if (t === 'STRONG') return ['var(--tier-strong-fill)', 'var(--tier-strong-text)'];
     if (t === 'LEAN') return ['var(--tier-solid-fill)', 'var(--tier-solid-text)'];
@@ -25518,16 +25652,17 @@ function renderNbaBoard(out) {
       + '<div style="position:absolute;left:' + linePct + '%;top:-3px;bottom:-3px;width:2px;background:var(--text-primary);transform:translateX(-1px)" title="line ' + p.line + '"></div>'
       + '<div style="position:absolute;left:' + projPct + '%;top:50%;width:8px;height:8px;background:' + col[1] + ';border:1.5px solid var(--surface-card);border-radius:50%;transform:translate(-50%,-50%)" title="projection ' + p.projection + '"></div></div>';
   }
-  el.innerHTML = cards.map(function (c) {
+
+  function renderPlayerCard(c) {
     var a = c.archetype || {}, rf = c.recentForm || {}, l5 = rf.l5 || {}, trend = rf.trend || {};
     var tArrow = trend.state === 'heating' ? '\u25B2' : trend.state === 'cooling' ? '\u25BC' : '\u2192';
+    var posLabel = c._pos === 'G' ? 'G' : c._pos === 'C' ? 'C' : 'F';
     var props = (c.props || []).map(function (p) {
       var col = tierCol(p.tier), arrow = p.side === 'under' ? '\u25BC' : '\u25B2';
       var range = (p.floor != null && p.ceiling != null) ? '<span style="color:var(--text-muted)">' + p.floor + '\u2013' + p.ceiling + '</span>' : '';
       var badge = p.isBet
         ? '<span style="background:' + col[0] + ';color:' + col[1] + ';font:500 10px var(--font-sans);letter-spacing:.04em;padding:1px 6px;border-radius:var(--radius-pill)">' + p.tier + '</span>'
         : '<span style="color:var(--text-muted);font:11px var(--font-sans)">' + (p.side === 'under' ? 'U' : 'O') + '</span>';
-      // Checklist / scheme-risk badge
       var sc = (p.schemeScore != null) ? p.schemeScore : 50;
       var sf = p.schemeFlags || {};
       var riskBits = [];
@@ -25538,9 +25673,7 @@ function renderNbaBoard(out) {
       if (sf.compoundingUnder) riskBits.push('under stack');
       var riskColor = sc >= 60 ? 'var(--cool,#5bbf7a)' : sc >= 40 ? 'var(--warn,#d6a24a)' : 'var(--danger,#e08080)';
       var checklist = '<div style="margin-top:4px;font:11px var(--font-sans);color:' + riskColor + '">'
-        + 'Checklist ' + sc
-        + (riskBits.length ? ' · ' + riskBits.join(' · ') : '')
-        + '</div>';
+        + 'Checklist ' + sc + (riskBits.length ? ' · ' + riskBits.join(' · ') : '') + '</div>';
       var row = '<div style="display:grid;grid-template-columns:42px 1fr auto auto;gap:10px;align-items:baseline">'
         + '<div style="font:600 12px var(--font-sans);color:var(--text-secondary);letter-spacing:.04em">' + p.marketLabel + '</div>'
         + '<div style="font:14px var(--font-sans);color:var(--text-primary)"><span style="font-family:var(--font-mono);font-variant-numeric:tabular-nums">' + arrow + ' ' + p.side + ' ' + p.line + '</span>'
@@ -25549,13 +25682,62 @@ function renderNbaBoard(out) {
         + '<div>' + badge + '</div></div>';
       return '<div style="padding:8px 0;border-top:0.5px solid var(--border-hairline)">' + row + gauge(p) + checklist + '</div>';
     }).join('');
-    return '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:var(--space-4);margin-bottom:var(--space-4)">'
-      + '<div style="display:flex;justify-content:space-between;align-items:baseline">'
-      + '<div style="font:600 17px var(--font-serif);color:var(--text-primary)">' + c.player + (c.bets ? ' <span style="font:500 11px var(--font-sans);color:var(--tier-strong-text)">\u2605' + c.bets + '</span>' : '') + '</div>'
-      + '<div style="font:12px var(--font-sans);color:var(--text-secondary)">' + c.team + ' vs ' + c.opponent + '</div></div>'
-      + (a.archetype ? '<div style="font:12px var(--font-sans);color:var(--text-secondary);margin-top:2px">' + a.archetype + (a.signalHint ? ' \u00B7 <span style="color:var(--text-muted)">' + a.signalHint + '</span>' : '') + '</div>' : '')
+    return '<div style="background:var(--surface-card);border:0.5px solid var(--border-hairline);border-radius:var(--radius-md);padding:14px;margin-bottom:10px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">'
+      + '<div style="font:600 16px var(--font-serif);color:var(--text-primary)">' + c.player
+      + ' <span style="font:500 11px var(--font-sans);color:var(--text-muted);margin-left:4px">' + posLabel + '</span>'
+      + (c.bets ? ' <span style="font:500 11px var(--font-sans);color:var(--tier-strong-text)">\u2605' + c.bets + '</span>' : '') + '</div>'
+      + '<div style="font:12px var(--font-sans);color:var(--text-secondary);white-space:nowrap">' + (c.team || '') + '</div></div>'
+      + (a.archetype || a.label ? '<div style="font:12px var(--font-sans);color:var(--text-secondary);margin-top:2px">' + (a.archetype || a.label) + (a.signalHint ? ' \u00B7 <span style="color:var(--text-muted)">' + a.signalHint + '</span>' : '') + '</div>' : '')
       + (rf.l5 ? '<div style="font:12px var(--font-sans);color:var(--text-muted);margin-top:4px">L5 <b style="font-family:var(--font-mono);color:var(--text-secondary)">' + l5.ppg + '</b> ppg \u00B7 ' + Math.round((l5.tsPct || 0) * 100) + '% TS \u00B7 ' + tArrow + ' ' + (trend.state || '') + '</div>' : '')
-      + '<div style="margin-top:var(--space-3)">' + props + '</div></div>';
+      + '<div style="margin-top:6px">' + props + '</div></div>';
+  }
+
+  // --- View modes ---
+  if (F.view === 'edge' || F.view === 'bets') {
+    // Flat list sorted by edge
+    cards.sort(function (a, b) { return b.topEdge - a.topEdge; });
+    el.innerHTML = cards.map(renderPlayerCard).join('');
+    return;
+  }
+
+  // Default: group by game (team vs opponent)
+  // Normalize matchup key so both sides of the same game land together
+  function gameKey(c) {
+    var t = String(c.team || '').toUpperCase();
+    var o = String(c.opponent || '').toUpperCase();
+    return [t, o].sort().join('-vs-');
+  }
+  function gameLabel(c) {
+    return (c.team || '?') + ' vs ' + (c.opponent || '?');
+  }
+
+  var games = {};
+  cards.forEach(function (c) {
+    var k = gameKey(c);
+    if (!games[k]) games[k] = { key: k, label: gameLabel(c), players: [], topEdge: 0, bets: 0 };
+    games[k].players.push(c);
+    games[k].topEdge = Math.max(games[k].topEdge, c.topEdge || 0);
+    games[k].bets += c.bets || 0;
+  });
+
+  var gameList = Object.keys(games).map(function (k) { return games[k]; });
+  gameList.sort(function (a, b) { return b.topEdge - a.topEdge; });
+
+  el.innerHTML = gameList.map(function (g) {
+    // Sort players within game by edge
+    g.players.sort(function (a, b) { return b.topEdge - a.topEdge; });
+    var collapsed = !!window.__nbaCollapsedGames[g.key];
+    var bodyHtml = g.players.map(renderPlayerCard).join('');
+    return '<div class="nba-game-block" style="margin-bottom:18px">'
+      + '<div class="nba-game-header" onclick="toggleNbaGame(\'' + g.key + '\')">'
+      + '<div><div class="nba-game-title">' + g.label + '</div>'
+      + '<div class="nba-game-meta">' + g.players.length + ' player' + (g.players.length === 1 ? '' : 's')
+      + (g.bets ? ' · ' + g.bets + ' actionable' : '') + '</div></div>'
+      + '<div id="nba-game-chev-' + g.key + '" style="font:18px var(--font-sans);color:var(--text-muted)">' + (collapsed ? '▸' : '▾') + '</div>'
+      + '</div>'
+      + '<div id="nba-game-body-' + g.key + '" class="nba-game-body' + (collapsed ? ' is-collapsed' : '') + '">' + bodyHtml + '</div>'
+      + '</div>';
   }).join('');
 }
 
