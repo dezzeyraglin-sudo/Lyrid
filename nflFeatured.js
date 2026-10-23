@@ -197,10 +197,101 @@ function describeExclusion(pick, opts = {}) {
   return r.ok ? null : r.display;
 }
 
+
+// ---------------------------------------------------------------------------
+// Customer-facing Best Props Board (Overs vs Unders)
+// ---------------------------------------------------------------------------
+/**
+ * Build ranked Best Overs and Best Unders lists from a fully analyzed slate.
+ * Only PROMOTE and strong LEAN decisions are included.
+ *
+ * @param {Array} picks - array of pick objects that already have .verdict
+ *                        (from analyzeProp / slate pipeline)
+ * @param {object} opts
+ *   - maxPerSide   {number}  max legs per side (default 8)
+ *   - includeLean  {boolean} include LEAN in addition to PROMOTE (default true)
+ * @returns {{ overs: Array, unders: Array, meta: object }}
+ */
+export function getBestPropsBoard(picks = [], opts = {}) {
+  const maxPerSide = opts.maxPerSide ?? 8;
+  const includeLean = opts.includeLean !== false;
+
+  const allowed = new Set(["PROMOTE"]);
+  if (includeLean) allowed.add("LEAN");
+
+  const rows = [];
+  for (const p of picks) {
+    const v = p && p.verdict;
+    if (!v) continue;
+    const decision = (v.decision || "").toUpperCase();
+    if (!allowed.has(decision)) continue;
+
+    // Direction: prefer explicit lean, fall back to pOverAdjusted
+    let side = null;
+    if (v.pick === "lower" || (p.lean && String(p.lean).toUpperCase() === "UNDER")) {
+      side = "UNDER";
+    } else if (v.pick === "higher" || (p.lean && String(p.lean).toUpperCase() === "OVER")) {
+      side = "OVER";
+    } else if (v.pOverAdjusted != null) {
+      side = v.pOverAdjusted >= 0.5 ? "OVER" : "UNDER";
+    } else {
+      continue;
+    }
+
+    const edge = v.edge != null ? +v.edge : null;
+    const signals = v.signals != null ? v.signals : 0;
+    const rankScore =
+      (v.pOverAdjusted ?? 0.5) +
+      0.30 * (edge ?? 0) +
+      (signals >= 2 ? 0.08 : signals >= 1 ? 0.03 : 0) +
+      (decision === "PROMOTE" ? 0.06 : 0);
+
+    rows.push({
+      player: p.player || p.playerName || p.name || "Unknown",
+      team: p.team || null,
+      opponent: p.opponent || null,
+      position: p.position || null,
+      market: p.market || p.propType || null,
+      propType: p.propType || null,
+      line: p.line != null ? p.line : v.line,
+      lean: side,
+      decision,
+      edge,
+      signals,
+      signalDetails: v.signalDetails || [],
+      pOver: v.pOverAdjusted != null ? v.pOverAdjusted : v.pOver,
+      tier: v.tier_candidate || "none",
+      reason: (v.reasons && v.reasons[0]) || (p.reasonText ? String(p.reasonText).slice(0, 120) : null),
+      rankScore,
+      // keep original pick reference if caller needs it
+      _pick: p,
+    });
+  }
+
+  // Sort strongest first
+  rows.sort((a, b) => b.rankScore - a.rankScore);
+
+  const overs = rows.filter(r => r.lean === "OVER").slice(0, maxPerSide);
+  const unders = rows.filter(r => r.lean === "UNDER").slice(0, maxPerSide);
+
+  return {
+    overs,
+    unders,
+    meta: {
+      totalCandidates: rows.length,
+      oversCount: overs.length,
+      undersCount: unders.length,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+}
+
 export {
   evaluateFeatured,
   selectFeatured,
   describeExclusion,
+  getBestPropsBoard,
   DEFAULT_PROVEN_FAMILIES,
   DEFAULT_HOLD_FAMILIES,
 };
+
