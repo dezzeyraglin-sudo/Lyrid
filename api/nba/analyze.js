@@ -248,12 +248,15 @@ export async function analyzeSlate(io) {
   });
 
   // diagnostics: make an empty slate self-explanatory (which stage is empty?)
+  const playersWithProps = new Set(allRows.map((r) => String(r.playerId || r.player))).size;
   const diagnostics = {
     scheduleGames: schedule.length,
     ppStandardLines: props.lines.length,
     playersWithLine: players.length,
     calibration: { gradedRows: calibration.n, cohorts: Object.keys(calibration.cohorts).length },
     merged: merged.length,
+    evaluatedRows: allRows.length,
+    playersWithProps,
     bets: candidates.length,
     pp: props._debug || null,
     unresolved: unresolved.slice(0, 40),
@@ -268,8 +271,10 @@ export async function analyzeSlate(io) {
       else reason = `PrizePicks returned ${ppDbg.rawProjections} projections but 0 parsed as standard bettable lines — likely a stat_type/odds_type mapping mismatch. odds seen: [${(ppDbg.oddsTypesSeen||[]).join(', ')}]; unmapped stat_types: [${(ppDbg.unmappedStatTypes||[]).join(', ')}].`;
     } else if (!merged.length) {
       reason = `${props.lines.length} line(s) posted (${ppDbg.linesWithPlayer||0} with a player name), but none matched a rostered player on this slate — roster/name-match. Check buildRosterIndex + nameKey.`;
+    } else if (allRows.length === 0) {
+      reason = `${merged.length} player(s) merged, but 0 props evaluated — line lookup or engine returned ok:false (missing rates/profile). Check ppKey match and points/rebounds engines.`;
     } else {
-      reason = `${merged.length} player(s) evaluated, none cleared the bet threshold (all PASS).`;
+      reason = `${merged.length} player(s) merged, ${playersWithProps} with props, ${allRows.length} prop rows — none cleared the LEAN edge threshold (all PASS). Full slate is still returned for research.`;
     }
   }
 
