@@ -369,6 +369,13 @@ export default async function handler(req, res) {
 
     res.status(200).json({ ...out, profileSource, calibrationFeed: serverGraded.length ? 'server-log' : (postGraded.length ? 'manual-upload' : 'none') });
   } catch (e) {
-    res.status(500).json({ error: String(e && e.message || e) });
+    const msg = String(e && e.message || e);
+    const stack = e && e.stack ? String(e.stack).split('\n').slice(0, 8) : [];
+    console.error('[nba/analyze] 500', msg, stack);
+    try {
+      res.status(500).json({ error: msg, stack });
+    } catch (_) {
+      // last resort if headers already sent
+    }
   }
 }
