@@ -149,7 +149,14 @@ export async function analyzeSlate(io) {
   const byTeam = gamesByTeam(schedule);
   const calibration = buildCalibration(gradedHistory, CONFIGS.NBA); // LIVE-rate guardrail (v4 §3)
   const ppIndex = {};
-  for (const l of props.lines) ppIndex[`${l.playerKey}|${l.market}`] = l;
+  // One slot per player|market. The feed now carries alt-priced (demon/goblin) lines
+  // alongside standard; last-write-wins let an alt overwrite the standard line, and
+  // evaluateSlate then skipped it as isStandard===false. Standard always wins the slot.
+  for (const l of props.lines) {
+    const k = `${l.playerKey}|${l.market}`;
+    const cur = ppIndex[k];
+    if (!cur || (cur.isStandard === false && l.isStandard !== false)) ppIndex[k] = l;
+  }
 
   // unique players that have at least one standard line
   const seen = new Set();
@@ -220,7 +227,8 @@ export async function analyzeSlate(io) {
   }
 
   // Evaluate the whole slate ONCE; the board shows all players, logging uses the bets.
-  const allRows = evaluateSlate(merged, ppIndex, { league: 'NBA' });
+  const evalTrace = {};
+  const allRows = evaluateSlate(merged, ppIndex, { league: 'NBA', trace: evalTrace });
   const slatePlayers = toCandidates(allRows, { date });                 // full informational slate
   const ranked = allRows.filter((r) => r.isBet).sort((a, b) => b.edge - a.edge);
   const candidates = toCandidates(ranked, { date });                    // LEAN+ bets (logged)
@@ -265,6 +273,8 @@ export async function analyzeSlate(io) {
     minutesFail: tally(merged.filter((m) => m._minutesFail).map((m) => String(m._minutesFail))),
     gameLogDepth: tally(merged.map((m) => String(m._gameLogN))),
     withShotProfile: merged.filter((m) => !!m.shotProfile).length,
+    evalSkips: evalTrace,
+    lineStandardness: tally(props.lines.map((l) => String(l.isStandard))),
     sample: merged.slice(0, 3).map((m) => ({
       ppKey: m.ppKey, id: m.id ?? null, markets: linesByKey[m.ppKey] || [],
       projMinutes: m.projMinutes ?? null, gameLogN: m._gameLogN,

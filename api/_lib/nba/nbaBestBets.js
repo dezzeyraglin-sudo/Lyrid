@@ -27,19 +27,22 @@ function minutesReasons(mp) {
 // shows all rows; logging uses the ones where isBet is true. Same shape rankBestBets
 // produces, so toCandidates works on either.
 export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
-  const { league = 'NBA', markets = ['points', 'rebounds', 'assists', 'pra', 'pts_rebs', 'pts_asts', 'rebs_asts'], gradedHistory = [] } = opts;
+  const { league = 'NBA', markets = ['points', 'rebounds', 'assists', 'pra', 'pts_rebs', 'pts_asts', 'rebs_asts'], gradedHistory = [], trace = null } = opts;
   const rows = [];
+  const skip = (k) => { if (trace) trace[k] = (trace[k] || 0) + 1; };
   for (const mp of mergedPlayers || []) {
     for (const market of markets) {
       const ln = byPlayerMarket
         ? (mp.ppKey ? byPlayerMarket[mp.ppKey + '|' + market] : lookupLine(byPlayerMarket, mp.name, market))
         : (mp.line && mp.line.market === market ? mp.line : null);
-      if (!ln || ln.isStandard === false || ln.line == null) continue;
+      if (!ln) { skip('noLine'); continue; }
+      if (ln.isStandard === false) { skip('nonStandardLine'); continue; }
+      if (ln.line == null) { skip('nullLine'); continue; }
       const v = decide(mp, market, ln.line, {
         league, gradedHistory, cadenceShares: mp.cadenceShares, gameScript: mp.gameScript, shotZone: mp.shotZone,
         date: mp.date,
       });
-      if (!v.ok) continue;
+      if (!v.ok) { skip('decide:' + (v.reason || v.error || 'ok:false')); continue; }
       const tier = provisionalTier(v.edge);
       const isBet = v.lean !== 'pass' && tier !== 'PASS';
       const why = [...new Set([...minutesReasons(mp), ...v.reasons])];
