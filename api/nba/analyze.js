@@ -173,6 +173,7 @@ export async function analyzeSlate(io) {
     );
     if (!m.resolved) { unresolved.push({ player: pl.player, team: pl.team, reason: 'merge unresolved' }); continue; }
     m.ppKey = pl.playerKey;  // original PrizePicks key — line lookups use this, not the roster name
+    m._gameLogN = Array.isArray(gameLog) ? gameLog.length : null; // probe: early-season log depth
     m.regime = tagRegime(game, { date, seasonStart, isPlayoffs }, CONFIGS.NBA).regime; // v4 §1
 
     // minutes model -> attach projMinutes + cv + flags
@@ -189,6 +190,7 @@ export async function analyzeSlate(io) {
 
     m.gameId = game.gameId; m.date = date;
     if (mm.ok) { m.projMinutes = mm.projMinutes; m.minutesCV = mm.cv; m.minutes = { flags: mm.flags }; }
+    else m._minutesFail = mm.reason || mm.error || 'minutes ok:false'; // probe
 
     // --- opponent-defense adjustment on the shot profile (modest, capped) ---
     if (m.matchup && m.shotProfile) {
@@ -251,6 +253,24 @@ export async function analyzeSlate(io) {
 
   // diagnostics: make an empty slate self-explanatory (which stage is empty?)
   const playersWithProps = new Set(allRows.map((r) => String(r.playerId || r.player))).size;
+
+  // PROBE — splits "line lookup missed" from "engine returned ok:false"
+  const linesByKey = {};
+  for (const l of props.lines) (linesByKey[l.playerKey] ||= []).push(l.market);
+  const tally = (arr) => arr.reduce((o, k) => { o[k] = (o[k] || 0) + 1; return o; }, {});
+  const probe = {
+    ppMarkets: [...new Set(props.lines.map((l) => l.market))],
+    mergedWithLines: merged.filter((m) => linesByKey[m.ppKey]).length,
+    minutesOk: merged.filter((m) => m.projMinutes != null).length,
+    minutesFail: tally(merged.filter((m) => m._minutesFail).map((m) => String(m._minutesFail))),
+    gameLogDepth: tally(merged.map((m) => String(m._gameLogN))),
+    withShotProfile: merged.filter((m) => !!m.shotProfile).length,
+    sample: merged.slice(0, 3).map((m) => ({
+      ppKey: m.ppKey, id: m.id ?? null, markets: linesByKey[m.ppKey] || [],
+      projMinutes: m.projMinutes ?? null, gameLogN: m._gameLogN,
+      minutesFail: m._minutesFail || null, keys: Object.keys(m),
+    })),
+  };
   const diagnostics = {
     scheduleGames: schedule.length,
     ppStandardLines: props.lines.length,
@@ -266,6 +286,7 @@ export async function analyzeSlate(io) {
     bets: candidates.length,
     pp: props._debug || null,
     unresolved: unresolved.slice(0, 40),
+    probe,
   };
   const ppDbg = props._debug || {};
   let reason = null;
