@@ -1,74 +1,101 @@
 // api/_lib/nba/nbaVerdict.js
-// Single-verdict pipeline with high-floor / no-foul-trouble scheme risk.
-// Prefers the worked-prop profile: high-volume + secure minutes + low foul trouble.
-// When risk is elevated on an OVER it advises or forces the UNDER and names the weakest stat.
+// Single-verdict pipeline. Uses external schemeRisk for high-floor / under-advise logic.
+// Safe fallback if schemeRisk throws so a bad risk module never 500s the whole slate.
 
-import { getLeagueConfig } from './leagueConfig.js';
+import NBA, { CONFIGS } from './leagueConfig.js';
 import { analyzePoints } from './pointsEngine.js';
 import { analyzeCounting } from './reboundsAssistsEngine.js';
 import { analyzeCombo } from './comboEngine.js';
 import { formFloor } from './formFloor.js';
 import { biasCorrection } from './biasCorrection.js';
 import { classifyCadence, applyCadence } from './cadenceEngine.js';
-import { applySchemeRisk } from './schemeRisk.js';
+import { applySchemeRisk as applySchemeRiskExternal } from './schemeRisk.js';
 
 const COMBO_SET = new Set(['pra', 'pts_rebs', 'pts_asts', 'rebs_asts']);
 
+function applySchemeRisk(mp, market, line, rec, ctx = {}) {
+  try {
+    return applySchemeRiskExternal(mp, market, line, rec, {
+      ...ctx,
+      leagueConfig: ctx.leagueConfig || (CONFIGS && CONFIGS.NBA) || {},
+    });
+  } catch (e) {
+    return {
+      rec,
+      flags: { forcedPass: false },
+      reasons: ['schemeRisk fallback: ' + (e && e.message ? e.message : 'error')],
+      score: 50,
+      underFactors: 0,
+      preferredProfile: null,
+      weakestStat: market,
+      riskExplanation: 'schemeRisk unavailable — using neutral score',
+    };
+  }
+}
+
+function recentAvgFor(profile, market) {
+  if (!profile) return null;
+  const M = profile.minutes?.mean ?? null;
+  if (market === 'points') return profile.pts?.mean ?? profile.ppg ?? null;
+  if (market === 'rebounds') return profile.reb?.mean ?? profile.rpg ?? null;
+  if (market === 'assists') return profile.ast?.mean ?? profile.apg ?? null;
+  if (market === 'pra') {
+    const p = profile.pts?.mean ?? profile.ppg ?? 0;
+    const r = profile.reb?.mean ?? profile.rpg ?? 0;
+    const a = profile.ast?.mean ?? profile.apg ?? 0;
+    return p + r + a;
+  }
+  return null;
+}
+
+function runEngine(mp, market, line, league) {
+  if (market === 'points') return analyzePoints(mp, line, { league });
+  if (COMBO_SET.has(market)) return analyzeCombo(mp, market, line, { league });
+  return analyzeCounting(mp, market, line, { league });
+}
+
 /**
  * Decide a single prop.
- * @param {object} mp - merged player
- * @param {string} market
- * @param {number} line
- * @param {object} ctx
  */
 export function decide(mp, market, line, ctx = {}) {
   const league = ctx.league || 'NBA';
-  let cfg;
-  try {
-    cfg = getLeagueConfig(league);
-  } catch {
-    cfg = {};
-  }
+  const cfg = (CONFIGS && CONFIGS[league]) || NBA || {};
 
   // 1) bias correction
-  const bc = biasCorrection(mp, market, ctx.gradedHistory || []);
-  const effLine = line + (bc.bias || 0);
+  const bc = biasCorrection(mp.name || mp, market, ctx.gradedHistory);
+  const effLine = line - (bc.bias || 0);
 
   // 2) base engine
-  let res;
-  if (market === 'points') {
-    res = analyzePoints(mp, effLine, { ...ctx, league, cfg });
-  } else if (COMBO_SET.has(market)) {
-    res = analyzeCombo(mp, market, effLine, { ...ctx, league, cfg });
-  } else {
-    res = analyzeCounting(mp, market, effLine, { ...ctx, league, cfg });
-  }
-
-  if (!res || !res.ok) {
-    return { ok: false, reason: res?.reason || res?.error || 'engine failed', market, line };
-  }
+  const res = runEngine(mp, market, effLine, league);
+  if (!res || !res.ok) return { ok: false, reason: res?.reason || 'engine failed' };
 
   let rec = {
-    side: res.side || (res.prob >= 0.5 ? 'over' : 'under'),
-    prob: res.prob ?? 0.5,
+    side: res.recommendation?.side ?? res.side ?? (res.prob >= 0.5 ? 'over' : 'under'),
+    prob: res.recommendation?.prob ?? res.prob ?? 0.5,
     edge: res.edge ?? 0,
-    lean: res.lean || 'pass',
+    lean: res.recommendation?.lean ?? res.lean ?? 'pass',
     formNote: null,
     formKill: false,
   };
 
   // 3) form floor
-  const floor = formFloor(mp, market, line, rec, res);
-  if (floor) {
-    rec = { ...rec, ...floor };
-  }
+  try {
+    const profile = mp.shotProfile || mp.profile;
+    const recentAvg = recentAvgFor(profile, market);
+    const mf = mp.minutes?.flags || {};
+    const hasMinutesReason = !!(mf.reducedMinutes || mf.designation || mf.b2b
+      || (mp.projMinutes != null && profile?.minutes?.mean != null && mp.projMinutes < 0.9 * profile.minutes.mean));
+    const floorRes = formFloor(mp, market, line, rec, res, { recentAvg, hasMinutesReason });
+    if (floorRes) rec = { ...rec, ...floorRes };
+  } catch (_) { /* formFloor is best-effort */ }
 
   // 4) cadence
-  const cadenceClass = classifyCadence(mp, market, ctx.cadenceShares || mp.cadenceShares);
-  const cadenceNote = applyCadence(rec, cadenceClass, market, ctx.gameScript || mp.gameScript);
-  if (cadenceNote) {
-    // cadence may adjust edge/prob/lean via side effects on rec in some implementations
-  }
+  let cadenceClass = null;
+  let cadenceNote = null;
+  try {
+    cadenceClass = classifyCadence(mp, market, ctx.cadenceShares || mp.cadenceShares);
+    cadenceNote = applyCadence(rec, cadenceClass, market, ctx.gameScript || mp.gameScript);
+  } catch (_) { /* cadence is best-effort */ }
 
   // role-change guard
   let roleGuarded = false;
@@ -91,7 +118,6 @@ export function decide(mp, market, line, ctx = {}) {
     gameScript: ctx.gameScript || { total: mp.totalLine, spread: mp.spread },
     matchup: mp.matchup,
     oppAdj: mp.oppAdj,
-    leagueConfig: cfg,
   });
   rec = scheme.rec;
 
@@ -99,7 +125,6 @@ export function decide(mp, market, line, ctx = {}) {
   const marketMinEdge = market === 'points' ? (cfg.edge?.minEdge ?? cfg.thresholds?.minEdge ?? 0.08)
     : COMBO_SET.has(market) ? (cfg.combo?.minEdge ?? 0.07)
     : (cfg.markets?.[market]?.minEdge ?? 0.06);
-
   const lean = (rec.formKill || rec.lean === 'pass' || (rec.edge ?? 0) < marketMinEdge) ? 'pass' : rec.side;
 
   // shot-zone shadow reads
@@ -156,9 +181,8 @@ export function decide(mp, market, line, ctx = {}) {
     shotZone: szRead,
     engine: res,
     reasons,
-    // High-floor / risk surface
     schemeFlags: scheme.flags || {},
-    schemeScore: scheme.score,
+    schemeScore: scheme.score ?? 50,
     schemeUnderFactors: scheme.underFactors || 0,
     preferredProfile: scheme.preferredProfile || null,
     weakestStat: scheme.weakestStat || market,
