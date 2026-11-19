@@ -309,4 +309,10 @@ export function getLeagueConfig(league = 'WNBA') {
   return cfg;
 }
 
+// Backward-compat aliases used across the cohort.
+// Many files do: import NBA, { CONFIGS } from './leagueConfig.js'
+// so the default export MUST be the NBA config object.
+export const CONFIGS = PRESETS;
+
 export { WNBA, NBA };
+export default NBA;   // critical: default = NBA for `import NBA, { CONFIGS }`
