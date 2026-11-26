@@ -1,5 +1,6 @@
 // api/_lib/basketball/leagueConfig.js
-// Complete NBA + WNBA config with all required blocks for minutesModel + pointsEngine
+// Complete config — includes every key currently required by
+// minutesModel.js, pointsEngine.js, reboundsAssistsEngine.js, nbaVerdict.js
 
 const WNBA = {
   league: 'WNBA',
@@ -93,6 +94,7 @@ const WNBA = {
 
 const NBA = {
   league: 'NBA',
+  posture: 'shadow',                 // pointsEngine / reboundsAssistsEngine
 
   regulationMinutes: 48,
   rosterDepth: 10,
@@ -114,7 +116,7 @@ const NBA = {
   touchesMinutesCoef: 1.2,
   touchesCap: 120,
 
-  // Required by minutesModel.js
+  // ---------- minutesModel.js ----------
   minutes: {
     floor: 6,
     cap: 42,
@@ -154,17 +156,65 @@ const NBA = {
     securityStarterWeight: 0.6,
   },
 
-  // Required by pointsEngine.js (pmfStats)
+  // ---------- pointsEngine.js / reboundsAssistsEngine.js ----------
   dist: {
     floorPctile: 0.15,
     ceilingPctile: 0.85,
   },
 
-  // Required by pointsEngine.js (lineAboveCeiling check)
   lineAboveCeiling: {
     enabled: true,
   },
 
+  edge: {
+    minEdge: 0.08,                 // was missing → caused the latest crash
+  },
+
+  calibration: {
+    fadeOverThreshold: 0.60,
+    fadeOverWeight: 0.35,
+    mildOverWeight: 0.70,
+  },
+
+  markets: {
+    rebounds: { k: 12, minEdge: 0.06 },
+    assists:  { k: 6,  minEdge: 0.06 },
+    points:   { minEdge: 0.08 },
+  },
+
+  combo: {
+    minEdge: 0.07,
+    thinGap: 1.5,
+    corrInflation: 0.12,
+  },
+
+  roleGuard: {
+    gapPct: 0.18,
+  },
+
+  // ---------- schemeRisk (high-floor filters) ----------
+  schemeRisk: {
+    foulRateHigh: 3.8,
+    foulRateVeryHigh: 4.6,
+    foulPenalty: 14,
+    foulVeryHighPenalty: 22,
+    minProjMinutes: 28,
+    minutesHaircutThreshold: 0.88,
+    minutesRiskPenalty: 18,
+    roleUncertainPenalty: 12,
+    highUsgThreshold: 26,
+    highRebRateThreshold: 12,
+    volumeBoost: 10,
+    secondaryCompetitionPenalty: 12,
+    purePointsHostilePenalty: 12,
+    lowPaceTotal: 218,
+    blowoutSpread: 9.5,
+    forcedPassScore: 28,
+    underAdviseScore: 35,
+    highFloorScore: 68,
+  },
+
+  // ---------- general ----------
   weights: {
     recentFormBlend: 0.35,
     minutesRecentBlend: 0.40,
@@ -234,42 +284,6 @@ const NBA = {
     minEdge: 2.0,
     minProbability: 0.56,
     leanProbability: 0.53,
-  },
-
-  // High-floor / schemeRisk
-  schemeRisk: {
-    foulRateHigh: 3.8,
-    foulRateVeryHigh: 4.6,
-    foulPenalty: 14,
-    foulVeryHighPenalty: 22,
-    minProjMinutes: 28,
-    minutesHaircutThreshold: 0.88,
-    minutesRiskPenalty: 18,
-    roleUncertainPenalty: 12,
-    highUsgThreshold: 26,
-    highRebRateThreshold: 12,
-    volumeBoost: 10,
-    secondaryCompetitionPenalty: 12,
-    purePointsHostilePenalty: 12,
-    lowPaceTotal: 218,
-    blowoutSpread: 9.5,
-    forcedPassScore: 28,
-    underAdviseScore: 35,
-    highFloorScore: 68,
-  },
-
-  markets: {
-    rebounds: { k: 12, minEdge: 0.06 },
-    assists:  { k: 6,  minEdge: 0.06 },
-  },
-  combo: { minEdge: 0.07, thinGap: 1.5, corrInflation: 0.12 },
-  roleGuard: { gapPct: 0.18 },
-
-  // Calibration (used by pointsEngine fade logic in some versions)
-  calibration: {
-    fadeOverThreshold: 0.60,
-    fadeOverWeight: 0.35,
-    mildOverWeight: 0.70,
   },
 
   bbref: {
