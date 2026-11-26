@@ -177,6 +177,47 @@ const NBA = {
   touchesMinutesCoef: 1.2,
   touchesCap: 120,
 
+  // ---------- REQUIRED by minutesModel.js (fixes recentN crash) ----------
+  minutes: {
+    floor: 6,
+    cap: 42,
+    scenarioNodes: 5,
+    teamChangeCVMult: 1.6,
+  },
+
+  minutesModel: {
+    recentN: 10,                  // recent games for the baseline
+    recencyL10: 0.45,
+    recencyL5: 0.55,
+    b2bPenalty: 2.5,
+    b2bVeteranAge: 32,
+    b2bVeteranExtra: 2.0,
+    blowoutSpread: 12,
+    blowoutMaxPenalty: 4.0,
+    blowoutAlphaExemption: 0.6,
+    alphaUsgLo: 20,
+    alphaUsgHi: 30,
+    benchMinutes: 18,
+    garbageTimeBump: 3.0,
+    teammateOutBump: 2.0,
+    teammateOutMaxBump: 5.0,
+    designationHaircut: {
+      out: 0,
+      doubtful: 0.50,
+      questionable: 0.88,
+      gtd: 0.88,
+      'day-to-day': 0.92,
+      probable: 0.98,
+      available: 1.0,
+    },
+    reducedMinutesRatio: 0.75,
+    lowSecurityCVFloor: 0.28,
+    roleUncertainCVMult: 1.5,
+    adjustmentCap: 8.0,
+    securityStarterWeight: 0.6,
+  },
+  // ----------------------------------------------------------------------
+
   // Copied from WNBA as a prior. DO NOT trust on NBA until re-validated.
   weights: {
     recentFormBlend: 0.35,
