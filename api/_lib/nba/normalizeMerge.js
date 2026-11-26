@@ -21,6 +21,29 @@ function last(rows, n, key) {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 }
 
+/**
+ * Normalize raw injury status into a consistent value
+ * that schemeRisk.js understands.
+ */
+function normalizeInjuryStatus(raw = '') {
+  const s = String(raw || '').toLowerCase().trim();
+
+  if (['out', 'injured', 'inactive', 'suspended', 'o', 'na'].includes(s)) {
+    return 'Out';
+  }
+  if (['doubtful', 'd'].includes(s)) {
+    return 'Doubtful';
+  }
+  if (
+    ['questionable', 'q', 'day-to-day', 'day to day', 'gtd', 'game time decision'].some(
+      (x) => s.includes(x)
+    )
+  ) {
+    return 'Questionable';
+  }
+  return null; // healthy / available
+}
+
 // Merge one player. Pass preloaded league data so a slate fetches each source ONCE:
 //   rosterIndex : { byNameKey } from espnRoster.buildRosterIndex (cached nightly)
 //   bbrefAdv    : fetchPlayerAdvanced(season).byKey  (Map)
@@ -31,8 +54,12 @@ export async function mergePlayer(ppLine, { rosterIndex, bbrefAdv, bbrefTeams, i
   const roster = injectedRoster || rosterIndex?.byNameKey?.[key] || null;
 
   const dc = {
-    playerResolved: !!roster, hasShotProfile: false, hasBbrefRates: false,
-    hasOpponentCtx: false, hasInjury: false, teamChangeFlagged: false,
+    playerResolved: !!roster,
+    hasShotProfile: false,
+    hasBbrefRates: false,
+    hasOpponentCtx: false,
+    hasInjury: false,
+    teamChangeFlagged: false,
   };
 
   // identity + CURRENT team (the fix)
@@ -49,43 +76,74 @@ export async function mergePlayer(ppLine, { rosterIndex, bbrefAdv, bbrefTeams, i
   // ESPN gamelog -> shot profile. VOLUME recency-weighted toward L5 (v4 possession-core fix),
   // heavier for role-changers so the projection follows the new role, not stale pooled games.
   const rows = gameLog ?? (id ? await fetchPlayerGameLog(id).catch(() => []) : []);
-  const shotProfile = rows.length ? buildShotProfile(rows, { recentWeight: teamChange ? 0.70 : 0.55 }) : null;
+  const shotProfile = rows.length
+    ? buildShotProfile(rows, { recentWeight: teamChange ? 0.70 : 0.55 })
+    : null;
   dc.hasShotProfile = !!shotProfile && !shotProfile.insufficient;
 
   // matchup context = the CURRENT opponent (from bbref team-allowed table)
   const opp = opponentAbbr ? bbrefTeams?.[opponentAbbr] || null : null;
   dc.hasOpponentCtx = !!opp;
 
-  // availability
+  // ---------- Injury handling (normalized) ----------
   const inj = id ? injuryIdx?.[id] || null : null;
   dc.hasInjury = !!inj;
 
+  const rawStatus = inj?.status || inj?.designation || roster?.injuryStatus || null;
+  const injuryStatus = normalizeInjuryStatus(rawStatus);
+  const available = injuryStatus === 'Out' ? false : (inj?.available ?? true);
+
   return {
     resolved: !!roster,
-    id, name: roster?.name ?? ppLine.player, pos: roster?.pos ?? adv?.pos ?? null,
+    id,
+    name: roster?.name ?? ppLine.player,
+    pos: roster?.pos ?? adv?.pos ?? null,
     currentTeam,
     opponent: opponentAbbr ?? null,
     line: { market: ppLine.market, line: ppLine.line, side: ppLine.side ?? null },
 
-    shotProfile,                         // 2PA/3PA/FTA per-min, make rates, minutes mean/CV
-    form: rows.length ? {
-      gamesUsed: Math.min(rows.length, 5),
-      ptsL5: last(rows, 5, 'pts'), minL5: last(rows, 5, 'min'), ftaL5: last(rows, 5, 'fta'),
-    } : null,
+    shotProfile, // 2PA/3PA/FTA per-min, make rates, minutes mean/CV
+    form: rows.length
+      ? {
+          gamesUsed: Math.min(rows.length, 5),
+          ptsL5: last(rows, 5, 'pts'),
+          minL5: last(rows, 5, 'min'),
+          ftaL5: last(rows, 5, 'fta'),
+        }
+      : null,
 
-    drivers: adv ? {
-      usgPct: adv.usgPct, ftr: adv.ftr, tsPct: adv.tsPct,
-      trbPct: adv.trbPct, orbPct: adv.orbPct, drbPct: adv.drbPct,
-      astPct: adv.astPct, fg3aRate: adv.fg3aRate,
-    } : null,
+    drivers: adv
+      ? {
+          usgPct: adv.usgPct,
+          ftr: adv.ftr,
+          tsPct: adv.tsPct,
+          trbPct: adv.trbPct,
+          orbPct: adv.orbPct,
+          drbPct: adv.drbPct,
+          astPct: adv.astPct,
+          fg3aRate: adv.fg3aRate,
+        }
+      : null,
 
-    matchup: opp ? {
-      defRtg: opp.defRtg, oppFgPct: opp.oppFgPct,
-      blocksPerG: opp.blocksPerG, stealsPerG: opp.stealsPerG,
-      oppFg3aRate: opp.oppFg3aRate, oppFg3aPerG: opp.oppFg3aPerG, pace: opp.pace,
-    } : null,
+    matchup: opp
+      ? {
+          defRtg: opp.defRtg,
+          oppFgPct: opp.oppFgPct,
+          blocksPerG: opp.blocksPerG,
+          stealsPerG: opp.stealsPerG,
+          oppFg3aRate: opp.oppFg3aRate,
+          oppFg3aPerG: opp.oppFg3aPerG,
+          pace: opp.pace,
+        }
+      : null,
 
-    availability: inj ? { status: inj.status, available: inj.available } : { status: null, available: true },
+    // Normalized injury fields used by schemeRisk
+    injuryStatus,                     // 'Out' | 'Doubtful' | 'Questionable' | null
+    availability: {
+      status: injuryStatus || rawStatus,
+      available,
+      raw: rawStatus,
+    },
 
     flags: {
       teamChange,
@@ -101,6 +159,9 @@ export async function mergePlayer(ppLine, { rosterIndex, bbrefAdv, bbrefTeams, i
 
 // Merge a whole slate against preloaded league data (one fetch per source).
 export async function mergeSlate(ppLines, ctx) {
-  return Promise.all(ppLines.map(l =>
-    mergePlayer(l, { ...ctx, opponentAbbr: l.opponent ?? ctx.opponentAbbr })));
+  return Promise.all(
+    ppLines.map((l) =>
+      mergePlayer(l, { ...ctx, opponentAbbr: l.opponent ?? ctx.opponentAbbr })
+    )
+  );
 }
