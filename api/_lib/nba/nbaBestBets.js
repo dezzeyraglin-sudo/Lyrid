@@ -1,7 +1,7 @@
 // api/_lib/nba/nbaBestBets.js
 //
-// Turns the single-verdict pipeline into History-tab best bets + Key Reads.
-// High-floor primary glass is now the preferred profile for Key Reads.
+// Turns the single-verdict pipeline into History-tab best bets.
+// Reverted Key Reads tightening — back to broader ranking.
 
 import { decide } from './nbaVerdict.js';
 import { lookupLine } from './prizepicks.js';
@@ -13,7 +13,7 @@ function provisionalTier(edge) {
 function minutesReasons(mp) {
   const r = [];
   const mf = (mp.minutes && mp.minutes.flags) || {};
-  if (mf. basereducedMinutes) r.push('projected minutes cut (under zone)');
+  if (mf.reducedMinutes) r.push('projected minutes cut (under zone)');
   if (mf.designation && mf.designation !== 'available') r.push(`injury designation: ${mf.designation}`);
   if (mf.b2b) r.push('back-to-back minutes cut');
   if (mf.blowoutRisk >= 0.5) r.push('blowout starter-pull risk');
@@ -21,21 +21,6 @@ function minutesReasons(mp) {
   if (mf.teammatesOut) r.push('teammate out — usage funnel');
   if (mp.flags?.roleUncertain) r.push('role uncertain (team change)');
   return r;
-}
-
-function isHighFloorGlass(row) {
-  // True high-floor primary glass profile
-  if (row.preferredProfile === true) return true;
-  const score = row.highFloorGlassScore ?? row.schemeScore ?? 0;
-  if (score >= 72) return true;
-  return false;
-}
-
-function hasHeavyRisk(row) {
-  if (row.injuryFlag === 'OUT' || row.injuryFlag === 'DOUBTFUL') return true;
-  const flags = row.schemeFlags || {};
-  if (flags.lowMinutes || flags.foulTroubleHigh || flags.roleUncertain) return true;
-  return false;
 }
 
 /**
@@ -95,8 +80,6 @@ export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
         started: mp.starter ?? null,
         why,
         _v: v,
-
-        // High-floor surface
         schemeFlags: v.schemeFlags || {},
         schemeScore: v.schemeScore ?? 50,
         schemeUnderFactors: v.schemeUnderFactors || 0,
@@ -184,71 +167,42 @@ export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
 }
 
 /**
- * KEY READS – High-floor primary glass only (the profile we trust).
- * Returns two lists: favorable (overs) and short (unders / risk).
+ * Key Reads – broader (reverted from strict high-floor only).
+ * Still surfaces scheme info, but does not hard-filter to preferredProfile.
  */
 export function buildKeyReads(rows, opts = {}) {
-  const {
-    minGlassScore = 68,
-    preferPreferredOnly = false,
-    maxItems = 12,
-  } = opts;
+  const { maxItems = 12 } = opts;
 
   const rebounds = (rows || []).filter(r => {
     const m = (r.market || '').toLowerCase();
     return m === 'rebounds' || m === 'reb' || m.includes('reb');
   });
 
-  const candidates = rebounds.filter(r => {
-    if (hasHeavyRisk(r)) return false;
-    if (preferPreferredOnly) return r.preferredProfile === true;
-    return isHighFloorGlass(r) || (r.highFloorGlassScore ?? r.schemeScore ?? 0) >= minGlassScore;
-  });
-
-  // Favorable = projected over (or strong preferred over)
-  const favorable = candidates
-    .filter(r => {
-      if (r.side === 'over') return true;
-      // also allow strong preferred profiles even if model is closer
-      return r.preferredProfile && (r.proj == null || r.proj >= r.line);
-    })
+  // Favorable = model leans over or projection clears the line
+  const favorable = rebounds
+    .filter(r => r.side === 'over' || (r.proj != null && r.proj > r.line))
     .sort((a, b) => {
-      // preferred first
-      if (a.preferredProfile !== b.preferredProfile) {
-        return (b.preferredProfile ? 1 : 0) - (a.preferredProfile ? 1 : 0);
-      }
-      const scoreDiff = (b.highFloorGlassScore ?? b.schemeScore ?? 0) - (a.highFloorGlassScore ?? a.schemeScore ?? 0);
-      if (scoreDiff !== 0) return scoreDiff;
-      // then by projection edge
       const edgeA = (a.proj ?? a.line) - a.line;
       const edgeB = (b.proj ?? b.line) - b.line;
-      return edgeB - edgeA;
+      if (edgeB !== edgeA) return edgeB - edgeA;
+      return (b.schemeScore ?? 0) - (a.schemeScore ?? 0);
     })
     .slice(0, maxItems);
 
-  // Short = projected under or heavy risk that still made it through
+  // Short = model leans under or projection is below the line
   const short = rebounds
-    .filter(r => {
-      if (r.side === 'under') return true;
-      if (hasHeavyRisk(r)) return true;
-      if (r.proj != null && r.proj < r.line - 0.4) return true;
-      return false;
-    })
+    .filter(r => r.side === 'under' || (r.proj != null && r.proj < r.line))
     .sort((a, b) => {
-      // heaviest risk / biggest short first
-      const riskA = hasHeavyRisk(a) ? 1 : 0;
-      const riskB = hasHeavyRisk(b) ? 1 : 0;
-      if (riskB !== riskA) return riskB - riskA;
       const shortA = a.line - (a.proj ?? a.line);
       const shortB = b.line - (b.proj ?? b.line);
-      return shortB - shortA;
+      if (shortB !== shortA) return shortB - shortA;
+      return (a.schemeScore ?? 50) - (b.schemeScore ?? 50);
     })
     .slice(0, maxItems);
 
   return {
     favorable,
     short,
-    // convenience flat list for older UI
     all: [...favorable, ...short],
   };
 }
