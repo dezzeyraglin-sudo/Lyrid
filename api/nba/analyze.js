@@ -13,7 +13,7 @@ import { readProfile } from '../_lib/nba/profileStore.js';
 import { logPicks, readGradedHistory } from '../_lib/nba/propLog.js';
 import { mergePlayer } from '../_lib/nba/normalizeMerge.js';
 import { projectMinutes } from '../_lib/nba/minutesModel.js';
-import { evaluateSlate, rankBestBets, toCandidates } from '../_lib/nba/nbaBestBets.js';
+import { evaluateSlate, rankBestBets, toCandidates, buildKeyReads } from '../_lib/nba/nbaBestBets.js';
 import { assignArchetype } from '../_lib/nba/nbaArchetype.js';
 import { playerShotProfile, teamAllowedProfile, openZoneRead, lastNGameShots } from '../_lib/nba/nbaShotZone.js';
 import { recentForm } from '../_lib/nba/recentForm.js';
@@ -233,6 +233,9 @@ export async function analyzeSlate(io) {
   const ranked = allRows.filter((r) => r.isBet).sort((a, b) => b.edge - a.edge);
   const candidates = toCandidates(ranked, { date });                    // LEAN+ bets (logged)
 
+  // Key Reads (broader version)
+  const keyReads = buildKeyReads(allRows, { maxItems: 12 });
+
   // attach archetype + shot-zone read onto the output rows by player id (so the card
   // has them even though toCandidates doesn't know about them)
   const metaById = {};
@@ -323,6 +326,7 @@ export async function analyzeSlate(io) {
     candidates: candOut,
     players: slateOut,
     playerCards: buildPlayerCards(slateOut),
+    keyReads,
     gameTotals: projectSlateTotals(schedule, { bbrefTeams, injuryIdx, rosterIndex, bbrefAdv }, CONFIGS.NBA),
     ranked,
     mergedCount: merged.length,
