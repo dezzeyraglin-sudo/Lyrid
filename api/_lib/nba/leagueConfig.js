@@ -1,6 +1,6 @@
 // api/_lib/basketball/leagueConfig.js
-// Complete config — includes every key currently required by
-// minutesModel.js, pointsEngine.js, reboundsAssistsEngine.js, nbaVerdict.js
+// FINAL complete config — covers every key currently required by
+// minutesModel, pointsEngine, reboundsAssistsEngine, gameTotals, nbaVerdict, schemeRisk
 
 const WNBA = {
   league: 'WNBA',
@@ -94,7 +94,7 @@ const WNBA = {
 
 const NBA = {
   league: 'NBA',
-  posture: 'shadow',                 // pointsEngine / reboundsAssistsEngine
+  posture: 'shadow',
 
   regulationMinutes: 48,
   rosterDepth: 10,
@@ -156,7 +156,7 @@ const NBA = {
     securityStarterWeight: 0.6,
   },
 
-  // ---------- pointsEngine.js / reboundsAssistsEngine.js ----------
+  // ---------- pointsEngine / reboundsAssistsEngine ----------
   dist: {
     floorPctile: 0.15,
     ceilingPctile: 0.85,
@@ -167,13 +167,17 @@ const NBA = {
   },
 
   edge: {
-    minEdge: 0.08,                 // was missing → caused the latest crash
+    minEdge: 0.08,
   },
 
   calibration: {
     fadeOverThreshold: 0.60,
     fadeOverWeight: 0.35,
     mildOverWeight: 0.70,
+    minSample: 20,
+    breakeven: 0.577,
+    strongRate: 0.62,
+    eliteRate: 0.67,
   },
 
   markets: {
@@ -192,7 +196,31 @@ const NBA = {
     gapPct: 0.18,
   },
 
-  // ---------- schemeRisk (high-floor filters) ----------
+  // ---------- gameTotals.js (the current crash) ----------
+  totals: {
+    leagueRtg: 113,
+    leaguePace: 99.5,
+    leagueFtr: 0.26,
+    injuryCoef: 0.12,
+    injuryCap: 0.10,
+    injurySeverity: {
+      out: 1.0,
+      doubtful: 0.5,
+      questionable: 0.2,
+      gtd: 0.2,
+      dtd: 0.1,
+      probable: 0.05,
+      available: 0,
+    },
+    ftCoef: 0.3,
+    ftCap: 0.02,
+    sigma: 10,
+    minEdgePts: 3.0,
+    gameMinEdge: 0.04,
+    teamMinEdge: 0.05,
+  },
+
+  // ---------- schemeRisk ----------
   schemeRisk: {
     foulRateHigh: 3.8,
     foulRateVeryHigh: 4.6,
@@ -284,6 +312,13 @@ const NBA = {
     minEdge: 2.0,
     minProbability: 0.56,
     leanProbability: 0.53,
+  },
+
+  regime: {
+    openingDays: 14,
+    deadlineFrom: 1,
+    deadlineTo: 12,
+    disrupted: ['opening', 'playoffs', 'deadline', 'b2b', 'tanking'],
   },
 
   bbref: {
