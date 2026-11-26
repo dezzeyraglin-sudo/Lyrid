@@ -1,23 +1,19 @@
 // api/_lib/nba/nbaBestBets.js
 //
-// Turns the single-verdict pipeline into History-tab best bets.
-// Enhanced: ranks by edge × schemeScore (high-floor preference) and surfaces
-// the preferred-profile / risk-explanation fields from schemeRisk.
+// Turns the single-verdict pipeline into History-tab best bets + Key Reads.
+// High-floor primary glass is now the preferred profile for Key Reads.
 
 import { decide } from './nbaVerdict.js';
 import { lookupLine } from './prizepicks.js';
 
-function provisionalTier(edge, schemeScore = 50) {
-  // Prefer high-floor plays: a strong schemeScore can elevate a modest edge
-  const adjusted = edge + (schemeScore >= 68 ? 0.025 : schemeScore >= 55 ? 0.01 : schemeScore < 35 ? -0.03 : 0);
-  if (adjusted >= 0.15) return 'STRONG';
-  if (adjusted >= 0.08) return 'LEAN';
-  return 'PASS';
+function provisionalTier(edge) {
+  return edge >= 0.15 ? 'STRONG' : edge >= 0.08 ? 'LEAN' : 'PASS';
 }
 
 function minutesReasons(mp) {
-  const r = []; const mf = (mp.minutes && mp.minutes.flags) || {};
-  if (mf.reducedMinutes) r.push('projected minutes cut (under zone)');
+  const r = [];
+  const mf = (mp.minutes && mp.minutes.flags) || {};
+  if (mf. basereducedMinutes) r.push('projected minutes cut (under zone)');
   if (mf.designation && mf.designation !== 'available') r.push(`injury designation: ${mf.designation}`);
   if (mf.b2b) r.push('back-to-back minutes cut');
   if (mf.blowoutRisk >= 0.5) r.push('blowout starter-pull risk');
@@ -27,15 +23,23 @@ function minutesReasons(mp) {
   return r;
 }
 
-// Composite sort key: prefer high schemeScore (high-floor) then edge
-function sortKey(row) {
-  const floorBonus = (row.schemeScore || 50) >= 68 ? 0.04 : (row.schemeScore || 50) >= 55 ? 0.015 : 0;
-  const riskPenalty = (row.schemeFlags?.forcedPass || row.schemeFlags?.adviseUnder) ? -0.08 : 0;
-  return (row.edge || 0) + floorBonus + riskPenalty;
+function isHighFloorGlass(row) {
+  // True high-floor primary glass profile
+  if (row.preferredProfile === true) return true;
+  const score = row.highFloorGlassScore ?? row.schemeScore ?? 0;
+  if (score >= 72) return true;
+  return false;
+}
+
+function hasHeavyRisk(row) {
+  if (row.injuryFlag === 'OUT' || row.injuryFlag === 'DOUBTFUL') return true;
+  const flags = row.schemeFlags || {};
+  if (flags.lowMinutes || flags.foulTroubleHigh || flags.roleUncertain) return true;
+  return false;
 }
 
 /**
- * Evaluate every player × market. Tags isBet and attaches full scheme surface.
+ * Evaluate every player × market on the slate.
  */
 export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
   const {
@@ -43,7 +47,6 @@ export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
     markets = ['points', 'rebounds', 'assists', 'pra', 'pts_rebs', 'pts_asts', 'rebs_asts'],
     gradedHistory = [],
     trace = null,
-    preferHighFloor = true,
   } = opts;
 
   const rows = [];
@@ -60,7 +63,8 @@ export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
       if (ln.line == null) { skip('nullLine'); continue; }
 
       const v = decide(mp, market, ln.line, {
-        league, gradedHistory,
+        league,
+        gradedHistory,
         cadenceShares: mp.cadenceShares,
         gameScript: mp.gameScript,
         shotZone: mp.shotZone,
@@ -69,10 +73,8 @@ export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
 
       if (!v.ok) { skip('decide:' + (v.reason || v.error || 'ok:false')); continue; }
 
-      const schemeScore = v.schemeScore ?? 50;
-      const tier = provisionalTier(v.edge, schemeScore);
-      const isBet = v.lean !== 'pass' && tier !== 'PASS' && !v.schemeFlags?.forcedPass;
-
+      const tier = provisionalTier(v.edge);
+      const isBet = v.lean !== 'pass' && tier !== 'PASS';
       const why = [...new Set([...minutesReasons(mp), ...(v.reasons || [])])];
 
       rows.push({
@@ -93,27 +95,25 @@ export function evaluateSlate(mergedPlayers, byPlayerMarket, opts = {}) {
         started: mp.starter ?? null,
         why,
         _v: v,
-        // Full scheme surface
+
+        // High-floor surface
         schemeFlags: v.schemeFlags || {},
-        schemeScore,
+        schemeScore: v.schemeScore ?? 50,
         schemeUnderFactors: v.schemeUnderFactors || 0,
-        preferredProfile: v.preferredProfile || null,
+        preferredProfile: v.preferredProfile || false,
+        highFloorGlassScore: v.highFloorGlassScore ?? v.schemeScore ?? 50,
         weakestStat: v.weakestStat || market,
         riskExplanation: v.riskExplanation || '',
+        injuryFlag: v.injuryFlag || null,
+        proj: v.distribution?.mean ?? null,
       });
     }
   }
-
-  // Optional: sort the full board by the high-floor-aware key
-  if (preferHighFloor) {
-    rows.sort((a, b) => sortKey(b) - sortKey(a));
-  }
-
   return rows;
 }
 
 /**
- * Rank only actionable (non-pass) candidates, high-floor first.
+ * Classic ranked best bets (edge-sorted).
  */
 export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
   const {
@@ -121,11 +121,9 @@ export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
     minEdge = null,
     markets = ['points', 'rebounds', 'assists', 'pra', 'pts_rebs', 'pts_asts', 'rebs_asts'],
     gradedHistory = [],
-    preferHighFloor = true,
   } = opts;
 
   const ranked = [];
-
   for (const mp of mergedPlayers || []) {
     for (const market of markets) {
       const ln = byPlayerMarket
@@ -135,7 +133,8 @@ export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
       if (!ln || ln.isStandard === false || ln.line == null) continue;
 
       const v = decide(mp, market, ln.line, {
-        league, gradedHistory,
+        league,
+        gradedHistory,
         cadenceShares: mp.cadenceShares,
         gameScript: mp.gameScript,
         shotZone: mp.shotZone,
@@ -143,11 +142,9 @@ export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
       });
 
       if (!v.ok || v.lean === 'pass') continue;
-      if (v.schemeFlags?.forcedPass) continue;
       if (minEdge != null && v.edge < minEdge) continue;
 
-      const schemeScore = v.schemeScore ?? 50;
-      const tier = provisionalTier(v.edge, schemeScore);
+      const tier = provisionalTier(v.edge);
       if (tier === 'PASS') continue;
 
       const why = [...new Set([...minutesReasons(mp), ...(v.reasons || [])])];
@@ -170,96 +167,120 @@ export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
         why,
         _v: v,
         schemeFlags: v.schemeFlags || {},
-        schemeScore,
+        schemeScore: v.schemeScore ?? 50,
         schemeUnderFactors: v.schemeUnderFactors || 0,
-        preferredProfile: v.preferredProfile || null,
+        preferredProfile: v.preferredProfile || false,
+        highFloorGlassScore: v.highFloorGlassScore ?? v.schemeScore ?? 50,
         weakestStat: v.weakestStat || market,
         riskExplanation: v.riskExplanation || '',
+        injuryFlag: v.injuryFlag || null,
+        proj: v.distribution?.mean ?? null,
       });
     }
   }
 
-  // High-floor aware sort
-  ranked.sort((a, b) => {
-    if (preferHighFloor) return sortKey(b) - sortKey(a);
-    return (b.edge || 0) - (a.edge || 0);
-  });
-
+  ranked.sort((a, b) => b.edge - a.edge);
   return ranked;
 }
 
 /**
- * Convenience: return only the high-floor preferred profiles (the style that worked).
+ * KEY READS – High-floor primary glass only (the profile we trust).
+ * Returns two lists: favorable (overs) and short (unders / risk).
  */
-export function rankHighFloorBets(mergedPlayers, byPlayerMarket, opts = {}) {
-  const all = rankBestBets(mergedPlayers, byPlayerMarket, { ...opts, preferHighFloor: true });
-  return all.filter(r =>
-    (r.schemeScore || 0) >= 60 &&
-    !r.schemeFlags?.foulTrouble &&
-    !r.schemeFlags?.forcedPass &&
-    !r.schemeFlags?.adviseUnder &&
-    (r.preferredProfile || r.schemeScore >= 68)
-  );
+export function buildKeyReads(rows, opts = {}) {
+  const {
+    minGlassScore = 68,
+    preferPreferredOnly = false,
+    maxItems = 12,
+  } = opts;
+
+  const rebounds = (rows || []).filter(r => {
+    const m = (r.market || '').toLowerCase();
+    return m === 'rebounds' || m === 'reb' || m.includes('reb');
+  });
+
+  const candidates = rebounds.filter(r => {
+    if (hasHeavyRisk(r)) return false;
+    if (preferPreferredOnly) return r.preferredProfile === true;
+    return isHighFloorGlass(r) || (r.highFloorGlassScore ?? r.schemeScore ?? 0) >= minGlassScore;
+  });
+
+  // Favorable = projected over (or strong preferred over)
+  const favorable = candidates
+    .filter(r => {
+      if (r.side === 'over') return true;
+      // also allow strong preferred profiles even if model is closer
+      return r.preferredProfile && (r.proj == null || r.proj >= r.line);
+    })
+    .sort((a, b) => {
+      // preferred first
+      if (a.preferredProfile !== b.preferredProfile) {
+        return (b.preferredProfile ? 1 : 0) - (a.preferredProfile ? 1 : 0);
+      }
+      const scoreDiff = (b.highFloorGlassScore ?? b.schemeScore ?? 0) - (a.highFloorGlassScore ?? a.schemeScore ?? 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      // then by projection edge
+      const edgeA = (a.proj ?? a.line) - a.line;
+      const edgeB = (b.proj ?? b.line) - b.line;
+      return edgeB - edgeA;
+    })
+    .slice(0, maxItems);
+
+  // Short = projected under or heavy risk that still made it through
+  const short = rebounds
+    .filter(r => {
+      if (r.side === 'under') return true;
+      if (hasHeavyRisk(r)) return true;
+      if (r.proj != null && r.proj < r.line - 0.4) return true;
+      return false;
+    })
+    .sort((a, b) => {
+      // heaviest risk / biggest short first
+      const riskA = hasHeavyRisk(a) ? 1 : 0;
+      const riskB = hasHeavyRisk(b) ? 1 : 0;
+      if (riskB !== riskA) return riskB - riskA;
+      const shortA = a.line - (a.proj ?? a.line);
+      const shortB = b.line - (b.proj ?? b.line);
+      return shortB - shortA;
+    })
+    .slice(0, maxItems);
+
+  return {
+    favorable,
+    short,
+    // convenience flat list for older UI
+    all: [...favorable, ...short],
+  };
 }
 
 /**
- * Map ranked picks → shared History candidate record.
+ * Map ranked picks -> shared History candidate record.
  */
 export function toCandidates(ranked, data = {}) {
-  const date = data.date || (ranked[0] && ranked[0].date) || new Date().toISOString().slice(0, 10);
   return (ranked || []).map((r) => ({
-    id: ['nba', date, r.gameId || '', r.player || '', r.market, r.side].join(':'),
-    sport: 'nba',
-    date,
-    gameId: String(r.gameId || ''),
+    player: r.player,
+    playerId: r.playerId,
     team: r.team,
     opponent: r.opponent,
-    player: r.player,
-    playerId: r.playerId || null,
+    gameId: r.gameId,
+    date: r.date,
     market: r.market,
     side: r.side,
     line: r.line,
-    tier: r.tier,
-    cashRate: r.prob,
-    edgeType: 'nba-' + r.market,
-    sampleN: null,
-    isBet: r.isBet != null ? !!r.isBet : (r.tier !== 'PASS'),
+    prob: r.prob,
     edge: r.edge,
-    probOver: r.side === 'over' ? r.prob : +(1 - r.prob).toFixed(3),
-    lean: r.side,
-    recommendation: r.side,
-    lineSource: 'prizepicks',
-    projection: r._v?.distribution?.mean ?? null,
-    floor: r._v?.distribution?.floor ?? null,
-    ceiling: r._v?.distribution?.ceiling ?? null,
-    form: 'neutral',
-    matchupContext: r.why || [],
-    why: (r.why || []).join(' · ') || 'model edge',
-    provisional: true,
-    graded: false,
-    flags: {
-      antiCalibrated: !!(r._v?.engine?.flags?.confidentOverFaded),
-      highScoringGame: false,
-      started: r.started ?? false,
-      bookProhibited: false,
-      lineStatus: r.lineStatus || 'standard',
-      purePointsRisk: !!(r.schemeFlags && r.schemeFlags.purePointsRisk),
-      schemeHostile: !!(r.schemeFlags && r.schemeFlags.schemeHostile),
-      minutesRisk: !!(r.schemeFlags && r.schemeFlags.minutesRisk),
-      foulTrouble: !!(r.schemeFlags && r.schemeFlags.foulTrouble),
-      forcedPass: !!(r.schemeFlags && r.schemeFlags.forcedPass),
-      compoundingUnder: !!(r.schemeFlags && r.schemeFlags.compoundingUnder),
-      adviseUnder: !!(r.schemeFlags && r.schemeFlags.adviseUnder),
-      secondaryCompetition: !!(r.schemeFlags && r.schemeFlags.secondaryCompetition),
-      highVolumePreferred: !!(r.schemeFlags && r.schemeFlags.highVolumePreferred),
-    },
-    schemeScore: r.schemeScore ?? 50,
-    schemeUnderFactors: r.schemeUnderFactors || 0,
-    schemeFlags: r.schemeFlags || {},
-    preferredProfile: r.preferredProfile || null,
-    weakestStat: r.weakestStat || r.market,
-    riskExplanation: r.riskExplanation || '',
+    tier: r.tier,
+    why: r.why,
+    preferredProfile: r.preferredProfile,
+    schemeScore: r.schemeScore,
+    riskExplanation: r.riskExplanation,
+    ...data,
   }));
 }
 
-export default { evaluateSlate, rankBestBets, rankHighFloorBets, toCandidates };
+export default {
+  evaluateSlate,
+  rankBestBets,
+  buildKeyReads,
+  toCandidates,
+};
