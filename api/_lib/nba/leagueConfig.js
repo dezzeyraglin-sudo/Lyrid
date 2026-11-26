@@ -1,318 +1,150 @@
-// api/_lib/basketball/leagueConfig.js
+// api/_lib/nba/leagueConfig.js
 //
-// LEAGUE CONFIG (June 1, 2026)
-//
-// Single source of truth for every league-specific constant the points engine
-// touches. The engine is league-agnostic; it reads everything from here.
-//
-// WHY THIS EXISTS:
-//   The WNBA build is the testbed for an eventual NBA engine. The architecture
-//   ports cleanly, but the constants do not — WNBA games are 40 minutes at
-//   ~80 possessions; NBA is 48 minutes at ~99. Baking those numbers into the
-//   engine means the NBA port is a hunt-and-replace through every module.
-//   Parameterizing them here means the port is: pick a different preset.
-//
-// CALIBRATION NOTE:
-//   The `weights` and `variance` blocks are HEURISTIC PRIORS, not truth. They
-//   are the knobs the MAE validation tunes. WNBA-tuned weights are NOT valid
-//   for NBA — each league re-tunes from scratch. Treat the NBA preset's weights
-//   as copies of the WNBA priors until NBA has its own validation history.
+// NBA preset. The engine (pointsEngine.js) reads everything tunable from here so
+// NBA is a config swap, not a rewrite. EVERY discipline constant below is a
+// WNBA-derived PLACEHOLDER — re-fit on NBA graded data before trusting it.
 
-// =============================================================
-// WNBA PRESET (in-season — the testbed)
-// =============================================================
-
-const WNBA = {
-  league: 'WNBA',
-
-  // --- Game structure ---
-  regulationMinutes: 40,
-  rosterDepth: 9,                 // typical games-played rotation size
-
-  // --- League baselines (for normalization) ---
-  leagueAvgPace: 80,              // possessions per game
-  leagueAvgTotal: 164,            // game total
-  leagueAvgTeamTotal: 82,
-  leagueAvgDefRating: 100,        // points allowed per 100 possessions
-  leagueAvgFoulRate: 21,         // team fouls per game
-  leagueAvgFtRate: 0.22,          // league FTA / FGA
-
-  // --- Minutes / role heuristics (game-length sensitive) ---
-  starterMinutes: 20,
-  closingRoleMinutes: 28,
-  maxMinutes: 40,
-
-  // --- Usage ---
-  primaryCreatorUsage: 28,
-
-  // --- Touches approximation (bbref has no tracking touches) ---
-  touchesUsageCoef: 0.7,
-  touchesMinutesCoef: 1.2,
-  touchesCap: 100,
-
-  // --- Calibration weights (TUNE VIA MAE) ---
-  weights: {
-    recentFormBlend: 0.35,        // weight on last-N scoring rate vs season
-    minutesRecentBlend: 0.40,     // weight on recent minutes vs season minutes
-    paceSensitivity: 0.30,        // pace r=0.17 (3% of variance) — dampened from 0.50; minutes+volume drive props, not pace
-    defenseSensitivity: 0.20,     // team defense r=0.05 (noise) — dampened hard from 0.50; opponent defense barely moves player props
-    whistleSensitivity: 0.30,     // dampening on the whistle multiplier
-    coverageSensitivity: 0.40,    // dampening on the coaching-coverage scheme multiplier
-    shootingFormSensitivity: 0.35, // dampening on recent-vs-season FG% (hot/cold hand)
-    blowoutThresholdSpread: 12,   // |spread| beyond which a blowout is likely
-    blowoutMinutesHaircut: 0.12,  // fraction of minutes shaved off starters in projected blowouts
-    b2bMinutesHaircut: 0.04,      // minutes shaved on the back end of a back-to-back
-  },
-
-  // --- Points blend: how the unified engine combines the two scoring cores ---
-  // possession = minutes x pace x usage x points-per-possession (catches usage spikes)
-  // rate       = realized PPG blended with recent form (robust, lags role change)
-  pointsBlend: { possession: 0.55, rate: 0.45 },
-
-  // --- Multiplier clamps (sanity rails; keep adjustments honest) ---
-  clamps: {
-    pace: [0.90, 1.12],
-    defense: [0.95, 1.06],        // tightened — defense signal is weak (r=0.05)
-    whistle: [0.95, 1.06],
-    coverage: [0.95, 1.05],       // coaching scheme effect; neutral (1.0) until coverage data exists
-    shootingForm: [0.93, 1.08],   // recent FG% hot/cold adjustment to scoring efficiency
-    reboundEquity: [0.92, 1.08],  // tightened from ±22% — shot-geography rebound signal is weak (opportunity r=0.12); rebounds are minutes-driven
-    gameLineFactor: [0.96, 1.04], // each minor defensive factor's bound (small nudge)
-    gameLineCombined: [0.93, 1.07],// overall minor-factor suppression bound on a team total
-    recentRate: [0.80, 1.25],
-    combined: [0.82, 1.25],       // overall cap on the stacked multiplier (anti career-high rail)
-  },
-
-  // League-typical gap between FG% and TS% (TS sits above FG% due to 3PT + FT
-  // value). Used to derive a TS proxy from FG% when advanced TS% is missing,
-  // so the possession core stays alive. WNBA: ~0.535 TS vs ~0.435 FG ≈ 0.10.
-  fgToTsGap: 0.10,
-
-  // --- Variance / distribution ---
-  variance: {
-    baseScoringCv: 0.32,          // game-to-game points CV for a rotation scorer
-    baseReboundCv: 0.42,          // rebounds are noisier than points
-    minutesCvInflation: 1.0,      // how strongly minutes volatility widens the distribution
-  },
-
-  // --- Rebound-environment engine ---
-  rebound: {
-    centerShortSensitivity: 0.55, // center gains as short-miss share rises above 50%
-    centerLongPenalty: 0.65,      // center loses as long-miss share rises above 50%
-    guardLongSensitivity: 0.45,   // guard gains on long misses (perimeter boards)
-    wingLongSensitivity: 0.30,    // wing gains moderately on long misses
-  },
-  reboundLeagueAvg: {
-    // League-average shot diet (shares 0–1) — the classifier types each opponent
-    // relative to these. WNBA-typical; refine from data as the season matures.
-    threeShare: 0.32,
-    interiorShare: 0.42,          // rim + paint
-    midShare: 0.26,
-    ftRate: 0.22,                 // FTA per FGA
-    avgDist: 13.5,
-  },
-
-  // --- Game-line engine (team totals, spread, moneyline) ---
-  gameLine: {
-    ppgBlend: 0.70,               // weight on rating-matchup vs league-mean stabilizer
-    homeCourtPoints: 2.0,         // WNBA home edge in points
-    winProbScale: 9.0,            // logistic scale: margin → win prob (~+3.5 ≈ 60%)
-    // Minor-defensive-factor sensitivities — deliberately SMALL. These are fine
-    // nudges (a point or two) on top of the rating matchup, not primary drivers.
-    forcedTovSensitivity: 0.10,
-    stealSensitivity: 0.05,
-    blockSensitivity: 0.04,
-    offRebAllowedSensitivity: 0.06,
-    schemeSensitivity: 0.20,      // applies only when a scheme feed exists
-  },
-  gameLineLeagueAvg: {
-    pts: 82, defRating: 100,
-    forcedTov: 13.5, steals: 7.5, blocks: 3.8, offRebAllowed: 9.0,
-  },
-
-  // --- Recommendation thresholds ---
-  thresholds: {
-    minEdge: 1.5,                 // |proj - line| in points required to act
-    minProbability: 0.56,         // model prob required for OVER/UNDER (else LEAN/PASS)
-    leanProbability: 0.53,
-  },
-
-  // --- bbref source layer (league-specific paths + table ids) ---
-  bbref: {
-    perGamePath: (season) => `/wnba/years/${season}_per_game.html`,
-    advancedPath: (season) => `/wnba/years/${season}_advanced.html`,
-    perGameTableIds: ['per_game_stats', 'per_game', 'players_per_game'],
-    advancedTableIds: ['advanced_stats', 'advanced', 'players_advanced'],
-    teamPath: (abbr, season) => `/wnba/teams/${abbr}/${season}.html`,
-    playerSlugFromLink: /href="\/wnba\/players\/[a-z0-9]\/([a-z0-9]+\.html)"/i,
-  },
-};
-
-// =============================================================
-// NBA PRESET (offseason — starter values for the future build)
-// =============================================================
-// These are reasonable league baselines, NOT validated weights. The weights
-// block is copied from WNBA as a starting prior. Re-tune against NBA MAE.
-
-const NBA = {
+export const NBA = {
   league: 'NBA',
+  gameMinutes: 48,
 
-  regulationMinutes: 48,
-  rosterDepth: 10,
-
-  leagueAvgPace: 99,
-  leagueAvgTotal: 230,
-  leagueAvgTeamTotal: 115,
-  leagueAvgDefRating: 114,
-  leagueAvgFoulRate: 19,
-  leagueAvgFtRate: 0.24,
-
-  starterMinutes: 25,
-  closingRoleMinutes: 32,
-  maxMinutes: 42,
-
-  primaryCreatorUsage: 28,
-
-  touchesUsageCoef: 0.7,
-  touchesMinutesCoef: 1.2,
-  touchesCap: 120,
-
-  // Copied from WNBA as a prior. DO NOT trust on NBA until re-validated.
-  weights: {
-    recentFormBlend: 0.35,
-    minutesRecentBlend: 0.40,
-    paceSensitivity: 0.50,
-    defenseSensitivity: 0.50,
-    whistleSensitivity: 0.30,
-    coverageSensitivity: 0.40,
-    shootingFormSensitivity: 0.35,
-    blowoutThresholdSpread: 14,   // NBA blowouts run a bit wider
-    blowoutMinutesHaircut: 0.14,
-    b2bMinutesHaircut: 0.05,
+  // minutes: until the dedicated minutes model plugs into `projMinutes`, the engine
+  // integrates over a minutes distribution using recent mean + CV.
+  minutes: {
+    floor: 6,             // don't project a rotation player below this
+    cap: 42,              // realistic single-game ceiling
+    scenarioNodes: 5,     // equal-probability strata to integrate minutes uncertainty
+    teamChangeCVMult: 1.6, // fallback widen when minutes model doesn't supply cv — TUNE
   },
 
-  pointsBlend: { possession: 0.55, rate: 0.45 },
-
-  clamps: {
-    pace: [0.90, 1.12],
-    defense: [0.90, 1.15],
-    whistle: [0.95, 1.06],
-    coverage: [0.95, 1.05],
-    shootingForm: [0.93, 1.08],
-    reboundEquity: [0.78, 1.22],
-    gameLineFactor: [0.96, 1.04],
-    gameLineCombined: [0.93, 1.07],
-    recentRate: [0.80, 1.25],
-    combined: [0.82, 1.28],
+  // minutes MODEL — the NBA's biggest lever and where the projection bias lives.
+  // All magnitudes are placeholders. TUNE on NBA graded minutes.
+  minutesModel: {
+    recentN: 10,            // recent games for the baseline
+    recencyL10: 0.45,       // baseline = 0.45*mean(L10) + 0.55*mean(L5) — validated
+    recencyL5: 0.55,
+    b2bPenalty: 2.5,        // minutes off on a back-to-back (NBA signal; null in WNBA)
+    b2bVeteranAge: 32,      // older players lose more on B2Bs (load management)
+    b2bVeteranExtra: 2.0,
+    blowoutSpread: 12,      // |spread| where starter-pull risk starts
+    blowoutMaxPenalty: 4.0, // max minutes off in a rout (applied BY ROLE, never blanket)
+    blowoutAlphaExemption: 0.6, // alphas keep more minutes in blowouts: penalty *= (1 - 0.6*alpha)
+    alphaUsgLo: 20, alphaUsgHi: 30, // usg%% range that maps to the alpha role factor
+    benchMinutes: 18,       // below this baseline, a blowout ADDS garbage-time minutes
+    garbageTimeBump: 3.0,
+    teammateOutBump: 2.0,   // per key rotation player OUT (usage funnel / benefitsFrom)
+    teammateOutMaxBump: 5.0,
+    // player's OWN injury designation haircut on the minutes center (reasoned, TUNE):
+    designationHaircut: { out: 0, doubtful: 0.50, questionable: 0.88, gtd: 0.88, 'day-to-day': 0.92, probable: 0.98, available: 1.0 },
+    reducedMinutesRatio: 0.75, // proj < 75% of baseline = the ~87%-under zone (strongest finding)
+    lowSecurityCVFloor: 0.28, // widen cv when role is insecure (risk flag, symmetric)
+    roleUncertainCVMult: 1.5, // extra widen after a trade / role change
+    adjustmentCap: 8.0,     // cap the total additive minutes deviation (no runaway)
+    securityStarterWeight: 0.6,
   },
 
-  // NBA: ~0.57 TS vs ~0.46 FG ≈ 0.11.
-  fgToTsGap: 0.11,
+  // distribution readouts
+  dist: { floorPctile: 0.15, ceilingPctile: 0.85 },
 
-  variance: {
-    baseScoringCv: 0.30,
-    baseReboundCv: 0.40,
-    minutesCvInflation: 1.0,
-  },
-
-  rebound: {
-    centerShortSensitivity: 0.55,
-    centerLongPenalty: 0.65,
-    guardLongSensitivity: 0.45,
-    wingLongSensitivity: 0.30,
-  },
-  reboundLeagueAvg: {
-    threeShare: 0.39,             // NBA shoots more 3s than WNBA
-    interiorShare: 0.40,
-    midShare: 0.21,
-    ftRate: 0.24,
-    avgDist: 14.5,
+  // DISCIPLINES — all WNBA-scale placeholders. TUNE on NBA graded outcomes.
+  calibration: {
+    // fade-the-confident-over: raw probOver is anti-calibrated on the over side.
+    fadeOverThreshold: 0.60, // at/above this raw pOver ≈ coinflip in WNBA data
+    fadeOverWeight: 0.35,    // compression factor applied to (pRaw-0.5) above threshold
+    mildOverWeight: 0.70,    // gentler compression for pOver in (0.5, threshold)
+    // under side was well-calibrated (≤0.35 → ~67%) — keep it.
   },
 
-  gameLine: {
-    ppgBlend: 0.70,
-    homeCourtPoints: 2.4,         // NBA home edge slightly larger
-    winProbScale: 11.0,           // wider NBA scoring → wider scale
-    forcedTovSensitivity: 0.10,
-    stealSensitivity: 0.05,
-    blockSensitivity: 0.04,
-    offRebAllowedSensitivity: 0.06,
-    schemeSensitivity: 0.20,
-  },
-  gameLineLeagueAvg: {
-    pts: 113, defRating: 113,
-    forcedTov: 13.5, steals: 7.8, blocks: 5.0, offRebAllowed: 10.5,
+  lineAboveCeiling: { enabled: true }, // line above realistic ceiling -> strong under tier
+
+  // counting-stat markets (rebounds/assists): minutes x per-min rate -> negative
+  // binomial. `k` is the dispersion size (higher = tighter/stickier, lower = noisier).
+  // Rebounds are sticky, assists noisy — audit finding. All TUNE placeholders.
+  markets: {
+    rebounds: { k: 12, minEdge: 0.06 },
+    assists:  { k: 6,  minEdge: 0.06 },
   },
 
-  thresholds: {
-    minEdge: 2.0,                 // NBA points lines are higher; require a bigger edge
-    minProbability: 0.56,
-    leanProbability: 0.53,
+  // combo markets (P+R, P+A, R+A, PRA): convolution over shared minutes; slightly
+  // higher min edge + thin-gap auto-pass to respect residual correlation risk. TUNE.
+  combo: { minEdge: 0.07, thinGap: 1.5, corrInflation: 0.12 }, // residual same-game correlation per extra component (v4). TUNE
+
+  // role-change over/under guard: when role is unconfirmed AND the market line disagrees
+  // strongly with our (stale) projection, neutralize the lean — the projection can't be
+  // trusted through a role change. gapPct = |proj-line|/line that triggers it. TUNE.
+  roleGuard: { gapPct: 0.18 },
+
+  // opponent-defense adjustment (modest, capped). League baselines + coefficients are
+  // TUNE placeholders. effCoef*ΔoppFG% -> make-rate mult; paceCoef*Δpace% -> volume mult.
+  opponent: {
+    shadow: true,   // v4: opponent context correlates ~r0.05 with player props — LOG the
+                    // factors on the card, do NOT move the projection until NBA grades earn it
+    leagueOppFgPct: 0.470, leaguePace: 99.5, leagueOppFg3aRate: 0.420,
+    effCoef: 0.6, effCap: 0.04,     // make rates: max ±4%
+    paceCoef: 0.5, paceCap: 0.04,   // shot volume: max ±4%
+    rebEnvCoef: 0.4, rebEnvCap: 0.05,
+    // defensive activity (ESPN/bbref): blocks -> rim scoring, steals -> assists
+    leagueBlocksPerG: 5.0, leagueStealsPerG: 7.8,
+    blockCoef: 0.4, blockCap: 0.03,  // 2P% suppression: max ±3%
+    stealCoef: 0.4, stealCap: 0.04,  // assist suppression: max ±4%
   },
+
+  // team + game totals (separate game-level model). NO blowout suppression on the total.
+  totals: {
+    leagueRtg: 113,                 // league avg points per 100 possessions
+    leaguePace: 99.5, leagueFtr: 0.26,
+    injuryCoef: 0.12, injuryCap: 0.10,  // out usage -> team-total haircut, capped
+    injurySeverity: { out: 1.0, doubtful: 0.5, questionable: 0.2, gtd: 0.2, dtd: 0.1, probable: 0.05, available: 0 },
+    ftCoef: 0.3, ftCap: 0.02,       // FT matchup nudge: max ±2%
+    sigma: 10,                      // maps projected point gap -> P(over)
+    minEdgePts: 3.0,                // need 3+ pts vs the line to lean
+    gameMinEdge: 0.04, teamMinEdge: 0.05,
+  },
+
+  // self-calibration guardrail (v4 §3). Tiers/badges come from LIVE graded rates, never a
+  // frozen streak. Nothing is promoted under minSample; anything below breakeven is demoted.
+  // breakeven 0.577 = PrizePicks 2-pick power (sqrt(1/3)) — the real bar to clear. TUNE.
+  calibration: { minSample: 20, breakeven: 0.577, strongRate: 0.62, eliteRate: 0.67 },
+
+  // regime tagging (v4 §1) — disrupted windows down-weighted, never pooled into the baseline.
+  regime: { openingDays: 14, deadlineFrom: 1, deadlineTo: 12, disrupted: ['opening', 'playoffs', 'deadline', 'b2b', 'tanking'] },
+
+  edge: { minEdge: 0.04 }, // min |p-0.5| to surface a lean (NBA points lines are large)
+
+  posture: 'shadow', // shadow-then-launch: emit probabilities, NOT conviction tiers,
+                     // until confidence buckets are graded live.
 
   // High-floor / worked-prop profile (schemeRisk)
-  // Tunable knobs that drive the "prefer high-volume + no foul trouble" filter
-  // and the under-advise logic we locked from research.
+  // Tunable knobs for the "prefer high-volume + no foul trouble" filter
+  // and the under-advise logic.
   schemeRisk: {
-    // Foul trouble
-    foulRateHigh: 3.8,            // PF/g that starts the penalty
-    foulRateVeryHigh: 4.6,        // PF/g that is a hard red flag
+    foulRateHigh: 3.8,
+    foulRateVeryHigh: 4.6,
     foulPenalty: 14,
     foulVeryHighPenalty: 22,
-
-    // Minutes / volume floor
     minProjMinutes: 28,
     minutesHaircutThreshold: 0.88,
     minutesRiskPenalty: 18,
     roleUncertainPenalty: 12,
-
-    // High-volume preference (boosts)
-    highUsgThreshold: 26,         // USG% for primary-creator points preference
-    highRebRateThreshold: 12,     // TRB% / rebound strength for primary rebounders
+    highUsgThreshold: 26,
+    highRebRateThreshold: 12,
     volumeBoost: 10,
-
-    // Secondary competition (rebounds)
     secondaryCompetitionPenalty: 12,
-
-    // Pure points / script
     purePointsHostilePenalty: 12,
     lowPaceTotal: 218,
     blowoutSpread: 9.5,
-
-    // Decision thresholds
-    forcedPassScore: 28,          // score <= this → forced PASS on overs
-    underAdviseScore: 35,         // score <= this on an OVER → strongly prefer UNDER
-    highFloorScore: 68,           // score >= this → preferred high-floor profile
-  },
-
-  bbref: {
-    perGamePath: (season) => `/leagues/NBA_${season}_per_game.html`,
-    advancedPath: (season) => `/leagues/NBA_${season}_advanced.html`,
-    perGameTableIds: ['per_game_stats', 'per_game'],
-    advancedTableIds: ['advanced_stats', 'advanced'],
-    teamPath: (abbr, season) => `/teams/${abbr}/${season}.html`,
-    playerSlugFromLink: /href="\/players\/[a-z]\/([a-z0-9]+\.html)"/i,
+    forcedPassScore: 28,
+    underAdviseScore: 35,
+    highFloorScore: 68,
   },
 };
 
-const PRESETS = { WNBA, NBA };
+export const CONFIGS = { NBA };
+export default NBA;
 
-/**
- * Get the config for a league.
- * @param {string} league - 'WNBA' | 'NBA'
- * @returns {Object} league config (throws on unknown league)
- */
-export function getLeagueConfig(league = 'WNBA') {
+
+export function getLeagueConfig(league = 'NBA') {
   const key = String(league).toUpperCase();
-  const cfg = PRESETS[key];
-  if (!cfg) throw new Error(`Unknown league "${league}". Known: ${Object.keys(PRESETS).join(', ')}`);
-  return cfg;
+  if (key === 'NBA') return NBA;
+  throw new Error('Unknown league "' + league + '". Only NBA is configured in this preset.');
 }
-
-// Backward-compat aliases used across the cohort.
-// Many files do: import NBA, { CONFIGS } from './leagueConfig.js'
-// so the default export MUST be the NBA config object.
-export const CONFIGS = PRESETS;
-
-export { WNBA, NBA };
-export default NBA;   // critical: default = NBA for `import NBA, { CONFIGS }`
