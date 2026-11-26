@@ -1,9 +1,5 @@
 // api/_lib/basketball/leagueConfig.js
-//
-// LEAGUE CONFIG (June 1, 2026)
-//
-// Single source of truth for every league-specific constant the points engine
-// touches. The engine is league-agnostic; it reads everything from here.
+// Complete NBA + WNBA config with all required blocks for minutesModel + pointsEngine
 
 const WNBA = {
   league: 'WNBA',
@@ -118,7 +114,7 @@ const NBA = {
   touchesMinutesCoef: 1.2,
   touchesCap: 120,
 
-  // ---------- REQUIRED by minutesModel.js ----------
+  // Required by minutesModel.js
   minutes: {
     floor: 6,
     cap: 42,
@@ -158,10 +154,15 @@ const NBA = {
     securityStarterWeight: 0.6,
   },
 
-  // ---------- REQUIRED by pointsEngine.js (pmfStats) ----------
+  // Required by pointsEngine.js (pmfStats)
   dist: {
     floorPctile: 0.15,
     ceilingPctile: 0.85,
+  },
+
+  // Required by pointsEngine.js (lineAboveCeiling check)
+  lineAboveCeiling: {
+    enabled: true,
   },
 
   weights: {
@@ -235,7 +236,7 @@ const NBA = {
     leanProbability: 0.53,
   },
 
-  // High-floor / worked-prop profile (schemeRisk)
+  // High-floor / schemeRisk
   schemeRisk: {
     foulRateHigh: 3.8,
     foulRateVeryHigh: 4.6,
@@ -257,13 +258,19 @@ const NBA = {
     highFloorScore: 68,
   },
 
-  // Markets / combo / role guard (used by verdict + engines)
   markets: {
     rebounds: { k: 12, minEdge: 0.06 },
     assists:  { k: 6,  minEdge: 0.06 },
   },
   combo: { minEdge: 0.07, thinGap: 1.5, corrInflation: 0.12 },
   roleGuard: { gapPct: 0.18 },
+
+  // Calibration (used by pointsEngine fade logic in some versions)
+  calibration: {
+    fadeOverThreshold: 0.60,
+    fadeOverWeight: 0.35,
+    mildOverWeight: 0.70,
+  },
 
   bbref: {
     perGamePath: (season) => `/leagues/NBA_${season}_per_game.html`,
