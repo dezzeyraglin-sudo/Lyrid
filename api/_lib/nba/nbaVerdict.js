@@ -1,7 +1,5 @@
 // api/_lib/nba/nbaVerdict.js
 // Single-verdict pipeline with high-floor / no-foul-trouble scheme risk.
-// Prefers the worked-prop profile: high-volume + secure minutes + low foul trouble.
-// When risk is elevated on an OVER it advises or forces the UNDER and names the weakest stat.
 
 import { getLeagueConfig } from './leagueConfig.js';
 import { analyzePoints } from './pointsEngine.js';
@@ -16,10 +14,6 @@ const COMBO_SET = new Set(['pra', 'pts_rebs', 'pts_asts', 'rebs_asts']);
 
 /**
  * Decide a single prop.
- * @param {object} mp - merged player
- * @param {string} market
- * @param {number} line
- * @param {object} ctx
  */
 export function decide(mp, market, line, ctx = {}) {
   const league = ctx.league || 'NBA';
@@ -63,12 +57,13 @@ export function decide(mp, market, line, ctx = {}) {
     rec = { ...rec, ...floor };
   }
 
-  // 4) cadence
-  const cadenceClass = classifyCadence(mp, market, ctx.cadenceShares || mp.cadenceShares);
-  const cadenceNote = applyCadence(rec, cadenceClass, market, ctx.gameScript || mp.gameScript);
-  if (cadenceNote) {
-    // cadence may adjust edge/prob/lean via side effects on rec in some implementations
-  }
+  // 4) cadence  (FIXED call signature)
+  const rawShares = ctx.cadenceShares || mp.cadenceShares || mp.secondHalfShares || null;
+  const secondHalfShares = Array.isArray(rawShares)
+    ? rawShares
+    : (Array.isArray(rawShares?.[market]) ? rawShares[market] : []);
+  const cadenceClass = classifyCadence(secondHalfShares);
+  const cadenceNote = applyCadence(rec, market, cadenceClass, ctx.gameScript || mp.gameScript);
 
   // role-change guard
   let roleGuarded = false;
@@ -96,13 +91,17 @@ export function decide(mp, market, line, ctx = {}) {
   rec = scheme.rec;
 
   // 5) finalize
-  const marketMinEdge = market === 'points' ? (cfg.edge?.minEdge ?? cfg.thresholds?.minEdge ?? 0.08)
-    : COMBO_SET.has(market) ? (cfg.combo?.minEdge ?? 0.07)
-    : (cfg.markets?.[market]?.minEdge ?? 0.06);
+  const marketMinEdge = market === 'points'
+    ? (cfg.edge?.minEdge ?? cfg.thresholds?.minEdge ?? 0.08)
+    : COMBO_SET.has(market)
+      ? (cfg.combo?.minEdge ?? 0.07)
+      : (cfg.markets?.[market]?.minEdge ?? 0.06);
 
-  const lean = (rec.formKill || rec.lean === 'pass' || (rec.edge ?? 0) < marketMinEdge) ? 'pass' : rec.side;
+  const lean = (rec.formKill || rec.lean === 'pass' || (rec.edge ?? 0) < marketMinEdge)
+    ? 'pass'
+    : rec.side;
 
-  // shot-zone shadow reads
+  // shot-zone + matchup reasons
   const szReasons = [];
   let szRead = null;
   if (ctx.shotZone) {
@@ -131,9 +130,9 @@ export function decide(mp, market, line, ctx = {}) {
     res.flags?.confidentOverFaded ? 'confident over faded' : null,
     res.flags?.lineAboveCeiling ? 'line above ceiling' : null,
     rec.formNote,
-    cadenceNote,
+    cadenceNote?.cadenceNote || null,
     ...matchupReasons,
-    roleGuarded ? 'role change + market disagreement — lean neutralized (stale projection risk)' : null,
+    roleGuarded ? 'role change + market disagreement — lean neutralized' : null,
     ...szReasons,
     ...(scheme.reasons || []),
     bc.n ? `bias-corrected ${bc.bias > 0 ? '+' : ''}${bc.bias} (n${bc.n})` : null,
@@ -156,13 +155,15 @@ export function decide(mp, market, line, ctx = {}) {
     shotZone: szRead,
     engine: res,
     reasons,
+
     // High-floor / risk surface
     schemeFlags: scheme.flags || {},
     schemeScore: scheme.score,
     schemeUnderFactors: scheme.underFactors || 0,
-    preferredProfile: scheme.preferredProfile || null,
+    preferredProfile: scheme.preferredProfile || false,
     weakestStat: scheme.weakestStat || market,
     riskExplanation: scheme.riskExplanation || '',
+    injuryFlag: scheme.injuryFlag || null,
   };
 }
 
