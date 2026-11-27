@@ -229,6 +229,19 @@ export async function analyzeSlate(io) {
   // Evaluate the whole slate ONCE; the board shows all players, logging uses the bets.
   const evalTrace = {};
   const allRows = evaluateSlate(merged, ppIndex, { league: 'NBA', trace: evalTrace });
+
+  // Backfill card projection fields from engine distribution when missing.
+  // This is what drives "proj" on the board — without mean/floor/ceiling the UI shows "proj –".
+  for (const r of allRows) {
+    const dist = r._v?.distribution || r.distribution || null;
+    if (r.projection == null && dist?.mean != null) r.projection = dist.mean;
+    if (r.floor == null && dist?.floor != null) r.floor = dist.floor;
+    if (r.ceiling == null && dist?.ceiling != null) r.ceiling = dist.ceiling;
+    if (r.cashRate == null && r.prob != null) r.cashRate = r.prob;
+    if (r.proj == null && r.projection != null) r.proj = r.projection;
+    // fallback: if engine never produced a distribution, surface projMinutes-based placeholder as null (UI stays honest)
+  }
+
   const slatePlayers = toCandidates(allRows, { date });                 // full informational slate
   const ranked = allRows.filter((r) => r.isBet).sort((a, b) => b.edge - a.edge);
   const candidates = toCandidates(ranked, { date });                    // LEAN+ bets (logged)
@@ -259,6 +272,12 @@ export async function analyzeSlate(io) {
       baseRate: cg.baseRate != null ? cg.baseRate : null,
       lift: cg.lift != null ? cg.lift : null,
       isBet: !!engineIsBet && !cg.demoted,
+      // Explicit projection surface for playerCards / board
+      projection: c.projection ?? c.proj ?? base.projection ?? null,
+      floor: c.floor ?? base.floor ?? null,
+      ceiling: c.ceiling ?? base.ceiling ?? null,
+      cashRate: c.cashRate ?? c.prob ?? base.cashRate ?? null,
+      proj: c.proj ?? c.projection ?? base.proj ?? null,
     };
   });
 
@@ -283,6 +302,14 @@ export async function analyzeSlate(io) {
       projMinutes: m.projMinutes ?? null, gameLogN: m._gameLogN,
       minutesFail: m._minutesFail || null, keys: Object.keys(m),
     })),
+    rowsWithProjection: allRows.filter((r) => r.projection != null).length,
+    rowsMissingProjection: allRows.filter((r) => r.projection == null).length,
+    sampleRow: allRows[0] ? {
+      player: allRows[0].player, market: allRows[0].market, line: allRows[0].line,
+      projection: allRows[0].projection, floor: allRows[0].floor, ceiling: allRows[0].ceiling,
+      has_v: !!allRows[0]._v, distMean: allRows[0]._v?.distribution?.mean ?? null,
+      lean: allRows[0].lean, side: allRows[0].side, schemeScore: allRows[0].schemeScore,
+    } : null,
   };
   const diagnostics = {
     scheduleGames: schedule.length,
