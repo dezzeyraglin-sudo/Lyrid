@@ -77,6 +77,71 @@ export function buildShotZoneIndex(gameSummaries) {
   return { byPlayer, teamAllowed };
 }
 
+// Decision labels for UI — never show FAVORABLE when final lean is under/pass.
+// Raw proj vs line is still exposed as projEdge for transparency.
+function propDecisionLabels(r) {
+  const lean = (r.lean || r.side || '').toLowerCase();
+  const proj = r.projection ?? r.proj ?? null;
+  const line = r.line;
+  const projEdge = (proj != null && line != null) ? +(proj - line).toFixed(1) : null;
+  const flags = r.schemeFlags || r.flags || {};
+  const score = r.schemeScore != null ? r.schemeScore : 50;
+
+  // Raw math only (for debugging / secondary text)
+  const rawAbove = projEdge != null && projEdge > 0;
+  const rawBelow = projEdge != null && projEdge < 0;
+
+  // Final decision tags — gated on lean, not raw proj
+  let decisionTag = null;       // primary UI badge
+  let decisionSub = null;       // secondary reason line
+  let matchupTag = null;        // FAVORABLE only when lean supports over
+
+  if (lean === 'over') {
+    decisionTag = 'LEAN OVER';
+    if (flags.highVolumePreferred && score >= 68 && !flags.highFloorPtsBlocked) {
+      matchupTag = 'FAVORABLE';
+      decisionSub = r.preferredProfile
+        ? `preferred profile (${r.preferredProfile})`
+        : 'clears high-floor checklist';
+    } else if (rawAbove) {
+      matchupTag = 'LEAN OVER';
+      decisionSub = projEdge != null ? `proj ${proj} vs line ${line} (+${projEdge})` : null;
+    } else {
+      decisionSub = 'edge after risk filters';
+    }
+  } else if (lean === 'under') {
+    decisionTag = 'PROJECTED SHORT';
+    // Never FAVORABLE on an under lean
+    matchupTag = null;
+    if (flags.returnRisk) decisionSub = 'return / minutes risk';
+    else if (flags.minutesRisk) decisionSub = 'minutes risk';
+    else if (flags.h2hThin) decisionSub = 'H2H at/under line';
+    else if (flags.adviseUnder) decisionSub = r.weakestStat ? `risk on ${r.weakestStat}` : 'elevated underperform risk';
+    else if (rawBelow) decisionSub = projEdge != null ? `proj ${proj} vs line ${line} (${projEdge})` : 'projects under line';
+    else decisionSub = 'final lean under after filters';
+  } else {
+    decisionTag = 'PASS';
+    matchupTag = null;
+    if (flags.forcedPass) decisionSub = r.weakestStat ? `forced pass (${r.weakestStat})` : 'failed high-floor stress test';
+    else if (flags.highFloorPtsBlocked) decisionSub = 'PTS hard filters blocked high-floor';
+    else decisionSub = 'no edge after risk filters';
+  }
+
+  // Soft matchup context (informational only — does not override decisionTag)
+  if (matchupTag == null && lean === 'over' && rawAbove) {
+    matchupTag = 'EDGE';
+  }
+
+  return {
+    decisionTag,
+    decisionSub,
+    matchupTag,
+    projEdge,
+    rawAbove,
+    rawBelow,
+  };
+}
+
 // Group the evaluated slate into ONE card per player, carrying the player-level
 // archetype + recent form and every prop's projection/line/lean. Cards and props are
 // sorted by edge so the strongest reads surface first.
@@ -91,16 +156,37 @@ export function buildPlayerCards(rows) {
       matchup: r.matchup || null, oppAdj: r.oppAdj || null, regime: r.regime || null,
       props: [],
     };
+
+    const labels = propDecisionLabels(r);
+
     byKey[key].props.push({
-      market: r.market, marketLabel: MKT[r.market] || String(r.market || '').toUpperCase(),
-      side: r.side, line: r.line,
-      projection: r.projection, floor: r.floor, ceiling: r.ceiling,
-      prob: r.cashRate, edge: r.edge, tier: r.tier, isBet: r.isBet != null ? r.isBet : (r.tier !== 'PASS' && r.tier !== 'PROVISIONAL'),
-      liveRate: r.calibration ? r.calibration.liveRate : null, gradedN: r.calibration ? r.calibration.n : 0, provisional: r.calibration ? r.calibration.provisional : true,
+      market: r.market,
+      marketLabel: MKT[r.market] || String(r.market || '').toUpperCase(),
+      side: r.side,
+      lean: r.lean || r.side,
+      line: r.line,
+      projection: r.projection,
+      floor: r.floor,
+      ceiling: r.ceiling,
+      prob: r.cashRate,
+      edge: r.edge,
+      tier: r.tier,
+      isBet: r.isBet != null ? r.isBet : (r.tier !== 'PASS' && r.tier !== 'PROVISIONAL'),
+      liveRate: r.calibration ? r.calibration.liveRate : null,
+      gradedN: r.calibration ? r.calibration.n : 0,
+      provisional: r.calibration ? r.calibration.provisional : true,
       why: r.why,
       schemeScore: r.schemeScore != null ? r.schemeScore : 50,
       schemeFlags: r.schemeFlags || (r.flags || {}),
       schemeUnderFactors: r.schemeUnderFactors || 0,
+      preferredProfile: r.preferredProfile || null,
+      weakestStat: r.weakestStat || r.market,
+      riskExplanation: r.riskExplanation || '',
+      // UI decision labels (FAVORABLE only when lean is over + filters clear)
+      decisionTag: labels.decisionTag,
+      decisionSub: labels.decisionSub,
+      matchupTag: labels.matchupTag,
+      projEdge: labels.projEdge,
     });
   }
   const cards = Object.values(byKey);

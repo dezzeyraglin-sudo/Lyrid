@@ -63,6 +63,7 @@ function rowFromVerdict(mp, market, ln, v) {
     riskExplanation: v.riskExplanation || '',
     injuryFlag: v.injuryFlag || null,
     lean: v.lean,
+    flags: v.schemeFlags || {},
   };
 }
 
@@ -144,33 +145,57 @@ export function rankBestBets(mergedPlayers, byPlayerMarket, opts = {}) {
   return ranked;
 }
 
+/**
+ * Key Reads — FAVORABLE only when final lean is over (not merely proj > line).
+ * PROJECTED SHORT when lean is under. Raw proj edge is still available on the row.
+ */
 export function buildKeyReads(rows, opts = {}) {
-  const { maxItems = 12 } = opts;
+  const { maxItems = 12, markets = null } = opts;
 
-  const rebounds = (rows || []).filter(r => {
-    const m = (r.market || '').toLowerCase();
-    return m === 'rebounds' || m === 'reb' || m.includes('reb');
+  const pool = (rows || []).filter(r => {
+    if (!markets) {
+      // Default: prefer rebounds for classic high-floor board; allow explicit override
+      const m = (r.market || '').toLowerCase();
+      return m === 'rebounds' || m === 'reb' || m.includes('reb');
+    }
+    return markets.includes(r.market);
   });
 
-  const favorable = rebounds
-    .filter(r => r.side === 'over' || (r.proj != null && r.proj > r.line))
+  const leanOf = (r) => (r.lean || r.side || '').toLowerCase();
+
+  // FAVORABLE = final lean over (schemeRisk + form already applied)
+  const favorable = pool
+    .filter(r => leanOf(r) === 'over')
     .sort((a, b) => {
-      const edgeA = (a.proj ?? a.line) - a.line;
-      const edgeB = (b.proj ?? b.line) - b.line;
+      const edgeA = (a.edge ?? 0);
+      const edgeB = (b.edge ?? 0);
       if (edgeB !== edgeA) return edgeB - edgeA;
       return (b.schemeScore ?? 0) - (a.schemeScore ?? 0);
     })
-    .slice(0, maxItems);
+    .slice(0, maxItems)
+    .map(r => ({
+      ...r,
+      matchupTag: 'FAVORABLE',
+      decisionTag: 'LEAN OVER',
+      decisionSub: r.riskExplanation || r.preferredProfile || null,
+    }));
 
-  const short = rebounds
-    .filter(r => r.side === 'under' || (r.proj != null && r.proj < r.line))
+  // PROJECTED SHORT = final lean under
+  const short = pool
+    .filter(r => leanOf(r) === 'under')
     .sort((a, b) => {
-      const shortA = a.line - (a.proj ?? a.line);
-      const shortB = b.line - (b.proj ?? b.line);
-      if (shortB !== shortA) return shortB - shortA;
+      const edgeA = (a.edge ?? 0);
+      const edgeB = (b.edge ?? 0);
+      if (edgeB !== edgeA) return edgeB - edgeA;
       return (a.schemeScore ?? 50) - (b.schemeScore ?? 50);
     })
-    .slice(0, maxItems);
+    .slice(0, maxItems)
+    .map(r => ({
+      ...r,
+      matchupTag: null, // never FAVORABLE on under
+      decisionTag: 'PROJECTED SHORT',
+      decisionSub: r.riskExplanation || (r.schemeFlags?.minutesRisk ? 'minutes risk' : null),
+    }));
 
   return {
     favorable,
