@@ -240,6 +240,17 @@ const NBA = {
     forcedPassScore: 28,
     underAdviseScore: 35,
     highFloorScore: 68,
+
+    // PTS hard filters (post 2026-11-27 lessons — Reaves return, H2H thin, etc.)
+    returnMissGames: 3,
+    returnActiveGamesRequired: 2,
+    returnRiskPenalty: 20,
+    h2hCushionPts: 1.5,
+    h2hThinPenalty: 14,
+    h2hSampleMin: 5,
+    ptsCompoundHardLimit: 2,
+    eliteDefPtsAdj: -1.5,
+    eliteDefPenalty: 10,
   },
 
   // ---------- general ----------

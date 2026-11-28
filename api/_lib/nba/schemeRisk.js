@@ -8,6 +8,8 @@
 //   2. Force PASS or flip to UNDER on props that fail the high-floor stress tests
 //   3. Identify which component is most likely to underperform (for combos)
 //   4. Attach clear human-readable risk explanations for every candidate
+//   5. Stricter PTS path (return risk, H2H cushion, compound risk) so PTS is not
+//      treated as interchangeable with high-floor REB until it clears hard filters
 //
 // Thresholds are tunable via leagueConfig.NBA.schemeRisk (or defaults below).
 
@@ -41,6 +43,24 @@ const DEFAULTS = {
   forcedPassScore: 28,
   underAdviseScore: 35,
   highFloorScore: 68,
+
+  // ----- PTS-specific hard filters (post 2026-11-27 lessons) -----
+  // Return-from-absence: miss this many games → require N fully active games back
+  returnMissGames: 3,
+  returnActiveGamesRequired: 2,
+  returnRiskPenalty: 20,
+
+  // H2H cushion: career (or sample) PPG must clear line by this amount for highFloorPts
+  h2hCushionPts: 1.5,
+  h2hThinPenalty: 14,
+  h2hSampleMin: 5,
+
+  // Compound risk: how many stacked PTS risk flags before we refuse highFloorPts
+  ptsCompoundHardLimit: 2,
+
+  // Elite defense proxy (opp points allowed rank or adjustment)
+  eliteDefPtsAdj: -1.5,
+  eliteDefPenalty: 10,
 };
 
 function getCfg(ctx = {}) {
@@ -71,6 +91,80 @@ function getRebRate(mp) {
     mp.rebRate ?? null;
 }
 
+/**
+ * Detect return-from-absence risk.
+ * Looks at injury history / gamesMissed / consecutiveActive if present on mp.
+ */
+function getReturnRisk(mp, cfg) {
+  const gamesMissed =
+    mp.gamesMissedRecent ??
+    mp.injury?.gamesMissed ??
+    mp.availability?.gamesMissed ??
+    mp.flags?.gamesMissed ??
+    null;
+
+  const consecutiveActive =
+    mp.consecutiveActive ??
+    mp.availability?.consecutiveActive ??
+    mp.flags?.consecutiveActive ??
+    null;
+
+  // Explicit "just returned" flag from upstream
+  if (mp.flags?.justReturned || mp.availability?.justReturned) {
+    return {
+      atRisk: true,
+      gamesMissed: gamesMissed ?? cfg.returnMissGames,
+      consecutiveActive: consecutiveActive ?? 0,
+      reason: 'just returned from absence — minutes/role may be managed',
+    };
+  }
+
+  if (gamesMissed != null && gamesMissed >= cfg.returnMissGames) {
+    const active = consecutiveActive ?? 0;
+    if (active < cfg.returnActiveGamesRequired) {
+      return {
+        atRisk: true,
+        gamesMissed,
+        consecutiveActive: active,
+        reason: `return risk — missed ${gamesMissed} games, only ${active} fully active since`,
+      };
+    }
+  }
+
+  // Soft signal: injuryStatus was recently non-null and player is listed available
+  const status = (mp.injuryStatus || mp.injury?.status || '').toLowerCase();
+  if (status && !['out', 'doubtful', 'questionable'].includes(status) && mp.flags?.recentlyInjured) {
+    return {
+      atRisk: true,
+      gamesMissed: gamesMissed ?? cfg.returnMissGames,
+      consecutiveActive: consecutiveActive ?? 0,
+      reason: 'recently injured / load-management risk on return',
+    };
+  }
+
+  return { atRisk: false, gamesMissed: gamesMissed ?? 0, consecutiveActive: consecutiveActive ?? 99, reason: null };
+}
+
+/**
+ * H2H cushion vs the posted line (points only).
+ * Expects mp.h2h or mp.vsOpponent with { ppg, games } or similar.
+ */
+function getH2hCushion(mp, line, cfg) {
+  const h2h = mp.h2h || mp.vsOpponent || mp.careerVsOpp || null;
+  if (!h2h) return { available: false, ppg: null, games: 0, cushion: null, thin: false };
+
+  const ppg = h2h.ppg ?? h2h.pts ?? h2h.points ?? null;
+  const games = h2h.games ?? h2h.gp ?? h2h.g ?? 0;
+
+  if (ppg == null || games < cfg.h2hSampleMin) {
+    return { available: false, ppg, games, cushion: null, thin: false };
+  }
+
+  const cushion = ppg - line;
+  const thin = cushion < cfg.h2hCushionPts;
+  return { available: true, ppg, games, cushion, thin };
+}
+
 function hasSecondaryCompetition(mp, market) {
   if (market !== 'rebounds' && market !== 'pts_rebs' && market !== 'pra' && market !== 'rebs_asts') return false;
   if (mp.flags?.secondaryRebCompetition || mp.rebCompetition) return true;
@@ -89,6 +183,8 @@ function weakestComponent(mp, market, flags) {
 
   const risks = [];
   if (flags.minutesRisk || flags.foulTrouble) risks.push({ stat: 'minutes-driven counting stats', weight: 3 });
+  if (flags.returnRisk) risks.push({ stat: 'points (return / minutes management)', weight: 3 });
+  if (flags.h2hThin) risks.push({ stat: 'points (H2H at/under line)', weight: 2 });
   if (flags.schemeHostile && (market.includes('pts') || market === 'pra')) risks.push({ stat: 'points', weight: 2 });
   if (flags.secondaryCompetition || (flags.schemeHostile && market.includes('reb'))) risks.push({ stat: 'rebounds', weight: 2 });
   if (flags.scriptDependent) risks.push({ stat: 'points', weight: 1 });
@@ -130,6 +226,11 @@ export function applySchemeRisk(mp, market, line, rec, ctx = {}) {
     secondaryCompetition: false,
     highVolumePreferred: false,
     adviseUnder: false,
+    // new PTS-specific
+    returnRisk: false,
+    h2hThin: false,
+    eliteDefense: false,
+    highFloorPtsBlocked: false,
   };
   const reasons = [];
   let score = 50;
@@ -177,6 +278,15 @@ export function applySchemeRisk(mp, market, line, rec, ctx = {}) {
     }
   }
 
+  // 1b. Return-from-absence (PTS hard filter)
+  const returnInfo = getReturnRisk(mp, cfg);
+  if (returnInfo.atRisk) {
+    flags.returnRisk = true;
+    flags.minutesRisk = true;
+    score -= cfg.returnRiskPenalty;
+    reasons.push(returnInfo.reason);
+  }
+
   // 2. Scheme / matchup hostility
   const oppAdj = mp.oppAdj || ctx.oppAdj || {};
   const archetype = mp.archetype || {};
@@ -186,6 +296,11 @@ export function applySchemeRisk(mp, market, line, rec, ctx = {}) {
     flags.schemeHostile = true;
     score -= 15;
     reasons.push('opponent defensive adjustment hostile to scoring');
+  }
+  if (isPurePoints && oppPenalty <= cfg.eliteDefPtsAdj) {
+    flags.eliteDefense = true;
+    score -= cfg.eliteDefPenalty;
+    reasons.push('elite defense vs scoring (heavy points suppression)');
   }
   if ((market === 'assists' || market === 'pts_asts') && (oppAdj.astAdj ?? 0) < -0.6) {
     flags.schemeHostile = true;
@@ -204,6 +319,18 @@ export function applySchemeRisk(mp, market, line, rec, ctx = {}) {
     reasons.push('matchup archetype: ' + archetype.signalHint);
   }
 
+  // 2b. H2H cushion (PTS)
+  if (isPurePoints && line != null) {
+    const h2h = getH2hCushion(mp, line, cfg);
+    if (h2h.available && h2h.thin) {
+      flags.h2hThin = true;
+      score -= cfg.h2hThinPenalty;
+      reasons.push(
+        `H2H thin vs line (career ~${h2h.ppg.toFixed(1)} PPG in ${h2h.games}g vs ${line} — cushion ${h2h.cushion.toFixed(1)})`
+      );
+    }
+  }
+
   // 3. Secondary rebound competition
   if (hasSecondaryCompetition(mp, market)) {
     flags.secondaryCompetition = true;
@@ -217,6 +344,7 @@ export function applySchemeRisk(mp, market, line, rec, ctx = {}) {
   const spread = script.spread ?? mp.spread ?? null;
   const isLowPace = totalLine != null && totalLine < cfg.lowPaceTotal;
   const isBlowoutRisk = spread != null && Math.abs(spread) >= cfg.blowoutSpread;
+  const isRoad = mp.isHome === false || mp.home === false || (mp.location || '').toLowerCase() === 'away';
 
   if (isPurePoints && isLowPace) {
     flags.scriptDependent = true;
@@ -235,17 +363,38 @@ export function applySchemeRisk(mp, market, line, rec, ctx = {}) {
     reasons.push('pure points over in hostile or script-sensitive spot');
   }
 
-  // 5. High-volume preference
+  // 4b. PTS compound risk count (return + elite D + road + H2H thin + minutes)
+  let ptsRiskFlags = 0;
+  if (isPurePoints) {
+    if (flags.returnRisk) ptsRiskFlags++;
+    if (flags.eliteDefense || flags.schemeHostile) ptsRiskFlags++;
+    if (isRoad) ptsRiskFlags++;
+    if (flags.h2hThin) ptsRiskFlags++;
+    if (flags.minutesRisk && !flags.returnRisk) ptsRiskFlags++; // avoid double-count with return
+  }
+
+  // 5. High-volume preference (stricter for PTS)
   const usg = getUsg(mp);
   const rebRate = getRebRate(mp);
   let preferredProfile = null;
 
-  if (isPurePoints && usg != null && usg >= cfg.highUsgThreshold && !flags.minutesRisk && !flags.foulTrouble) {
+  // PTS: only award high-volume preferred if hard filters clear
+  const ptsHardClear =
+    !flags.returnRisk &&
+    !flags.h2hThin &&
+    ptsRiskFlags < cfg.ptsCompoundHardLimit &&
+    !flags.foulTrouble;
+
+  if (isPurePoints && usg != null && usg >= cfg.highUsgThreshold && !flags.minutesRisk && ptsHardClear) {
     flags.highVolumePreferred = true;
     score += cfg.volumeBoost;
     preferredProfile = 'primary_creator_pts';
     reasons.push(`high-usage primary creator (USG ${typeof usg === 'number' ? usg.toFixed(1) : usg}%) — preferred volume profile`);
+  } else if (isPurePoints && usg != null && usg >= cfg.highUsgThreshold && !ptsHardClear) {
+    flags.highFloorPtsBlocked = true;
+    reasons.push('usage is high but PTS hard filters (return / H2H / compound risk) blocked high-floor label');
   }
+
   if (isRebMarket && rebRate != null && rebRate >= cfg.highRebRateThreshold && !flags.minutesRisk && !flags.foulTrouble && !flags.secondaryCompetition) {
     flags.highVolumePreferred = true;
     score += cfg.volumeBoost;
@@ -275,6 +424,8 @@ export function applySchemeRisk(mp, market, line, rec, ctx = {}) {
   if (isPurePoints || market === 'pts_asts') underFactors++;
   if (isBlowoutRisk) underFactors++;
   if (flags.secondaryCompetition) underFactors++;
+  if (flags.returnRisk) underFactors++;
+  if (flags.h2hThin) underFactors++;
 
   if (underFactors >= 3 && (newRec.side === 'under' || newRec.lean === 'under' || newRec.edge < 0)) {
     flags.compoundingUnder = true;
@@ -290,7 +441,43 @@ export function applySchemeRisk(mp, market, line, rec, ctx = {}) {
   // 8. Force PASS or advise UNDER on high-risk overs
   const weakestStat = weakestComponent(mp, market, flags);
 
-  if ((isPurePoints || isCombo || isRebMarket) && newRec.side === 'over' && newRec.lean !== 'pass') {
+  // Extra PTS gate: return risk or H2H thin on an over → strong push to pass / under
+  if (isPurePoints && newRec.side === 'over' && newRec.lean !== 'pass') {
+    if (flags.returnRisk) {
+      // Hard filter: do not allow "safe" overs on recent returnees
+      newRec = {
+        ...newRec,
+        side: 'over',
+        lean: 'pass',
+        edge: 0,
+        prob: 0.5,
+        formKill: true,
+      };
+      flags.forcedPass = true;
+      flags.highFloorPtsBlocked = true;
+      reasons.push(`FORCED PASS — return-from-absence risk (weakest: ${weakestStat})`);
+      score = Math.min(score, 20);
+    } else if (flags.h2hThin && ptsRiskFlags >= cfg.ptsCompoundHardLimit) {
+      flags.adviseUnder = true;
+      if ((newRec.edge || 0) < 0.14) {
+        newRec = {
+          ...newRec,
+          side: 'under',
+          lean: 'under',
+          edge: Math.max(0.06, 0.10 - (newRec.edge || 0)),
+          prob: Math.min(0.66, 0.54 + (0.10 - (newRec.edge || 0))),
+        };
+        reasons.push(`ADVISE UNDER — H2H at/under line + compound PTS risk (most vulnerable: ${weakestStat})`);
+        score = Math.min(score, 30);
+      } else {
+        newRec.edge = Math.max(0, (newRec.edge || 0) - 0.06);
+        newRec.lean = (newRec.edge < 0.07) ? 'pass' : newRec.lean;
+        reasons.push(`over edge reduced — H2H thin vs line + stacked risk on ${weakestStat}`);
+      }
+    }
+  }
+
+  if ((isPurePoints || isCombo || isRebMarket) && newRec.side === 'over' && newRec.lean !== 'pass' && !flags.forcedPass) {
     const veryHighRisk = (score <= cfg.forcedPassScore) || (flags.purePointsRisk && underFactors >= 3) || (flags.foulTrouble && flags.minutesRisk);
     const highRisk = score <= cfg.underAdviseScore || (flags.purePointsRisk && (flags.schemeHostile || flags.scriptDependent || flags.minutesRisk));
 
@@ -328,10 +515,13 @@ export function applySchemeRisk(mp, market, line, rec, ctx = {}) {
 
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  if (score >= cfg.highFloorScore && flags.highVolumePreferred) {
-    preferredProfile = preferredProfile || 'high_floor';
-  } else if (score >= cfg.highFloorScore) {
+  // High-floor label is stricter for PTS
+  if (score >= cfg.highFloorScore && flags.highVolumePreferred && !flags.highFloorPtsBlocked) {
+    preferredProfile = preferredProfile || (isPurePoints ? 'high_floor_pts' : 'high_floor');
+  } else if (score >= cfg.highFloorScore && !isPurePoints) {
     preferredProfile = preferredProfile || 'stable_floor';
+  } else if (isPurePoints && flags.highFloorPtsBlocked) {
+    preferredProfile = preferredProfile || 'volume_pts_only';
   }
 
   let riskExplanation = '';
@@ -339,8 +529,10 @@ export function applySchemeRisk(mp, market, line, rec, ctx = {}) {
     riskExplanation = `High risk of underperformance. Primary concern: ${weakestStat}. Failed the high-volume + no-foul-trouble checklist.`;
   } else if (flags.adviseUnder) {
     riskExplanation = `Over carries elevated risk of underperforming. Most likely weak link: ${weakestStat}. Prefer the under or pass.`;
-  } else if (flags.highVolumePreferred && score >= cfg.highFloorScore) {
+  } else if (flags.highVolumePreferred && score >= cfg.highFloorScore && !flags.highFloorPtsBlocked) {
     riskExplanation = `Clears the high-volume / low-foul-trouble bar. Preferred profile${preferredProfile ? ` (${preferredProfile})` : ''}.`;
+  } else if (flags.highFloorPtsBlocked) {
+    riskExplanation = `Usage/volume present but PTS hard filters blocked high-floor label (return / H2H / compound risk). Treat as volume test only.`;
   } else if (score < 45) {
     riskExplanation = `Below preferred floor. Watch: ${reasons.slice(0, 2).join('; ') || 'general variance'}.`;
   } else {
@@ -356,6 +548,9 @@ export function applySchemeRisk(mp, market, line, rec, ctx = {}) {
     preferredProfile,
     weakestStat,
     riskExplanation,
+    // diagnostics for logging / Key Reads
+    ptsRiskFlags: isPurePoints ? ptsRiskFlags : 0,
+    returnInfo: isPurePoints ? returnInfo : null,
   };
 }
 
